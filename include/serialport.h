@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: serialport.h,v 1.14 2007/01/13 08:35:49 qbix79 Exp $ */
+/* $Id: serialport.h,v 1.16 2009/02/01 14:11:45 qbix79 Exp $ */
 
 #ifndef DOSBOX_SERIALPORT_H
 #define DOSBOX_SERIALPORT_H
@@ -35,9 +35,12 @@
 #ifndef DOSBOX_TIMER_H
 #include "timer.h"
 #endif
-
+#ifndef DOSBOX_DOS_INC_H
 #include "dos_inc.h"
-#include "setup.h"
+#endif
+#ifndef DOSBOX_PROGRAMS_H
+#include "programs.h"
+#endif
 
 #if SERIAL_DEBUG
 #include "hardware.h"
@@ -167,7 +170,7 @@ public:
 	void Init_Registers();
 	
 	bool Putchar(Bit8u data, bool wait_dtr, bool wait_rts, Bitu timeout);
-	bool Getchar(Bit8u* data, bool wait_dsr, Bitu timeout);
+	bool Getchar(Bit8u* data, Bit8u* lsr, bool wait_dsr, Bitu timeout);
 
 
 private:

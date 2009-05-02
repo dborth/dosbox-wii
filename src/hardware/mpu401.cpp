@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mpu401.cpp,v 1.26 2007/02/03 14:11:38 qbix79 Exp $ */
+/* $Id: mpu401.cpp,v 1.28 2008/11/10 15:29:38 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -496,11 +496,18 @@ static void UpdateTrack(Bit8u chan) {
 		mpu.playbuf[chan].counter=0xf0;
 		mpu.state.req_mask|=(1<<chan);
 	} else {
-		if (mpu.state.amask==0) mpu.state.req_mask|=(1<<12);
+		if (mpu.state.amask==0 && !mpu.state.conductor) mpu.state.req_mask|=(1<<12);
 	}
 }
 
 static void UpdateConductor(void) {
+	if (mpu.condbuf.value[0]==0xfc) {
+		mpu.condbuf.value[0]=0;
+		mpu.state.conductor=false;
+		mpu.state.req_mask&=~(1<<9);
+		if (mpu.state.amask==0) mpu.state.req_mask|=(1<<12);
+		return;
+	}
 	mpu.condbuf.vlength=0;
 	mpu.condbuf.counter=0xf0;
 	mpu.state.req_mask|=(1<<9);
