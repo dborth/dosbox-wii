@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -101,7 +101,7 @@
 #define PLANAR2    0x04
 #define PLANAR4    0x05
 #define LINEAR8    0x06
-
+#define CGA2	   0x07
 // for Tandy
 
 #define TANDY16    0x0A
@@ -205,4 +205,11 @@ void INT10_SetGfxControllerToDefault(void);
 
 /* Sup Groups */
 void INT10_SetupRomMemory(void);
+
+struct Int10Data {
+	Bit8u mode;
+	VGAMODES * entry;
+};
+
+extern Int10Data int10;
 

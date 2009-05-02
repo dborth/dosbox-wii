@@ -29,14 +29,6 @@ struct CommandTail{
 } GCC_ATTRIBUTE(packed);
 
 
-struct MCB {
-	Bit8u type;
-	Bit16u psp_segment;
-	Bit16u size;	
-	Bit8u unused[3];
-	Bit8u filename[8];
-} GCC_ATTRIBUTE(packed);
-
 #pragma pack ()
 
 struct DOS_Date {
@@ -267,7 +259,9 @@ public:
 	void	SetFCB1				(RealPt src);
 	void	SetFCB2				(RealPt src);
 	void	SetCommandTail		(RealPt src);	
-
+	bool	SetNumFiles			(Bit16u fileNum);
+	Bit16u	FindEntryByHandle	(Bit8u handle);
+	
 private:
 	#pragma pack(1)
 	struct sPSP {
@@ -362,6 +356,9 @@ public:
 	Bit8u GetSearchDrive(void);
 	void GetSearchParams(Bit8u & _sattr,char * _spattern);
 	void GetResult(char * _name,Bit32u & _size,Bit16u & _date,Bit16u & _time,Bit8u & _attr);
+
+	void	SetDirID(Bit16u entry)		{ sSave(sDTA,dirID,entry); };
+	Bit16u	GetDirID(void)				{ return sGet(sDTA,dirID); };
 private:
 	#pragma pack(1)
 	struct sDTA {
@@ -369,7 +366,8 @@ private:
 		Bit8u sattr;						/* The Attributes that need to be found */
 		Bit8u sname[8];						/* The Search pattern for the filename */		
 		Bit8u sext[3];						/* The Search pattern for the extenstion */
-		Bit8u fill[8];
+		Bit16u dirID;						/* custom: dir-search ID for multiple searches at the same time */
+		Bit8u fill[6];
 		Bit8u attr;
 		Bit16u time;
 		Bit16u date;
@@ -419,10 +417,32 @@ private:
 	#pragma pack ()
 };
 
+class DOS_MCB : public MemStruct{
+public:
+	DOS_MCB(Bit16u seg) { SetPt(seg); }
+	void SetFileName(char * _name) { MEM_BlockWrite(pt+offsetof(sMCB,filename),_name,8); }
+	void GetFileName(char * _name) { MEM_BlockRead(pt+offsetof(sMCB,filename),_name,8);_name[8]=0;}
+	void SetType(Bit8u _type) { sSave(sMCB,type,_type);}
+	void SetSize(Bit16u _size) { sSave(sMCB,size,_size);}
+	void SetPSPSeg(Bit16u _pspseg) { sSave(sMCB,psp_segment,_pspseg);}
+	Bit8u GetType(void) { return sGet(sMCB,type);}
+	Bit16u GetSize(void) { return sGet(sMCB,size);}
+	Bit16u GetPSPSeg(void) { return sGet(sMCB,psp_segment);}
+private:
+	#pragma pack (1)
+	struct sMCB {
+		Bit8u type;
+		Bit16u psp_segment;
+		Bit16u size;	
+		Bit8u unused[3];
+		Bit8u filename[8];
+	} GCC_ATTRIBUTE(packed);
+	#pragma pack ()
+};
+
 extern DOS_InfoBlock dos_infoblock;;
 
 INLINE Bit8u RealHandle(Bit16u handle) {
-	
 	DOS_PSP psp(dos.psp);	
 	return psp.GetFileHandle(handle);
 }

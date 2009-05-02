@@ -37,6 +37,7 @@ struct DBGBlock {
 	WINDOW * win_out;					/* Text Output Window */
 	Bit32u active_win;					/* Current active window */
 	Bit32u input_y;
+	Bit32u global_mask;					/* Current msgmask */
 };
 
 
@@ -53,3 +54,4 @@ extern DBGBlock dbg;
 
 /* Local Debug Stuff */
 Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32);
+int  DasmLastOperandSize(void);

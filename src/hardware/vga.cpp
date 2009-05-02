@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,29 +27,36 @@
 #include "vga.h"
 
 VGA_Type vga;
+
 Bit32u CGAWriteTable[256];
 Bit32u ExpandTable[256];
 Bit32u Expand16Table[4][16];
 Bit32u Expand16BigTable[0x10000];
+Bit32u FillTable[16];
 
-Bit32u FillTable[16]={	
-	0x00000000,0x000000ff,0x0000ff00,0x0000ffff,
-	0x00ff0000,0x00ff00ff,0x00ffff00,0x00ffffff,
-	0xff000000,0xff0000ff,0xff00ff00,0xff00ffff,
-	0xffff0000,0xffff00ff,0xffffff00,0xffffffff
-};
+static void EndRetrace(void) {
+	/* start the actual display update now */
+	RENDER_DoUpdate();
+	vga.config.retrace=false;
+}
 
+static void VGA_BlankTimer() {
+	PIC_AddEvent(VGA_BlankTimer,vga.draw.blank);
+	PIC_AddEvent(EndRetrace,667);
+	/* Setup a timer to destroy the vertical retrace bit in a few microseconds */
+	vga.config.real_start=vga.config.display_start;
+	vga.config.retrace=true;
+}
 
-static void VGA_BlankTimer(void) {
-	PIC_AddEvent(&VGA_BlankTimer,vga.draw.blank);
+static void VGA_DrawHandler(RENDER_Part_Handler part_handler) {
 	Bit8u * buf,* bufsplit;
 	/* Draw the current frame */
-	if (!vga.draw.resizing && RENDER_StartUpdate()) {
+	if (!vga.draw.resizing) {
 		if (vga.config.line_compare<vga.draw.lines) {
 			Bitu stop=vga.config.line_compare;
 			if (vga.draw.double_height) stop/=2;
 			if (stop>=vga.draw.height){
-				LOG_VGA("Split at %d",stop);
+				LOG(LOG_VGAGFX,"Split at %d",stop);
 				goto drawnormal;
 			}
 			switch (vga.mode) {
@@ -66,11 +73,11 @@ static void VGA_BlankTimer(void) {
 				bufsplit=memory+0xa0000;
 				break;
 			default:
-				LOG_WARN("VGA:Unhandled split screen mode %d",vga.mode);
+				LOG(LOG_VGAGFX,"VGA:Unhandled split screen mode %d",vga.mode);
 				goto norender;
 			}
-			RENDER_Part(buf,0,0,vga.draw.width,stop);
-			RENDER_Part(bufsplit,0,stop,vga.draw.width,vga.draw.height-stop);
+			part_handler(buf,0,0,vga.draw.width,stop);
+			part_handler(bufsplit,0,stop,vga.draw.width,vga.draw.height-stop);
 		} else {
 drawnormal:
 			switch (vga.mode) {
@@ -96,15 +103,11 @@ drawnormal:
 				buf=&vga.mem.linear[vga.config.real_start*4+vga.config.pel_panning/2];
 				break;
 			}
-			RENDER_Part(buf,0,0,vga.draw.width,vga.draw.height);
-
-
+			part_handler(buf,0,0,vga.draw.width,vga.draw.height);
 		}
-norender:
-		RENDER_EndUpdate();
-
+norender:;
 	}
-	VGA_StartRetrace();
+
 }
 
 void VGA_FindSettings(void) {
@@ -158,8 +161,8 @@ static void VGA_DoResize(void) {
 	/* Check for pixel doubling, master clock/2 */
 	if (vga.seq.clocking_mode & 0x8) clock/=2;
 
-	LOG_VGA("H total %d, V Total %d",htotal,vtotal);
-	LOG_VGA("H D End %d, V D End %d",hdispend,vdispend);
+	LOG(LOG_VGA,"H total %d, V Total %d",htotal,vtotal);
+	LOG(LOG_VGA,"H D End %d, V D End %d",hdispend,vdispend);
 	fps=clock/(vtotal*htotal);
 
 	vga.draw.resizing=false;
@@ -218,9 +221,9 @@ static void VGA_DoResize(void) {
 		vga.draw.height=height;
 		vga.draw.pitch=pitch;
 
-		LOG_VGA("Width %d, Height %d",width,height);
-		LOG_VGA("Flags %X, fps %f",flags,fps);
-		RENDER_SetSize(width,height,8,pitch,((float)width/(float)height),flags);
+		LOG(LOG_VGA,"Width %d, Height %d",width,height);
+		LOG(LOG_VGA,"Flags %X, fps %f",flags,fps);
+		RENDER_SetSize(width,height,8,pitch,((float)width/(float)height),flags,&VGA_DrawHandler);
 		vga.draw.blank=(Bitu)(1000000/fps);
 		PIC_AddEvent(VGA_BlankTimer,vga.draw.blank);
 	}
@@ -246,15 +249,40 @@ void VGA_Init(Section* sec) {
 	Bitu i,j;
 	for (i=0;i<256;i++) {
 		ExpandTable[i]=i | (i << 8)| (i <<16) | (i << 24);
+#ifdef WORDS_BIGENDIAN
+		CGAWriteTable[i]=((i>>0)&3) | (((i>>2)&3) << 8)| (((i>>4)&3) <<16) | (((i>>6)&3) << 24);
+#else
 		CGAWriteTable[i]=((i>>6)&3) | (((i>>4)&3) << 8)| (((i>>2)&3) <<16) | (((i>>0)&3) << 24);
+#endif
+	}
+	for (i=0;i<16;i++) {
+#ifdef WORDS_BIGENDIAN
+		FillTable[i]=	((i & 1) ? 0xff000000 : 0) |
+						((i & 2) ? 0x00ff0000 : 0) |
+						((i & 4) ? 0x0000ff00 : 0) |
+						((i & 8) ? 0x000000ff : 0) ;
+#else 
+		FillTable[i]=	((i & 1) ? 0x000000ff : 0) |
+						((i & 2) ? 0x0000ff00 : 0) |
+						((i & 4) ? 0x00ff0000 : 0) |
+						((i & 8) ? 0xff000000 : 0) ;
+#endif
 	}
 	for (j=0;j<4;j++) {
 		for (i=0;i<16;i++) {
+#ifdef WORDS_BIGENDIAN
+			Expand16Table[j][i] =
+				((i & 1) ? 1 << j : 0) |
+				((i & 2) ? 1 << (8 + j) : 0) |
+				((i & 4) ? 1 << (16 + j) : 0) |
+				((i & 8) ? 1 << (24 + j) : 0);
+#else
 			Expand16Table[j][i] =
 				((i & 1) ? 1 << (24 + j) : 0) |
 				((i & 2) ? 1 << (16 + j) : 0) |
 				((i & 4) ? 1 << (8 + j) : 0) |
 				((i & 8) ? 1 << j : 0);
+#endif
 		}
 	}
 	for (i=0;i<0x10000;i++) {

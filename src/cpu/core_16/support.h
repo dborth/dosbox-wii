@@ -98,7 +98,6 @@ static INLINE Bit32u Pop_32() {
 #include "helpers.h"
 #include "table_ea.h"
 #include "../modrm.h"
-#include "instructions.h"
 
 
 static Bit8s table_df_8[2]={1,-1};
@@ -354,8 +353,8 @@ rep_again:
 		break;
 	default:
 		IPPoint--;
-		LOG_DEBUG("Unhandled REP Prefix %X",Fetchb());
-
+		LOG(LOG_CPU|LOG_ERROR,"Unhandled REP Prefix %X",Fetchb());
+		goto normalexit;
 	}
 	/* If we end up here it's because the CPU_Cycles counter is 0, so restart instruction */
 	IPPoint-=(prefix.count+2);		/* Rep instruction and whatever string instruction */

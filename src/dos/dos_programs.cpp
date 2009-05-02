@@ -25,7 +25,10 @@
 #include "cross.h"
 #include "regs.h"
 #include "callback.h"
+#include "cdrom.h"
 #include "../shell/shell_inc.h"
+
+void MSCDEX_SetCDInterface(int intNr, int forceCD);
 
 class MOUNT : public Program {
 public:
@@ -33,6 +36,16 @@ public:
 	{
 		DOS_Drive * newdrive;char drive;
 		
+		// Show list of cdroms
+		if (cmd->FindExist("-cd",false)) {
+			int num = SDL_CDNumDrives();
+			WriteOut("CDROMs found: %d\n",num);
+			for (int i=0; i<num; i++) {
+				WriteOut("%2d. %s\n",i,SDL_CDName(i));
+			};
+			return;
+		}
+
 		/* Parse the command line */
 		/* if the command line is empty show current mounts */
 		if (!cmd->GetCount()) {
@@ -44,9 +57,10 @@ public:
 			}
 			return;
 		}
+
 		std::string type="dir";
 		cmd->FindString("-t",type,true);
-		if (type=="floppy" || type=="dir") {
+		if (type=="floppy" || type=="dir" || type=="cdrom") {
 			Bit16u sizes[4];
 			Bit8u mediaid;
 			std::string str_size;
@@ -56,6 +70,10 @@ public:
 			}
 			if (type=="dir") {
 				str_size="512,127,16513,1700";
+				mediaid=0xF8;		/* Hard Disk */
+			}
+			if (type=="cdrom") {
+				str_size="650,127,16513,1700";
 				mediaid=0xF8;		/* Hard Disk */
 			}
 			cmd->FindString("-size",str_size,true);
@@ -70,7 +88,12 @@ public:
 				scan++;
 			}
 			number[index]=0;sizes[count++]=atoi(number);
-
+		
+		// get the drive letter
+			cmd->FindCommand(1,temp_line);
+			if ((temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) goto showusage;
+			drive=toupper(temp_line[0]);
+			if (!isalpha(drive)) goto showusage;
 
 			if (!cmd->FindCommand(2,temp_line)) goto showusage;
 			if (!temp_line.size()) goto showusage;
@@ -86,14 +109,30 @@ public:
 			}
 			if (temp_line[temp_line.size()-1]!=CROSS_FILESPLIT) temp_line+=CROSS_FILESPLIT;
             Bit8u bit8size=(Bit8u) sizes[1];
-			newdrive=new localDrive(temp_line.c_str(),sizes[0],bit8size,sizes[2],sizes[3],mediaid);
+			if (type=="cdrom") {
+				int num = -1;
+				cmd->FindInt("-usecd",num,true);
+				int error;
+				if (cmd->FindExist("-aspi",false))	MSCDEX_SetCDInterface(CDROM_USE_ASPI, num);	else
+				if (cmd->FindExist("-ioctl",false)) MSCDEX_SetCDInterface(CDROM_USE_IOCTL, num);
+				else								MSCDEX_SetCDInterface(CDROM_USE_SDL, num);
+				newdrive  = new cdromDrive(drive,temp_line.c_str(),sizes[0],bit8size,sizes[2],0,mediaid,error);
+				// Check Mscdex, if it worked out...
+				switch (error) {
+					case 0  :	WriteOut(MSG_Get("MSCDEX_SUCCESS"));				break;
+					case 1  :	WriteOut(MSG_Get("MSCDEX_ERROR_MULTIPLE_CDROMS"));	break;
+					case 2  :	WriteOut(MSG_Get("MSCDEX_ERROR_NOT_SUPPORTED"));	break;
+					case 3  :	WriteOut(MSG_Get("MSCDEX_ERROR_PATH"));				break;
+					case 4  :	WriteOut(MSG_Get("MSCDEX_TOO_MANY_DRIVES"));		break;
+					case 5  :	WriteOut(MSG_Get("MSCDEX_LIMITED_SUPPORT"));		break;
+					default :	WriteOut(MSG_Get("MSCDEX_UNKNOWN_ERROR"));			break;
+				};
+			} else {
+				newdrive=new localDrive(temp_line.c_str(),sizes[0],bit8size,sizes[2],sizes[3],mediaid);
+			}
 		}
-		cmd->FindCommand(1,temp_line);
-		if (temp_line.size()>1) goto showusage;
-		drive=toupper(temp_line[0]);
-		if (!isalpha(drive)) goto showusage;
 		if (Drives[drive-'A']) {
-			WriteOut(MSG_Get("PROGRAM_MOUNT_ALLREADY_MOUNDTED"),drive,Drives[drive-'A']->GetInfo());
+			WriteOut(MSG_Get("PROGRAM_MOUNT_ALLREADY_MOUNTED"),drive,Drives[drive-'A']->GetInfo());
 			if (newdrive) delete newdrive;
 			return;
 		}
@@ -149,78 +188,6 @@ static void MEM_ProgramStart(Program * * make) {
 }
 
 
-#if !defined (WIN32)						/* Unix */
-
-class UPCASE : public Program {
-public:
-	void Run(void);
-	void upcasedir(const char * directory);
-};
-
-void UPCASE::upcasedir(const char * directory) {
-	DIR * sdir;
-	char fullname[512];
-	char newname[512];
-	struct dirent *tempdata;
-	struct stat finfo;
-
-	if(!(sdir=opendir(directory)))	{
-		WriteOut(MSG_Get("PROGRAM_UPCASE_ERROR_DIR"),directory);
-		return;
-	}
-	WriteOut(MSG_Get("PROGRAM_UPCASE_SCANNING_DIR"),fullname);
-	while (tempdata=readdir(sdir)) {
-		if (strcmp(tempdata->d_name,".")==0) continue;
-		if (strcmp(tempdata->d_name,"..")==0) continue;
-		strcpy(fullname,directory);
-		strcat(fullname,"/");
-		strcat(fullname,tempdata->d_name);
-		strcpy(newname,directory);
-		strcat(newname,"/");
-		upcase(tempdata->d_name);
-		strcat(newname,tempdata->d_name);
-		WriteOut(MSG_Get("PROGRAM_UPCASE_RENAME"),fullname,newname);
-		rename(fullname,newname);
-		stat(fullname,&finfo);
-		if(S_ISDIR(finfo.st_mode)) {
-			upcasedir(fullname);
-		}
-	}
-	closedir(sdir);
-}
-
-
-void UPCASE::Run(void) {
-	/* First check if the directory exists */
-	struct stat info;
-	WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_1"));
-	if (!cmd->GetCount()) {
-		WriteOut(MSG_Get("PROGRAM_UPCASE_USAGE"));
-		return;
-	}
-	cmd->FindCommand(1,temp_line);
-	if (stat(temp_line.c_str(),&info)) {
-		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_ERROR_1"),temp_line.c_str());
-		return;
-	}
-	if(!S_ISDIR(info.st_mode)) {
-		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_ERROR_2"),temp_line.c_str());
-		return;
-	}
-	WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_CHOICE"),temp_line.c_str());
-	Bit8u key;Bit16u n=1;
-	DOS_ReadFile(STDIN,&key,&n);
-	if (toupper(key)=='Y') {
-		upcasedir(temp_line.c_str());	
-	} else {
-		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_NO"));
-	}
-}
-
-static void UPCASE_ProgramStart(Program * * make) {
-	*make=new UPCASE;
-}
-#endif
 
 // LOADFIX
 
@@ -253,8 +220,8 @@ void LOADFIX::Run(void)
 	Bit16u segment;
 	Bit16u blocks = kb*1024/16;
 	if (DOS_AllocateMemory(&segment,&blocks)) {
-		MCB* pmcb = (MCB*)HostMake(segment-1,0);
-		pmcb->psp_segment = 0x40;	// use fake segment
+		DOS_MCB mcb((Bit16u)(segment-1));
+		mcb.SetPSPSeg(0x40);			// use fake segment
 		WriteOut(MSG_Get("PROGRAM_LOADFIX_ALLOC"),kb);
 		// Prepare commandline...
 		if (cmd->FindCommand(commandNr++,temp_line)) {
@@ -285,6 +252,38 @@ static void LOADFIX_ProgramStart(Program * * make) {
 	*make=new LOADFIX;
 }
 
+// RESCAN
+
+class RESCAN : public Program {
+public:
+	void Run(void);
+};
+
+void RESCAN::Run(void) 
+{
+	// Get current drive
+	Bit8u drive = DOS_GetDefaultDrive();
+	if (Drives[drive]) {
+		Drives[drive]->EmptyCache();
+		WriteOut(MSG_Get("PROGRAM_RESCAN_SUCCESS"));
+	}
+};
+
+static void RESCAN_ProgramStart(Program * * make) {
+	*make=new RESCAN;
+}
+
+class INTRO : public Program {
+public:
+	void Run(void) {
+		WriteOut(MSG_Get("PROGRAM_INTRO"));
+	}
+};
+
+static void INTRO_ProgramStart(Program * * make) {
+	*make=new INTRO;
+}
+
 void DOS_SetupPrograms(void) {
     /*Add Messages */
 	MSG_Add("PROGRAM_MOUNT_STATUS_2","Drive %c is mounted as %s\n");
@@ -303,22 +302,42 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_LOADFIX_DEALLOCALL","Used memory freed.\n");
 	MSG_Add("PROGRAM_LOADFIX_ERROR","Memory allocation error.\n");
 
-#if !defined (WIN32)                        /* Unix */
-    MSG_Add("PROGRAM_UPCASE_ERROR_DIR","Failed to open directory %s\n");
-    MSG_Add("PROGRAM_UPCASE_SCANNING_DIR","Scanning directory %s\n");
-    MSG_Add("PROGRAM_UPCASE_RENAME","Renaming %s to %s\n");
-    MSG_Add("PROGRAM_UPCASE_RUN_1","UPCASE 0.1 Directory case convertor.\n");
-    MSG_Add("PROGRAM_UPCASE_USAGE","Usage UPCASE [local directory]\nThis tool will convert all files and subdirectories in a directory.\nBe VERY sure this directory contains only dos related material.\nOtherwise you might horribly screw up your filesystem.\n");
-    MSG_Add("PROGRAM_UPCASE_RUN_ERROR_1","%s doesn't exist\n");
-    MSG_Add("PROGRAM_UPCASE_RUN_ERROR_2","%s isn't a directory\n");
-    MSG_Add("PROGRAM_UPCASE_RUN_CHOICE","Converting the wrong directories can be very harmfull, please be carefull.\nAre you really really sure you want to convert %s to upcase?Y/N\n");
-    MSG_Add("PROGRAM_UPCASE_RUN_NO","Okay better not do it.\n");
-#endif
+	MSG_Add("MSCDEX_SUCCESS","MSCDEX installed.\n");
+	MSG_Add("MSCDEX_ERROR_MULTIPLE_CDROMS","MSCDEX: Failure: Drive-letters of multiple CDRom-drives have to be continuous.\n");
+	MSG_Add("MSCDEX_ERROR_NOT_SUPPORTED","MSCDEX: Failure: Not yet supported.\n");
+	MSG_Add("MSCDEX_ERROR_PATH","MSCDEX: Failure: Path not valid.\n");
+	MSG_Add("MSCDEX_TOO_MANY_DRIVES","MSCDEX: Failure: Too many CDRom-drives (max: 5). MSCDEX Installation failed.\n");
+	MSG_Add("MSCDEX_LIMITED_SUPPORT","MSCDEX: Mounted subdirectory: limited support.\n");
+	MSG_Add("MSCDEX_UNKNOWN_ERROR","MSCDEX: Failure: Unknown error.\n");
+
+	MSG_Add("PROGRAM_RESCAN_SUCCESS","Drive cache cleared.\n");
+
+	MSG_Add("PROGRAM_INTRO",
+		"Welcome to DOSBox, an x86 emulator with sound and graphics.\n"
+		"DOSBox creates a shell for you which looks like old plain DOS.\n"
+		"\n"	    
+		"Here are some commands to get you started:\n"
+		"Before you can use the files located on your own filesystem,\n"
+		"You have to mount the directory containing the files.\n"
+		"For Windows:\n"
+		"mount c c:\\dosprog will create a C drive in dosbox with c:\\dosprog as contents.\n"
+		"\n"
+		"For other platfroms:\n"
+		"mount c /home/user/dosprog will do the same.\n"
+		"\n"
+		"When the mount has succesfully completed you can type c: to go to your freshly\n"
+		"mounted C-drive. Typing dir there will show its contents. cd will allow you to\n"
+		"enter a directory (recognised by the [] in a directory listing).\n"
+		"You can run programs/files which end with .exe .bat and .com .\n"
+
+		"\n"
+		"DOSBox will stop/exit without a warning if an error occured!\n"
+		);
+
     /*regular setup*/
 	PROGRAMS_MakeFile("MOUNT.COM",MOUNT_ProgramStart);
 	PROGRAMS_MakeFile("MEM.COM",MEM_ProgramStart);
 	PROGRAMS_MakeFile("LOADFIX.COM",LOADFIX_ProgramStart);
-#if !defined (WIN32)						/* Unix */
-	PROGRAMS_MakeFile("UPCASE.COM",UPCASE_ProgramStart);
-#endif
+	PROGRAMS_MakeFile("RESCAN.COM",RESCAN_ProgramStart);
+	PROGRAMS_MakeFile("INTRO.COM",INTRO_ProgramStart);
 }

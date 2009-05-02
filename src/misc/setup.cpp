@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -111,7 +111,7 @@ const char* Section_prop::Get_string(const char* _propname){
 			return ((*tel)->GetValue())._string->c_str();
 		}
 	}
-	return NULL;
+	return "";
 }
 int Section_prop::Get_hex(const char* _propname){
 	for(it tel=properties.begin();tel!=properties.end();tel++){
@@ -222,7 +222,8 @@ void Config::ParseConfigFile(const char* configfilename){
 		return;
 	}
 	char gegevens[150];
-	Section* currentsection;
+	Section* currentsection = NULL;
+	Section* testsec = NULL;
 	while (in) {
 		in.getline(gegevens,150);
 		char* temp;
@@ -237,7 +238,9 @@ void Config::ParseConfigFile(const char* configfilename){
 		case '[':
 			temp = strrchr(gegevens,']');
 			*temp=0;
-			currentsection=GetSection(&gegevens[1]);
+			testsec = GetSection(&gegevens[1]);
+			if(testsec != NULL ) currentsection = testsec;
+			testsec = NULL;
 			break;
 		default:
 			try{
@@ -248,6 +251,22 @@ void Config::ParseConfigFile(const char* configfilename){
 			}
 			break;
 		}
+	}
+}
+
+void Config::ParseEnv(char ** envp) {
+	for(char** env=envp; *env;env++) {
+		char copy[1024];
+		strncpy(copy,*env,1024);
+		if(strncasecmp(copy,"DOSBOX_",7))
+			continue;
+		char* sec_name = &copy[7];
+		char* prop_name = strrchr(sec_name,'_');
+		*prop_name++=0;
+		Section* sect = GetSection(sec_name);
+		if(!sect) 
+			continue;
+		sect->HandleInputline(prop_name);
 	}
 }
 

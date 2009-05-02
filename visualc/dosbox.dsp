@@ -20,7 +20,6 @@ CFG=dosbox - Win32 Debug
 !MESSAGE "dosbox - Win32 Release" (based on "Win32 (x86) Console Application")
 !MESSAGE "dosbox - Win32 Debug" (based on "Win32 (x86) Console Application")
 !MESSAGE 
-
 # Begin Project
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName ""
@@ -50,7 +49,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
-# ADD LINK32 zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
+# ADD LINK32 winmm.lib zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
 
 !ELSEIF  "$(CFG)" == "dosbox - Win32 Debug"
 
@@ -75,7 +74,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
-# ADD LINK32 zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
+# ADD LINK32 winmm.lib zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
 
 !ENDIF 
 
@@ -95,10 +94,6 @@ LINK32=link.exe
 # Begin Source File
 
 SOURCE=..\src\cpu\core_16\helpers.h
-# End Source File
-# Begin Source File
-
-SOURCE=..\src\cpu\core_16\instructions.h
 # End Source File
 # Begin Source File
 
@@ -144,6 +139,10 @@ SOURCE=..\src\cpu\cpu.cpp
 # Begin Source File
 
 SOURCE=..\src\cpu\flags.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\instructions.h
 # End Source File
 # Begin Source File
 
@@ -202,6 +201,10 @@ SOURCE=..\src\dos\dev_con.h
 # PROP Default_Filter ""
 # Begin Source File
 
+SOURCE=..\src\dos\drive_cache.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\dos\drive_local.cpp
 # End Source File
 # Begin Source File
@@ -217,6 +220,22 @@ SOURCE=..\src\dos\drives.cpp
 SOURCE=..\src\dos\drives.h
 # End Source File
 # End Group
+# Begin Source File
+
+SOURCE=..\src\dos\cdrom.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\dos\cdrom.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\dos\cdrom_aspi_win32.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\dos\cdrom_ioctl_win32.cpp
+# End Source File
 # Begin Source File
 
 SOURCE=..\src\dos\dos.cpp
@@ -251,16 +270,36 @@ SOURCE=..\src\dos\dos_misc.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=..\src\dos\dos_mscdex.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\dos\dos_programs.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=..\src\dos\dos_tables.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=..\src\dos\scsidefs.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\dos\wnaspi32.h
+# End Source File
 # End Group
 # Begin Group "gui"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\src\gui\midi.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\gui\midi_win32.h
+# End Source File
 # Begin Source File
 
 SOURCE=..\src\gui\render.cpp
@@ -271,7 +310,11 @@ SOURCE=..\include\render.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\gui\render_support.h
+SOURCE=..\src\gui\render_normal.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\gui\render_scale2x.h
 # End Source File
 # Begin Source File
 
@@ -380,6 +423,10 @@ SOURCE=..\src\hardware\memory.cpp
 # Begin Source File
 
 SOURCE=..\src\hardware\mixer.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\hardware\mpu401.cpp
 # End Source File
 # Begin Source File
 
@@ -633,10 +680,6 @@ SOURCE=..\include\programs.h
 # Begin Source File
 
 SOURCE=..\include\regs.h
-# End Source File
-# Begin Source File
-
-SOURCE=..\settings.h
 # End Source File
 # Begin Source File
 
