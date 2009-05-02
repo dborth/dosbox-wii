@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.24 2004/08/04 09:12:50 qbix79 Exp $ */
+/* $Id: dos_system.h,v 1.28 2004/11/13 12:08:42 qbix79 Exp $ */
 
 #ifndef DOSSYSTEM_H_
 #define DOSSYSTEM_H_
@@ -54,6 +54,8 @@ class DOS_DTA;
 class DOS_File {
 public:
 	DOS_File():flags(0)		{ name=0; refCtr = 0; };
+	DOS_File(const DOS_File& orig);
+	DOS_File & operator= (const DOS_File & orig);
 	virtual	~DOS_File(){if(name) delete [] name;};
 	virtual bool	Read(Bit8u * data,Bit16u * size)=0;
 	virtual bool	Write(Bit8u * data,Bit16u * size)=0;
@@ -81,9 +83,21 @@ public:
 
 class DOS_Device : public DOS_File {
 public:
-/* Some Device Specific Stuff */
-	char * name;
-	Bit8u fhandle;	
+	DOS_Device(const DOS_Device& orig):DOS_File(orig) {devnum=orig.devnum; }
+	DOS_Device & operator= (const DOS_Device & orig) {
+		DOS_File::operator=(orig);
+		devnum=orig.devnum;
+		return *this;
+	}
+	DOS_Device():DOS_File(),devnum(0){};   
+	virtual bool	Read(Bit8u * data,Bit16u * size);
+	virtual bool	Write(Bit8u * data,Bit16u * size);
+	virtual bool	Seek(Bit32u * pos,Bit32u type);
+	virtual bool	Close();
+	virtual Bit16u	GetInformation(void);   
+	void SetDeviceNumber(Bitu num) { devnum=num;}
+private:
+	Bitu devnum;
 };
 
 #define MAX_OPENDIRS 2048
@@ -113,7 +127,7 @@ public:
 	void		DeleteEntry			(const char* path, bool ignoreLastDir = false);
 
 	void		EmptyCache			(void);
-	void		SetLabel			(const char* name);
+	void		SetLabel			(const char* name,bool allowupdate=true);
 	char*		GetLabel			(void) { return label; };
 
 	class CFileInfo {
@@ -171,6 +185,7 @@ private:
 	Bitu		nextFreeFindFirst;
 
 	char		label				[CROSS_LEN];
+	bool		updatelabel;
 };
 
 class DOS_No_Drive_Cache {
@@ -228,6 +243,7 @@ public:
 	virtual void SetDir(const char* path) { strcpy(curdir,path); };
 	virtual void EmptyCache(void) { dirCache.EmptyCache(); };
 	virtual bool isRemote(void)=0;
+	virtual bool isRemovable(void)=0;
 	char * GetInfo(void);
 	char curdir[DOS_PATHLENGTH];
 	char info[256];

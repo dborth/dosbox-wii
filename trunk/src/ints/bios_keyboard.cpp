@@ -304,14 +304,20 @@ static Bitu IRQ1_Handler(void) {
 	case 0x53: /* del . Not entirely correct, but works fine */
 		if(flags3 &0x02) {	/*extend key. e.g key above arrows or arrows*/
 			if(scancode == 0x52) flags2 |=0x80; /* press insert */		   
-			add_key((scancode <<8)|0xe0);
+			if(flags1 &0x08) {
+				add_key(scan_to_scanascii[scancode].normal+0x5000);
+			} else if( ((flags1 &0x3) != 0) ^ ((flags1 &0x20) != 0) ) {
+				add_key((scan_to_scanascii[scancode].shift&0xff00)|0xe0);
+			} else if (flags1 &0x04) {
+				add_key((scan_to_scanascii[scancode].control&0xff00)|0xe0);
+			} else add_key((scan_to_scanascii[scancode].normal&0xff00)|0xe0);
 			break;
 		}
 		if(flags1 &0x08) {
 			Bit8u token = mem_readb(BIOS_KEYBOARD_TOKEN);
 			token= token*10 + scan_to_scanascii[scancode].alt;
 			mem_writeb(BIOS_KEYBOARD_TOKEN,token);
-		} else if(      ((flags1 &0x3)!=0)    ^  ((flags1 &0x20) !=0)     ) {
+		} else if( ((flags1 &0x3) != 0) ^ ((flags1 &0x20) != 0) ) {
 			add_key(scan_to_scanascii[scancode].shift);
 		} else if (flags1 &0x04) {
 			add_key(scan_to_scanascii[scancode].control);
@@ -400,11 +406,19 @@ static Bitu INT16_Handler(void) {
 		reg_al=mem_readb(BIOS_KEYBOARD_FLAGS1);
 		break;
 	case 0x03:	/* SET TYPEMATIC RATE AND DELAY */
-		LOG(LOG_BIOS,LOG_ERROR)("INT16:Unhandled Typematic Rate Call %2X BX=%X",reg_al,reg_bx);
+		if (reg_al == 0x00) { // set default delay and rate
+			IO_Write(0x60,0xf3);
+			IO_Write(0x60,0x20); // 500 msec delay, 30 cps
+		} else if (reg_al == 0x05) { // set repeat rate and delay
+			IO_Write(0x60,0xf3);
+			IO_Write(0x60,(reg_bh&3)<<5|(reg_bl&0x1f));
+		} else {
+			LOG(LOG_BIOS,LOG_ERROR)("INT16:Unhandled Typematic Rate Call %2X BX=%X",reg_al,reg_bx);
+		}
 		break;
 	case 0x05:	/* STORE KEYSTROKE IN KEYBOARD BUFFER */
 //TODO make add_key bool :)
-		add_key(reg_ax);
+		add_key(reg_cx);
 		reg_al=0;
 		break;
 	case 0x12: /* GET EXTENDED SHIFT STATES */
@@ -424,17 +438,26 @@ static Bitu INT16_Handler(void) {
 	return CBRET_NONE;
 }
 
+//Keyboard initialisation. src/gui/sdlmain.cpp
+extern bool startup_state_numlock;
+extern bool startup_state_capslock;
+
 static void InitBiosSegment(void) {
 	/* Setup the variables for keyboard in the bios data segment */
 	mem_writew(BIOS_KEYBOARD_BUFFER_START,0x1e);
 	mem_writew(BIOS_KEYBOARD_BUFFER_END,0x3e);
 	mem_writew(BIOS_KEYBOARD_BUFFER_HEAD,0x1e);
 	mem_writew(BIOS_KEYBOARD_BUFFER_TAIL,0x1e);
-	mem_writeb(BIOS_KEYBOARD_FLAGS1,0);
+	Bit8u flag1 = 0;
+	Bit8u leds = 16; /* Ack recieved */
+	if(startup_state_capslock) { flag1|=0x40; leds|=0x04;}
+	if(startup_state_numlock){ flag1|=0x20; leds|=0x02;}
+	mem_writeb(BIOS_KEYBOARD_FLAGS1,flag1);
 	mem_writeb(BIOS_KEYBOARD_FLAGS2,0);
-	mem_writeb(BIOS_KEYBOARD_FLAGS3,16);	/* Enhanced keyboard installed */
+	mem_writeb(BIOS_KEYBOARD_FLAGS3,16); /* Enhanced keyboard installed */	
 	mem_writeb(BIOS_KEYBOARD_TOKEN,0);
-	mem_writeb(BIOS_KEYBOARD_LEDS,16);
+	mem_writeb(BIOS_KEYBOARD_LEDS,leds);
+
 }
 
 void BIOS_SetupKeyboard(void) {

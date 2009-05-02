@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_programs.cpp,v 1.30 2004/09/16 22:05:24 qbix79 Exp $ */
+/* $Id: dos_programs.cpp,v 1.33 2004/11/13 12:08:43 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -41,7 +41,32 @@ public:
 	{
 		DOS_Drive * newdrive;char drive;
 		std::string label;
-		
+		std::string umount;
+		/* Check for unmounting */
+		if (cmd->FindString("-u",umount,false)) {
+			umount[0] = toupper(umount[0]);
+			int drive = umount[0]-'A';
+				if(drive < DOS_DRIVES && Drives[drive]) {
+					if(drive == DOS_GetDefaultDrive()) {
+						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_CURRENT"));
+						return;
+					}
+					try { /* Check if virtualdrive */
+						if( dynamic_cast<localDrive*>(Drives[drive]) == 0 ) throw 0;
+					}
+					catch(...) {
+						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL"));
+						return;
+					}
+					WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCES"),umount[0]);
+					delete Drives[drive];
+					Drives[drive] = 0;
+				} else {
+					WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED"),umount[0]);
+				}
+			return;
+		}
+	   
 		// Show list of cdroms
 		if (cmd->FindExist("-cd",false)) {
 			int num = SDL_CDNumDrives();
@@ -105,7 +130,7 @@ public:
 			}
 			number[index]=0;sizes[count++]=atoi(number);
 		
-		// get the drive letter
+			// get the drive letter
 			cmd->FindCommand(1,temp_line);
 			if ((temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) goto showusage;
 			drive=toupper(temp_line[0]);
@@ -113,6 +138,10 @@ public:
 
 			if (!cmd->FindCommand(2,temp_line)) goto showusage;
 			if (!temp_line.size()) goto showusage;
+#if defined (WIN32)
+			/* Removing trailing backslash if not root dir so stat will succeed */
+			if(temp_line.size() > 3 && temp_line[temp_line.size()-1]=='\\') temp_line.erase(temp_line.size()-1,1);
+#endif
 			struct stat test;
 			if (stat(temp_line.c_str(),&test)) {
 				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_1"),temp_line.c_str());
@@ -160,8 +189,8 @@ public:
 		/* Set the correct media byte in the table */
 		mem_writeb(Real2Phys(dos.tables.mediaid)+drive-'A',newdrive->GetMediaByte());
 		WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,newdrive->GetInfo());
-		/* check if volume label is given */
-		if (cmd->FindString("-label",label,true)) newdrive->dirCache.SetLabel(label.c_str());
+		/* check if volume label is given and don't allow it to updated in the future */
+		if (cmd->FindString("-label",label,true)) newdrive->dirCache.SetLabel(label.c_str(),false);
 		return;
 showusage:
 		WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"));
@@ -657,7 +686,11 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_MOUNT_ILL_TYPE","Illegal type %s\n");
 	MSG_Add("PROGRAM_MOUNT_ALLREADY_MOUNTED","Drive %c already mounted with %s\n");
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
-
+	MSG_Add("PROGRAM_MOUNT_UMOUNT_CURRENT","You can not unMOUNT the active drive.\n");
+	MSG_Add("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED","Drive %c isn't mounted.\n");
+	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCES","Drive %c has succesfully been removed.\n");
+	MSG_Add("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL","Virtual Drives can not be unMOUNTed.\n");
+   
 	MSG_Add("PROGRAM_MEM_CONVEN","%10d Kb free conventional memory\n");
 	MSG_Add("PROGRAM_MEM_EXTEND","%10d Kb free extended memory\n");
 	MSG_Add("PROGRAM_MEM_EXPAND","%10d Kb free expanded memory\n");
@@ -707,24 +740,24 @@ void DOS_SetupPrograms(void) {
 		"The \033[33mbasic\033[0m level works on all CD-ROM drives and normal directories.\n"
 		"It installs MSCDEX and marks the files read-only.\n"
 		"Usually this is enough for most games:\n"
-		"\033[34;1mmount d D:\\ -t cdrom\033[0m   or   \033[34;1mmount d C:\\example -t cdrom\033[0m\n"
+		"\033[34;1mmount d \033[0;31mD:\\\033[34;1m -t cdrom\033[0m   or   \033[34;1mmount d C:\\example -t cdrom\033[0m\n"
 		"If it doesn't work you might have to tell DOSBox the label of the CD-ROM:\n"
 		"\033[34;1mmount d C:\\example -t cdrom -label CDLABEL\033[0m\n"
 		"\n"
 		"The \033[33mnext\033[0m level adds some low-level support.\n"
 		"Therefore only works on CD-ROM drives:\n"
-		"\033[34;1mmount d D:\\ -t cdrom -usecd \033[33m0\033[0m\n"
+		"\033[34;1mmount d \033[0;31mD:\\\033[34;1m -t cdrom -usecd \033[33m0\033[0m\n"
 		"\n"
 		"The \033[33mlast\033[0m level of support depends on your Operating System:\n"
 		"For \033[1mWindows 2000\033[0m, \033[1mWindows XP\033[0m and \033[1mLinux\033[0m:\n"
-		"\033[34;1mmount d D:\\ -t cdrom -usecd \033[33m0 \033[34m-ioctl\033[0m\n"
+		"\033[34;1mmount d \033[0;31mD:\\\033[34;1m -t cdrom -usecd \033[33m0 \033[34m-ioctl\033[0m\n"
 		"For \033[1mWindows 9x\033[0m with a ASPI layer installed:\n"
-		"\033[34;1mmount d D:\\ -t cdrom -usecd \033[33m0 \033[34m-aspi\033[0m\n"
+		"\033[34;1mmount d \033[0;31mD:\\\033[34;1m -t cdrom -usecd \033[33m0 \033[34m-aspi\033[0m\n"
 		"\n"
+		"Replace \033[0;31mD:\\\033[0m with the location of your CD-ROM.\n"
 		"Replace the \033[33;1m0\033[0m in \033[34;1m-usecd \033[33m0\033[0m with the number reported for your CD-ROM if you type:\n"
 		"\033[34;1mmount -cd\033[0m"
 		);
-
 	MSG_Add("PROGRAM_BOOT_NOT_EXIST","Bootdisk file does not exist.  Failing.\n");
 	MSG_Add("PROGRAM_BOOT_NOT_OPEN","Cannot open bootdisk file.  Failing.\n");
 	MSG_Add("PROGRAM_BOOT_PRINT_ERROR","This command boots DosBox from either a floppy or hard disk image.\n\n"

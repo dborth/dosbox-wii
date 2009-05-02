@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.49 2004/09/28 15:31:21 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.53 2004/11/13 12:19:43 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -113,14 +113,13 @@ void DOS_Shell::ParseLine(char * line) {
  	if (line[0]=='@') line[0]=' ';
 	line=trim(line);
 
-#if 1
 	/* Do redirection and pipe checks */
 	
 	char * in=0;
 	char * out=0;
 
 	Bit16u old_in,old_out;
-
+	Bit16u dummy,dummy2;
 	Bitu num=0;		/* Number of commands in this line */
 	bool append;
 
@@ -129,17 +128,33 @@ void DOS_Shell::ParseLine(char * line) {
 //	if (in || num>1) DOS_DuplicateEntry(0,&old_in);
 
 	if (in) {
-		LOG_MSG("SHELL:Redirect input from %s",in);
+		if(DOS_OpenFile(in,0,&dummy)) { //Test if file exists
+			DOS_CloseFile(dummy);
+			LOG_MSG("SHELL:Redirect input from %s",in);
+			DOS_CloseFile(0); //Close stdin
+			DOS_OpenFile(in,0,&dummy);//Open new stdin
+		}
+	}
+	if (out){
+		LOG_MSG("SHELL:Redirect output to %s",out);
+		DOS_CloseFile(1);
+		/* Create if not exist. Open if exist. Both in read/write mode */
+		if(!DOS_OpenFileExtended(out,2,2,0x11,&dummy,&dummy2))
+			DOS_OpenFile("con",2,&dummy); //Read only file, open con again
+	}
+	/* Run the actual command */
+	DoCommand(line);
+	/* Restore handles */
+	if(in) {
 		DOS_CloseFile(0);
+		DOS_OpenFile("con",2,&dummy);
 		free(in);
 	}
-	if (out) {
-		LOG_MSG("SHELL:Redirect output to %s",out);
+	if(out) {   
+		DOS_CloseFile(1);
+		DOS_OpenFile("con",2,&dummy);
 		free(out);
 	}
-#endif
-	DoCommand(line);
-	
 }
 
 
@@ -302,13 +317,17 @@ void SHELL_Init() {
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
 		"\xBA \033[32mDOSBox Shell v" VERSION "\033[37m                                                 \xBA\n"
 		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
-		"\xBA For supported shell commands type: \033[1;33mHELP\033[37m                            \xBA\n"
+		"\xBA For supported shell commands type: \033[33mHELP\033[37m                            \xBA\n"
 		"\xBA For a short introduction type: \033[33mINTRO\033[37m                               \xBA\n"
 		"\xBA                                                                    \xBA\n"
 		"\xBA If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  \xBA\n"
 		"\xBA To activate the keymapper \033[31mctrl-F1\033[37m.                                 \xBA\n"
 		"\xBA For more information read the \033[36mREADME\033[37m file in the DOSBox directory. \xBA\n"
 		"\xBA                                                                    \xBA\n"
+#if C_DEBUG
+		"\xBA Press \033[31mPause\033[37m to enter the debugger or start the exe with \033[33mDEBUG\033[37m.     \xBA\n"
+		"\xBA                                                                    \xBA\n"
+#endif
 		"\xBA \033[32mHAVE FUN!\033[37m                                                          \xBA\n"
 		"\xBA \033[32mThe DOSBox Team\033[37m                                                    \xBA\n"
 		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
@@ -339,7 +358,8 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_LOADHIGH_HELP","Run a program. For batch file compatibility only.\n");
 	MSG_Add("SHELL_CMD_CHOICE_HELP","Waits for a keypress and sets ERRORLEVEL.\n");
 	MSG_Add("SHELL_CMD_ATTRIB_HELP","Does nothing. Provided for compatibility.\n");
-   
+	MSG_Add("SHELL_CMD_PATH_HELP","Provided for compatibility.\n");
+
 	/* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
 	/* Setup the startup CS:IP to kill the last running machine when exitted */
@@ -347,7 +367,7 @@ void SHELL_Init() {
 	SegSet16(cs,RealSeg(newcsip));
 	reg_ip=RealOff(newcsip);
 
-	CALLBACK_Setup(call_shellstop,shellstop_handler,CB_IRET);
+	CALLBACK_Setup(call_shellstop,shellstop_handler,CB_IRET,"shell stop");
 	PROGRAMS_MakeFile("COMMAND.COM",SHELL_ProgramStart);
 
 	/* Now call up the shell for the first time */
@@ -373,12 +393,13 @@ void SHELL_Init() {
 
 	DOS_PSP psp(psp_seg);
 	psp.MakeNew(0);
-	psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
+	dos.psp(psp_seg);
+	Bit16u dummy=0;
+	DOS_OpenFile("CON",2,&dummy);/* STDIN  */
+	DOS_OpenFile("CON",2,&dummy);/* STDOUT */
+	DOS_OpenFile("CON",2,&dummy);/* STDERR */
+	DOS_OpenFile("CON",2,&dummy);/* STDAUX */
+	DOS_OpenFile("CON",2,&dummy);/* STDPRN */
 	psp.SetParent(psp_seg);
 	/* Set the environment */
 	psp.SetEnvironment(env_seg);

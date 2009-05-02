@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_mapper.cpp,v 1.7 2004/09/07 08:58:02 qbix79 Exp $ */
+/* $Id: sdl_mapper.cpp,v 1.10 2004/10/28 14:46:15 qbix79 Exp $ */
 
 #define OLD_JOYSTICK 1
 
@@ -335,7 +335,8 @@ public:
 	CStickBindGroup(Bitu _stick) : CBindGroup (){
 		stick=_stick;
 		sprintf(configname,"stick_%d",stick);
-		assert(sdl_joystick=SDL_JoystickOpen(stick));
+		sdl_joystick=SDL_JoystickOpen(stick);
+		assert(sdl_joystick);
 		axes=SDL_JoystickNumAxes(sdl_joystick);
 		buttons=SDL_JoystickNumButtons(sdl_joystick);
 		hats=SDL_JoystickNumHats(sdl_joystick);
@@ -1224,8 +1225,11 @@ void MAPPER_Run(void) {
 		mousetoggle=true;
 		GFX_CaptureMouse();
 	}
-   
+
+	/* Be sure that there is no update in progress */
+	GFX_EndUpdate();
 	mapper.surface=SDL_SetVideoMode(640,480,8,0);
+
 	/* Set some palette entries */
 	SDL_SetPalette(mapper.surface, SDL_LOGPAL|SDL_PHYSPAL, map_pal, 0, 4);
 	/* Go in the event loop */

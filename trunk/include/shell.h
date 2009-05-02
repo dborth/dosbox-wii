@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.h,v 1.7 2004/09/09 18:36:50 qbix79 Exp $ */
+/* $Id: shell.h,v 1.9 2004/11/13 12:06:39 qbix79 Exp $ */
 
 #ifndef SHELL_H_
 #define SHELL_H_
@@ -102,6 +102,7 @@ public:
 	void CMD_LOADHIGH(char* args);
 	void CMD_CHOICE(char * args);
 	void CMD_ATTRIB(char * args);
+	void CMD_PATH(char * args);
 	/* The shell's variables */
 	Bit16u input_handle;
 	BatchFile * bf;
@@ -118,7 +119,7 @@ struct SHELL_Cmd {
 };
 
 static inline void StripSpaces(char*&args) {
-	while(*args && ((*args == ' ') || (*args == '\t')))
+	while(args && *args && isspace(*reinterpret_cast<unsigned char*>(args)))
 		args++;
 }
 
