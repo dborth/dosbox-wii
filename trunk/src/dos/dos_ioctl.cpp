@@ -86,6 +86,13 @@ bool DOS_IOCTL(void) {
 			return false;
 		}
 		break;
+    case 0x06:      /* Get Input Status */
+        if(reg_bx==0x00) { /* might work for other handles, but tested it only for STDIN */
+            if(Files[handle]->GetInformation() & 0x40) reg_al=0x00; else
+            reg_al=0xFF;
+            return true;
+            break;
+        }
 	default:
 		LOG_ERROR("DOS:IOCTL Call %2X unhandled",reg_al);
 		return false;
@@ -96,7 +103,8 @@ bool DOS_IOCTL(void) {
 
 bool DOS_GetSTDINStatus(void) {
 	Bit32u handle=RealHandle(STDIN);
-	if (Files[handle]->GetInformation() & 64) return false;
+	if (handle==0xFF) return false;
+	if (Files[handle] && (Files[handle]->GetInformation() & 64)) return false;
 	return true;
 };
 

@@ -20,7 +20,6 @@
 #include <string.h>
 
 #include "shell_inc.h"
-#include "cpu.h"
 
 
 BatchFile::BatchFile(DOS_Shell * host,char * name, char * cmd_line) {
@@ -50,7 +49,7 @@ emptyline:
 		n=1;
 		DOS_ReadFile(file_handle,&c,&n);
 		if (n>0) {
-			if (c>31)
+			if (c>31 || c==0x1b)
 				*cmd_write++=c;
 		}
 	} while (c!='\n' && n);

@@ -1,3 +1,44 @@
+0.57
+  - added support for command /C
+  - fixed all fcb-write functions
+  - fixed fcb-parseline
+  - added debugger under linux/freebsd 
+  - added debugger memory breakpoints and autolog function (heavy debug)
+  - added loadfix.com program that eats up memory (default 64kb)
+    Usage  : loadfix [-option] [programname] [parameters]...
+    Example: loadfix mm2      (Allocates 64kb and starts executable mm2)
+             loadfix -32 mm2  (Allocates 32kb and starts executable mm2)
+             loadfix -128     (Allocates 128kb)
+             loadfix -f       (frees all previous allocated memory)
+  - added echoing of characters for input function
+  - added support for backspace for input function
+  - added partial support for int10:01 set cursortype
+  - fixed most of the problems/bugs with character input.
+  - fixed allocationinfo call.(darksun series)
+  - improved dos support for non-existant functions
+  - Split screen support
+  - prefix 66 67 support
+  - rewrote timingscheme so 1000 hz timers don't cause problems anymore
+  - update adlib emulation
+  - fixed some isues with the mouse (double clicks and visible when it shouldn't be)
+  - improved mouse behaviour (mickey/pixel rate) and detection routines.
+  - basic ansi.sys support
+  - Disney sound system emulation 
+  - rewrote upcase/lowcase functions so they work fine with gcc3.2
+  - SHELL: added rename and delete
+  - added support for command /C. Fixed crashes in the shell
+  - fixed various bugs when exiting dosbox
+  - fixed a bug in XMS
+  - fixed a bug with the joystick when pressing a button
+  - create nicer configfiles.
+  - bios_disk function improved. 
+  - trapflag support
+  - improved vertical retrace timing.
+  - PIT Timer improvements and many bug fixes
+  - Many many bug fixes to the DOS subsystem
+  - Support for memory allocation strategy
+  - rewrote cpu mainloop to act more like a real cpu
+  
 0.56
   - added support for a configclass/configfile
   - added support for writing out the configclass into a configfile

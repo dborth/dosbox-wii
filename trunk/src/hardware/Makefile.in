@@ -90,7 +90,8 @@ noinst_LIBRARIES = libhardware.a
 libhardware_a_SOURCES = adlib.cpp dma.cpp gameblaster.cpp hardware.cpp iohandler.cpp joystick.cpp keyboard.cpp \
                         memory.cpp mixer.cpp pcspeaker.cpp pic.cpp sblaster.cpp tandy_sound.cpp timer.cpp \
 			vga.cpp vga.h vga_attr.cpp vga_crtc.cpp vga_dac.cpp vga_draw.cpp vga_fonts.cpp vga_gfx.cpp \
-			vga_memory.cpp vga_misc.cpp vga_seq.cpp font-switch.h ega-switch.h
+			vga_memory.cpp vga_misc.cpp vga_seq.cpp font-switch.h ega-switch.h cmos.cpp disney.cpp \
+			gus.cpp
 
 subdir = src/hardware
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
@@ -108,7 +109,7 @@ am_libhardware_a_OBJECTS = adlib.$(OBJEXT) dma.$(OBJEXT) \
 	vga.$(OBJEXT) vga_attr.$(OBJEXT) vga_crtc.$(OBJEXT) \
 	vga_dac.$(OBJEXT) vga_draw.$(OBJEXT) vga_fonts.$(OBJEXT) \
 	vga_gfx.$(OBJEXT) vga_memory.$(OBJEXT) vga_misc.$(OBJEXT) \
-	vga_seq.$(OBJEXT)
+	vga_seq.$(OBJEXT) cmos.$(OBJEXT) disney.$(OBJEXT) gus.$(OBJEXT)
 libhardware_a_OBJECTS = $(am_libhardware_a_OBJECTS)
 
 DEFS = @DEFS@
@@ -118,18 +119,20 @@ LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
-@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/adlib.Po ./$(DEPDIR)/dma.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/gameblaster.Po ./$(DEPDIR)/hardware.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/iohandler.Po ./$(DEPDIR)/joystick.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/keyboard.Po ./$(DEPDIR)/memory.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/mixer.Po ./$(DEPDIR)/pcspeaker.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/pic.Po ./$(DEPDIR)/sblaster.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/tandy_sound.Po ./$(DEPDIR)/timer.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga.Po ./$(DEPDIR)/vga_attr.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga_crtc.Po ./$(DEPDIR)/vga_dac.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga_draw.Po ./$(DEPDIR)/vga_fonts.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga_gfx.Po ./$(DEPDIR)/vga_memory.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga_misc.Po ./$(DEPDIR)/vga_seq.Po
+@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/adlib.Po ./$(DEPDIR)/cmos.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/disney.Po ./$(DEPDIR)/dma.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/gameblaster.Po ./$(DEPDIR)/gus.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/hardware.Po ./$(DEPDIR)/iohandler.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/joystick.Po ./$(DEPDIR)/keyboard.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/memory.Po ./$(DEPDIR)/mixer.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/pcspeaker.Po ./$(DEPDIR)/pic.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/sblaster.Po ./$(DEPDIR)/tandy_sound.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/timer.Po ./$(DEPDIR)/vga.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_attr.Po ./$(DEPDIR)/vga_crtc.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_dac.Po ./$(DEPDIR)/vga_draw.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_fonts.Po ./$(DEPDIR)/vga_gfx.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_memory.Po ./$(DEPDIR)/vga_misc.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_seq.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -171,8 +174,11 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/adlib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmos.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disney.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dma.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gameblaster.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gus.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hardware.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iohandler.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/joystick.Po@am__quote@

@@ -47,6 +47,7 @@ void DOS_Shell::InputCommand(char * line) {
 	Bitu str_len=0;Bitu str_index=0;
 
 	while (size) {
+        dos.echo=false;
 		DOS_ReadFile(input_handle,&c,&n);
 		if (!n) {
 			size=0;			//Kill the while loop
@@ -164,10 +165,18 @@ void DOS_Shell::Execute(char * name,char * args) {
 		cmd.buffer[strlen(line)]=0xd;
 		/* Copy command line in stack block too */
 		MEM_BlockWrite(SegPhys(ss)+reg_sp+0x100,&cmd,128);
+		/* Parse FCB (first two parameters) and put them into the current DOS_PSP */
+		Bit8u add;
+		FCB_Parsename(dos.psp,0x5C,0x00,cmd.buffer,&add);
+		FCB_Parsename(dos.psp,0x6C,0x00,&cmd.buffer[add],&add);
+		block.exec.fcb1=RealMake(dos.psp,0x5C);
+		block.exec.fcb2=RealMake(dos.psp,0x6C);
 		/* Set the command line in the block and save it */
 		block.exec.cmdtail=RealMakeSeg(ss,reg_sp+0x100);
 		block.SaveData();
 		/* Save CS:IP to some point where i can return them from */
+		Bit32u oldeip=reg_eip;
+		Bit16u oldcs=SegValue(cs);
 		RealPt newcsip=CALLBACK_RealPointer(call_shellstop);
 		SegSet16(cs,RealSeg(newcsip));
 		reg_ip=RealOff(newcsip);
@@ -181,7 +190,10 @@ void DOS_Shell::Execute(char * name,char * args) {
 		reg_bx=reg_sp;
 		flags.intf=false;
 		CALLBACK_RunRealInt(0x21);
+		/* Restore CS:IP and the stack */
 		reg_sp+=0x200;
+		reg_eip=oldeip;
+		SegSet16(cs,oldcs);
 	}
 }
 

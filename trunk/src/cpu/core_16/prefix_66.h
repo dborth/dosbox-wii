@@ -149,12 +149,23 @@ switch(Fetchb()) {
 		reg_edi=Pop_32();reg_edi=Pop_32();reg_ebp=Pop_32();Pop_32();//Don't save ESP
 		reg_ebx=Pop_32();reg_edx=Pop_32();reg_ecx=Pop_32();reg_eax=Pop_32();
 		break;
-	case 0x68:												/* PUSH Id */
-		Push_32(Fetchd());break;
 	case 0x64:												/* SEG FS: */
 		SegPrefix_66(fs);break;
 	case 0x65:												/* SEG GS: */
 		SegPrefix_66(gs);break;
+	case 0x67:												/* Address Size Prefix */
+#ifdef CPU_PREFIX_67
+			prefix.mark|=PREFIX_ADDR;
+#ifdef CPU_PREFIX_COUNT
+			prefix.count++;
+#endif  			
+			lookupEATable=EAPrefixTable[prefix.mark];
+			goto restart_66;
+#else
+			NOTDONE;
+#endif
+	case 0x68:												/* PUSH Id */
+		Push_32(Fetchd());break;
 	case 0x69:												/* IMUL Gd,Ed,Id */
 		{
 			GetRMrd;
@@ -267,6 +278,15 @@ switch(Fetchb()) {
 	case 0x8c:												
 		LOG_WARN("CPU:66:8c looped back");
 		break;
+	case 0x8d:												/* LEA */
+		{
+			prefix.segbase=0;
+			prefix.mark|=PREFIX_SEG;
+			lookupEATable=EAPrefixTable[prefix.mark];
+			GetRMrd;GetEAa;
+			*rmrd=(Bit32u)eaa;
+			break;
+		}
 	case 0x8f:												/* POP Ed */
 		{
 			GetRM;
@@ -276,25 +296,25 @@ switch(Fetchb()) {
 		}
 	case 0x90:												/* NOP */
 		break;
-	case 0x91:												/* XCHG CX,AX */
+	case 0x91:												/* XCHG ECX,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_ecx;reg_ecx=temp; }
 		break;
-	case 0x92:												/* XCHG DX,AX */
+	case 0x92:												/* XCHG EDX,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_edx;reg_edx=temp; }
 		break;
-	case 0x93:												/* XCHG BX,AX */
+	case 0x93:												/* XCHG EBX,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_ebx;reg_ebx=temp; }
 		break;
-	case 0x94:												/* XCHG SP,AX */
+	case 0x94:												/* XCHG ESP,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_esp;reg_esp=temp; }
 		break;
-	case 0x95:												/* XCHG BP,AX */
+	case 0x95:												/* XCHG EBP,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_ebp;reg_ebp=temp; }
 		break;
-	case 0x96:												/* XCHG SI,AX */
+	case 0x96:												/* XCHG ESI,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_esi;reg_esi=temp; }
 		break;
-	case 0x97:												/* XCHG DI,AX */
+	case 0x97:												/* XCHG EDI,EAX */
 		{ Bit32u temp=reg_eax;reg_eax=reg_edi;reg_edi=temp; }
 		break;
 	case 0x98:												/* CWD */
@@ -321,14 +341,12 @@ switch(Fetchb()) {
 		}
 	case 0xa1:												/* MOV EAX,Ow */
 		{
-			GetEADirect;
-			reg_eax=LoadMd(eaa);
+			reg_eax=LoadMd(GetEADirect[prefix.mark]());
 		}
 		break;
 	case 0xa3:												/* MOV Ow,EAX */
 		{
-			GetEADirect;
-			SaveMd(eaa,reg_eax);
+			SaveMd(GetEADirect[prefix.mark](),reg_eax);
 		}
 		break;
 	case 0xa5:												/* MOVSD */
@@ -383,6 +401,18 @@ switch(Fetchb()) {
 		reg_edi=Fetchd();break;
 	case 0xc1:												/* GRP2 Ed,Ib */
 		GRP2D(Fetchb());break;
+	case 0xc4:												/* LES */
+		{	
+			GetRMrd;GetEAa;
+			*rmrd=LoadMd(eaa);SegSet16(es,LoadMw(eaa+4));
+			break;
+		}
+	case 0xc5:												/* LDS */
+		{	
+			GetRMrd;GetEAa;
+			*rmrd=LoadMd(eaa);SegSet16(ds,LoadMw(eaa+4));
+			break;
+		}
 	case 0xc7:												/* MOV Ed,Id */
 		{
 			GetRM;
@@ -396,12 +426,12 @@ switch(Fetchb()) {
 		GRP2D(reg_cl);break;
 	case 0xf2:												/* REPNZ */
 		prefix.count++;
-		count-=Repeat_Normal(false,true,count);
-		break;
+		Repeat_Normal(false,true);
+		continue;
 	case 0xf3:												/* REPZ */
 		prefix.count++;
-		count-=Repeat_Normal(true,true,count);
-		break;
+		Repeat_Normal(true,true);
+		continue;
 	case 0xf7:												/* GRP3 Ed(,Id) */
 		{ 
 			union {	Bit64u u;Bit64s s;} temp;
@@ -436,18 +466,18 @@ switch(Fetchb()) {
 			case 0x20:					/* MUL EAX,Ed */
 				{
 					flags.type=t_MUL;
-					if (rm >= 0xc0 ) {GetEArd;temp.u=(Bit64s)reg_eax * (Bit64u)(*eard);}
+					if (rm >= 0xc0 ) {GetEArd;temp.u=(Bit64u)reg_eax * (Bit64u)(*eard);}
 					else {GetEAa;temp.u=(Bit64u)reg_eax * (Bit64u)LoadMd(eaa);}
-					reg_eax=(Bit32u)(temp.u & 0xffffffff);reg_eax=(Bit32u)(temp.u >> 32);
+					reg_eax=(Bit32u)(temp.u & 0xffffffff);reg_edx=(Bit32u)(temp.u >> 32);
 					flags.cf=flags.of=(reg_edx !=0);
 					break;
 				}
 			case 0x28:					/* IMUL EAX,Ed */
 				{
 					flags.type=t_MUL;
-					if (rm >= 0xc0 ) {GetEArd;temp.s=(Bit64s)reg_eax * (Bit64s)(*eards);}
-					else {GetEAa;temp.s=(Bit64s)reg_eax * (Bit64s)LoadMds(eaa);}
-					reg_eax=Bit32u(temp.u & 0xffffffff);reg_edx=(Bit32u)(temp.u >> 32);
+					if (rm >= 0xc0 ) {GetEArd;temp.s=((Bit64s)((Bit32s)reg_eax) * (Bit64s)(*eards));}
+					else {GetEAa;temp.s=((Bit64s)((Bit32s)reg_eax) * (Bit64s)(LoadMds(eaa)));}
+					reg_eax=Bit32u(temp.s & 0xffffffff);reg_edx=(Bit32u)(temp.s >> 32);
 					if ( (reg_edx==0xffffffff) && (reg_eax & 0x80000000) ) {
 						flags.cf=flags.of=false;
 					} else if ( (reg_edx==0x00000000) && (reg_eax<0x80000000) ) {

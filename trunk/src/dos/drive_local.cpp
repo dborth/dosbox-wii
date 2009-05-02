@@ -43,7 +43,7 @@ private:
 };
 
 
-bool localDrive:: FileCreate(DOS_File * * file,char * name,Bit16u attributes) {
+bool localDrive::FileCreate(DOS_File * * file,char * name,Bit16u attributes) {
 //TODO Maybe care for attributes but not likely
 	char newname[CROSS_LEN];
 	strcpy(newname,basedir);
@@ -188,6 +188,14 @@ bool localDrive::TestDir(char * dir) {
 	strcpy(newdir,basedir);
 	strcat(newdir,dir);
 	CROSS_FILENAME(newdir);
+	// Skip directory test, if "\"
+	Bit16u len = strlen(newdir);
+	if ((len>0) && (newdir[len-1]!='\\')) {
+		// It has to be a directory !
+		struct stat test;
+		if (stat(newdir,&test)==-1)			return false;
+		if ((test.st_mode & S_IFDIR)==0)	return false;
+	};
 	int temp=access(newdir,F_OK);
 	return (temp==0);
 }
@@ -206,7 +214,7 @@ bool localDrive::Rename(char * oldname,char * newname) {
 
 };
 
-bool localDrive::AllocationInfo(Bit16u * _bytes_sector,Bit16u * _sectors_cluster,Bit16u * _total_clusters,Bit16u * _free_clusters) {
+bool localDrive::AllocationInfo(Bit16u * _bytes_sector,Bit8u * _sectors_cluster,Bit16u * _total_clusters,Bit16u * _free_clusters) {
 	/* Always report 100 mb free should be enough */
 	/* Total size is always 1 gb */
 	*_bytes_sector=allocation.bytes_sector;
@@ -251,7 +259,7 @@ Bit8u localDrive::GetMediaByte(void) {
 	return allocation.mediaid;
 }
 
-localDrive::localDrive(const char * startdir,Bit16u _bytes_sector,Bit16u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid) {
+localDrive::localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid) {
 	strcpy(basedir,startdir);
 	sprintf(info,"local directory %s",startdir);
 	srch_opendir=NULL;

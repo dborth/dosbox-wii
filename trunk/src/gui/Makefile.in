@@ -84,7 +84,7 @@ install_sh = @install_sh@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libgui.a
-libgui_a_SOURCES = sdlmain.cpp render.cpp
+libgui_a_SOURCES = sdlmain.cpp render.cpp render_support.h
 subdir = src/gui
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
@@ -110,6 +110,11 @@ CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
 	-o $@
 CXXFLAGS = @CXXFLAGS@
+CFLAGS = @CFLAGS@
+COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
+	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
+CCLD = $(CC)
+LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 DIST_SOURCES = $(libgui_a_SOURCES)
 DIST_COMMON = Makefile.am Makefile.in
 SOURCES = $(libgui_a_SOURCES)

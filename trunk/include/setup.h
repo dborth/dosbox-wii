@@ -30,13 +30,14 @@ public:
 	CommandLine(int argc,char * argv[]);
 	CommandLine(char * name,char * cmdline);
 	const char * GetFileName(){ return file_name.c_str();}	
-
+    
 	bool FindExist(char * name,bool remove=false);
 	bool FindHex(char * name,int & value,bool remove=false);
 	bool FindInt(char * name,int & value,bool remove=false);
 	bool FindString(char * name,std::string & value,bool remove=false);
 	bool FindCommand(int which,std::string & value);
 	bool FindStringBegin(char * begin,std::string & value, bool remove=false);
+	bool FindStringRemain(char * name,std::string & value);
 	int GetCount(void);
 private:
 	typedef std::list<std::string>::iterator cmd_it;

@@ -28,6 +28,8 @@ static SHELL_Cmd cmd_list[]={
 	"CLS",		0,			&DOS_Shell::CMD_CLS,		"SHELL_CMD_CLS_HELP",
 //	"COPY",		0,			&DOS_Shell::CMD_COPY,		"Copy Files.",
 	"DIR",		0,			&DOS_Shell::CMD_DIR,		"SHELL_CMD_DIR_HELP",
+    "DEL",		1,			&DOS_Shell::CMD_DELETE,     "SHELL_CMD_DELETE_HELP",
+    "DELETE",   0,          &DOS_Shell::CMD_DELETE,     "SHELL_CMD_DELETE_HELP",
 	"ECHO",		0,			&DOS_Shell::CMD_ECHO,		"SHELL_CMD_ECHO_HELP",
 	"EXIT",		0,			&DOS_Shell::CMD_EXIT,		"SHELL_CMD_EXIT_HELP",	
 	"HELP",		0,			&DOS_Shell::CMD_HELP,		"SHELL_CMD_HELP_HELP",
@@ -38,7 +40,8 @@ static SHELL_Cmd cmd_list[]={
 	"GOTO",		0,			&DOS_Shell::CMD_GOTO,		"SHELL_CMD_GOTO_HELP",
 	"TYPE",		0,			&DOS_Shell::CMD_TYPE,		"SHELL_CMD_TYPE_HELP",
 	"REM",		0,			&DOS_Shell::CMD_REM,		"SHELL_CMD_REM_HELP",
-	
+	"RENAME",	0,			&DOS_Shell::CMD_RENAME,		"SHELL_CMD_RENAME_HELP",
+	"REN",		1,			&DOS_Shell::CMD_RENAME,		"SHELL_CMD_RENAME_HELP",
 /*
 	"CHDIR",	0,			&DOS_Shell::CMD_CHDIR,		"Change Directory",
 	"MKDIR",	0,			&DOS_Shell::CMD_MKDIR,		"Make Directory",
@@ -56,6 +59,7 @@ void DOS_Shell::DoCommand(char * line) {
 		if (*line==32) break;
 		if (*line=='/') break;
 		if ((*line=='.') && (*(line+1)=='.')) break;
+//        if ((*line=='.') && (*(line+1)==0))   break;
 		*cmd_write++=*line++;
 	}
 	*cmd_write=0;
@@ -80,6 +84,33 @@ void DOS_Shell::CMD_CLS(char * args) {
 	CALLBACK_RunRealInt(0x10);
 };
 
+void DOS_Shell::CMD_DELETE(char * args) {
+	char * rem=ScanCMDRemain(args);
+	if (rem) {
+		WriteOut(MSG_Get("SHELL_ILLEGAL_SWITCH"),rem);
+		return;
+	}
+	char full[DOS_PATHLENGTH];
+	if (!DOS_Canonicalize(args,full)) { WriteOut(MSG_Get("SHELL_ILLEGAL_PATH"));return; }
+//TODO Maybe support confirmation for *.* like dos does.	
+	bool res=DOS_FindFirst(args,0xff);
+	if (!res) {
+		WriteOut(MSG_Get("SHELL_CMD_DEL_ERROR"),args);return;
+	}
+	//end can't be 0, but if it is we'll get a nice crash, who cares :)
+	char * end=strrchr(full,'\\')+1;*end=0;
+	char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u time,date;Bit8u attr;
+	DOS_DTA dta(dos.dta);
+	while (res) {
+		dta.GetResult(name,size,date,time,attr);	
+		if (!(attr & (DOS_ATTR_DIRECTORY|DOS_ATTR_READ_ONLY))) {
+			strcpy(end,name);
+			if (!DOS_UnlinkFile(full)) WriteOut(MSG_Get("SHELL_CMD_DEL_ERROR"),full);
+		}
+		res=DOS_FindNext();
+	}
+}
+
 void DOS_Shell::CMD_HELP(char * args){
 	/* Print the help */
 	WriteOut(MSG_Get("SHELL_CMD_HELP"));
@@ -90,6 +121,17 @@ void DOS_Shell::CMD_HELP(char * args){
 	}
 
 }
+
+void DOS_Shell::CMD_RENAME(char * args){
+    if(!*args) {SyntaxError();return;}
+    if((strchr(args,'*')!=NULL) || (strchr(args,'?')!=NULL) ) { WriteOut(MSG_Get("SHELL_CMD_NO_WILD"));return;}
+    char * arg2 =StripWord(args);
+    DOS_Rename(args,arg2);
+}
+
+
+
+
 
 void DOS_Shell::CMD_ECHO(char * args) {
 	if (!*args) {
@@ -187,7 +229,7 @@ void DOS_Shell::CMD_DIR(char * args) {
 
 	/* Make a full path in the args */
 	if (!DOS_Canonicalize(args,path)) {
-		WriteOut(MSG_Get("SHELL_CMD_DIR_PATH_ERROR"));
+		WriteOut(MSG_Get("SHELL_CMD_ILLEGAL_PATH"));
 		return;
 	}
 	*(strrchr(path,'\\')+1)=0;
@@ -250,7 +292,7 @@ void DOS_Shell::CMD_DIR(char * args) {
 	//TODO Free Space
 	Bitu free_space=1024*1024*100;
 	if (Drives[drive]) {
-		Bit16u bytes_sector;Bit16u sectors_cluster;Bit16u total_clusters;Bit16u free_clusters;
+		Bit16u bytes_sector;Bit8u sectors_cluster;Bit16u total_clusters;Bit16u free_clusters;
 		Drives[drive]->AllocationInfo(&bytes_sector,&sectors_cluster,&total_clusters,&free_clusters);
 		free_space=bytes_sector*sectors_cluster*free_clusters;
 	}
@@ -384,4 +426,5 @@ nextfile:
 
 void DOS_Shell::CMD_REM(char * args) {
 }
+
 
