@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_mscdex.cpp,v 1.24 2004/08/13 19:43:02 qbix79 Exp $ */
+/* $Id: dos_mscdex.cpp,v 1.26 2004/10/17 14:45:00 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -486,7 +486,7 @@ bool CMscdex::GetVolumeName(Bit8u subUnit, char* data)
 			rtrim(data);
 		};
 		DOS_FreeMemory(seg);
-	}
+	} else { LOG(LOG_MISC,LOG_ERROR)("MSCDEX buffer allocation failed."); };
 	return success; 
 };
 
@@ -502,7 +502,7 @@ bool CMscdex::GetCopyrightName(Bit16u drive, PhysPt data)
 			mem_writeb(data+37,0);
 		};
 		DOS_FreeMemory(seg);
-	}
+	} else { LOG(LOG_MISC,LOG_ERROR)("MSCDEX buffer allocation failed."); };
 	return success; 
 };
 
@@ -518,7 +518,7 @@ bool CMscdex::GetAbstractName(Bit16u drive, PhysPt data)
 			mem_writeb(data+37,0);
 		};
 		DOS_FreeMemory(seg);
-	}
+	} else { LOG(LOG_MISC,LOG_ERROR)("MSCDEX buffer allocation failed."); };
 	return success; 
 };
 
@@ -534,7 +534,7 @@ bool CMscdex::GetDocumentationName(Bit16u drive, PhysPt data)
 			mem_writeb(data+37,0);
 		};
 		DOS_FreeMemory(seg);
-	}
+	} else { LOG(LOG_MISC,LOG_ERROR)("MSCDEX buffer allocation failed."); };
 	return success; 
 };
 
@@ -1005,7 +1005,7 @@ static bool MSCDEX_Handler(void)
 
 class device_MSCDEX : public DOS_Device {
 public:
-	device_MSCDEX() { name="MSCD001"; }
+	device_MSCDEX() { SetName("MSCD001"); }
 	bool Read (Bit8u * data,Bit16u * size) { return false;}
 	bool Write(Bit8u * data,Bit16u * size) { 
 		LOG(LOG_ALL,LOG_NORMAL)("Write to mscdex device");	

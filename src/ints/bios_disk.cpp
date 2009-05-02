@@ -106,6 +106,10 @@ void swapInDisks(void) {
 }
 
 void swapInNextDisk(void) {
+	/* Hack/feature: rescan all disks as well */
+	for(Bitu i=0;i<DOS_DRIVES;i++) {
+		if (Drives[i]) Drives[i]->EmptyCache();
+	}
 	swapPosition++;
 	if(diskSwap[swapPosition] == NULL) swapPosition = 0;
 	swapInDisks();
@@ -403,7 +407,7 @@ void BIOS_SetupDisks(void) {
 /* TODO Start the time correctly */
 	call_int13=CALLBACK_Allocate();	
 	//CALLBACK_Setup(call_int13,&INT13_SmallHandler,CB_IRET);
-	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_IRET);
+	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_IRET,"Int 13 Bios disk");
 	RealSetVec(0x13,CALLBACK_RealPointer(call_int13));
 	int i;
 	for(i=0;i<4;i++) {

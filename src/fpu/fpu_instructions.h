@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: fpu_instructions.h,v 1.21 2004/09/09 18:36:50 qbix79 Exp $ */
+/* $Id: fpu_instructions.h,v 1.25 2004/11/03 23:13:55 qbix79 Exp $ */
 
 
 static void FPU_FINIT(void) {
@@ -321,7 +321,9 @@ static void FPU_ST80(PhysPt addr,Bitu reg)
 	Bit64s exp80 =  fpu.regs[reg].ll&LONGTYPE(0x7ff0000000000000);
 	Bit64s exp80final= (exp80>>52) - BIAS64 + BIAS80;
 	Bit64s mant80 = fpu.regs[reg].ll&LONGTYPE(0x000fffffffffffff);
-	Bit64s mant80final= (mant80 << 11) | LONGTYPE(0x8000000000000000);
+	Bit64s mant80final= (mant80 << 11);
+	// Elvira wants the 8 and tcalc doesn't 
+	if(fpu.regs[reg].d != 0) mant80final |= LONGTYPE(0x8000000000000000);
 	test.begin= (static_cast<Bit16s>(sign80)<<15)| static_cast<Bit16s>(exp80final);
 	test.eind.ll=mant80final;
 	mem_writed(addr,test.eind.l.lower);
@@ -392,3 +394,15 @@ static void FPU_FSTOR(PhysPt addr){
 	}
 }
 
+static void FPU_FXTRACT(void) {
+	// function stores real bias in st and 
+	// pushes the significant number onto the stack
+	// if double ever uses a different base please correct this function
+
+	FPU_Reg test = fpu.regs[TOP];
+	Bit64s exp80 =  test.ll&LONGTYPE(0x7ff0000000000000);
+	Bit64s exp80final = (exp80>>52) - BIAS64;
+	Real64 mant = test.d / (pow(2.0,static_cast<Real64>(exp80final)));
+	fpu.regs[TOP].d=exp80final;
+	FPU_PUSH(mant); 
+}
