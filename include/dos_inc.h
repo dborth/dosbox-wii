@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,17 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_inc.h,v 1.51 2004/11/16 14:28:15 qbix79 Exp $ */
+/* $Id: dos_inc.h,v 1.59 2006/02/09 11:47:47 qbix79 Exp $ */
 
-#ifndef DOS_H_
-#define DOS_H_
+#ifndef DOSBOX_DOS_INC_H
+#define DOSBOX_DOS_INC_H
 
-#include <dos_system.h>
-#include <mem.h>
+#ifndef DOSBOX_DOS_SYSTEM_H
+#include "dos_system.h"
+#endif
+#ifndef DOSBOX_MEM_H
+#include "mem.h"
+#endif
 
 #ifdef _MSC_VER
 #pragma pack (1)
@@ -71,6 +75,15 @@ enum { RETURN_EXIT=0,RETURN_CTRLC=1,RETURN_ABORT=2,RETURN_TSR=3};
 #define DOS_FILES 127
 #define DOS_DRIVES 26
 #define DOS_DEVICES 10
+
+
+#define DOS_INFOBLOCK_SEG 0x80
+#define DOS_CDS_SEG 0x90
+#define DOS_CONSTRING_SEG 0xa0
+#define DOS_CONDRV_SEG 0xa4
+#define DOS_SDA_SEG 0xb2
+#define DOS_SDA_OFS 0
+#define DOS_MEM_START 0x102					//First Segment that DOS can use
 
 /* internal Dos Tables */
 
@@ -143,8 +156,10 @@ bool DOS_ResizeMemory(Bit16u segment,Bit16u * blocks);
 bool DOS_FreeMemory(Bit16u segment);
 void DOS_FreeProcessMemory(Bit16u pspseg);
 Bit16u DOS_GetMemory(Bit16u pages);
-void DOS_SetMemAllocStrategy(Bit16u strat);
+bool DOS_SetMemAllocStrategy(Bit16u strat);
 Bit16u DOS_GetMemAllocStrategy(void);
+void DOS_BuildUMBChain(const char* use_umbs,bool ems_active);
+bool DOS_LinkUMBsToMemChain(Bit16u linkstate);
 
 /* FCB stuff */
 bool DOS_FCBOpen(Bit16u seg,Bit16u offset);
@@ -208,6 +223,7 @@ INLINE Bit16u DOS_PackDate(Bit16u year,Bit16u mon,Bit16u day) {
 #define DOSERR_REMOVE_CURRENT_DIRECTORY 16
 #define DOSERR_NOT_SAME_DEVICE 17
 #define DOSERR_NO_MORE_FILES 18
+#define DOSERR_FILE_ALREADY_EXISTS 80
 
 
 /* Remains some classes used to access certain things */
@@ -341,18 +357,24 @@ public:
 	DOS_InfoBlock			() {};
 	void SetLocation(Bit16u  seg);
 	void SetFirstMCB(Bit16u _first_mcb);
-	void SetfirstFileTable(RealPt _first_table);
 	void SetBuffers(Bit16u x,Bit16u y);
 	void SetCurDirStruct(Bit32u _curdirstruct);
 	void SetFCBTable(Bit32u _fcbtable);
 	void SetDeviceChainStart(Bit32u _devchain);
-	void SetDiskInfoBuffer(Bit32u _dinfobuf);
-	RealPt GetPointer (void);
+	void SetDiskBufferHeadPt(Bit32u _dbheadpt);
+	void SetStartOfUMBChain(Bit16u _umbstartseg);
+	void SetUMBChainState(Bit8u _umbchaining);
+	Bit16u	GetStartOfUMBChain(void);
+	Bit8u	GetUMBChainState(void);
+	RealPt	GetPointer(void);
 
 	#ifdef _MSC_VER
 	#pragma pack(1)
 	#endif
 	struct sDIB {		
+		Bit8u	unknown1[4];
+		Bit16u	magicWord;			// -0x22 needs to be 1
+		Bit8u	unknown2[8];
 		Bit16u	regCXfrom5e;		// -0x18 CX from last int21/ah=5e
 		Bit16u	countLRUcache;		// -0x16 LRU counter for FCB caching
 		Bit16u	countLRUopens;		// -0x14 LRU counter for FCB openings
@@ -387,7 +409,17 @@ public:
 		Bit8u	bootDrive;		//  0x43 boot drive
 		Bit8u	useDwordMov;		//  0x44 use dword moves
 		Bit16u	extendedSize;		//  0x45 size of extended memory
-		// some more stuff, hopefully never used.
+		Bit32u	diskBufferHeadPt;	//  0x47 pointer to least-recently used buffer header
+		Bit16u	dirtyDiskBuffers;	//  0x4b number of dirty disk buffers
+		Bit32u	lookaheadBufPt;		//  0x4d pointer to lookahead buffer
+		Bit16u	lookaheadBufNumber;		//  0x51 number of lookahead buffers
+		Bit8u	bufferLocation;			//  0x53 workspace buffer location
+		Bit32u	workspaceBuffer;		//  0x54 pointer to workspace buffer
+		Bit8u	unknown3[11];			//  0x58
+		Bit8u	chainingUMB;			//  0x63 bit0: UMB chain linked to MCB chain
+		Bit16u	minMemForExec;			//  0x64 minimum paragraphs needed for current program
+		Bit16u	startOfUMBChain;		//  0x66 segment of first UMB-MCB
+		Bit16u	memAllocScanStart;		//  0x68 start paragraph for memory allocation
 	} GCC_ATTRIBUTE(packed);
 	#ifdef _MSC_VER
 	#pragma pack ()
@@ -506,11 +538,6 @@ private:
 	#endif
 };
 
-extern Bit16u sdaseg;
-#define DOS_SDA_SEG sdaseg
-#define DOS_SDA_OFS 0
-
-
 class DOS_SDA : public MemStruct {
 public:
 	DOS_SDA(Bit16u _seg,Bit16u _offs) { SetPt(_seg,_offs); }
@@ -584,4 +611,3 @@ INLINE Bit8u RealHandle(Bit16u handle) {
 }
 
 #endif
-

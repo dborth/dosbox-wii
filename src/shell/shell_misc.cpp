@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_misc.cpp,v 1.33 2004/10/20 19:53:50 qbix79 Exp $ */
+/* $Id: shell_misc.cpp,v 1.43 2006/02/28 19:41:27 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +24,8 @@
 #include <iterator>  //std::front_inserter
 #include "shell.h"
 #include "regs.h"
+#include "callback.h"
+#include "support.h"
 
 void DOS_Shell::ShowPrompt(void) {
 	Bit8u drive=DOS_GetDefaultDrive()+'A';
@@ -54,7 +56,12 @@ void DOS_Shell::InputCommand(char * line) {
 
 	while (size) {
 		dos.echo=false;
-		DOS_ReadFile(input_handle,&c,&n);
+		while(!DOS_ReadFile(input_handle,&c,&n)) {
+			Bit16u dummy;
+			DOS_CloseFile(input_handle);
+			DOS_OpenFile("con",2,&dummy);
+			LOG(LOG_MISC,LOG_ERROR)("Reopening the input handle.This is a bug!");
+		}
 		if (!n) {
 			size=0;			//Kill the while loop
 			continue;
@@ -76,6 +83,7 @@ void DOS_Shell::InputCommand(char * line) {
 						}
 						str_len = str_index = it_history->length();
 						size = CMD_MAXLINE - str_index - 2;
+						line[str_len] = 0;
 					}
 					break;
 
@@ -88,6 +96,19 @@ void DOS_Shell::InputCommand(char * line) {
 
 				case 0x4D:	/* RIGHT */
 					if (str_index < str_len) {
+						outc(line[str_index++]);
+					}
+					break;
+
+				case 0x47:	/* HOME */
+					while (str_index) {
+						outc(8);
+						str_index--;
+					}
+					break;
+
+				case 0x4F:	/* END */
+					while (str_index < str_len) {
 						outc(line[str_index++]);
 					}
 					break;
@@ -105,7 +126,6 @@ void DOS_Shell::InputCommand(char * line) {
 					size = CMD_MAXLINE - str_index - 2;
 					DOS_WriteFile(STDOUT, (Bit8u *)line, &len);
 					it_history ++;
-
 					break;
 
 				case 0x50:	/* DOWN */
@@ -171,7 +191,7 @@ void DOS_Shell::InputCommand(char * line) {
 				// moves the cursor left
 				while (str_remain--) outc(8);
 			}
-			if (strlen(line) == 0 && l_completion.size()) l_completion.clear();
+			if (l_completion.size()) l_completion.clear();
 			break;
 		case 0x0a:				/* New Line not handled */
 			/* Don't care */
@@ -207,14 +227,26 @@ void DOS_Shell::InputCommand(char * line) {
 					char mask[DOS_PATHLENGTH];
 					if (completion_start) {
 						strcpy(mask, completion_start);
+						char* dot_pos=strrchr(mask,'.');
+						char* bs_pos=strrchr(mask,'\\');
+						char* fs_pos=strrchr(mask,'/');
+						char* cl_pos=strrchr(mask,':');
 						// not perfect when line already contains wildcards, but works
-						strcat(mask, "*.*");
+						if ((dot_pos-bs_pos>0) && (dot_pos-fs_pos>0) && (dot_pos-cl_pos>0))
+							strcat(mask, "*");
+						else strcat(mask, "*.*");
 					} else {
 						strcpy(mask, "*.*");
 					}
 
+					RealPt save_dta=dos.dta();
+					dos.dta(dos.tables.tempdta);
+
 					bool res = DOS_FindFirst(mask, 0xffff & ~DOS_ATTR_VOLUME);
-					if (!res) break;	// TODO: beep
+					if (!res) {
+						dos.dta(save_dta);
+						break;	// TODO: beep
+					}
 
 					DOS_DTA dta(dos.dta());
 					char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
@@ -239,6 +271,7 @@ void DOS_Shell::InputCommand(char * line) {
 					/* Add excutable list to front of completion list. */
 					std::copy(executable.begin(),executable.end(),std::front_inserter(l_completion));
 					it_completion = l_completion.begin();
+					dos.dta(save_dta);
 				}
 
 				if (l_completion.size() && it_completion->length()) {
@@ -301,17 +334,20 @@ void DOS_Shell::InputCommand(char * line) {
 	if (l_completion.size()) l_completion.clear();
 }
 
-void DOS_Shell::Execute(char * name,char * args) {
+bool DOS_Shell::Execute(char * name,char * args) {
+/* return true  => don't check for hardware changes in do_command 
+ * return false =>       check for hardware changes in do_command */
 	char * fullname;
 	char line[CMD_MAXLINE];
 	if(strlen(args)!= 0){
 		if(*args != ' '){ //put a space in front
 			line[0]=' ';line[1]=0;
-			strcat(line,args);
+			strncat(line,args,CMD_MAXLINE-2);
+			line[CMD_MAXLINE-1]=0;
 		}
 		else
 		{
-			strcpy(line,args);
+			safe_strncpy(line,args,CMD_MAXLINE);
 		}
 	}else{
 		line[0]=0;
@@ -323,22 +359,19 @@ void DOS_Shell::Execute(char * name,char * args) {
 		if (!DOS_SetDrive(toupper(name[0])-'A')) {
 			WriteOut(MSG_Get("SHELL_EXECUTE_DRIVE_NOT_FOUND"),toupper(name[0]));
 		}
-		return;
+		return true;
 	}
 	/* Check for a full name */
 	fullname=Which(name);
-	if (!fullname) {
-		WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),name);
-		return;
-	}
-
+	if (!fullname) return false;
+	
 	char* extension =strrchr(fullname,'.');
 	
 	/*always disallow files without extension from being executed. */
 	/*only internal commands can be run this way and they never get in this handler */
 	if(extension == 0)
 	{
-		char temp_name[256],* temp_fullname;
+		char temp_name[DOS_PATHLENGTH+4],* temp_fullname;
 		//try to add .com, .exe and .bat extensions to filename
 		
 		strcpy(temp_name,fullname);
@@ -362,8 +395,7 @@ void DOS_Shell::Execute(char * name,char * args) {
 
 				else  
 				{
-		 			WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),fullname);
-		 			return;
+		 			return false;
 				}
 			
 			}	
@@ -382,11 +414,7 @@ void DOS_Shell::Execute(char * name,char * args) {
 	{	/* only .bat .exe .com extensions maybe be executed by the shell */
 		if(strcasecmp(extension, ".com") !=0) 
 		{
-			if(strcasecmp(extension, ".exe") !=0)
-			{
-		  		WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),fullname);
-				return;
-			}
+			if(strcasecmp(extension, ".exe") !=0) return false;
 	  	}
 		/* Run the .exe or .com file from the shell */
 		/* Allocate some stack space for tables in physical memory */
@@ -439,6 +467,7 @@ void DOS_Shell::Execute(char * name,char * args) {
 		SegSet16(cs,oldcs);
 #endif
 	}
+	return true; //Executable started
 }
 
 
@@ -450,7 +479,8 @@ static char * exe_ext=".EXE";
 static char which_ret[DOS_PATHLENGTH+4];
 
 char * DOS_Shell::Which(char * name) {
-	if(strlen(name) >= DOS_PATHLENGTH) return 0;
+	size_t name_len = strlen(name);
+	if(name_len >= DOS_PATHLENGTH) return 0;
 
 	/* Parse through the Path to find the correct entry */
 	/* Check if name is already ok but just misses an extension */
@@ -476,26 +506,37 @@ char * DOS_Shell::Which(char * name) {
 	pathenv=strchr(pathenv,'=');
 	if (!pathenv) return 0;
 	pathenv++;
-	char * path_write=path;
+	Bitu i_path = 0;
 	while (*pathenv) {
 		/* remove ; and ;; at the beginning. (and from the second entry etc) */
 		while(*pathenv && (*pathenv ==';'))
 			pathenv++;
 
-		/* Clear old path */
-		for(Bitu dummy = 0;dummy < DOS_PATHLENGTH; dummy++)
-			path[dummy] = 0;	//OVERKILL could be strlen(path). but run no risks
-
 		/* get next entry */
-		while(*pathenv && (*pathenv !=';'))
-			*path_write++=*pathenv++;
-		
+		i_path = 0; /* reset writer */
+		while(*pathenv && (*pathenv !=';') && (i_path < DOS_PATHLENGTH) )
+			path[i_path++] = *pathenv++;
+
+		if(i_path == DOS_PATHLENGTH) {
+			/* If max size. move till next ; and terminate path */
+			while(*pathenv != ';') 
+				pathenv++;
+			path[DOS_PATHLENGTH - 1] = 0;
+		} else path[i_path] = 0;
+
+
 		/* check entry */
-		if(Bitu len=strlen(path)){
-			if(path[strlen(path)-1]!='\\')	strcat(path,"\\");
-			strcat(path,name);
+		if(size_t len = strlen(path)){
+			if(len >= (DOS_PATHLENGTH - 2)) continue;
+
+			if(path[len - 1] != '\\') {
+				strcat(path,"\\"); 
+				len++;
+			}
+
 			//If name too long =>next
-			if(strlen(path) >= DOS_PATHLENGTH) continue;
+			if((name_len + len + 1) >= DOS_PATHLENGTH) continue;
+			strcat(path,name);
 
 			strcpy(which_ret,path);
 			if (DOS_FileExists(which_ret)) return which_ret;
@@ -509,9 +550,6 @@ char * DOS_Shell::Which(char * name) {
 			strcat(which_ret,bat_ext);
 			if (DOS_FileExists(which_ret)) return which_ret;
 		}
-		path_write=path;	/* reset it */
-			
 	}
 	return 0;
 }
-

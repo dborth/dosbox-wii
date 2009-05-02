@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -171,7 +171,7 @@ restart_opcode:
 					sprintf(writecode,"%X",mem_readb(core.cseip++));
 					writecode+=2;
 				}
-				LOG(LOG_CPU,LOG_ERROR)("Illegal/Unhandled opcode %s",tempcode);
+				LOG(LOG_CPU,LOG_NORMAL)("Illegal/Unhandled opcode %s",tempcode);
 			}
 #endif
 			CPU_Exception(6,0);
@@ -188,13 +188,12 @@ decode_end:
 }
 
 Bits CPU_Core_Normal_Trap_Run(void) {
-
 	Bits oldCycles = CPU_Cycles;
 	CPU_Cycles = 1;
 	core.trap.skip=false;
 
 	Bits ret=CPU_Core_Normal_Run();
-	if (!core.trap.skip) CPU_SW_Interrupt(1,reg_eip);
+	if (!core.trap.skip) CPU_HW_Interrupt(1);
 	CPU_Cycles = oldCycles-1;
 	cpudecoder = &CPU_Core_Normal_Run;
 

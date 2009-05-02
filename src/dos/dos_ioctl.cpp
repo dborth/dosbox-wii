@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_ioctl.cpp,v 1.21 2004/11/03 23:13:54 qbix79 Exp $ */
+/* $Id: dos_ioctl.cpp,v 1.26 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -26,7 +26,7 @@
 #include "dos_inc.h"
 
 bool DOS_IOCTL(void) {
-	Bitu handle;Bit8u drive;
+	Bitu handle=0;Bit8u drive=0;
 	if (reg_al<8) {				/* call 0-7 use a file handle */
 		handle=RealHandle(reg_bx);
 		if (handle>=DOS_FILES) {
@@ -35,6 +35,12 @@ bool DOS_IOCTL(void) {
 		}
 		if (!Files[handle]) {
 			DOS_SetError(DOSERR_INVALID_HANDLE);
+			return false;
+		}
+	} else  { 				/* the others use a diskdrive */
+		drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
+		if( !(( drive < DOS_DRIVES ) && Drives[drive]) ) {
+			DOS_SetError(DOSERR_INVALID_DRIVE);
 			return false;
 		}
 	}
@@ -66,34 +72,20 @@ bool DOS_IOCTL(void) {
 		reg_al=0xff;
 		return true;
 	case 0x08:		/* Check if block device removable */
-		drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
-		if (Drives[drive]) {
-			/* Drive a,b are removable if mounted *
-			 * So are cdrom drives                */
-			if (drive < 2  || Drives[drive]->isRemovable())
-				reg_ax=0;	
-			else 	reg_ax=1;
-			return true;
-		} else {
-			DOS_SetError(DOSERR_INVALID_DRIVE);
-			return false;
-		}
+		/* cdrom drives and drive a&b are removable */
+		if (drive < 2  || Drives[drive]->isRemovable())
+			reg_ax=0;
+		else 	reg_ax=1;
+		return true;
 	case 0x09:		/* Check if block device remote */
-		drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
-		if (Drives[drive]) {
-			reg_dx=0;
-			if (Drives[drive]->isRemote()) reg_dx|=(1 << 12);
-			//TODO Set bit 9 on drives that don't support direct I/O
-			reg_al=0;
-			return true;
-		} else {
-			DOS_SetError(DOSERR_INVALID_DRIVE);
-			return false;
-		}
+		reg_dx=0;
+		if (Drives[drive]->isRemote()) reg_dx|=(1 << 12);
+		//TODO Set bit 9 on drives that don't support direct I/O
+		reg_al=0;
+		return true;
 	case 0x0D:		/* Generic block device request */
 		{
 			PhysPt ptr	= SegPhys(ds)+reg_dx;
-			drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
 			switch (reg_cl) {
 			case 0x60:		/* Get Device parameters */
 				mem_writeb(ptr  ,0x03);					// special function
@@ -106,6 +98,31 @@ bool DOS_IOCTL(void) {
 				mem_writeb(ptr+8,0x00);					// unit number
 				mem_writed(ptr+0x1f,0xffffffff);		// next parameter block
 				break;
+			case 0x46:
+			case 0x66:	/* Volume label */
+				{			
+					char const* bufin=Drives[drive]->GetLabel();
+					char buffer[11] ={' '};
+
+					char const* find_ext=strchr(bufin,'.');
+					if (find_ext) {
+						Bitu size=find_ext-bufin;if (size>8) size=8;
+						memcpy(buffer,bufin,size);
+						find_ext++;
+						memcpy(buffer+size,find_ext,(strlen(find_ext)>3) ? 3 : strlen(find_ext)); 
+					} else {
+						memcpy(buffer,bufin,(strlen(bufin) > 8) ? 8 : strlen(bufin));
+					}
+			
+					char buf2[8]={ 'F','A','T','1','6',' ',' ',' '};
+					if(drive<2) buf2[4] = '2'; //FAT12 for floppies
+
+					mem_writew(ptr+0,0);			// 0
+					mem_writed(ptr+2,0x1234);		//Serial number
+					MEM_BlockWrite(ptr+6,buffer,11);//volumename
+					if(reg_cl == 0x66) MEM_BlockWrite(ptr+0x11, buf2,8);//filesystem
+				}
+				break;
 			default	:	
 				LOG(LOG_IOCTL,LOG_ERROR)("DOS:IOCTL Call 0D:%2X Drive %2X unhandled",reg_cl,drive);
 				return false;
@@ -113,15 +130,8 @@ bool DOS_IOCTL(void) {
 			return true;
 		}
 	case 0xE:		/* Get Logical Drive Map */
-		drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
-		if (Drives[drive]) {
-			reg_al=0;		/* Only 1 logical drive assigned */
-			return true;
-		} else {
-			DOS_SetError(DOSERR_INVALID_DRIVE);
-			return false;
-		}
-		break;
+		reg_al = 0;		/* Only 1 logical drive assigned */
+		return true;
 	default:
 		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:IOCTL Call %2X unhandled",reg_al);
 		return false;
@@ -136,4 +146,3 @@ bool DOS_GetSTDINStatus(void) {
 	if (Files[handle] && (Files[handle]->GetInformation() & 64)) return false;
 	return true;
 };
-

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -53,7 +53,9 @@ bool CDROM_Interface_SDL::SetDevice (char* path, int forceCD)
 	int num = SDL_CDNumDrives();
 	if ((forceCD>=0) && (forceCD<num)) {
 		driveID = forceCD;
-		return true;
+	        cd = SDL_CDOpen(driveID);
+	        SDL_CDStatus(cd);
+	   	return true;
 	};	
 	
 	const char* cdname = 0;
@@ -164,7 +166,7 @@ int CDROM_GetMountType(char* path, int forceCD)
 	const char* cdName;
 	char buffer[512];
 	strcpy(buffer,path);
-#if defined (WIN32)
+#if defined (WIN32) || defined(OS2)
 	upcase(buffer);
 #endif
 
@@ -183,10 +185,8 @@ int CDROM_GetMountType(char* path, int forceCD)
 	
 	// Detect ISO
 	struct stat file_stat;
-	stat(path, &file_stat);
-	if (S_ISREG(file_stat.st_mode)) return 1;
-
-        return 2;
+	if ((stat(path, &file_stat) == 0) && S_ISREG(file_stat.st_mode)) return 1; 
+	return 2;
 };
 
 // ******************************************************

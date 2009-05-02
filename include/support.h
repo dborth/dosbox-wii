@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,14 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#if !defined __SUPPORT_H
-#define __SUPPORT_H
+#ifndef DOSBOX_SUPPORT_H
+#define DOSBOX_SUPPORT_H
 
 #include <string.h>
 #include <ctype.h>
-
+#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
+#endif
 
 #if defined (_MSC_VER)						/* MS Visual C++ */
 #define	strcasecmp(a,b) stricmp(a,b)
@@ -32,6 +33,8 @@
 //if (strcasecmp(name,devices[index]->name)==0) return index;
 //#define	nocasestrcmp(a,b) stricmp(a,b)
 #endif
+
+#define safe_strncpy(a,b,n) do { strncpy((a),(b),(n)-1); (a)[(n)-1] = 0; } while (0)
 
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
@@ -62,4 +65,3 @@ INLINE char * lowcase(char * str) {
 
 
 #endif
-

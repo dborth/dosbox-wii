@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: setup.cpp,v 1.23 2004/10/25 21:16:30 qbix79 Exp $ */
+/* $Id: setup.cpp,v 1.34 2006/03/12 21:26:22 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "cross.h"
@@ -32,51 +32,51 @@ using namespace std;
 
 void Prop_float::SetValue(char* input){
 	input=trim(input);
-	__value._float= atof(input);
+	value._float= static_cast<float>(atof(input));
 }
 
 void Prop_int::SetValue(char* input){
 	input=trim(input);
-	__value._int= atoi(input);
+	value._int= atoi(input);
 }
 
 void Prop_string::SetValue(char* input){
 	input=trim(input);
-	__value._string->assign(input);
+	value._string->assign(input);
 }
 	
 void Prop_bool::SetValue(char* input){
 	input=lowcase(trim(input));
 	/* valid false entries: 0 ,d*, of* ,f*  everything else gets true */
 	if((input[0]=='0') || (input[0]=='d') || ( (input[0]=='o') && (input[1]=='f')) || (input[0]=='f')){
-		__value._bool=false;
+		value._bool=false;
 	}else{
-		__value._bool=true;
+		value._bool=true;
 	}
 }
 void Prop_hex::SetValue(char* input){
 	input=trim(input);
-	if(!sscanf(input,"%X",&(__value._hex))) __value._hex=0;
+	if(!sscanf(input,"%X",&(value._hex))) value._hex=0;
 }
 
 void Prop_int::GetValuestring(char* str){
-        sprintf(str,"%d",__value._int);
+        sprintf(str,"%d",value._int);
 }
 
 void Prop_string::GetValuestring(char* str){
-        sprintf(str,"%s",__value._string->c_str());
+        sprintf(str,"%s",value._string->c_str());
 }
 
 void Prop_bool::GetValuestring(char* str){
-        sprintf(str,"%s",__value._bool?"true":"false");
+        sprintf(str,"%s",value._bool?"true":"false");
 }
 
 void Prop_float::GetValuestring(char* str){
-	sprintf(str,"%1.2f",__value._float);
+	sprintf(str,"%1.2f",value._float);
 }
 
 void Prop_hex::GetValuestring(char* str){
-        sprintf(str,"%X",__value._hex);
+        sprintf(str,"%X",value._hex);
 }
 
 void Section_prop::Add_float(const char* _propname, float _value) {
@@ -148,7 +148,8 @@ int Section_prop::Get_hex(const char* _propname){
 
 void Section_prop::HandleInputline(char *gegevens){
 	char * rest=strrchr(gegevens,'=');
-	*rest=0;
+	if(!rest) return;
+	*rest = 0;
 	gegevens=trim(gegevens);
 	for(it tel=properties.begin();tel!=properties.end();tel++){
 		if(!strcasecmp((*tel)->propname.c_str(),gegevens)){
@@ -168,7 +169,17 @@ void Section_prop::PrintData(FILE* outfile){
 	}
 }
 
-   
+static char buffer[1024];
+char* Section_prop::GetPropValue(const char* _property) {
+	for(it tel=properties.begin();tel!=properties.end();tel++){
+		if(!strcasecmp((*tel)->propname.c_str(),_property)){
+			(*tel)->GetValuestring(buffer);
+			return buffer;
+		}
+	}
+	return NULL;
+}
+
 void Section_line::HandleInputline(char* line){ 
 	data+=line;
 	data+="\n";
@@ -178,13 +189,17 @@ void Section_line::PrintData(FILE* outfile) {
 	fprintf(outfile,"%s",data.c_str());
 }
 
+char* Section_line::GetPropValue(const char* _property) {
+	return NULL;
+}
+
 void Config::PrintConfig(const char* configfilename){
 	char temp[50];char helpline[256];
 	FILE* outfile=fopen(configfilename,"w+t");
 	if(outfile==NULL) return;
 	for (it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
 		/* Print out the Section header */
-		strcpy(temp,(*tel)->sectionname.c_str());
+		strcpy(temp,(*tel)->GetName());
 		lowcase(temp);
 		fprintf(outfile,"[%s]\n",temp);
 		upcase(temp);
@@ -207,19 +222,22 @@ void Config::PrintConfig(const char* configfilename){
 	fclose(outfile);
 }
    
-Section* Config::AddSection(const char* _name,void (*_initfunction)(Section*)){
-	Section* blah = new Section(_name);
-	blah->AddInitFunction(_initfunction);
+
+Section_prop* Config::AddSection_prop(const char* _name,void (*_initfunction)(Section*),bool canchange){
+	Section_prop* blah = new Section_prop(_name);
+	blah->AddInitFunction(_initfunction,canchange);
 	sectionlist.push_back(blah);
 	return blah;
 }
 
-Section_prop* Config::AddSection_prop(const char* _name,void (*_initfunction)(Section*)){
-	Section_prop* blah = new Section_prop(_name);
-	blah->AddInitFunction(_initfunction);
-	sectionlist.push_back(blah);
-	return blah;
+Section_prop::~Section_prop() {
+//ExecuteDestroy should be here else the destroy functions use destroyed properties
+	ExecuteDestroy(true);
+	/* Delete properties themself (properties stores the pointer of a prop */
+	for(it prop = properties.begin(); prop != properties.end(); prop++)
+		delete (*prop);
 }
+
 
 Section_line* Config::AddSection_line(const char* _name,void (*_initfunction)(Section*)){
 	Section_line* blah = new Section_line(_name);
@@ -235,6 +253,23 @@ void Config::Init(){
 	}
 }
 
+void Section::ExecuteInit(bool initall) {
+	typedef std::list<Function_wrapper>::iterator func_it;
+	for (func_it tel=initfunctions.begin(); tel!=initfunctions.end(); tel++) {
+		if(initall || (*tel).canchange) (*tel).function(this);
+	}
+}
+
+void Section::ExecuteDestroy(bool destroyall) {
+	typedef std::list<Function_wrapper>::iterator func_it;
+	for (func_it tel=destroyfunctions.begin(); tel!=destroyfunctions.end(); ) {
+		if(destroyall || (*tel).canchange) {
+			(*tel).function(this);
+			tel=destroyfunctions.erase(tel); //Remove destroyfunction once used
+		} else tel++;
+	}
+}
+
 Config::~Config() {
 	reverse_it cnt=sectionlist.rbegin();
 	while (cnt!=sectionlist.rend()) {
@@ -245,11 +280,18 @@ Config::~Config() {
 
 Section* Config::GetSection(const char* _sectionname){
 	for (it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
-		if (!strcasecmp((*tel)->sectionname.c_str(),_sectionname)) return (*tel);
+		if (!strcasecmp((*tel)->GetName(),_sectionname)) return (*tel);
 	}
 	return NULL;
 }
 
+Section* Config::GetSectionFromProperty(const char* prop)
+{
+   	for (it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
+		if ((*tel)->GetPropValue(prop)) return (*tel);
+	}
+	return NULL;
+}
 bool Config::ParseConfigFile(const char* configfilename){
 	ifstream in(configfilename);
 	if (!in) return false;
@@ -305,14 +347,18 @@ bool Config::ParseConfigFile(const char* configfilename){
 void Config::ParseEnv(char ** envp) {
 	for(char** env=envp; *env;env++) {
 		char copy[1024];
-		strncpy(copy,*env,1024);
+		safe_strncpy(copy,*env,1024);
 		if(strncasecmp(copy,"DOSBOX_",7))
 			continue;
 		char* sec_name = &copy[7];
+		if(!(*sec_name))
+			continue;
 		char* prop_name = strrchr(sec_name,'_');
+		if(!prop_name || !(*prop_name))
+			continue;
 		*prop_name++=0;
 		Section* sect = GetSection(sec_name);
-		if(!sect) 
+		if(!sect)
 			continue;
 		sect->HandleInputline(prop_name);
 	}
@@ -404,6 +450,17 @@ bool CommandLine::FindStringRemain(char * name,std::string & value) {
 	return true;
 }
 
+bool CommandLine::GetStringRemain(std::string & value) {
+	if(!cmds.size()) return false;
+		
+	cmd_it it=cmds.begin();value=(*it++);
+	for(;it != cmds.end();it++) {
+		value+=" ";
+		value+=(*it);
+	}
+	return true;
+}
+		
 
 unsigned int CommandLine::GetCount(void) {
 	return cmds.size();
@@ -449,4 +506,3 @@ CommandLine::CommandLine(char * name,char * cmdline) {
 	}
 	if (inword || inquote) cmds.push_back(str);
 }
-

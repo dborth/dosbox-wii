@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,22 +16,18 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.h,v 1.9 2004/11/13 12:06:39 qbix79 Exp $ */
+/* $Id: shell.h,v 1.15 2006/02/09 11:47:48 qbix79 Exp $ */
 
-#ifndef SHELL_H_
-#define SHELL_H_
-
+#ifndef DOSBOX_SHELL_H
+#define DOSBOX_SHELL_H
 
 #include <ctype.h>
-#include <stdio.h>
+#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
-#include "mem.h"
+#endif
+#ifndef DOSBOX_PROGRAMS_H
 #include "programs.h"
-#include "dos_inc.h"
-#include "regs.h"
-#include "support.h"
-#include "callback.h"
-#include "setup.h"
+#endif
 
 #include <string>
 #include <list>
@@ -40,6 +36,9 @@
 #define CMD_MAXCMDS 20
 #define CMD_OLDSIZE 4096
 extern Bitu call_shellstop;
+/* first_shell is used to add and delete stuff from the shell env 
+ * by "external" programs. (config) */
+extern Program * first_shell;
 class DOS_Shell;
 
 
@@ -75,7 +74,9 @@ public:
 	void InputCommand(char * line);
 	void ShowPrompt();
 	void DoCommand(char * cmd);
-	void Execute(char * name,char * args);
+	bool Execute(char * name,char * args);
+	/* Checks if it matches a hardware-property */
+	bool CheckConfig(char* cmd,char*line);
 /* Some internal used functions */
 	char * Which(char * name);
 /* Some supported commands */
@@ -143,5 +144,21 @@ static inline char* ExpandDot(char*args, char* buffer) {
 	else strcpy(buffer,args);
 	return buffer;
 }
+
+/* Object to manage lines in the autoexec.bat The lines get removed from
+ * the file if the object gets destroyed. The environment is updated
+ * as well if the line set a a variable */
+class AutoexecObject{
+private:
+	bool installed;
+	char buf[256];
+public:
+	AutoexecObject():installed(false){};
+	void Install(char * line,...);
+	void InstallBefore(char* line, ...);
+	~AutoexecObject();
+private:
+	void CreateAutoexec(void);
+};
 
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,11 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: inout.h,v 1.9 2006/02/09 11:47:47 qbix79 Exp $ */
+
+#ifndef DOSBOX_INOUT_H
+#define DOSBOX_INOUT_H
 
 #define IO_MAX (64*1024+3)
 
@@ -32,28 +37,36 @@ extern IO_ReadHandler * io_readhandlers[3][IO_MAX];
 void IO_RegisterReadHandler(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range=1);
 void IO_RegisterWriteHandler(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range=1);
 
-void IO_FreeReadHandler(Bitu port,Bitu mask,Bitu range=0);
-void IO_FreeWriteHandler(Bitu port,Bitu mask,Bitu range=0);
+void IO_FreeReadHandler(Bitu port,Bitu mask,Bitu range=1);
+void IO_FreeWriteHandler(Bitu port,Bitu mask,Bitu range=1);
 
-INLINE void IO_WriteB(Bitu port,Bitu val) {
-	io_writehandlers[0][port](port,val,1);
-};
-INLINE void IO_WriteW(Bitu port,Bitu val) {
-	io_writehandlers[1][port](port,val,2);
-};
-INLINE void IO_WriteD(Bitu port,Bitu val) {
-	io_writehandlers[2][port](port,val,4);
-};
+void IO_WriteB(Bitu port,Bitu val);
+void IO_WriteW(Bitu port,Bitu val);
+void IO_WriteD(Bitu port,Bitu val);
 
-INLINE Bitu IO_ReadB(Bitu port) {
-	return io_readhandlers[0][port](port,1);
-}
-INLINE Bitu IO_ReadW(Bitu port) {
-	return io_readhandlers[1][port](port,2);
-}
-INLINE Bitu IO_ReadD(Bitu port) {
-	return io_readhandlers[2][port](port,4);
-}
+Bitu IO_ReadB(Bitu port);
+Bitu IO_ReadW(Bitu port);
+Bitu IO_ReadD(Bitu port);
+
+/* Classes to manage the IO objects created by the various devices.
+ * The io objects will remove itself on destruction.*/
+class IO_Base{
+protected:
+	bool installed;
+	Bitu m_port, m_mask,m_range;
+public:
+	IO_Base():installed(false){};
+};
+class IO_ReadHandleObject: private IO_Base{
+public:
+	void Install(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range=1);
+	~IO_ReadHandleObject();
+};
+class IO_WriteHandleObject: private IO_Base{
+public:
+	void Install(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range=1);
+	~IO_WriteHandleObject();
+};
 
 INLINE void IO_Write(Bitu port,Bit8u val) {
 	IO_WriteB(port,val);
@@ -62,4 +75,4 @@ INLINE Bit8u IO_Read(Bitu port){
 	return IO_ReadB(port);
 }
 
-
+#endif

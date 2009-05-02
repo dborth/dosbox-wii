@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,28 +16,26 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: callback.cpp,v 1.22 2004/08/29 11:22:37 qbix79 Exp $ */
+/* $Id: callback.cpp,v 1.31 2006/02/12 23:28:21 harekiet Exp $ */
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "dosbox.h"
 #include "callback.h"
 #include "mem.h"
 #include "cpu.h"
-#include "pic.h"
 
 /* CallBack are located at 0xC800:0 
    And they are 16 bytes each and you can define them to behave in certain ways like a
    far return or and IRET
 */
 
-
 CallBack_Handler CallBack_Handlers[CB_MAX];
 char* CallBack_Description[CB_MAX];
 
 static Bitu call_stop,call_idle,call_default;
+Bitu call_priv_io;
 
 static Bitu illegal_handler(void) {
 	E_Exit("Illegal CallBack Called");
@@ -55,6 +53,11 @@ Bitu CALLBACK_Allocate(void) {
 	return 0;
 }
 
+void CALLBACK_DeAllocate(Bitu in) {
+	CallBack_Handlers[in]=&illegal_handler;
+}
+
+	
 void CALLBACK_Idle(void) {
 /* this makes the cpu execute instructions to handle irq's and then come back */
 	Bitu oldIF=GETFLAG(IF);
@@ -67,7 +70,8 @@ void CALLBACK_Idle(void) {
 	reg_eip=oldeip;
 	SegSet16(cs,oldcs);
 	SETFLAGBIT(IF,oldIF);
-	if (CPU_Cycles>0) CPU_Cycles=0;
+	if (!CPU_CycleAuto && CPU_Cycles>0) 
+		CPU_Cycles=0;
 }
 
 static Bitu default_handler(void) {
@@ -104,8 +108,6 @@ void CALLBACK_RunRealInt(Bit8u intnum) {
 	SegSet16(cs,oldcs);
 }
 
-
-
 void CALLBACK_SZF(bool val) {
 	Bit16u tempf=mem_readw(SegPhys(ss)+reg_sp+4) & 0xFFBF;
 	Bit16u newZF=(val==true) << 6;
@@ -118,8 +120,7 @@ void CALLBACK_SCF(bool val) {
 	mem_writew(SegPhys(ss)+reg_sp+4,(tempf | newCF));
 };
 
-void CALLBACK_SetDescription(Bitu nr, const char* descr)
-{
+void CALLBACK_SetDescription(Bitu nr, const char* descr) {
 	if (descr) {
 		CallBack_Description[nr] = new char[strlen(descr)+1];
 		strcpy(CallBack_Description[nr],descr);
@@ -127,8 +128,7 @@ void CALLBACK_SetDescription(Bitu nr, const char* descr)
 		CallBack_Description[nr] = 0;
 };
 
-const char* CALLBACK_GetDescription(Bitu nr)
-{
+const char* CALLBACK_GetDescription(Bitu nr) {
 	if (nr>=CB_MAX) return 0;
 	return CallBack_Description[nr];
 };
@@ -155,44 +155,100 @@ bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type,const char*
 		phys_writew(CB_BASE+(callback<<4)+3,callback);		//The immediate word
 		phys_writeb(CB_BASE+(callback<<4)+5,(Bit8u)0xCF);	//An IRET Instruction
 		break;
-
 	default:
 		E_Exit("CALLBACK:Setup:Illegal type %d",type);
-
 	}
 	CallBack_Handlers[callback]=handler;
 	CALLBACK_SetDescription(callback,descr);
 	return true;
 }
 
-bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress,const char* descr) {
-	if (callback>=CB_MAX) return false;
+void CALLBACK_RemoveSetup(Bitu callback) {
+	for (Bitu i = 0;i < 16;i++) {
+		phys_writeb(CB_BASE+(callback<<4)+i ,(Bit8u) 0x00);
+	}
+}
+
+Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress) {
+	if (callback>=CB_MAX) 
+		return 0;
 	switch (type) {
+	case CB_RETN:
+		phys_writeb(physAddress+0,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(physAddress+1,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(physAddress+2, callback);	//The immediate word
+		phys_writeb(physAddress+4,(Bit8u)0xC3);	//A RETN Instruction
+		return 5;
 	case CB_RETF:
-		mem_writeb(linearAddress+0,(Bit8u)0xFE);	//GRP 4
-		mem_writeb(linearAddress+1,(Bit8u)0x38);	//Extra Callback instruction
-		mem_writew(linearAddress+2, callback);		//The immediate word
-		mem_writeb(linearAddress+4,(Bit8u)0xCB);	//A RETF Instruction
-		break;
+		phys_writeb(physAddress+0,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(physAddress+1,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(physAddress+2, callback);	//The immediate word
+		phys_writeb(physAddress+4,(Bit8u)0xCB);	//A RETF Instruction
+		return 5;
 	case CB_IRET:
-		mem_writeb(linearAddress+0,(Bit8u)0xFE);	//GRP 4
-		mem_writeb(linearAddress+1,(Bit8u)0x38);	//Extra Callback instruction
-		mem_writew(linearAddress+2,callback);		//The immediate word
-		mem_writeb(linearAddress+4,(Bit8u)0xCF);	//An IRET Instruction
-		break;
+		phys_writeb(physAddress+0,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(physAddress+1,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(physAddress+2,callback);	//The immediate word
+		phys_writeb(physAddress+4,(Bit8u)0xCF);	//An IRET Instruction
+		return 5;
 	case CB_IRET_STI:
-		mem_writeb(linearAddress+0,(Bit8u)0xFB);	//STI
-		mem_writeb(linearAddress+1,(Bit8u)0xFE);	//GRP 4
-		mem_writeb(linearAddress+2,(Bit8u)0x38);	//Extra Callback instruction
-		mem_writew(linearAddress+3, callback);		//The immediate word
-		mem_writeb(linearAddress+5,(Bit8u)0xCF);	//An IRET Instruction
-		break;
+		phys_writeb(physAddress+0,(Bit8u)0xFB);	//STI
+		phys_writeb(physAddress+1,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(physAddress+2,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(physAddress+3, callback);	//The immediate word
+		phys_writeb(physAddress+5,(Bit8u)0xCF);	//An IRET Instruction
+		return 6;
 	default:
 		E_Exit("CALLBACK:Setup:Illegal type %d",type);
 	}
-	CallBack_Handlers[callback]=handler;
-	CALLBACK_SetDescription(callback,descr);
-	return true;
+	return 0;
+}
+
+CALLBACK_HandlerObject::~CALLBACK_HandlerObject(){
+	if(!installed) return;
+	if(m_type == CALLBACK_HandlerObject::SETUP) {
+		if(vectorhandler.installed){
+			//See if we are the current handler. if so restore the old one
+			if(RealGetVec(vectorhandler.interrupt) == Get_RealPointer()) {
+				RealSetVec(vectorhandler.interrupt,vectorhandler.old_vector);
+			} else 
+				LOG(LOG_MISC,LOG_WARN)("Interrupt vector changed on %X %s",vectorhandler.interrupt,CALLBACK_GetDescription(m_callback));
+		}
+		CALLBACK_RemoveSetup(m_callback);
+	} else if(m_type == CALLBACK_HandlerObject::SETUPAT){
+		E_Exit("Callback:SETUP at not handled yet.");
+	} else if(m_type == CALLBACK_HandlerObject::NONE){
+		//Do nothing. Merely DeAllocate the callback
+	} else E_Exit("what kind of callback is this!");
+	if(CallBack_Description[m_callback]) delete [] CallBack_Description[m_callback];
+	CallBack_Description[m_callback] = 0;
+	CALLBACK_DeAllocate(m_callback);
+}
+
+void CALLBACK_HandlerObject::Install(CallBack_Handler handler,Bitu type,const char* description){
+	if(!installed) {
+		installed=true;
+		m_type=SETUP;
+		m_callback=CALLBACK_Allocate();
+		CALLBACK_Setup(m_callback,handler,type,description);
+	} else E_Exit("Allready installed");
+}
+void CALLBACK_HandlerObject::Allocate(CallBack_Handler handler,const char* description) {
+	if(!installed) {
+		installed=true;
+		m_type=NONE;
+		m_callback=CALLBACK_Allocate();
+		CALLBACK_SetDescription(m_callback,description);
+		CallBack_Handlers[m_callback]=handler;
+	} else E_Exit("Allready installed");
+}
+
+void CALLBACK_HandlerObject::Set_RealVec(Bit8u vec){
+	if(!vectorhandler.installed) {
+		vectorhandler.installed=true;
+		vectorhandler.interrupt=vec;
+		RealSetVec(vec,Get_RealPointer(),vectorhandler.old_vector);
+	} else E_Exit ("double usage of vector handler");
 }
 
 void CALLBACK_Init(Section* sec) {
@@ -219,6 +275,7 @@ void CALLBACK_Init(Section* sec) {
 	/* Setup all Interrupt to point to the default handler */
 	call_default=CALLBACK_Allocate();
 	CALLBACK_Setup(call_default,&default_handler,CB_IRET,"default");
+   
 	/* Only setup default handler for first half of interrupt table */
 	for (i=0;i<0x40;i++) {
 		real_writed(0,i*4,CALLBACK_RealPointer(call_default));
@@ -237,6 +294,22 @@ void CALLBACK_Init(Section* sec) {
 	real_writed(0,0x67*4,CALLBACK_RealPointer(call_default));
 	real_writed(0,0x5c*4,CALLBACK_RealPointer(call_default)); //Network stuff
 	//real_writed(0,0xf*4,0); some games don't like it
+
+	call_priv_io=CALLBACK_Allocate();
+
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x00,(Bit8u)0xec);	// in al, dx
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x01,(Bit8u)0xcb);	// retf
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x02,(Bit8u)0xed);	// in ax, dx
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x03,(Bit8u)0xcb);	// retf
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x04,(Bit8u)0x66);	// in eax, dx
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x05,(Bit8u)0xed);
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x06,(Bit8u)0xcb);	// retf
+
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x08,(Bit8u)0xee);	// out dx, al
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x09,(Bit8u)0xcb);	// retf
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x0a,(Bit8u)0xef);	// out dx, ax
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x0b,(Bit8u)0xcb);	// retf
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x0c,(Bit8u)0x66);	// out dx, eax
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x0d,(Bit8u)0xef);
+	phys_writeb(CB_BASE+(call_priv_io<<4)+0x0e,(Bit8u)0xcb);	// retf
 }
-
-

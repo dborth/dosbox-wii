@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_aspi_win32.cpp,v 1.12 2004/08/04 09:12:53 qbix79 Exp $ */
+/* $Id: cdrom_aspi_win32.cpp,v 1.16 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #if defined (WIN32)
 
@@ -24,6 +24,7 @@
 
 #include "dosbox.h"
 #include "cdrom.h"
+#include "support.h"
 
 //Are actually system includes but leave for now
 #include "wnaspi32.h"
@@ -219,8 +220,7 @@ bool CDROM_Interface_Aspi::GetVendor(BYTE HA_num, BYTE SCSI_Id, BYTE SCSI_Lun, c
 		strcpy (szBuffer, "error" );
 		return false;
 	} else {
-		strncpy(szBuffer,szBuffer+8,25);
-		szBuffer[25] = 0;
+		safe_strncpy(szBuffer,szBuffer+8,26);
 		int len = strlen(szBuffer);
 		for (int i=0; i<len; i++) if (szBuffer[i]<=32) szBuffer[i]='_';
 	};

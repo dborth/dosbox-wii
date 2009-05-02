@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: xms.cpp,v 1.33 2004/08/04 09:12:56 qbix79 Exp $ */
+/* $Id: xms.cpp,v 1.39 2006/02/09 11:47:57 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -54,7 +54,9 @@
 #define	XMS_DEALLOCATE_UMB					0x11
 #define XMS_QUERY_ANY_FREE_MEMORY			0x88
 #define XMS_ALLOCATE_ANY_MEMORY				0x89
+#define	XMS_GET_EMB_HANDLE_INFORMATION_EXT	0x8e
 
+#define	XMS_FUNCTION_NOT_IMPLEMENTED		0x80
 #define	HIGH_MEMORY_NOT_EXIST				0x90
 #define	HIGH_MEMORY_IN_USE					0x91
 #define	HIGH_MEMORY_NOT_ALLOCATED			0x93
@@ -63,6 +65,8 @@
 #define XMS_INVALID_HANDLE					0xa2
 #define XMS_BLOCK_NOT_LOCKED				0xaa
 #define XMS_BLOCK_LOCKED					0xab
+#define	UMB_ONLY_SMALLER_BLOCK				0xb0
+#define	UMB_NO_BLOCKS_AVAILABLE				0xb1
 
 struct XMS_Block {
 	Bitu	size;
@@ -101,8 +105,8 @@ Bitu XMS_GetEnabledA20(void)
 	return (IO_Read(0x92)&2)>0;
 };
 
-static Bit16u call_xms;
 static RealPt xms_callback;
+static bool umb_available;
 
 static XMS_Block xms_handles[XMS_HANDLES];
 
@@ -315,62 +319,160 @@ Bitu XMS_Handler(void) {
 		reg_bl = XMS_UnlockMemory(reg_dx);
 		reg_ax = (reg_bl==0);
 		break;
-	case XMS_GET_EMB_HANDLE_INFORMATION:						/* 0e */
-		reg_bl = XMS_GetHandleInformation(reg_dx,reg_bh,reg_bl,reg_dx);
-		reg_ax = (reg_bl==0);
-		break;
+	case XMS_GET_EMB_HANDLE_INFORMATION: {						/* 0e */
+		Bitu result = XMS_GetHandleInformation(reg_dx,reg_bh,reg_bl,reg_dx);
+		if (result != 0) reg_bl = result;
+		reg_ax = (result==0);
+		}; break;
 	case XMS_RESIZE_EXTENDED_MEMORY_BLOCK:						/* 0f */
 		reg_bl = XMS_ResizeMemory(reg_dx, reg_bx);
 		reg_ax = (reg_bl==0);
 		break;
-	case XMS_ALLOCATE_UMB:										/* 10 */
-		reg_ax=0;
-		reg_bl=0xb1;	//No UMB Available
-		reg_dx=0;
+	case XMS_ALLOCATE_UMB: {									/* 10 */
+		if (!umb_available) {
+			reg_ax=0;
+			reg_bl=XMS_FUNCTION_NOT_IMPLEMENTED;
+			break;
+		}
+		Bit16u umb_start=dos_infoblock.GetStartOfUMBChain();
+		if (umb_start==0xffff) {
+			reg_ax=0;
+			reg_bl=UMB_NO_BLOCKS_AVAILABLE;
+			reg_dx=0;	// no upper memory available
+			break;
+		}
+		/* Save status and linkage of upper UMB chain and link upper
+		   memory to the regular MCB chain */
+		Bit8u umb_flag=dos_infoblock.GetUMBChainState();
+		if ((umb_flag&1)==0) DOS_LinkUMBsToMemChain(1);
+		Bit8u old_memstrat=DOS_GetMemAllocStrategy()&0xff;
+		DOS_SetMemAllocStrategy(0x40);	// search in UMBs only
+
+		Bit16u size=reg_dx;Bit16u seg;
+		if (DOS_AllocateMemory(&seg,&size)) {
+			reg_ax=1;
+			reg_bx=seg;
+		} else {
+			reg_ax=0;
+			if (size==0) reg_bl=UMB_NO_BLOCKS_AVAILABLE;
+			else reg_bl=UMB_ONLY_SMALLER_BLOCK;
+			reg_dx=size;	// size of largest available UMB
+		}
+
+		/* Restore status and linkage of upper UMB chain */
+		Bit8u current_umb_flag=dos_infoblock.GetUMBChainState();
+		if ((current_umb_flag&1)!=(umb_flag&1)) DOS_LinkUMBsToMemChain(umb_flag);
+		DOS_SetMemAllocStrategy(old_memstrat);
+		}
 		break;
 	case XMS_DEALLOCATE_UMB:									/* 11 */
-		LOG(LOG_MISC,LOG_ERROR)("XMS:Unhandled call %2X",reg_ah);
+		if (!umb_available) {
+			reg_ax=0;
+			reg_bl=XMS_FUNCTION_NOT_IMPLEMENTED;
+			break;
+		}
+		if (dos_infoblock.GetStartOfUMBChain()!=0xffff) {
+			if (DOS_FreeMemory(reg_dx)) {
+				reg_ax=0x0001;
+				break;
+			}
+		}
+		reg_ax=0x0000;
+		reg_bl=UMB_NO_BLOCKS_AVAILABLE;
 		break;
 	case XMS_QUERY_ANY_FREE_MEMORY:								/* 88 */
 		reg_bl = XMS_QueryFreeMemory(reg_ax,reg_dx);
-        reg_eax &= 0xffff;
-        reg_edx &= 0xffff;
-        reg_ecx = (MEM_TotalPages()*MEM_PAGESIZE)-1;			// highest known physical memory address
+		reg_eax &= 0xffff;
+		reg_edx &= 0xffff;
+		reg_ecx = (MEM_TotalPages()*MEM_PAGESIZE)-1;			// highest known physical memory address
 		break;
+	case XMS_GET_EMB_HANDLE_INFORMATION_EXT: {					/* 8e */
+		Bit8u free_handles; 
+		Bitu result = XMS_GetHandleInformation(reg_dx,reg_bh,free_handles,reg_dx);
+		if (result != 0) reg_bl = result;
+		else {
+			reg_edx &= 0xffff;
+			reg_cx = free_handles;
+		}
+		reg_ax = (result==0);
+		} break;
+	default:
+		LOG(LOG_MISC,LOG_ERROR)("XMS: unknown function %02X",reg_ah);
+		reg_ax=0;
+		reg_bl=XMS_FUNCTION_NOT_IMPLEMENTED;
 	}
 //	LOG(LOG_MISC,LOG_ERROR)("XMS: CALL Result: %02X",reg_bl);
 	return CBRET_NONE;
 }
+class XMS: public Module_base {
+private:
+	CALLBACK_HandlerObject callbackhandler;
+public:
+	XMS(Section* configuration):Module_base(configuration){
+		Section_prop * section=static_cast<Section_prop *>(configuration);
+		umb_available=false;
+		if (!section->Get_bool("xms")) return;
+		Bitu i;
+		BIOS_ZeroExtendedSize(true);
+		DOS_AddMultiplexHandler(multiplex_xms);
+		callbackhandler.Install(&XMS_Handler,CB_RETF, "XMS Handler");
+		xms_callback=callbackhandler.Get_RealPointer();
+		Bit16u call_xms=callbackhandler.Get_callback();
+	   
+		/* Override the callback with one that can be hooked */
+		phys_writeb(CB_BASE+(call_xms<<4)+0,(Bit8u)0xeb);       //jump near
+		phys_writeb(CB_BASE+(call_xms<<4)+1,(Bit8u)0x03);       //offset
+		phys_writeb(CB_BASE+(call_xms<<4)+2,(Bit8u)0x90);       //NOP
+		phys_writeb(CB_BASE+(call_xms<<4)+3,(Bit8u)0x90);       //NOP
+		phys_writeb(CB_BASE+(call_xms<<4)+4,(Bit8u)0x90);       //NOP
+		phys_writeb(CB_BASE+(call_xms<<4)+5,(Bit8u)0xFE);       //GRP 4
+		phys_writeb(CB_BASE+(call_xms<<4)+6,(Bit8u)0x38);       //Extra Callback instruction
+		phys_writew(CB_BASE+(call_xms<<4)+7,call_xms);		//The immediate word          
+		phys_writeb(CB_BASE+(call_xms<<4)+9,(Bit8u)0xCB);       //A RETF Instruction
+	   
+		for (i=0;i<XMS_HANDLES;i++) {
+			xms_handles[i].free=true;
+			xms_handles[i].mem=-1;
+			xms_handles[i].size=0;
+			xms_handles[i].locked=0;
+		}
+		/* Disable the 0 handle */
+		xms_handles[0].free	= false;
 
-void XMS_Init(Section* sec) {
-	
-	Section_prop * section=static_cast<Section_prop *>(sec);
-	if (!section->Get_bool("xms")) return;
-	Bitu i;
-	BIOS_ZeroExtendedSize();
-	DOS_AddMultiplexHandler(multiplex_xms);
-	call_xms=CALLBACK_Allocate();
-	CALLBACK_Setup(call_xms,&XMS_Handler,CB_RETF, "XMS Handler");
-	xms_callback=CALLBACK_RealPointer(call_xms);
-   
-	/* Overide the callback with one that can be hooked */
-	phys_writeb(CB_BASE+(call_xms<<4)+0,(Bit8u)0xeb);       //jump near
-	phys_writeb(CB_BASE+(call_xms<<4)+1,(Bit8u)0x03);       //offset
-	phys_writeb(CB_BASE+(call_xms<<4)+2,(Bit8u)0x90);       //NOP
-	phys_writeb(CB_BASE+(call_xms<<4)+3,(Bit8u)0x90);       //NOP
-	phys_writeb(CB_BASE+(call_xms<<4)+4,(Bit8u)0x90);       //NOP
-	phys_writeb(CB_BASE+(call_xms<<4)+5,(Bit8u)0xFE);       //GRP 4
-	phys_writeb(CB_BASE+(call_xms<<4)+6,(Bit8u)0x38);       //Extra Callback instruction
-	phys_writew(CB_BASE+(call_xms<<4)+7,call_xms);		//The immediate word          
-	phys_writeb(CB_BASE+(call_xms<<4)+9,(Bit8u)0xCB);       //A RETF Instruction
-   
-	for (i=0;i<XMS_HANDLES;i++) {
-		xms_handles[i].free=true;
-		xms_handles[i].mem=-1;
-		xms_handles[i].size=0;
-		xms_handles[i].locked=0;
+		/* Set up UMB chain */
+		umb_available=strcmp(section->Get_string("umb"),"false")!=0;
+		DOS_BuildUMBChain(section->Get_string("umb"),section->Get_bool("ems"));
 	}
-	/* Disable the 0 handle */
-	xms_handles[0].free	= false;
+
+	~XMS(){
+		Section_prop * section = static_cast<Section_prop *>(m_configuration);
+		/* Remove upper memory information */
+		dos_infoblock.SetStartOfUMBChain(0xffff);
+		if (umb_available) {
+			dos_infoblock.SetUMBChainState(0);
+			umb_available=false;
+		}
+
+		if (!section->Get_bool("xms")) return;
+		/* Undo biosclearing */
+		BIOS_ZeroExtendedSize(false);
+
+		/* Remove Multiplex */
+		DOS_DelMultiplexHandler(multiplex_xms);
+
+		/* Free used memory while skipping the 0 handle */
+		for (Bitu i = 1;i<XMS_HANDLES;i++) 
+			if(!xms_handles[i].free) XMS_FreeMemory(i);
+	}
+
+};
+static XMS* test;
+
+void XMS_ShutDown(Section* sec) {
+	delete test;	
 }
 
+void XMS_Init(Section* sec) {
+	test = new XMS(sec);
+	sec->AddDestroyFunction(&XMS_ShutDown,true);
+}

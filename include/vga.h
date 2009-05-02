@@ -1,5 +1,5 @@
  /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,22 +16,25 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef VGA_H_
-#define VGA_H_
+#ifndef DOSBOX_VGA_H
+#define DOSBOX_VGA_H
 
-#include <mem.h>
+#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
+#endif
+
+class PageHandler;
 
 enum VGAModes {
-	M_CGA2,M_CGA4,
-	M_EGA16,
-	M_VGA,
-	M_LIN8,
+	M_CGA2, M_CGA4,
+	M_EGA, M_VGA,
+	M_LIN4, M_LIN8, M_LIN15, M_LIN16, M_LIN32,
 	M_TEXT,
-	M_HERC_GFX,M_HERC_TEXT,
-	M_CGA16,M_TANDY2,M_TANDY4,M_TANDY16,M_TANDY_TEXT,
+	M_HERC_GFX, M_HERC_TEXT,
+	M_CGA16, M_TANDY2, M_TANDY4, M_TANDY16, M_TANDY_TEXT,
 	M_ERROR,
 };
+
 
 #define CLK_25 25175
 #define CLK_28 28322
@@ -61,6 +64,7 @@ typedef struct {
 /* Some other screen related variables */
 	Bitu line_compare;
 	bool chained;					/* Enable or Disabled Chain 4 Mode */
+	bool compatible_chain4;
 
 	/* Pixel Scrolling */
 	Bit8u pel_panning;				/* Amount of pixels to skip when starting horizontal line */
@@ -84,7 +88,6 @@ typedef struct {
 	Bit32u full_not_enable_set_reset;
 	Bit32u full_enable_set_reset;
 	Bit32u full_enable_and_set_reset;
-
 } VGA_Config;
 
 typedef struct {
@@ -194,6 +197,8 @@ typedef struct {
 	Bit8u gfx_control;
 	Bit8u palette_mask;
 	Bit8u border_color;
+	bool is_32k_mode;
+	bool pcjr_flipflop;
 } VGA_TANDY;
 
 typedef struct {
@@ -287,10 +292,20 @@ union VGA_Memory {
 	Bit8u linear[512*1024*4];
 	Bit8u paged[512*1024][4];
 	VGA_Latch latched[512*1024];
-};	
+};
 
 typedef struct {
+	Bit32u page;
+	Bit32u addr;
+	Bit32u mask;
+	PageHandler *handler;
+} VGA_LFB;
+
+#define VGA_CHANGE_SHIFT	9
+typedef Bit8u VGA_Changed[(2*1024*1024) >> VGA_CHANGE_SHIFT];
+typedef struct {
 	VGAModes mode;								/* The mode the vga system is in */
+	VGAModes lastmode;
 	Bit8u misc_output;
 	VGA_Draw draw;
 	VGA_Config config;
@@ -307,6 +322,9 @@ typedef struct {
 	VGA_TANDY tandy;
 	VGA_OTHER other;
 	VGA_Memory mem;
+	VGA_LFB lfb;
+	VGA_Changed changed;
+	Bit8u * gfxmem_start;
 } VGA_Type;
 
 
@@ -343,6 +361,15 @@ void VGA_StartUpdateLFB(void);
 void VGA_SetBlinking(Bitu enabled);
 void VGA_SetCGA2Table(Bit8u val0,Bit8u val1);
 void VGA_SetCGA4Table(Bit8u val0,Bit8u val1,Bit8u val2,Bit8u val3);
+void VGA_ActivateHardwareCursor(void);
+void VGA_KillDrawing(void);
+
+/* S3 Functions */
+Bitu SVGA_S3_GetClock(void);
+void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen);
+Bitu SVGA_S3_ReadCRTC(Bitu reg,Bitu iolen);
+void SVGA_S3_WriteSEQ(Bitu reg,Bitu val,Bitu iolen);
+Bitu SVGA_S3_ReadSEQ(Bitu reg,Bitu iolen);
 
 extern VGA_Type vga;
 
@@ -350,6 +377,7 @@ extern Bit32u ExpandTable[256];
 extern Bit32u FillTable[16];
 extern Bit32u CGA_2_Table[16];
 extern Bit32u CGA_4_Table[256];
+extern Bit32u CGA_4_HiRes_Table[256];
 extern Bit32u CGA_16_Table[256];
 extern Bit32u TXT_Font_Table[16];
 extern Bit32u TXT_FG_Table[16];
@@ -359,4 +387,3 @@ extern Bit32u Expand16BigTable[0x10000];
 
 
 #endif
-

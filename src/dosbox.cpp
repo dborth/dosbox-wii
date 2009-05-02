@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.80 2004/09/21 19:32:15 qbix79 Exp $ */
+/* $Id: dosbox.cpp,v 1.99 2006/03/28 10:17:34 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -38,9 +38,11 @@
 #include "cross.h"
 #include "programs.h"
 #include "support.h"
+#include "mapper.h"
 
 Config * control;
 MachineType machine;
+SVGACards svgaCard;
 
 /* The whole load of startups for all the subfunctions */
 void MSG_Init(Section_prop *);
@@ -50,7 +52,7 @@ void PAGING_Init(Section *);
 void IO_Init(Section * );
 void CALLBACK_Init(Section*);
 void PROGRAMS_Init(Section*);
-void CREDITS_Init(Section*);
+//void CREDITS_Init(Section*);
 void RENDER_Init(Section*);
 void VGA_Init(Section*);
 
@@ -80,17 +82,11 @@ void TANDYSOUND_Init(Section*);
 void DISNEY_Init(Section*);
 void SERIAL_Init(Section*); 
 
-#if C_MODEM
-void MODEM_Init(Section*); 
-#endif
 
 #if C_IPX
 void IPX_Init(Section*);
 #endif
 
-#if C_DIRECTSERIAL
-void DIRECTSERIAL_Init(Section* sec);
-#endif
 void SID_Init(Section* sec);
 
 void PIC_Init(Section*);
@@ -114,11 +110,15 @@ static LoopHandler * loop;
 
 bool SDLNetInited;
 
-Bits RemainTicks;
-Bits LastTicks;
+static Bit32u ticksRemain;
+static Bit32u ticksLast;
+static Bit32u ticksAdded;
+static Bit32s ticksDone;
+static Bit32u ticksScheduled;
+bool ticksLocked;
 
 static Bitu Normal_Loop(void) {
-	Bits ret,NewTicks;
+	Bits ret;
 	while (1) {
 		if (PIC_RunQueue()) {
 			ret=(*cpudecoder)();
@@ -131,27 +131,51 @@ static Bitu Normal_Loop(void) {
 			if (DEBUG_ExitLoop()) return 0;
 #endif
 		} else {
-			if (RemainTicks>0) {
+			GFX_Events();
+			if (ticksRemain>0) {
 				TIMER_AddTick();
-				RemainTicks--;
-				GFX_Events();
+				ticksRemain--;
 			} else goto increaseticks;
 		}
 	}
 increaseticks:
-	NewTicks=GetTicks();
-	if (NewTicks>LastTicks) {
-		RemainTicks=NewTicks-LastTicks;
-		if (RemainTicks>20) {
-//			LOG_MSG("Ticks to handle overflow %d",RemainTicks);
-			RemainTicks=20;
+	if (GCC_UNLIKELY(ticksLocked)) {
+		ticksRemain=5;
+		/* Reset any auto cycle guessing for this frame */
+		ticksLast = GetTicks();
+		ticksAdded = 0;
+		ticksDone = 0;
+		ticksScheduled = 0;
+	} else {
+		Bit32u ticksNew;
+        	ticksNew=GetTicks();
+		ticksScheduled += ticksAdded;
+		if (ticksNew > ticksLast) {
+			ticksRemain = ticksNew-ticksLast;
+			ticksLast = ticksNew;
+			ticksDone += ticksRemain;
+			if ( ticksRemain > 20 ) {
+				ticksRemain = 20;
+			}
+			ticksAdded = ticksRemain;
+			if (CPU_CycleAuto && (ticksScheduled >= 1000 || ticksDone >= 1000) ) {
+				/* ratio we are aiming for is around 90% usage*/
+				Bits ratio = (ticksScheduled * (90*1024/100)) / ticksDone ;
+//				LOG_MSG("Done %d schedulded %d ratio %d cycles %d", ticksDone, ticksScheduled, ratio, CPU_CycleMax);
+				if (ratio <= 1024) 
+					CPU_CycleMax = (CPU_CycleMax * ratio) / 1024;
+				else 
+					CPU_CycleMax = 1 + (CPU_CycleMax >> 1) + (CPU_CycleMax * ratio) / 2048;
+				ticksDone = 0;
+				ticksScheduled = 0;
+			}
+		} else {
+			ticksAdded = 0;
+			SDL_Delay(1);
+			ticksDone -= GetTicks() - ticksNew;
+			if (ticksDone < 0)
+				ticksDone = 0;
 		}
-		LastTicks=NewTicks;
-	}
-	//TODO Make this selectable in the config file, since it gives some lag */
-	if (RemainTicks<=0) {
-		SDL_Delay(1);
-		return 0;
 	}
 	return 0;
 }
@@ -171,20 +195,33 @@ void DOSBOX_RunMachine(void){
 	} while (!ret);
 }
 
+static void DOSBOX_UnlockSpeed( bool pressed ) {
+	if (pressed)
+		ticksLocked = true;
+	else 
+		ticksLocked = false;
+}
+
 static void DOSBOX_RealInit(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	/* Initialize some dosbox internals */
 
-	RemainTicks=0;LastTicks=GetTicks();
+	ticksRemain=0;
+	ticksLast=GetTicks();
+	ticksLocked = false;
 	DOSBOX_SetLoop(&Normal_Loop);
 	MSG_Init(section);
 
-	machine=MCH_VGA;std::string cmd_machine;
+	MAPPER_AddHandler(DOSBOX_UnlockSpeed, MK_f12, MMOD2,"speedlock","Speedlock");
+	svgaCard = SVGA_S3Trio; 
+	machine=MCH_VGA;
+	std::string cmd_machine;
 	const char * mtype;
 	if (control->cmdline->FindString("-machine",cmd_machine,true)) mtype=cmd_machine.c_str();
 	else mtype=section->Get_string("machine");
 	if (strcasecmp(mtype,"cga")==0) machine=MCH_CGA;
 	else if (strcasecmp(mtype,"tandy")==0) machine=MCH_TANDY;
+	else if (strcasecmp(mtype,"pcjr")==0) machine=MCH_PCJR;
 	else if (strcasecmp(mtype,"hercules")==0) machine=MCH_HERC;
 	else if (strcasecmp(mtype,"vga")==0) machine=MCH_VGA;
 	else LOG_MSG("DOSBOX:Unknown machine type %s",mtype);
@@ -208,39 +245,38 @@ void DOSBOX_Init(void) {
 	LOG_StartUp();
 #endif
 	
-	secprop->AddInitFunction(&IO_Init);
-	secprop->AddInitFunction(&PAGING_Init);
-	secprop->AddInitFunction(&MEM_Init);
-	secprop->AddInitFunction(&HARDWARE_Init);
+	secprop->AddInitFunction(&IO_Init);//done
+	secprop->AddInitFunction(&PAGING_Init);//done
+	secprop->AddInitFunction(&MEM_Init);//done
+	secprop->AddInitFunction(&HARDWARE_Init);//done
 	secprop->Add_int("memsize",16);
 	secprop->AddInitFunction(&CALLBACK_Init);
-	secprop->AddInitFunction(&PIC_Init);
+	secprop->AddInitFunction(&PIC_Init);//done
 	secprop->AddInitFunction(&PROGRAMS_Init);
-	secprop->AddInitFunction(&TIMER_Init);
-	secprop->AddInitFunction(&CMOS_Init);
-	secprop->AddInitFunction(&SERIAL_Init); 
+	secprop->AddInitFunction(&TIMER_Init);//done
+	secprop->AddInitFunction(&CMOS_Init);//done
 		
 	MSG_Add("DOSBOX_CONFIGFILE_HELP",
 		"language -- Select another language file.\n"
 		"memsize -- Amount of memory dosbox has in megabytes.\n"
-		"machine -- The type of machine tries to emulate:hercules,cga,tandy,vga.\n"
+		"machine -- The type of machine tries to emulate:hercules,cga,tandy,pcjr,vga.\n"
 		"captures -- Directory where things like wave,midi,screenshot get captured.\n"
 	);
 
-	secprop=control->AddSection_prop("render",&RENDER_Init);
+	secprop=control->AddSection_prop("render",&RENDER_Init,true);
 	secprop->Add_int("frameskip",0);
 	secprop->Add_bool("aspect",false);
 	secprop->Add_string("scaler","normal2x");
 	MSG_Add("RENDER_CONFIGFILE_HELP",
 		"frameskip -- How many frames dosbox skips before drawing one.\n"
-		"aspect -- Do aspect correction.\n"
+		"aspect -- Do aspect correction, if your output method doesn't support scaling this can slow things down!.\n"
 		"scaler -- Scaler used to enlarge/enhance low resolution modes.\n"
-		"          Supported are none,normal2x,advmame2x,advmame3x,advinterp2x,interp2x,tv2x.\n"
+		"          Supported are none,normal2x,normal3x,advmame2x,advmame3x,advinterp2x,advinterp3x,tv2x,tv3x,rgb2x,rgb3x,scan2x,scan3x.\n"
 	);
 
-	secprop=control->AddSection_prop("cpu",&CPU_Init);
+	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
 	secprop->Add_string("core","normal");
-	secprop->Add_int("cycles",3000);
+	secprop->Add_string("cycles","3000");
 	secprop->Add_int("cycleup",500);
 	secprop->Add_int("cycledown",20);
 	MSG_Add("CPU_CONFIGFILE_HELP",
@@ -251,17 +287,17 @@ void DOSBOX_Init(void) {
 		".\n"
 		"cycles -- Amount of instructions dosbox tries to emulate each millisecond.\n"
 		"          Setting this higher than your machine can handle is bad!\n"
+		"          You can also let DOSBox guess the correct value by setting it to auto.\n"
+		"          Please note that this guessing feature is still experimental.\n"
 		"cycleup   -- Amount of cycles to increase/decrease with keycombo.\n"
 		"cycledown    Setting it lower than 100 will be a percentage.\n"
 	);
 #if C_FPU
 	secprop->AddInitFunction(&FPU_Init);
 #endif
-	secprop->AddInitFunction(&DMA_Init);
+	secprop->AddInitFunction(&DMA_Init);//done
 	secprop->AddInitFunction(&VGA_Init);
 	secprop->AddInitFunction(&KEYBOARD_Init);
-	secprop->AddInitFunction(&MOUSE_Init);
-	secprop->AddInitFunction(&JOYSTICK_Init);
 
 	secprop=control->AddSection_prop("mixer",&MIXER_Init);
 	secprop->Add_bool("nosound",false);
@@ -278,27 +314,27 @@ void DOSBOX_Init(void) {
 		"prebuffer -- How many milliseconds of data to keep on top of the blocksize.\n"
 	);
 	
-	secprop=control->AddSection_prop("midi",&MIDI_Init);
-	secprop->AddInitFunction(&MPU401_Init);
-	secprop->Add_bool("mpu401",true);
-	secprop->Add_bool("intelligent",true);   
+	secprop=control->AddSection_prop("midi",&MIDI_Init,true);//done
+	secprop->AddInitFunction(&MPU401_Init,true);//done
+	secprop->Add_string("mpu401","intelligent");
 	secprop->Add_string("device","default");
 	secprop->Add_string("config","");
 	
 	MSG_Add("MIDI_CONFIGFILE_HELP",
-		"mpu401      -- Enable MPU-401 Emulation.\n"
-		"intelligent -- Operate in Intelligent mode.\n"
+		"mpu401      -- Type of MPU-401 to emulate: none, uart or intelligent.\n"
 		"device      -- Device that will receive the MIDI data from MPU-401.\n"
 		"               This can be default,alsa,oss,win32,coreaudio,none.\n"
-		"config      -- Special configuration options for the device.\n"
+		"config      -- Special configuration options for the device. In Windows put\n" 
+		"               the id of the device you want to use. See README for details.\n"
 	);
 
 #if C_DEBUG
 	secprop=control->AddSection_prop("debug",&DEBUG_Init);
 #endif
-	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init);
-	secprop->Add_string("type","sb16");
-	secprop->Add_hex("base",0x220);
+
+	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init,true);//done
+	secprop->Add_string("sbtype","sb16");
+	secprop->Add_hex("sbbase",0x220);
 	secprop->Add_int("irq",7);
 	secprop->Add_int("dma",1);
 	secprop->Add_int("hdma",5);
@@ -307,18 +343,19 @@ void DOSBOX_Init(void) {
 	secprop->Add_int("oplrate",22050);
 
 	MSG_Add("SBLASTER_CONFIGFILE_HELP",
-		"type -- Type of sblaster to emulate:none,sb1,sb2,sbpro1,sbpro2,sb16.\n"
-		"base,irq,dma,hdma -- The IO/IRQ/DMA/High DMA address of the soundblaster.\n"
+		"sbtype -- Type of sblaster to emulate:none,sb1,sb2,sbpro1,sbpro2,sb16.\n"
+		"sbbase,irq,dma,hdma -- The IO/IRQ/DMA/High DMA address of the soundblaster.\n"
 		"mixer -- Allow the soundblaster mixer to modify the dosbox mixer.\n"
 		"oplmode -- Type of OPL emulation: auto,cms,opl2,dualopl2,opl3.\n"
 		"           On auto the mode is determined by sblaster type.\n"
+		"           All OPL modes are 'Adlib', except for CMS.\n"
 		"oplrate -- Sample rate of OPL music emulation.\n"
 		);
 
-	secprop=control->AddSection_prop("gus",&GUS_Init); 
+	secprop=control->AddSection_prop("gus",&GUS_Init,true); //done
 	secprop->Add_bool("gus",true); 	
-	secprop->Add_int("rate",22050);
-	secprop->Add_hex("base",0x240);
+	secprop->Add_int("gusrate",22050);
+	secprop->Add_hex("gusbase",0x240);
 	secprop->Add_int("irq1",5);
 	secprop->Add_int("irq2",5);
 	secprop->Add_int("dma1",3);
@@ -327,88 +364,90 @@ void DOSBOX_Init(void) {
 
 	MSG_Add("GUS_CONFIGFILE_HELP",
 		"gus -- Enable the Gravis Ultrasound emulation.\n"
-		"base,irq1,irq2,dma1,dma2 -- The IO/IRQ/DMA addresses of the \n"
+		"gusbase,irq1,irq2,dma1,dma2 -- The IO/IRQ/DMA addresses of the \n"
 		"           Gravis Ultrasound. (Same IRQ's and DMA's are OK.)\n"
-		"rate -- Sample rate of Ultrasound emulation.\n"
+		"gusrate -- Sample rate of Ultrasound emulation.\n"
 		"ultradir -- Path to Ultrasound directory.  In this directory\n"
 		"            there should be a MIDI directory that contains\n"
 		"            the patch files for GUS playback.  Patch sets used\n"
 		"            with Timidity should work fine.\n"
 	);
 
-	secprop=control->AddSection_prop("speaker",&PCSPEAKER_Init);
+	secprop=control->AddSection_prop("speaker",&PCSPEAKER_Init,true);//done
 	secprop->Add_bool("pcspeaker",true);
 	secprop->Add_int("pcrate",22050);
-	secprop->AddInitFunction(&TANDYSOUND_Init);
+	secprop->AddInitFunction(&TANDYSOUND_Init,true);//done
+	secprop->Add_string("tandy","auto");
 	secprop->Add_int("tandyrate",22050);
-	secprop->AddInitFunction(&DISNEY_Init);
+	secprop->AddInitFunction(&DISNEY_Init,true);//done
 	secprop->Add_bool("disney",true);
 
 	MSG_Add("SPEAKER_CONFIGFILE_HELP",
 		"pcspeaker -- Enable PC-Speaker emulation.\n"
 		"pcrate -- Sample rate of the PC-Speaker sound generation.\n"
+		"tandy -- Enable Tandy Sound System emulation (off,on,auto).\n"
+		"         For auto Tandysound emulation is present only if machine is set to tandy.\n"
 		"tandyrate -- Sample rate of the Tandy 3-Voice generation.\n"
-		"             Tandysound emulation is present if machine is set to tandy.\n"
 		"disney -- Enable Disney Sound Source emulation.\n"
 	);
-	secprop=control->AddSection_prop("bios",&BIOS_Init);
+
+	secprop=control->AddSection_prop("bios",&BIOS_Init,false);//done
+	MSG_Add("BIOS_CONFIGFILE_HELP",
+	        "joysticktype -- Type of joystick to emulate: none, 2axis, 4axis,\n"
+	        "                fcs (Thrustmaster) ,ch (CH Flightstick).\n"
+	        "                none disables joystick emulation.\n"
+	        "                2axis is the default and supports two joysticks.\n"
+	);
+
 	secprop->AddInitFunction(&INT10_Init);
+	secprop->AddInitFunction(&MOUSE_Init); //Must be after int10 as it uses CurMode
+	secprop->AddInitFunction(&JOYSTICK_Init);
+	secprop->Add_string("joysticktype","2axis");
+
+	// had to rename these to serial due to conflicts in config
+	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
+	secprop->Add_string("serial1","dummy");
+	secprop->Add_string("serial2","dummy");
+	secprop->Add_string("serial3","disabled");
+	secprop->Add_string("serial4","disabled");
+	MSG_Add("SERIAL_CONFIGFILE_HELP",
+	        "serial1-4 -- set type of device connected to com port.\n"
+	        "             Can be disabled, dummy, modem, directserial.\n"
+	        "             Additional parameters must be in the same line in the form of\n"
+	        "             parameter:value. Parameters for all types are irq, startbps, bytesize,\n"
+	        "             stopbits, parity (all optional).\n"
+	        "             for directserial: realport (required).\n"
+	        "             for modem: listenport (optional).\n"
+	        "             Example: serial1=modem listenport:5000\n"
+	);
 
 	/* All the DOS Related stuff, which will eventually start up in the shell */
 	//TODO Maybe combine most of the dos stuff in one section like ems,xms
-	secprop=control->AddSection_prop("dos",&DOS_Init);
-	secprop->AddInitFunction(&XMS_Init);
+	secprop=control->AddSection_prop("dos",&DOS_Init,false);//done
+	secprop->AddInitFunction(&XMS_Init,true);//done
 	secprop->Add_bool("xms",true);
-	secprop->AddInitFunction(&EMS_Init);
+	secprop->AddInitFunction(&EMS_Init,true);//done
 	secprop->Add_bool("ems",true);
+	secprop->Add_string("umb","true");
 	MSG_Add("DOS_CONFIGFILE_HELP",
 		"xms -- Enable XMS support.\n"
 		"ems -- Enable EMS support.\n"
+		"umb -- Enable UMB support (false,true,max).\n"
 	);
 	// Mscdex
 	secprop->AddInitFunction(&MSCDEX_Init);
-#if C_MODEM
-	secprop=control->AddSection_prop("modem",&MODEM_Init); 
-	secprop->Add_bool("modem",false); 	
-	secprop->Add_hex("comport",2); 
-	secprop->Add_int("listenport",23);
-	
-	MSG_Add("MODEM_CONFIGFILE_HELP",
-		"modem -- Enable virtual modem emulation.\n"
-		"comport -- COM Port modem is connected to.\n"
-		"listenport -- TCP Port the modem listens on for incoming connections.\n"
-	);
-#endif
-#if C_DIRECTSERIAL
-	secprop=control->AddSection_prop("directserial",&DIRECTSERIAL_Init);
-	secprop->Add_bool("directserial", false);
-	secprop->Add_hex("comport",1); 
-	secprop->Add_string("realport", "COM1");
-	secprop->Add_int("defaultbps", 1200);
-	secprop->Add_string("parity", "N"); // Could be N, E, O
-	secprop->Add_int("bytesize", 8); // Could be 5 to 8
-	secprop->Add_int("stopbit", 1); // Could be 1 or 2
-	MSG_Add("DIRECTSERIAL_CONFIGFILE_HELP",
-		"directserial -- Enable serial passthrough support.\n"
-		"comport -- COM Port inside DOSBox.\n"
-		"realport -- COM Port on the Host.\n"
-		"defaultbps -- Default BPS.\n"
-		"parity -- Parity of the packets. This can be N, E or O.\n"
-		"bytesize -- Size of each packet. This can be 5 or 8.\n"
-		"stopbit -- The number of stopbits. This can be 1 or 2.\n"
-	);
-#endif
 #if C_IPX
-	secprop=control->AddSection_prop("ipx",&IPX_Init);
+	secprop=control->AddSection_prop("ipx",&IPX_Init,true);
 	secprop->Add_bool("ipx", false);
 	MSG_Add("IPX_CONFIGFILE_HELP",
 		"ipx -- Enable ipx over UDP/IP emulation.\n"
 	);
 #endif
+//	secprop->AddInitFunction(&CREDITS_Init);
+
 	secline=control->AddSection_line("autoexec",&AUTOEXEC_Init);
 	MSG_Add("AUTOEXEC_CONFIGFILE_HELP",
 		"Lines in this section will be run at startup.\n"
 	);
 	control->SetStartUp(&SHELL_Init);
 }
-

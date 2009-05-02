@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,16 +16,18 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: setup.h,v 1.16 2004/08/04 09:12:51 qbix79 Exp $ */
+/* $Id: setup.h,v 1.22 2006/02/09 11:47:48 qbix79 Exp $ */
 
-#ifndef _SETUP_H_
-#define _SETUP_H_
+#ifndef DOSBOX_SETUP_H
+#define DOSBOX_SETUP_H
 
 #ifdef _MSC_VER
 #pragma warning ( disable : 4786 )
 #endif
 
+#ifndef DOSBOX_CROSS_H
 #include "cross.h"
+#endif
 #include <string>
 #include <list>
 
@@ -34,7 +36,7 @@ public:
 	CommandLine(int argc,char * argv[]);
 	CommandLine(char * name,char * cmdline);
 	const char * GetFileName(){ return file_name.c_str();}	
-    
+
 	bool FindExist(char * name,bool remove=false);
 	bool FindHex(char * name,int & value,bool remove=false);
 	bool FindInt(char * name,int & value,bool remove=false);
@@ -42,6 +44,7 @@ public:
 	bool FindCommand(unsigned int which,std::string & value);
 	bool FindStringBegin(char * begin,std::string & value, bool remove=false);
 	bool FindStringRemain(char * name,std::string & value);
+	bool GetStringRemain(std::string & value);
 	unsigned int GetCount(void);
 private:
 	typedef std::list<std::string>::iterator cmd_it;
@@ -63,16 +66,16 @@ public:
 	Property(const char* _propname):propname(_propname) { }
 	virtual void SetValue(char* input)=0;
 	virtual void GetValuestring(char* str)=0;
-	Value GetValue() { return __value;}
-	std::string propname;
-	Value __value;
+	Value GetValue() { return value;}
 	virtual ~Property(){ }
+	std::string propname;
+	Value value;
 };
 
 class Prop_int:public Property {
 public:
 	Prop_int(const char* _propname, int _value):Property(_propname) { 
-		__value._int=_value;
+		value._int=_value;
 	}
 	void SetValue(char* input);
         void GetValuestring(char* str);
@@ -81,7 +84,7 @@ public:
 class Prop_float:public Property {
 public:
 	Prop_float(const char* _propname, float _value):Property(_propname){
-		__value._float=_value;
+		value._float=_value;
 	}
 	void SetValue(char* input);
 	void GetValuestring(char* str);
@@ -91,7 +94,7 @@ public:
 class Prop_bool:public Property {
 public:
 	Prop_bool(const char* _propname, bool _value):Property(_propname) { 
-		__value._bool=_value;
+		value._bool=_value;
 	}
 	void SetValue(char* input);
         void GetValuestring(char* str);
@@ -101,10 +104,10 @@ public:
 class Prop_string:public Property{
 public:
 	Prop_string(const char* _propname, char* _value):Property(_propname) { 
-		__value._string=new std::string(_value);
+		value._string=new std::string(_value);
 	}
 	~Prop_string(){
-		delete __value._string;
+		delete value._string;
 	}
 	void SetValue(char* input);
         void GetValuestring(char* str);
@@ -112,45 +115,51 @@ public:
 class Prop_hex:public Property {
 public:
 	Prop_hex(const char* _propname, int _value):Property(_propname) { 
-		__value._hex=_value;
+		value._hex=_value;
 	}
 	void SetValue(char* input);
 	~Prop_hex(){ }
-        void GetValuestring(char* str);
+	void GetValuestring(char* str);
 };
 
 class Section {
-public:
-	Section(const char* _sectionname) { sectionname=_sectionname; }
-	virtual ~Section(){ ExecuteDestroy();}
-
+private:
 	typedef void (*SectionFunction)(Section*);
-	void AddInitFunction(SectionFunction func) {initfunctions.push_back(func);}
-	void AddDestroyFunction(SectionFunction func) {destroyfunctions.push_front(func);}
-	void ExecuteInit() { 
-		typedef std::list<SectionFunction>::iterator func_it;
-		for (func_it tel=initfunctions.begin(); tel!=initfunctions.end(); tel++){ 
-			(*tel)(this);
+	/* Wrapper class around startup and shutdown functions. the variable
+	 * canchange indicates it can be called on configuration changes */
+	struct Function_wrapper {
+		SectionFunction function;
+		bool canchange;
+		Function_wrapper(SectionFunction _fun,bool _ch){
+			function=_fun;
+			canchange=_ch;
 		}
-	}
-	void ExecuteDestroy() { 
-		typedef std::list<SectionFunction>::iterator func_it;
-		for (func_it tel=destroyfunctions.begin(); tel!=destroyfunctions.end(); tel++){ 
-			(*tel)(this);
-		}
-	}
-	std::list<SectionFunction> initfunctions;
-	std::list<SectionFunction> destroyfunctions;
-	virtual void HandleInputline(char * _line){}
-	virtual void PrintData(FILE* outfile) {}
-	std::string sectionname;   
+	};
+	std::list<Function_wrapper> initfunctions;
+	std::list<Function_wrapper> destroyfunctions;
+	std::string sectionname;
+public:
+	Section(const char* _sectionname):sectionname(_sectionname) {  }
+
+	void AddInitFunction(SectionFunction func,bool canchange=false) {initfunctions.push_back(Function_wrapper(func,canchange));}
+	void AddDestroyFunction(SectionFunction func,bool canchange=false) {destroyfunctions.push_front(Function_wrapper(func,canchange));}
+	void ExecuteInit(bool initall=true);
+	void ExecuteDestroy(bool destroyall=true);
+	const char* GetName() {return sectionname.c_str();}
+
+	virtual char* GetPropValue(const char* _property)=0;
+	virtual void HandleInputline(char * _line)=0;
+	virtual void PrintData(FILE* outfile)=0;
+	virtual ~Section() { /*Children must call executedestroy ! */}
 };
 
 
 class Section_prop:public Section {
- public:
+private:
+	std::list<Property*> properties;
+	typedef std::list<Property*>::iterator it;
+public:
 	Section_prop(const char* _sectionname):Section(_sectionname){}
-
 	void Add_int(const char* _propname, int _value=0);
 	void Add_string(const char* _propname, char* _value=NULL);
 	void Add_bool(const char* _propname, bool _value=false);
@@ -164,30 +173,38 @@ class Section_prop:public Section {
 	float Get_float(const char* _propname);
 	void HandleInputline(char *gegevens);
 	void PrintData(FILE* outfile);
-   
-	std::list<Property*> properties;
-	typedef std::list<Property*>::iterator it;
+	virtual char* GetPropValue(const char* _property);
+	//ExecuteDestroy should be here else the destroy functions use destroyed properties
+	virtual ~Section_prop();
 };
 
 class Section_line: public Section{
 public:
 	Section_line(const char* _sectionname):Section(_sectionname){}
+	~Section_line(){ExecuteDestroy(true);}
 	void HandleInputline(char* gegevens);
 	void PrintData(FILE* outfile);
+	virtual char* GetPropValue(const char* _property);
 	std::string data;
 };
 
 class Config{
 public:
+	CommandLine * cmdline;
+private:
+	std::list<Section*> sectionlist;
+	typedef std::list<Section*>::iterator it;
+	typedef std::list<Section*>::reverse_iterator reverse_it;
+	void (* _start_function)(void);
+public:
 	Config(CommandLine * cmd){ cmdline=cmd;}
 	~Config();
-	CommandLine * cmdline;
 
-	Section * AddSection(const char * _name,void (*_initfunction)(Section*));
 	Section_line * AddSection_line(const char * _name,void (*_initfunction)(Section*));
-	Section_prop * AddSection_prop(const char * _name,void (*_initfunction)(Section*));
+	Section_prop * AddSection_prop(const char * _name,void (*_initfunction)(Section*),bool canchange=false);
 	
 	Section* GetSection(const char* _sectionname);
+	Section* GetSectionFromProperty(const char* prop);
 
 	void SetStartUp(void (*_function)(void));
 	void Init();
@@ -196,12 +213,17 @@ public:
 	void PrintConfig(const char* configfilename);
 	bool ParseConfigFile(const char* configfilename);
 	void ParseEnv(char ** envp);
-
-	std::list<Section*> sectionlist;
-	typedef std::list<Section*>::iterator it;
-	typedef std::list<Section*>::reverse_iterator reverse_it;
-private:
-	void (* _start_function)(void);
 };
 
+class Module_base {
+	/* Base for all hardware and software "devices" */
+protected:
+	Section* m_configuration;
+public:
+	Module_base(Section* configuration){m_configuration=configuration;};
+//	Module_base(Section* configuration, SaveState* state) {};
+	~Module_base(){/*LOG_MSG("executed")*/;};//Destructors are required
+	/* Returns true if succesful.*/
+	virtual bool Change_Config(Section* newconfig) {return false;} ;
+};
 #endif

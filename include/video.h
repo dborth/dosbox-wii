@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,16 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef __VIDEO_H
-#define __VIDEO_H
+#ifndef DOSBOX_VIDEO_H
+#define DOSBOX_VIDEO_H
 
-typedef void (* GFX_ResetCallBack)(void);
+typedef enum {
+	GFX_CallBackReset,
+	GFX_CallBackStop,
+	GFX_CallBackRedraw,
+} GFX_CallBackFunctions_t;
+
+typedef void (*GFX_CallBack_t)( GFX_CallBackFunctions_t function );
 
 struct GFX_PalEntry {
 	Bit8u r;
@@ -28,43 +34,38 @@ struct GFX_PalEntry {
 	Bit8u unused;
 };
 
-#define CAN_8		0x0001
-#define CAN_16		0x0002
-#define CAN_32		0x0004
+#define GFX_CAN_8		0x0001
+#define GFX_CAN_15		0x0002
+#define GFX_CAN_16		0x0004
+#define GFX_CAN_32		0x0008
 
-#define CAN_ALL		(CAN_8|CAN_16|CAN_32)
+#define GFX_LOVE_8		0x0010
+#define GFX_LOVE_15		0x0020
+#define GFX_LOVE_16		0x0040
+#define GFX_LOVE_32		0x0080
 
-#define LOVE_8			0x0010
-#define LOVE_16			0x0020
-#define LOVE_32			0x0040
+#define GFX_RGBONLY		0x0100
 
-#define NEED_RGB		0x0100
-#define DONT_ASPECT		0x0200
+#define GFX_SCALING		0x1000
+#define GFX_HARDWARE	0x2000
 
-#define HAVE_SCALING	0x1000
-
-
-enum GFX_Modes {
-	GFX_8,GFX_15,GFX_16,GFX_32,GFX_NONE,
-};
+#define GFX_CAN_RANDOM	0x4000		//If the interface can also do random access surface
 
 void GFX_Events(void);
 void GFX_SetPalette(Bitu start,Bitu count,GFX_PalEntry * entries);
 Bitu GFX_GetBestMode(Bitu flags);
-
 Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue);
-GFX_Modes GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,GFX_ResetCallBack cb_reset);
+Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,GFX_CallBack_t cb);
 
 void GFX_ResetScreen(void);
 void GFX_Start(void);
 void GFX_Stop(void);
 void GFX_SwitchFullScreen(void);
 bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch);
-void GFX_EndUpdate(void);
+void GFX_EndUpdate( const Bit16u *changedLines );
 
 /* Mouse related */
 void GFX_CaptureMouse(void);
 extern bool mouselocked; //true if mouse is confined to window
 
 #endif
-

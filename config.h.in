@@ -2,7 +2,7 @@
 
 
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +26,8 @@
 /* Define to 1 to enable internal debugger, requires libcurses */
 #undef C_DEBUG
 
-/* Define to 1 if you want serial passthrough support (Win32 only). */
+/* Define to 1 if you want serial passthrough support (Win32 and OS/2 only).
+   */
 #undef C_DIRECTSERIAL
 
 /* Define to 1 to use x86 dynamic cpu core */
@@ -35,8 +36,18 @@
 /* Define to 1 to enable floating point emulation */
 #undef C_FPU
 
+/* Define to 1 to use a x86 assembly fpu core */
+#undef C_FPU_X86
+
 /* Determines if the compilers supports attributes for structures. */
 #undef C_HAS_ATTRIBUTE
+
+/* Determines if the compilers supports __builtin_expect for branch
+   prediction. */
+#undef C_HAS_BUILTIN_EXPECT
+
+/* Define to 1 if you have the mprotect function */
+#undef C_HAVE_MPROTECT
 
 /* Define to 1 to enable heavy debugging, also have to enable C_DEBUG */
 #undef C_HEAVY_DEBUG
@@ -61,6 +72,9 @@
 
 /* Define to 1 to enable screenshots, requires libpng */
 #undef C_SSHOT
+
+/* Define to 1 to use a unaligned memory access */
+#undef C_UNALIGNED_MEMORY
 
 /* environ can be included */
 #undef ENVIRON_INCLUDED
@@ -109,6 +123,9 @@
 
 /* Compiling on Mac OS X */
 #undef MACOSX
+
+/* Compiling on OS/2 EMX */
+#undef OS2
 
 /* Name of package */
 #undef PACKAGE
@@ -177,6 +194,12 @@
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
+#endif
+
+#if C_HAS_BUILTIN_EXPECT
+#define GCC_UNLIKELY(x) __builtin_expect((x),0)
+#else
+#define GCC_UNLIKELY(x) (x)
 #endif
 
 

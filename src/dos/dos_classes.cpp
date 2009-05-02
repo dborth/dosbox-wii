@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_classes.cpp,v 1.42 2004/10/17 14:45:00 qbix79 Exp $ */
+/* $Id: dos_classes.cpp,v 1.47 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -58,12 +58,12 @@ void DOS_ParamBlock::SaveData(void) {
 }
 
 
-void DOS_InfoBlock::SetLocation(Bit16u segment)
-{
+void DOS_InfoBlock::SetLocation(Bit16u segment) {
 	seg = segment;
 	pt=PhysMake(seg,0);
-/* Clear the initual Block */
+	/* Clear the initial Block */
 	for(Bitu i=0;i<sizeof(sDIB);i++) mem_writeb(pt+i,0xff);
+	for(Bitu i=0;i<14;i++) mem_writeb(pt+i,0);
 
 	sSave(sDIB,regCXfrom5e,(Bit16u)0);
 	sSave(sDIB,countLRUcache,(Bit16u)0);
@@ -74,6 +74,7 @@ void DOS_InfoBlock::SetLocation(Bit16u segment)
 	sSave(sDIB,joindedDrives,(Bit8u)0);
 	sSave(sDIB,lastdrive,(Bit8u)0x01);//increase this if you add drives to cds-chain
 
+	sSave(sDIB,diskInfoBuffer,RealMake(segment,offsetof(sDIB,diskBufferHeadPt)));
 	sSave(sDIB,setverPtr,(Bit32u)0);
 
 	sSave(sDIB,a20FixOfs,(Bit16u)0);
@@ -82,10 +83,24 @@ void DOS_InfoBlock::SetLocation(Bit16u segment)
 	
 	sSave(sDIB,bootDrive,(Bit8u)0);
 	sSave(sDIB,useDwordMov,(Bit8u)1);
-	sSave(sDIB,extendedSize,(Bit16u)0x4000);	// >16mb
+	sSave(sDIB,extendedSize,(Bit16u)(MEM_TotalPages()*4-1024));
+	sSave(sDIB,magicWord,(Bit16u)0x0001);		// dos5+
 
 	sSave(sDIB,sharingCount,(Bit16u)0);
 	sSave(sDIB,sharingDelay,(Bit16u)0);
+	sSave(sDIB,ptrCONinput,(Bit16u)0);			// no unread input available
+	sSave(sDIB,maxSectorLength,(Bit16u)0x200);
+
+	sSave(sDIB,dirtyDiskBuffers,(Bit16u)0);
+	sSave(sDIB,lookaheadBufPt,(Bit32u)0);
+	sSave(sDIB,lookaheadBufNumber,(Bit16u)0);
+	sSave(sDIB,bufferLocation,(Bit8u)0);		// buffer in base memory, no workspace
+	sSave(sDIB,workspaceBuffer,(Bit32u)0);
+
+	sSave(sDIB,minMemForExec,(Bit16u)0);
+	sSave(sDIB,memAllocScanStart,(Bit16u)DOS_MEM_START);
+	sSave(sDIB,startOfUMBChain,(Bit16u)0xffff);
+	sSave(sDIB,chainingUMB,(Bit8u)0);
 
 	sSave(sDIB,nulNextDriver,(Bit32u)0xffffffff);
 	sSave(sDIB,nulAttributes,(Bit16u)0x8004);
@@ -98,45 +113,58 @@ void DOS_InfoBlock::SetLocation(Bit16u segment)
 	sSave(sDIB,nulString[5],(Bit8u)0x20);
 	sSave(sDIB,nulString[6],(Bit8u)0x20);
 	sSave(sDIB,nulString[7],(Bit8u)0x20);
+
+	/* Create a fake SFT, so programs think there are 100 file handles */
+	Bit16u sftOffset=offsetof(sDIB,firstFileTable)+0xa2;
+	sSave(sDIB,firstFileTable,RealMake(segment,sftOffset));
+	real_writed(segment,sftOffset+0x00,RealMake(segment+0x11,0));	//Next File Table
+	real_writew(segment,sftOffset+0x04,100);		//File Table supports 100 files
+	real_writed(segment+0x11,0x00,0xffffffff);		//Last File Table
+	real_writew(segment+0x11,0x04,100);				//File Table supports 100 files
 }
 
-void DOS_InfoBlock::SetFirstMCB(Bit16u _firstmcb)
-{
+void DOS_InfoBlock::SetFirstMCB(Bit16u _firstmcb) {
 	sSave(sDIB,firstMCB,_firstmcb); //c2woody
-}
-
-void DOS_InfoBlock::SetfirstFileTable(RealPt _first_table){
-	sSave(sDIB,firstFileTable,_first_table);
 }
 
 void DOS_InfoBlock::SetBuffers(Bit16u x,Bit16u y) {
 	sSave(sDIB,buffers_x,x);
 	sSave(sDIB,buffers_y,y);
-
 }
 
-void DOS_InfoBlock::SetCurDirStruct(Bit32u _curdirstruct)
-{
+void DOS_InfoBlock::SetCurDirStruct(Bit32u _curdirstruct) {
 	sSave(sDIB,curDirStructure,_curdirstruct);
 }
 
-void DOS_InfoBlock::SetFCBTable(Bit32u _fcbtable)
-{
+void DOS_InfoBlock::SetFCBTable(Bit32u _fcbtable) {
 	sSave(sDIB,fcbTable,_fcbtable);
 }
 
-void DOS_InfoBlock::SetDeviceChainStart(Bit32u _devchain)
-{
+void DOS_InfoBlock::SetDeviceChainStart(Bit32u _devchain) {
 	sSave(sDIB,nulNextDriver,_devchain);
 }
 
-void DOS_InfoBlock::SetDiskInfoBuffer(Bit32u _dinfobuf)
-{
-	sSave(sDIB,diskInfoBuffer,_dinfobuf);
+void DOS_InfoBlock::SetDiskBufferHeadPt(Bit32u _dbheadpt) {
+	sSave(sDIB,diskBufferHeadPt,_dbheadpt);
 }
 
-RealPt DOS_InfoBlock::GetPointer(void)
-{
+Bit16u DOS_InfoBlock::GetStartOfUMBChain(void) {
+	return sGet(sDIB,startOfUMBChain);
+}
+
+void DOS_InfoBlock::SetStartOfUMBChain(Bit16u _umbstartseg) {
+	sSave(sDIB,startOfUMBChain,_umbstartseg);
+}
+
+Bit8u DOS_InfoBlock::GetUMBChainState(void) {
+	return sGet(sDIB,chainingUMB);
+}
+
+void DOS_InfoBlock::SetUMBChainState(Bit8u _umbchaining) {
+	sSave(sDIB,chainingUMB,_umbchaining);
+}
+
+RealPt DOS_InfoBlock::GetPointer(void) {
 	return RealMake(seg,offsetof(sDIB,firstDPB));
 }
 

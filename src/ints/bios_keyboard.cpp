@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,12 +24,16 @@
 #include "regs.h"
 #include "inout.h"
 
+/* SDL by default treats numlock and scrolllock different from all other keys.
+ * Some linux distros disable this bad behaviour. (for example debian) 
+ * Define the following if this is the case */
+//#define CAN_USE_LOCK 1
 
-static Bitu call_int16,call_irq1;
+static Bitu call_int16,call_irq1,call_irq6;
 
 /* Nice table from BOCHS i should feel bad for ripping this */
 #define none 0
-#define MAX_SCAN_CODE 0x53
+#define MAX_SCAN_CODE 0x58
 static struct {
   Bit16u normal;
   Bit16u shift;
@@ -37,7 +41,7 @@ static struct {
   Bit16u alt;
   } scan_to_scanascii[MAX_SCAN_CODE + 1] = {
       {   none,   none,   none,   none },
-      { 0x011b, 0x011b, 0x011b, 0x0100 }, /* escape */
+      { 0x011b, 0x011b, 0x011b, 0x01f0 }, /* escape */
       { 0x0231, 0x0221,   none, 0x7800 }, /* 1! */
       { 0x0332, 0x0340, 0x0300, 0x7900 }, /* 2@ */
       { 0x0433, 0x0423,   none, 0x7a00 }, /* 3# */
@@ -50,8 +54,8 @@ static struct {
       { 0x0b30, 0x0b29,   none, 0x8100 }, /* 0) */
       { 0x0c2d, 0x0c5f, 0x0c1f, 0x8200 }, /* -_ */
       { 0x0d3d, 0x0d2b,   none, 0x8300 }, /* =+ */
-      { 0x0e08, 0x0e08, 0x0e7f,   none }, /* backspace */
-      { 0x0f09, 0x0f00,   none,   none }, /* tab */
+      { 0x0e08, 0x0e08, 0x0e7f, 0x0ef0 }, /* backspace */
+      { 0x0f09, 0x0f00, 0x9400,   none }, /* tab */
       { 0x1071, 0x1051, 0x1011, 0x1000 }, /* Q */
       { 0x1177, 0x1157, 0x1117, 0x1100 }, /* W */
       { 0x1265, 0x1245, 0x1205, 0x1200 }, /* E */
@@ -62,8 +66,8 @@ static struct {
       { 0x1769, 0x1749, 0x1709, 0x1700 }, /* I */
       { 0x186f, 0x184f, 0x180f, 0x1800 }, /* O */
       { 0x1970, 0x1950, 0x1910, 0x1900 }, /* P */
-      { 0x1a5b, 0x1a7b, 0x1a1b,   none }, /* [{ */
-      { 0x1b5d, 0x1b7d, 0x1b1d,   none }, /* ]} */
+      { 0x1a5b, 0x1a7b, 0x1a1b, 0x1af0 }, /* [{ */
+      { 0x1b5d, 0x1b7d, 0x1b1d, 0x1bf0 }, /* ]} */
       { 0x1c0d, 0x1c0d, 0x1c0a,   none }, /* Enter */
       {   none,   none,   none,   none }, /* L Ctrl */
       { 0x1e61, 0x1e41, 0x1e01, 0x1e00 }, /* A */
@@ -75,11 +79,11 @@ static struct {
       { 0x246a, 0x244a, 0x240a, 0x2400 }, /* J */
       { 0x256b, 0x254b, 0x250b, 0x2500 }, /* K */
       { 0x266c, 0x264c, 0x260c, 0x2600 }, /* L */
-      { 0x273b, 0x273a,   none,   none }, /* ;: */
-      { 0x2827, 0x2822,   none,   none }, /* '" */
-      { 0x2960, 0x297e,   none,   none }, /* `~ */
+      { 0x273b, 0x273a,   none, 0x27f0 }, /* ;: */
+      { 0x2827, 0x2822,   none, 0x28f0 }, /* '" */
+      { 0x2960, 0x297e,   none, 0x29f0 }, /* `~ */
       {   none,   none,   none,   none }, /* L shift */
-      { 0x2b5c, 0x2b7c, 0x2b1c,   none }, /* |\ */
+      { 0x2b5c, 0x2b7c, 0x2b1c, 0x2bf0 }, /* |\ */
       { 0x2c7a, 0x2c5a, 0x2c1a, 0x2c00 }, /* Z */
       { 0x2d78, 0x2d58, 0x2d18, 0x2d00 }, /* X */
       { 0x2e63, 0x2e43, 0x2e03, 0x2e00 }, /* C */
@@ -87,11 +91,11 @@ static struct {
       { 0x3062, 0x3042, 0x3002, 0x3000 }, /* B */
       { 0x316e, 0x314e, 0x310e, 0x3100 }, /* N */
       { 0x326d, 0x324d, 0x320d, 0x3200 }, /* M */
-      { 0x332c, 0x333c,   none,   none }, /* ,< */
-      { 0x342e, 0x343e,   none,   none }, /* .> */
-      { 0x352f, 0x353f,   none,   none }, /* /? */
+      { 0x332c, 0x333c,   none, 0x33f0 }, /* ,< */
+      { 0x342e, 0x343e,   none, 0x34f0 }, /* .> */
+      { 0x352f, 0x353f,   none, 0x35f0 }, /* /? */
       {   none,   none,   none,   none }, /* R Shift */
-      { 0x372a, 0x372a,   none,   none }, /* * */
+      { 0x372a, 0x372a, 0x9600, 0x37f0 }, /* * */
       {   none,   none,   none,   none }, /* L Alt */
       { 0x3920, 0x3920, 0x3920, 0x3920 }, /* space */
       {   none,   none,   none,   none }, /* caps lock */
@@ -108,24 +112,36 @@ static struct {
       {   none,   none,   none,   none }, /* Num Lock */
       {   none,   none,   none,   none }, /* Scroll Lock */
       { 0x4700, 0x4737, 0x7700, 0x0007 }, /* 7 Home */
-      { 0x4800, 0x4838,   none, 0x0008 }, /* 8 UP */
+      { 0x4800, 0x4838, 0x8d00, 0x0008 }, /* 8 UP */
       { 0x4900, 0x4939, 0x8400, 0x0009 }, /* 9 PgUp */
-      { 0x4a2d, 0x4a2d,   none,   none }, /* - */
+      { 0x4a2d, 0x4a2d, 0x8e00, 0x4af0 }, /* - */
       { 0x4b00, 0x4b34, 0x7300, 0x0004 }, /* 4 Left */
-      { 0x4c00, 0x4c35,   none, 0x0005 }, /* 5 */
+      { 0x4cf0, 0x4c35, 0x8f00, 0x0005 }, /* 5 */
       { 0x4d00, 0x4d36, 0x7400, 0x0006 }, /* 6 Right */
-      { 0x4e2b, 0x4e2b,   none,   none }, /* + */
+      { 0x4e2b, 0x4e2b, 0x9000, 0x4ef0 }, /* + */
       { 0x4f00, 0x4f31, 0x7500, 0x0001 }, /* 1 End */
-      { 0x5000, 0x5032,   none, 0x0002 }, /* 2 Down */
+      { 0x5000, 0x5032, 0x9100, 0x0002 }, /* 2 Down */
       { 0x5100, 0x5133, 0x7600, 0x0003 }, /* 3 PgDn */
-      { 0x5200, 0x5230,   none, 0x0000 }, /* 0 Ins */
-      { 0x5300, 0x532e,   none,   none }  /* Del */
+      { 0x5200, 0x5230, 0x9200, 0x0000 }, /* 0 Ins */
+      { 0x5300, 0x532e, 0x9300,   none }, /* Del */
+      {   none,   none,   none,   none },
+      {   none,   none,   none,   none },
+      { 0x565c, 0x567c,   none,   none }, /* (102-key) */
+      { 0x8500, 0x8700, 0x8900, 0x8b00 }, /* F11 */
+      { 0x8600, 0x8800, 0x8a00, 0x8c00 }  /* F12 */
       };
 
-static void add_key(Bit16u code) {
+static bool add_key_forced(Bit16u code) {
+	if (mem_readb(BIOS_KEYBOARD_FLAGS2)&8) return true;
 	Bit16u start,end,head,tail,ttail;
-	start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
-	end	 =mem_readw(BIOS_KEYBOARD_BUFFER_END);
+	if (machine==MCH_PCJR) {
+		/* should be done for cga and others as well, to be tested */
+		start=0x1e;
+		end=0x3e;
+	} else {
+		start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
+		end	 =mem_readw(BIOS_KEYBOARD_BUFFER_END);
+	}
 	head =mem_readw(BIOS_KEYBOARD_BUFFER_HEAD);
 	tail =mem_readw(BIOS_KEYBOARD_BUFFER_TAIL);
 	ttail=tail+2;
@@ -134,31 +150,44 @@ static void add_key(Bit16u code) {
 	}
 	/* Check for buffer Full */
 	//TODO Maybe beeeeeeep or something although that should happend when internal buffer is full
-	if (ttail==head) return;
+	if (ttail==head) return false;
 	real_writew(0x40,tail,code);
 	mem_writew(BIOS_KEYBOARD_BUFFER_TAIL,ttail);
+	return true;
 }
 
-static Bit16u get_key(void) {
+static void add_key(Bit16u code) {
+	if (code!=0) add_key_forced(code);
+}
+
+static bool get_key(Bit16u &code) {
 	Bit16u start,end,head,tail,thead;
-	start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
-	end =mem_readw(BIOS_KEYBOARD_BUFFER_END);
+	if (machine==MCH_PCJR) {
+		/* should be done for cga and others as well, to be tested */
+		start=0x1e;
+		end=0x3e;
+	} else {
+		start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
+		end	 =mem_readw(BIOS_KEYBOARD_BUFFER_END);
+	}
 	head =mem_readw(BIOS_KEYBOARD_BUFFER_HEAD);
 	tail =mem_readw(BIOS_KEYBOARD_BUFFER_TAIL);
 
-	if (head==tail) return 0;
+	if (head==tail) return false;
 	thead=head+2;
 	if (thead>=end) thead=start;
 	mem_writew(BIOS_KEYBOARD_BUFFER_HEAD,thead);
-	return real_readw(0x40,head);
+	code = real_readw(0x40,head);
+	return true;
 }
 
-static Bit16u check_key(void) {
+static bool check_key(Bit16u &code) {
 	Bit16u head,tail;
 	head =mem_readw(BIOS_KEYBOARD_BUFFER_HEAD);
 	tail =mem_readw(BIOS_KEYBOARD_BUFFER_TAIL);
-	if (head==tail) return 0;
-	return real_readw(0x40,head);
+	if (head==tail) return false;
+	code = real_readw(0x40,head);
+	return true;
 }
 
 	/*	Flag Byte 1 
@@ -224,26 +253,34 @@ static Bitu IRQ1_Handler(void) {
 	flags2=mem_readb(BIOS_KEYBOARD_FLAGS2);
 	flags3=mem_readb(BIOS_KEYBOARD_FLAGS3);
 	leds  =mem_readb(BIOS_KEYBOARD_LEDS); 
+#ifdef CAN_USE_LOCK
+	/* No hack anymore! */
+#else
 	flags2&=~(0x40+0x20);//remove numlock/capslock pressed (hack for sdl only reporting states)
+#endif
 	switch (scancode) {
 	/* First the hard ones  */
 	case 0xfa:	/* ack. Do nothing for now */
 		break;
 	case 0xe1:	/* Extended key special. Only pause uses this */
-		LOG(LOG_KEYBOARD,LOG_ERROR)("someone is putting the pause key in the keyboard buffer");
+		flags3 |=0x01;
 		break;
 	case 0xe0:						/* Extended key */
 		flags3 |=0x02;
 		break;
 	case 0x1d:						/* Ctrl Pressed */
-		flags1 |=0x04;
-		if (flags3 &0x02) flags3 |=0x04;
-		else flags2 |=0x01;
+		if (!(flags3 &0x01)) {
+			flags1 |=0x04;
+			if (flags3 &0x02) flags3 |=0x04;
+			else flags2 |=0x01;
+		}	/* else it's part of the pause scancodes */
 		break;
 	case 0x9d:						/* Ctrl Released */
-		if (flags3 &0x02) flags3 &=~0x04;
-		else flags2 &=~0x01;
-		if( !( (flags3 &0x04) || (flags2 &0x01) ) ) flags1 &=~0x04;
+		if (!(flags3 &0x01)) {
+			if (flags3 &0x02) flags3 &=~0x04;
+			else flags2 &=~0x01;
+			if( !( (flags3 &0x04) || (flags2 &0x01) ) ) flags1 &=~0x04;
+		}
 		break;
 	case 0x2a:						/* Left Shift Pressed */
 		flags1 |=0x02;
@@ -275,11 +312,58 @@ static Bitu IRQ1_Handler(void) {
 		}
 		break;
 
-
+#ifdef CAN_USE_LOCK
+	case 0x3a:flags2 |=0x40;break;//CAPSLOCK
+	case 0xba:flags1 ^=0x40;flags2 &=~0x40;leds ^=0x04;break;
+#else
 	case 0x3a:flags2 |=0x40;flags1 |=0x40;leds |=0x04;break; //SDL gives only the state instead of the toggle					/* Caps Lock */
 	case 0xba:flags1 &=~0x40;leds &=~0x04;break;
-	case 0x45:flags2 |=0x20;flags1 |=0x20;leds |=0x02;break;					/* Num Lock */
-	case 0xc5:flags1 &=~0x20;leds &=~0x02;break;
+#endif
+	case 0x45:
+		if (flags3 &0x01) {
+			/* last scancode of pause received; first remove 0xe1-prefix */
+			flags3 &=~0x01;
+			mem_writeb(BIOS_KEYBOARD_FLAGS3,flags3);
+			if (flags2&1) {
+				/* ctrl-pause (break), special handling needed:
+				   add zero to the keyboard buffer, call int 0x1b which
+				   sets ctrl-c flag which calls int 0x23 in certain dos
+				   input/output functions;    not handled */
+			} else if ((flags2&8)==0) {
+				/* normal pause key, enter loop */
+				mem_writeb(BIOS_KEYBOARD_FLAGS2,flags2|8);
+				IO_Write(0x20,0x20);
+				while (mem_readb(BIOS_KEYBOARD_FLAGS2)&8) CALLBACK_Idle();	// pause loop
+				reg_ip+=4;	// skip out 20,20
+				return CBRET_NONE;
+			}
+		} else {
+			/* Num Lock */
+#ifdef CAN_USE_LOCK
+			flags2 |=0x20;
+#else
+			flags2 |=0x20;
+			flags1 |=0x20;
+			leds |=0x02;
+#endif
+		}
+		break;
+	case 0xc5:
+		if (flags3 &0x01) {
+			/* pause released */
+			flags3 &=~0x01;
+		} else {
+#ifdef CAN_USE_LOCK
+			flags1^=0x20;
+			leds^=0x02;
+			flags2&=~0x20;
+#else
+			/* Num Lock released */
+			flags1 &=~0x20;
+			leds &=~0x02;
+#endif
+		}
+		break;
 	case 0x46:flags2 |=0x10;break;				/* Scroll Lock SDL Seems to do this one fine (so break and make codes) */
 	case 0xc6:flags1 ^=0x10;flags2 &=~0x10;leds ^=0x01;break;
 //	case 0x52:flags2|=128;break;//See numpad					/* Insert */
@@ -306,10 +390,10 @@ static Bitu IRQ1_Handler(void) {
 			if(scancode == 0x52) flags2 |=0x80; /* press insert */		   
 			if(flags1 &0x08) {
 				add_key(scan_to_scanascii[scancode].normal+0x5000);
-			} else if( ((flags1 &0x3) != 0) ^ ((flags1 &0x20) != 0) ) {
-				add_key((scan_to_scanascii[scancode].shift&0xff00)|0xe0);
 			} else if (flags1 &0x04) {
 				add_key((scan_to_scanascii[scancode].control&0xff00)|0xe0);
+			} else if( ((flags1 &0x3) != 0) || ((flags1 &0x20) != 0) ) {
+				add_key((scan_to_scanascii[scancode].shift&0xff00)|0xe0);
 			} else add_key((scan_to_scanascii[scancode].normal&0xff00)|0xe0);
 			break;
 		}
@@ -317,10 +401,10 @@ static Bitu IRQ1_Handler(void) {
 			Bit8u token = mem_readb(BIOS_KEYBOARD_TOKEN);
 			token= token*10 + scan_to_scanascii[scancode].alt;
 			mem_writeb(BIOS_KEYBOARD_TOKEN,token);
-		} else if( ((flags1 &0x3) != 0) ^ ((flags1 &0x20) != 0) ) {
-			add_key(scan_to_scanascii[scancode].shift);
 		} else if (flags1 &0x04) {
 			add_key(scan_to_scanascii[scancode].control);
+		} else if( ((flags1 &0x3) != 0) || ((flags1 &0x20) != 0) ) {
+			add_key(scan_to_scanascii[scancode].shift);
 		} else add_key(scan_to_scanascii[scancode].normal);
 		break;
 
@@ -355,12 +439,24 @@ static Bitu IRQ1_Handler(void) {
 					asciiscan=scan_to_scanascii[scancode].shift; 
 			}
 		}
+		if (flags3 &0x02) {
+			/* extended key (numblock), return and slash need special handling */
+			if (scancode==0x1c) {	/* return */
+				if (flags1 &0x08) asciiscan=0xa600;
+				else asciiscan=(asciiscan&0xff)|0xe000;
+			} else if (scancode==0x35) {	/* slash */
+				if (flags1 &0x08) asciiscan=0xa400;
+				else if (flags1 &0x04) asciiscan=0x9500;
+				else asciiscan=0xe02f;
+			}
+		}
 		add_key(asciiscan);
 		break;
 	};
 irq1_end:
 	if(scancode !=0xe0) flags3 &=~0x02;									//Reset 0xE0 Flag
 	mem_writeb(BIOS_KEYBOARD_FLAGS1,flags1);
+	if ((scancode&0x80)==0) flags2&=0xf7;
 	mem_writeb(BIOS_KEYBOARD_FLAGS2,flags2);
 	mem_writeb(BIOS_KEYBOARD_FLAGS3,flags3);
 	mem_writeb(BIOS_KEYBOARD_LEDS,leds);
@@ -376,30 +472,108 @@ irq1_return:
 	return CBRET_NONE;
 }
 
+static Bitu IRQ6_Handler(void) {
+	Bit8u scancode=IO_Read(0x60);
+	/* skip extended keys, all of them should map quite nicely
+	   onto corresponding non-extended keys */
+	if (scancode!=0xe0) {
+		Bit16u old_ax=reg_ax;
+		reg_al=scancode;
+		/* call the real keyboard IRQ now, with the scancode in AL */
+		CALLBACK_RunRealInt(0x09);
+		reg_ax=old_ax;
+	}
+
+	IO_Write(0x20,0x20);
+	return CBRET_NONE;
+}
+
+
+/* check whether key combination is enhanced or not,
+   translate key if necessary */
+static bool IsEnhancedKey(Bit16u &key) {
+	/* test for special keys (return and slash on numblock) */
+	if ((key>>8)==0xe0) {
+		if (((key&0xff)==0x0a) || ((key&0xff)==0x0d)) {
+			/* key is return on the numblock */
+			key=(key&0xff)|0x1c00;
+		} else {
+			/* key is slash on the numblock */
+			key=(key&0xff)|0x3500;
+		}
+		/* both keys are not considered enhanced keys */
+		return false;
+	} else if (((key>>8)>0x84) || (((key&0xff)==0xf0) && (key>>8))) {
+		/* key is enhanced key (either scancode part>0x84 or
+		   specially-marked keyboard combination, low part==0xf0) */
+		return true;
+	}
+	/* convert key if necessary (extended keys) */
+	if ((key>>8) && ((key&0xff)==0xe0))  {
+		key&=0xff00;
+	}
+	return false;
+}
+
 static Bitu INT16_Handler(void) {
-	Bit16u temp;	
+	Bit16u temp=0;
 	switch (reg_ah) {
 	case 0x00: /* GET KEYSTROKE */
-	case 0x10:
-		{
-//TODO find a more elegant way to do this
-			do {
-				temp=get_key();
-				if (temp==0) { CALLBACK_Idle();};
-			} while (temp==0);
-			reg_ax=temp;
-			if(reg_al==0xe0) reg_al=0; //extended key 
-			break;
+		for (;;) {
+			if (get_key(temp)) {
+				if (!IsEnhancedKey(temp)) {
+					/* normal key, exit scanning for keys */
+					break;
+				}
+			}
+			CALLBACK_Idle();
 		}
+		/* normal key found, return translated key in ax */
+		reg_ax=temp;
+		break;
+	case 0x10: /* GET KEYSTROKE (enhanced keyboards only) */
+		for (;;) {
+			if (get_key(temp)) {
+				if (((temp&0xff)==0xf0) && (temp>>8)) {
+					/* special enhanced key, clear low part before returning key */
+					temp&=0xff00;
+				}
+				break;
+			}
+			CALLBACK_Idle();
+		}
+		reg_ax=temp;
+		break;
 	case 0x01: /* CHECK FOR KEYSTROKE */
-	case 0x11:
-		temp=check_key();
-		if (temp==0) {
+		for (;;) {
+			if (check_key(temp)) {
+				if (!IsEnhancedKey(temp)) {
+					/* normal key, return translated key in ax */
+					CALLBACK_SZF(false);
+					reg_ax=temp;
+					break;
+				} else {
+					/* remove enhanced key from buffer and ignore it */
+					get_key(temp);
+				}
+			} else {
+				/* no key available */
+				CALLBACK_SZF(true);
+				break;
+			}
+			CALLBACK_Idle();
+		}
+		break;
+	case 0x11: /* CHECK FOR KEYSTROKE (enhanced keyboards only) */
+		if (!check_key(temp)) {
 			CALLBACK_SZF(true);
 		} else {
 			CALLBACK_SZF(false);
+			if (((temp&0xff)==0xf0) && (temp>>8)) {
+				/* special enhanced key, clear low part before returning key */
+				temp&=0xff00;
+			}
 			reg_ax=temp;
-			if(reg_al==0xe0) reg_al=0; //extended key 
 		}
 		break;
 	case 0x02:	/* GET SHIFT FlAGS */
@@ -417,9 +591,8 @@ static Bitu INT16_Handler(void) {
 		}
 		break;
 	case 0x05:	/* STORE KEYSTROKE IN KEYBOARD BUFFER */
-//TODO make add_key bool :)
-		add_key(reg_cx);
-		reg_al=0;
+		if (add_key_forced(reg_cx)) reg_al=0;
+		else reg_al=1;
 		break;
 	case 0x12: /* GET EXTENDED SHIFT STATES */
 		reg_al=mem_readb(BIOS_KEYBOARD_FLAGS1);
@@ -470,6 +643,11 @@ void BIOS_SetupKeyboard(void) {
 	RealSetVec(0x16,CALLBACK_RealPointer(call_int16));
 	CALLBACK_Setup(call_irq1,&IRQ1_Handler,CB_IRET,"keyboard irq");
 	RealSetVec(0x9,CALLBACK_RealPointer(call_irq1));
+	if (machine==MCH_PCJR) {
+		call_irq6=CALLBACK_Allocate();
+		CALLBACK_Setup(call_irq6,&IRQ6_Handler,CB_IRET,"PCJr kb irq");
+		RealSetVec(0x0e,CALLBACK_RealPointer(call_irq6));
+	}
 
 	/* bring the all port operations outside the callback */
 	phys_writeb(CB_BASE+(call_irq1<<4)+0x00,(Bit8u)0x50);		// push ax

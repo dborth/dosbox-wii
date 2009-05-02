@@ -1,5 +1,5 @@
-#ifndef __LOGGING_H_
-#define __LOGGING_H_
+#ifndef DOSBOX_LOGGING_H
+#define DOSBOX_LOGGING_H
 enum LOG_TYPES {
 	LOG_ALL,
 	LOG_VGA, LOG_VGAGFX,LOG_VGAMISC,LOG_INT10,
@@ -45,6 +45,8 @@ struct LOG
 	void operator()(char const* buf, double f1)											{ return;}
 	void operator()(char const* buf, double f1, double f2)								{ return;}
 	void operator()(char const* buf, double f1, double f2, double f3)					{ return;}
+	void operator()(char const* buf, double f1, double f2, double f3, double f4)					{ return;}
+	void operator()(char const* buf, double f1, double f2, double f3, double f4, double f5)					{ return;}
 
 	void operator()(char const* buf, char const* s1)									{ return;}
 	void operator()(char const* buf, char const* s1, double f1)							{ return;}
@@ -61,5 +63,4 @@ void GFX_ShowMsg(char * format,...);
 #endif //C_DEBUG
 
 
-#endif //__LOGGING_H_
-
+#endif //DOSBOX_LOGGING_H

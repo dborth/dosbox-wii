@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "mem.h"
 #include "setup.h"
 #include "pic.h"
+#include "dma.h"
 
 #define DAC_CLOCK 3570000
 #define MAX_OUTPUT 0x7fff
@@ -306,40 +307,74 @@ static void SN76496_set_gain(int gain)
 }
 
 
+class TANDYSOUND: public Module_base {
+private:
+	IO_WriteHandleObject WriteHandler[3];
+	MixerObject MixerChan;
+public:
+	TANDYSOUND(Section* configuration):Module_base(configuration){
+		Section_prop * section=static_cast<Section_prop *>(configuration);
 
+		real_writeb(0x40,0xd4,0x00);
+		if (IS_TANDY_ARCH) {
+			/* enable tandy sound if tandy=true/auto */
+			if ((strcmp(section->Get_string("tandy"),"true")!=0) &&
+				(strcmp(section->Get_string("tandy"),"on")!=0) &&
+				(strcmp(section->Get_string("tandy"),"auto")!=0)) return;
+		} else {
+			/* only enable tandy sound if tandy=true */
+			if ((strcmp(section->Get_string("tandy"),"true")!=0) &&
+				(strcmp(section->Get_string("tandy"),"on")!=0)) return;
 
-void TANDYSOUND_Init(Section* sec) {
-	if (machine!=MCH_TANDY) return;
-	Section_prop * section=static_cast<Section_prop *>(sec);
+			/* ports from second DMA controller conflict with tandy ports */
+			CloseSecondDMAController();
 
-	IO_RegisterWriteHandler(0xc0,SN76496Write,IO_MB,2);
-	IO_RegisterWriteHandler(0xc4,TandyDACWrite,IO_MB,4);
+			WriteHandler[2].Install(0x1e0,SN76496Write,IO_MB,2);
+		}
+	
+		WriteHandler[0].Install(0xc0,SN76496Write,IO_MB,2);
+		WriteHandler[1].Install(0xc4,TandyDACWrite,IO_MB,4);
+	
+	
+		Bit32u sample_rate = section->Get_int("tandyrate");
+		tandy.chan=MixerChan.Install(&SN76496Update,sample_rate,"TANDY");
+	
+		tandy.enabled=false;
+		real_writeb(0x40,0xd4,0xff);	/* tandy DAC initialization value */
 
-
-	Bit32u sample_rate = section->Get_int("tandyrate");
-	tandy.chan=MIXER_AddChannel(&SN76496Update,sample_rate,"TANDY");
-
-	tandy.enabled=false;
-
-	Bitu i;
-	struct SN76496 *R = &sn;
-	R->SampleRate = sample_rate;
-	SN76496_set_clock(2386360);
-	for (i = 0;i < 4;i++) R->Volume[i] = 0;
-	R->LastRegister = 0;
-	for (i = 0;i < 8;i+=2)
-	{
-		R->Register[i] = 0;
-		R->Register[i + 1] = 0x0f;	/* volume = 0 */
+		Bitu i;
+		struct SN76496 *R = &sn;
+		R->SampleRate = sample_rate;
+		SN76496_set_clock(3579545);
+		for (i = 0;i < 4;i++) R->Volume[i] = 0;
+		R->LastRegister = 0;
+		for (i = 0;i < 8;i+=2)
+		{
+			R->Register[i] = 0;
+			R->Register[i + 1] = 0x0f;	/* volume = 0 */
+		}
+	
+		for (i = 0;i < 4;i++)
+		{
+			R->Output[i] = 0;
+			R->Period[i] = R->Count[i] = R->UpdateStep;
+		}
+		R->RNG = NG_PRESET;
+		R->Output[3] = R->RNG & 1;
+		SN76496_set_gain(0x1);
 	}
+	~TANDYSOUND(){ }
+};
 
-	for (i = 0;i < 4;i++)
-	{
-		R->Output[i] = 0;
-		R->Period[i] = R->Count[i] = R->UpdateStep;
-	}
-	R->RNG = NG_PRESET;
-	R->Output[3] = R->RNG & 1;
-	SN76496_set_gain(0x1);
+
+
+static TANDYSOUND* test;
+
+void TANDYSOUND_ShutDown(Section* sec) {
+	delete test;	
 }
 
+void TANDYSOUND_Init(Section* sec) {
+	test = new TANDYSOUND(sec);
+	sec->AddDestroyFunction(&TANDYSOUND_ShutDown,true);
+}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: ipxserver.cpp,v 1.7 2006/02/09 11:47:49 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -85,7 +87,7 @@ static void sendIPXPacket(Bit8u *buffer, Bit16s bufSize) {
 	if(desthost == 0xffffffff) {
 		// Broadcast
 		for(i=0;i<SOCKETTABLESIZE;i++) {
-			if((connBuffer[i].connected) /* && (ipconn[i].host != srchost) */) {
+			if(connBuffer[i].connected && ((ipconn[i].host != srchost)||(ipconn[i].port!=srcport))) {
 				outPacket.address = ipconn[i];
 				result = SDLNet_UDP_Send(ipxServerSocket,-1,&outPacket);
 				if(result == 0) {
@@ -171,8 +173,6 @@ static void IPX_ServerLoop() {
 	
 		// Check to see if echo packet
 		if(SDLNet_Read16(tmpHeader->dest.socket) == 0x2) {
-			
-
 			// Null destination node means its a server registration packet
 			if(tmpHeader->dest.addr.byIP.host == 0x0) {
 				UnpackIP(tmpHeader->src.addr.byIP, &tmpAddr);
@@ -197,8 +197,6 @@ static void IPX_ServerLoop() {
 							return;
 						}
 					}
-
-
 					
 				}
 			}

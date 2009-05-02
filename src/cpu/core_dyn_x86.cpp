@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,10 +20,23 @@
 
 #if (C_DYNAMIC_X86)
 
+#define CHECKED_MEMORY_ACCESS
+
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
+#include <stdlib.h>
+
+#if (C_HAVE_MPROTECT)
+#include <sys/mman.h>
+
+#include <limits.h>
+#ifndef PAGESIZE
+#define PAGESIZE 4096
+#endif
+#endif /* C_HAVE_MPROTECT */
 
 #include "callback.h"
 #include "regs.h"
@@ -33,11 +46,15 @@
 #include "paging.h"
 #include "inout.h"
 
-#define CACHE_TOTAL		(512*1024)
+#ifdef CHECKED_MEMORY_ACCESS
+#define CACHE_MAXSIZE	(4096*2)
+#else
 #define CACHE_MAXSIZE	(4096)
-#define CACHE_BLOCKS	(32*1024)
+#endif
+#define CACHE_PAGES		(128*8)
+#define CACHE_TOTAL		(CACHE_PAGES*4096)
+#define CACHE_BLOCKS	(64*1024)
 #define CACHE_ALIGN		(16)
-#define CACHE_PAGES		(128)
 #define DYN_HASH_SHIFT	(4)
 #define DYN_PAGE_HASH	(4096>>DYN_HASH_SHIFT)
 #define DYN_LINKS		(16)
@@ -46,6 +63,10 @@
 #define DYN_LOG	LOG_MSG
 #else 
 #define DYN_LOG
+#endif
+
+#if C_FPU
+#define CPU_FPU 1                                               //Enable FPU escape instructions
 #endif
 
 enum {
@@ -98,7 +119,11 @@ enum BlockReturn {
 	BR_OpcodeFull,
 #endif
 	BR_CallBack,
+	BR_SMCBlock
 };
+
+#define SMC_CURRENT_BLOCK	0xffff
+
 
 #define DYNFLG_HAS16		0x1		//Would like 8-bit host reg support
 #define DYNFLG_HAS8			0x2		//Would like 16-bit host reg support
@@ -133,14 +158,14 @@ static struct {
 	Bitu ea,tmpb,tmpd,stack,shift;
 } extra_regs;
 
-static void IllegalOption(void) {
-	E_Exit("Illegal option");
+static void IllegalOption(const char* msg) {
+	E_Exit("DynCore: illegal option in %s",msg);
 }
 
 #include "core_dyn_x86/cache.h" 
 
 static struct {
-	Bitu callback;
+	Bitu callback,readdata;
 } core_dyn;
 
 
@@ -180,12 +205,23 @@ static void dyn_loadstate(DynState * state) {
 	}
 }
 
-
 static void dyn_synchstate(DynState * state) {
 	for (Bitu i=0;i<G_MAX;i++) {
 		gen_synchreg(&DynRegs[i],&state->regs[i]);
 	}
 }
+
+static void dyn_saveregister(DynReg * src_reg, DynReg * dst_reg) {
+	dst_reg->flags=src_reg->flags;
+	dst_reg->genreg=src_reg->genreg;
+}
+
+static void dyn_restoreregister(DynReg * src_reg, DynReg * dst_reg) {
+	dst_reg->flags=src_reg->flags;
+	dst_reg->genreg=src_reg->genreg;
+	dst_reg->genreg->dynreg=dst_reg;	// necessary when register has been released
+}
+
 #include "core_dyn_x86/decoder.h"
 
 Bits CPU_Core_Dyn_X86_Run(void) {
@@ -220,6 +256,10 @@ run_block:
 		return CBRET_NONE;
 	case BR_CallBack:
 		return core_dyn.callback;
+	case BR_SMCBlock:
+//		LOG_MSG("selfmodification of running block at %x:%x",SegValue(cs),reg_eip);
+		cpu.exception.which=0;
+		// fallthrough, let the normal core handle the block-modifying instruction
 	case BR_Opcode:
 		CPU_CycleLeft+=CPU_Cycles;
 		CPU_Cycles=1;
@@ -306,11 +346,14 @@ void CPU_Core_Dyn_X86_Init(void) {
 	DynRegs[G_SHIFT].flags=DYNFLG_HAS8|DYNFLG_HAS16;
 	DynRegs[G_EXIT].data=0;
 	DynRegs[G_EXIT].flags=DYNFLG_HAS16;
-	/* Initialize code cache and dynamic blocks */
-	cache_init();
 	/* Init the generator */
 	gen_init();
 	return;
+}
+
+void CPU_Core_Dyn_X86_Cache_Init(bool enable_cache) {
+	/* Initialize code cache and dynamic blocks */
+	cache_init(enable_cache);
 }
 
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,10 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cross.h,v 1.11 2004/09/16 21:46:03 qbix79 Exp $ */
+/* $Id: cross.h,v 1.16 2006/02/09 11:47:47 qbix79 Exp $ */
 
-#ifndef _CROSS_H
-#define _CROSS_H
+#ifndef DOSBOX_CROSS_H
+#define DOSBOX_CROSS_H
 
 #include <stdio.h>
 #include <sys/stat.h>
@@ -40,7 +40,7 @@
 #define CROSS_LEN 512						/* Maximum filename size */
 
 
-#if defined (WIN32)							/* Win 32 */
+#if defined (WIN32) || defined (OS2)				/* Win 32 & OS/2*/
 #define CROSS_FILENAME(blah) 
 #define CROSS_FILESPLIT '\\'
 #define F_OK 0
@@ -57,4 +57,3 @@
 #endif
 
 #endif
-

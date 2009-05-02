@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,16 +16,15 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#if !defined __DOSBOX_H
-#define __DOSBOX_H
+#ifndef DOSBOX_DOSBOX_H
+#define DOSBOX_DOSBOX_H
+
+#include "config.h"
 
 void E_Exit(char * message,...);
 
 void MSG_Add(const char*,const char*); //add messages to the internal langaugefile
-const char* MSG_Get(char const *);         //get messages from the internal langaugafile
-
-#include <stddef.h>
-#include "config.h"
+const char* MSG_Get(char const *);     //get messages from the internal langaugafile
 
 class Section;
 
@@ -44,15 +43,24 @@ enum MachineType {
 	MCH_HERC,
 	MCH_CGA,
 	MCH_TANDY,
+	MCH_PCJR,
 	MCH_VGA
 };
 
+enum SVGACards {
+	SVGA_None,
+	SVGA_S3Trio
+}; 
+
+extern SVGACards svgaCard;
 extern MachineType machine;
 extern bool SDLNetInited;
 
-#ifndef __LOGGING_H_
+#define IS_TANDY_ARCH ((machine==MCH_TANDY) || (machine==MCH_PCJR))
+#define TANDY_ARCH_CASE MCH_TANDY: case MCH_PCJR
+
+#ifndef DOSBOX_LOGGING_H
 #include "logging.h"
 #endif // the logging system.
 
-#endif /* __DOSBOX_H */
-
+#endif /* DOSBOX_DOSBOX_H */

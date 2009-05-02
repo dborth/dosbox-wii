@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_programs.cpp,v 1.33 2004/11/13 12:08:43 qbix79 Exp $ */
+/* $Id: dos_programs.cpp,v 1.56 2006/03/12 21:12:20 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +32,15 @@
 #include "dos_inc.h"
 #include "bios.h"
 
+#if defined(OS2)
+#define INCL DOSFILEMGR
+#define INCL_DOSERRORS
+#include "os2.h"
+#endif
+
+#if C_DEBUG
+Bitu DEBUG_EnableDebugger(void);
+#endif
 
 void MSCDEX_SetCDInterface(int intNr, int forceCD);
 
@@ -138,20 +147,70 @@ public:
 
 			if (!cmd->FindCommand(2,temp_line)) goto showusage;
 			if (!temp_line.size()) goto showusage;
-#if defined (WIN32)
+			struct stat test;
+			//Win32 : strip tailing backslashes
+			//os2: some special drive check
+			//rest: substiture ~ for home
+			bool failed = false;
+#if defined (WIN32) || defined(OS2)
 			/* Removing trailing backslash if not root dir so stat will succeed */
 			if(temp_line.size() > 3 && temp_line[temp_line.size()-1]=='\\') temp_line.erase(temp_line.size()-1,1);
-#endif
-			struct stat test;
 			if (stat(temp_line.c_str(),&test)) {
+#endif
+#if defined(WIN32)
+// Nothing to do here.
+#elif defined (OS2)
+				if (temp_line.size() <= 2) // Seems to be a drive.
+				{
+					failed = true;
+					HFILE cdrom_fd = 0;
+					ULONG ulAction = 0;
+
+					APIRET rc = DosOpen((unsigned char*)temp_line.c_str(), &cdrom_fd, &ulAction, 0L, FILE_NORMAL, OPEN_ACTION_OPEN_IF_EXISTS,
+						OPEN_FLAGS_DASD | OPEN_SHARE_DENYNONE | OPEN_ACCESS_READONLY, 0L);
+					DosClose(cdrom_fd);
+					if (rc != NO_ERROR && rc != ERROR_NOT_READY)
+					{
+						failed = true;
+					} else {
+						failed = false;
+					}
+				}
+			}
+			if (failed) {
+#else
+			if (stat(temp_line.c_str(),&test)) {
+				failed = true;
+				if(temp_line.size() && temp_line[0] == '~') {
+					char * home = getenv("HOME");
+					if(home) temp_line.replace(0,1,std::string(home));
+					if(!stat(temp_line.c_str(),&test)) failed = false;
+				}
+			}
+			if(failed) {
+#endif
 				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_1"),temp_line.c_str());
 				return;
 			}
 			/* Not a switch so a normal directory/file */
 			if (!(test.st_mode & S_IFDIR)) {
+#ifdef OS2
+				HFILE cdrom_fd = 0;
+				ULONG ulAction = 0;
+
+				APIRET rc = DosOpen((unsigned char*)temp_line.c_str(), &cdrom_fd, &ulAction, 0L, FILE_NORMAL, OPEN_ACTION_OPEN_IF_EXISTS,
+					OPEN_FLAGS_DASD | OPEN_SHARE_DENYNONE | OPEN_ACCESS_READONLY, 0L);
+				DosClose(cdrom_fd);
+				if (rc != NO_ERROR && rc != ERROR_NOT_READY) {
 				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_2"),temp_line.c_str());
 				return;
 			}
+#else
+				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_2"),temp_line.c_str());
+				return;
+#endif
+			}
+
 			if (temp_line[temp_line.size()-1]!=CROSS_FILESPLIT) temp_line+=CROSS_FILESPLIT;
 			Bit8u bit8size=(Bit8u) sizes[1];
 			if (type=="cdrom") {
@@ -173,6 +232,12 @@ public:
 					default :	WriteOut(MSG_Get("MSCDEX_UNKNOWN_ERROR"));			break;
 				};
 			} else {
+				/* Give a warning when mount c:\ or the / */
+#if defined (WIN32) || defined(OS2)
+				if( (temp_line == "c:\\") || (temp_line == "C:\\"))	WriteOut(MSG_Get("PROGRAM_MOUNT_WARNING_WIN"));
+#else
+				if(temp_line == "/") WriteOut(MSG_Get("PROGRAM_MOUNT_WARNING_OTHER"));
+#endif
 				newdrive=new localDrive(temp_line.c_str(),sizes[0],bit8size,sizes[2],sizes[3],mediaid);
 			}
 		} else {
@@ -187,10 +252,20 @@ public:
 		if (!newdrive) E_Exit("DOS:Can't create drive");
 		Drives[drive-'A']=newdrive;
 		/* Set the correct media byte in the table */
-		mem_writeb(Real2Phys(dos.tables.mediaid)+drive-'A',newdrive->GetMediaByte());
+		mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,newdrive->GetMediaByte());
 		WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,newdrive->GetInfo());
 		/* check if volume label is given and don't allow it to updated in the future */
 		if (cmd->FindString("-label",label,true)) newdrive->dirCache.SetLabel(label.c_str(),false);
+		/* For hard drives set the label to DRIVELETTER_Drive.
+		 * For floppy drives set the label to DRIVELETTER_Floppy.
+		 * This way every drive except cdroms should get a label.*/
+		else if(type == "dir") { 
+			label = drive; label += "_DRIVE";
+			newdrive->dirCache.SetLabel(label.c_str(),true);
+		} else if(type == "floppy") {
+			label = drive; label += "_FLOPPY";
+			newdrive->dirCache.SetLabel(label.c_str(),true);
+		}
 		return;
 showusage:
 		WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"));
@@ -207,9 +282,42 @@ public:
 	void Run(void) {
 		/* Show conventional Memory */
 		WriteOut("\n");
+
+		Bit16u umb_start=dos_infoblock.GetStartOfUMBChain();
+		Bit8u umb_flag=dos_infoblock.GetUMBChainState();
+		Bit8u old_memstrat=DOS_GetMemAllocStrategy()&0xff;
+		if (umb_start!=0xffff) {
+			if ((umb_flag&1)==1) DOS_LinkUMBsToMemChain(0);
+			DOS_SetMemAllocStrategy(0);
+		}
+
 		Bit16u seg,blocks;blocks=0xffff;
 		DOS_AllocateMemory(&seg,&blocks);
-		WriteOut(MSG_Get("PROGRAM_MEM_CONVEN"),blocks*16/1024);
+		if ((machine==MCH_PCJR) && (real_readb(0x2000,0)==0x5a) && (real_readw(0x2000,1)==0) && (real_readw(0x2000,3)==0x7ffe)) {
+			WriteOut(MSG_Get("PROGRAM_MEM_CONVEN"),0x7ffe*16/1024);
+		} else WriteOut(MSG_Get("PROGRAM_MEM_CONVEN"),blocks*16/1024);
+
+		if (umb_start!=0xffff) {
+			DOS_LinkUMBsToMemChain(1);
+			DOS_SetMemAllocStrategy(0x40);	// search in UMBs only
+
+			Bit16u largest_block=0,total_blocks=0,block_count=0;
+			for (;; block_count++) {
+				blocks=0xffff;
+				DOS_AllocateMemory(&seg,&blocks);
+				if (blocks==0) break;
+				total_blocks+=blocks;
+				if (blocks>largest_block) largest_block=blocks;
+				DOS_AllocateMemory(&seg,&blocks);
+			}
+
+			Bit8u current_umb_flag=dos_infoblock.GetUMBChainState();
+			if ((current_umb_flag&1)!=(umb_flag&1)) DOS_LinkUMBsToMemChain(umb_flag);
+			DOS_SetMemAllocStrategy(old_memstrat);	// restore strategy
+
+			if (block_count>0) WriteOut(MSG_Get("PROGRAM_MEM_UPPER"),total_blocks*16/1024,block_count,largest_block*16/1024);
+		}
+
 		/* Test for and show free XMS */
 		reg_ax=0x4300;CALLBACK_RunRealInt(0x2f);
 		if (reg_al==0x80) {
@@ -238,7 +346,6 @@ static void MEM_ProgramStart(Program * * make) {
 }
 
 extern Bit32u floppytype;
-
 
 
 class BOOT : public Program {
@@ -282,9 +389,21 @@ private:
 		WriteOut(MSG_Get("PROGRAM_BOOT_PRINT_ERROR"));
 	}
 
+	void disable_umb_ems_xms(void) {
+		Section* dos_sec = control->GetSection("dos");
+		dos_sec->ExecuteDestroy(false);
+		char test[20];
+		strcpy(test,"umb=false");
+		dos_sec->HandleInputline(test);
+		strcpy(test,"xms=false");
+		dos_sec->HandleInputline(test);
+		strcpy(test,"ems=false");
+		dos_sec->HandleInputline(test);
+		dos_sec->ExecuteInit(false);
+     }
 
 public:
-
+   
 	void Run(void) {
 		FILE *usefile;
 		Bitu i; 
@@ -299,7 +418,7 @@ public:
 		drive = 'A';
 		while(i<cmd->GetCount()) {
 			if(cmd->FindCommand(i+1, temp_line)) {
-				if(temp_line == "-l") {
+				if((temp_line == "-l") || (temp_line == "-L")) {
 					/* Specifying drive... next argument then is the drive */
 					i++;
 					if(cmd->FindCommand(i+1, temp_line)) {
@@ -341,39 +460,56 @@ public:
 			return;
 		}
 
-		WriteOut(MSG_Get("PROGRAM_BOOT_BOOT"),"Booting from drive %c...\n", drive);
-		
 		bootSector bootarea;
 		imageDiskList[drive-65]->Read_Sector(0,0,1,(Bit8u *)&bootarea);
-		for(i=0;i<512;i++) real_writeb(0, 0x7c00 + i, bootarea.rawdata[i]);
+		if ((bootarea.rawdata[0]==0x50) && (bootarea.rawdata[1]==0x43) && (bootarea.rawdata[2]==0x6a) && (bootarea.rawdata[3]==0x72)) {
+			if (machine!=MCH_PCJR) WriteOut(MSG_Get("PROGRAM_BOOT_CART_WO_PCJR"));
+			else {
+				disable_umb_ems_xms();
+				Bit8u rombuf[65536];
+				fseek(usefile,0x200L, SEEK_SET);
+				fread(rombuf, 1, rombytesize-0x200, usefile);
+				fclose(usefile);
 
-		
+				/* write cartridge data into ROM */
+				Bit16u romseg=host_readw(&bootarea.rawdata[0x1ce]);
+				for(i=0;i<rombytesize;i++) phys_writeb((romseg<<4)+i,rombuf[i]);
 
-		SegSet16(cs, 0);
-		reg_ip = 0x7c00;
+				/* run cartridge setup */
+				SegSet16(ds,romseg);
+				SegSet16(es,romseg);
+				SegSet16(ss,0x8000);
+				reg_esp=0xfffe;
+				CALLBACK_RunRealFar(romseg,0x0003);
 
-				
+				/* boot cartridge (int18) */
+				SegSet16(cs,mem_readw(0x62));
+				reg_ip = mem_readw(0x60);
+			}
+		} else {
+			disable_umb_ems_xms();
+			WriteOut(MSG_Get("PROGRAM_BOOT_BOOT"), drive);
+			for(i=0;i<512;i++) real_writeb(0, 0x7c00 + i, bootarea.rawdata[i]);
 
-		/* Most likely a PCJr ROM */
-		/* Write it to E000:0000 */
-		/* Code inoperable at the moment */
+			/* revector some dos-allocated interrupts */
+			real_writed(0,0x01*4,0xf000ff53);
+			real_writed(0,0x03*4,0xf000ff53);
 
-		/*
-		Bit8u rombuff[65536];
-		fseek(tmpfile,512L, SEEK_SET);
-		rombytesize-=512;
-		fread(rombuff, 1, rombytesize, tmpfile);
-		fclose(tmpfile);
-		for(i=0;i<rombytesize;i++) real_writeb(0xe000,i,rombuff[i]);
-		SegSet16(cs,0xe000);
-		SegSet16(ds,0x0060);
-		SegSet16(es,0x0060);
-		SegSet16(ss,0x0060);
-		reg_ip = 0x0;
-		reg_sp = 0x0;
-		reg_cx = 0xffff;
-		DEBUG_EnableDebugger();
-		*/
+			SegSet16(cs, 0);
+			reg_ip = 0x7c00;
+			SegSet16(ds, 0);
+			SegSet16(es, 0);
+			/* set up stack at a safe place */
+			SegSet16(ss, 0x7000);
+			reg_esp = 0xfffe;
+			reg_esi = 0;
+			reg_ecx = 1;
+			reg_ebp = 0;
+			reg_eax = 0;
+			reg_edx = 0; //Head 0 drive 0
+			reg_ebx= 0x7c00; //Real code probably uses bx to load the image
+			//DEBUG_EnableDebugger();
+		}
 	}
 };
 
@@ -422,7 +558,7 @@ void LOADFIX::Run(void)
 		if (cmd->FindCommand(commandNr++,temp_line)) {
 			// get Filename
 			char filename[128];
-			strncpy(filename,temp_line.c_str(),128);
+			safe_strncpy(filename,temp_line.c_str(),128);
 			// Setup commandline
 			bool ok;
 			char args[256];
@@ -470,12 +606,41 @@ static void RESCAN_ProgramStart(Program * * make) {
 
 class INTRO : public Program {
 public:
+	void DisplayMount(void) {
+		/* Basic mounting has a version for each operating system.
+		 * This is done this way so both messages appear in the language file*/
+		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_START"));
+#if (WIN32)
+		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_WINDOWS"));
+#else			
+		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_OTHER"));
+#endif
+		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_END"));
+	}
+
 	void Run(void) {
 		if(cmd->FindExist("cdrom",false)) {
-			WriteOut(MSG_Get("PROGRAM_INTRO_CDROM"));		
+			WriteOut(MSG_Get("PROGRAM_INTRO_CDROM"));
 			return;
 		}
+		if(cmd->FindExist("mount",false)) {
+			WriteOut("\033[2J");//Clear screen before printing
+			DisplayMount();
+			return;
+		}
+		if(cmd->FindExist("special",false)) {
+			WriteOut(MSG_Get("PROGRAM_INTRO_SPECIAL"));
+			return;
+		}
+		/* Default action is to show all pages */
 		WriteOut(MSG_Get("PROGRAM_INTRO"));
+		Bit8u c;Bit16u n=1;
+		DOS_ReadFile (STDIN,&c,&n);
+		DisplayMount();
+		DOS_ReadFile (STDIN,&c,&n);
+		WriteOut(MSG_Get("PROGRAM_INTRO_CDROM"));
+		DOS_ReadFile (STDIN,&c,&n);
+		WriteOut(MSG_Get("PROGRAM_INTRO_SPECIAL"));
 	}
 };
 
@@ -497,16 +662,17 @@ public:
 		std::string fstype="fat";
 		cmd->FindString("-t",type,true);
 		cmd->FindString("-fs",fstype,true);
+		if(type == "cdrom") type = "iso"; //Tiny hack for people who like to type -t cdrom
 		Bit8u mediaid;
 		if (type=="floppy" || type=="hdd" || type=="iso") {
 			Bit16u sizes[4];
 			
 			std::string str_size;
-			mediaid=0xF8;		
+			mediaid=0xF8;
 
 			if (type=="floppy") {
 				mediaid=0xF0;		
-			} else if (type=="cdrom" || type=="iso") {
+			} else if (type=="iso") {
 				str_size="650,127,16513,1700";
 				mediaid=0xF8;		
 				fstype = "iso";
@@ -531,8 +697,7 @@ public:
 		
 			if(fstype=="fat" || fstype=="iso") {
 				// get the drive letter
-				cmd->FindCommand(1,temp_line);
-				if ((temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) {
+				if (!cmd->FindCommand(1,temp_line) || (temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) {
 					WriteOut(MSG_Get("PROGRAM_IMGMOUNT_SPECIFY_DRIVE"));
 					return;
 				}
@@ -570,10 +735,10 @@ public:
 				// convert dosbox filename to system filename
 				char fullname[CROSS_LEN];
 				char tmp[CROSS_LEN];
-				strncpy(tmp, temp_line.c_str(), CROSS_LEN);
+				safe_strncpy(tmp, temp_line.c_str(), CROSS_LEN);
 				
 				Bit8u drive;
-				if (!DOS_MakeName(tmp, fullname, &drive)) {
+				if (!DOS_MakeName(tmp, fullname, &drive) || strncmp(Drives[drive]->GetInfo(),"local directory",15)) {
 					WriteOut(MSG_Get("PROGRAM_IMGMOUNG_FILE_NOT_FOUND"));
 					return;
 				}
@@ -597,6 +762,7 @@ public:
 				newdrive=new fatDrive(temp_line.c_str(),sizes[0],sizes[1],sizes[2],sizes[3],0);
 			} else if (fstype=="iso") {
 				int error;
+				MSCDEX_SetCDInterface(CDROM_USE_SDL, -1); 
 				newdrive = new isoDrive(drive, temp_line.c_str(), mediaid, error);
 				switch (error) {
 					case 0  :	WriteOut(MSG_Get("MSCDEX_SUCCESS"));			break;
@@ -619,7 +785,11 @@ public:
 				newImage = new imageDisk(newDisk, (Bit8u *)temp_line.c_str(), imagesize, (imagesize > 2880));
 				if(imagesize>2880) newImage->Set_Geometry(sizes[2],sizes[3],sizes[1],sizes[0]);
 			}
+		} else {
+			WriteOut(MSG_Get("PROGRAM_IMGMOUNT_TYPE_UNSUPPORTED"),type.c_str());
+			return;
 		}
+
 		if(fstype=="fat") {
 			if (Drives[drive-'A']) {
 				WriteOut(MSG_Get("PROGRAM_IMGMOUNT_ALLREADY_MOUNTED"));
@@ -629,7 +799,7 @@ public:
 			if (!newdrive) WriteOut(MSG_Get("PROGRAM_IMGMOUNT_CANT_CREATE"));
 			Drives[drive-'A']=newdrive;
 			// Set the correct media byte in the table 
-			mem_writeb(Real2Phys(dos.tables.mediaid)+drive-'A',mediaid);
+			mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,mediaid);
 			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,temp_line.c_str());
 			if(((fatDrive *)newdrive)->loadedDisk->hardDrive) {
 				if(imageDiskList[2] == NULL) {
@@ -655,7 +825,7 @@ public:
 			if (!newdrive) WriteOut(MSG_Get("PROGRAM_IMGMOUNT_CANT_CREATE"));
 			Drives[drive-'A']=newdrive;
 			// Set the correct media byte in the table 
-			mem_writeb(Real2Phys(dos.tables.mediaid)+drive-'A',mediaid);
+			mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,mediaid);
 			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,temp_line.c_str());
 		} else if (fstype=="none") {
 			if(imageDiskList[drive] != NULL) delete imageDiskList[drive];
@@ -690,10 +860,13 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED","Drive %c isn't mounted.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCES","Drive %c has succesfully been removed.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL","Virtual Drives can not be unMOUNTed.\n");
-   
+	MSG_Add("PROGRAM_MOUNT_WARNING_WIN","\033[31;1mMounting c:\\ is NOT recommended. Please mount a (sub)directory next time.\033[0m\n");
+	MSG_Add("PROGRAM_MOUNT_WARNING_OTHER","\033[31;1mMounting / is NOT recommended. Please mount a (sub)directory next time.\033[0m\n");
+
 	MSG_Add("PROGRAM_MEM_CONVEN","%10d Kb free conventional memory\n");
 	MSG_Add("PROGRAM_MEM_EXTEND","%10d Kb free extended memory\n");
 	MSG_Add("PROGRAM_MEM_EXPAND","%10d Kb free expanded memory\n");
+	MSG_Add("PROGRAM_MEM_UPPER","%10d Kb free upper memory in %d blocks (largest UMB %d Kb)\n");
 
 	MSG_Add("PROGRAM_LOADFIX_ALLOC","%d kb allocated.\n");
 	MSG_Add("PROGRAM_LOADFIX_DEALLOC","%d kb freed.\n");
@@ -711,27 +884,52 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_RESCAN_SUCCESS","Drive cache cleared.\n");
 
 	MSG_Add("PROGRAM_INTRO",
-		"\033[2J\033[33;1mWelcome to DOSBox\033[0m, an x86 emulator with sound and graphics.\n"
+		"\033[2J\033[32;1mWelcome to DOSBox\033[0m, an x86 emulator with sound and graphics.\n"
 		"DOSBox creates a shell for you which looks like old plain DOS.\n"
-		"\n"	    
-		"Here are some commands to get you started:\n"
+		"\n"
+		"For information about basic mount type \033[34;1mintro mount\033[0m\n"
+		"For information about CD-ROM support type \033[34;1mintro cdrom\033[0m\n"
+		"For information about special keys type \033[34;1mintro special\033[0m\n"
+		"For more information about DOSBox, go to \033[34;1mhttp://dosbox.sourceforge.net/wiki\033[0m\n"
+		"\n"
+		"\033[31;1mDOSBox will stop/exit without a warning if an error occured!\033[0m\n"
+		"\n"
+		"\n"
+		);
+	MSG_Add("PROGRAM_INTRO_MOUNT_START",
+		"\033[32;1mHere are some commands to get you started:\033[0m\n"
 		"Before you can use the files located on your own filesystem,\n"
 		"You have to mount the directory containing the files.\n"
-		"For \033[1mWindows\033[0m:\n"
-		"\033[34;1mmount c c:\\dosprog\033[0m will create a C drive in DOSBox with c:\\dosprog as contents.\n"
 		"\n"
-		"For \033[1mother platforms\033[0m:\n"
-		"\033[34;1mmount c /home/user/dosprog\033[0m will do the same.\n"
-		"\n"
+		);
+	MSG_Add("PROGRAM_INTRO_MOUNT_WINDOWS",
+		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
+		"\xBA \033[32mmount c c:\\dosprog\\\033[37m will create a C drive with c:\\dosprog as contents. \xBA\n"
+		"\xBA                                                                        \xBA\n"
+		"\xBA \033[32mc:\\dosprog\\\033[37m is an example. Replace it with your own games directory.  \033[37m \xBA\n"
+		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
+		);
+	MSG_Add("PROGRAM_INTRO_MOUNT_OTHER",
+		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
+		"\xBA \033[32mmount c ~/dosprog\033[37m will create a C drive with ~/dosprog as contents. \xBA\n"
+		"\xBA                                                                     \xBA\n"
+		"\xBA \033[32m~/dosprog\033[37m is an example. Replace it with your own games directory. \033[37m \xBA\n"
+		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
+		);
+	MSG_Add("PROGRAM_INTRO_MOUNT_END",
 		"When the mount has succesfully completed you can type \033[34;1mc:\033[0m to go to your freshly\n"
 		"mounted C-drive. Typing \033[34;1mdir\033[0m there will show its contents."
 		" \033[34;1mcd\033[0m will allow you to\n"
-		"enter a directory (recognised by the \033[1m[]\033[0m in a directory listing).\n"
+		"enter a directory (recognised by the \033[33;1m[]\033[0m in a directory listing).\n"
 		"You can run programs/files which end with \033[31m.exe .bat\033[0m and \033[31m.com\033[0m.\n"
-		"\n"
-		"For information about CD-ROM support type \033[34;1mintro cdrom\033[0m\n"
-		"\n"
-		"\033[32;1mDOSBox will stop/exit without a warning if an error occured!\033[0m\n"
 		);
 	MSG_Add("PROGRAM_INTRO_CDROM",
 		"\033[2J\033[32;1mHow to mount a Real/Virtual CD-ROM Drive in DOSBox:\033[0m\n"
@@ -756,7 +954,29 @@ void DOS_SetupPrograms(void) {
 		"\n"
 		"Replace \033[0;31mD:\\\033[0m with the location of your CD-ROM.\n"
 		"Replace the \033[33;1m0\033[0m in \033[34;1m-usecd \033[33m0\033[0m with the number reported for your CD-ROM if you type:\n"
-		"\033[34;1mmount -cd\033[0m"
+		"\033[34;1mmount -cd\033[0m\n"
+		);
+	MSG_Add("PROGRAM_INTRO_SPECIAL",
+		"\033[2J\033[32;1mSpecial keys:\033[0m\n"
+		"These are the default keybindings.\n"
+		"They can be changed in the \033[33mkeymapper\033[0m.\n"
+		"\n"
+		"\033[33;1mALT-ENTER\033[0m   : Go full screen and back.\n"
+		"\033[33;1mALT-PAUSE\033[0m   : Pause DOSBox.\n"
+		"\033[33;1mCTRL-F1\033[0m     : Start the \033[33mkeymapper\033[0m.\n"
+		"\033[33;1mCTRL-F4\033[0m     : Update directory cache for all drives! Swap mounted disk-image.\n"
+		"\033[33;1mCTRL-ALT-F5\033[0m : Start/Stop creating a movie of the screen.\n"
+		"\033[33;1mCTRL-F5\033[0m     : Save a screenshot.\n"
+		"\033[33;1mCTRL-F6\033[0m     : Start/Stop recording sound output to a wave file.\n"
+		"\033[33;1mCTRL-ALT-F7\033[0m : Start/Stop recording of OPL commands.\n"
+		"\033[33;1mCTRL-ALT-F8\033[0m : Start/Stop the recording of raw MIDI commands.\n"
+		"\033[33;1mCTRL-F7\033[0m     : Decrease frameskip.\n"
+		"\033[33;1mCTRL-F8\033[0m     : Increase frameskip.\n"
+		"\033[33;1mCTRL-F9\033[0m     : Kill DOSBox.\n"
+		"\033[33;1mCTRL-F10\033[0m    : Capture/Release the mouse.\n"
+		"\033[33;1mCTRL-F11\033[0m    : Slow down emulation (Decrease DOSBox Cycles).\n"
+		"\033[33;1mCTRL-F12\033[0m    : Speed up emulation (Increase DOSBox Cycles).\n"
+		"\033[33;1mALT-F12\033[0m     : Unlock speed (turbo button).\n"
 		);
 	MSG_Add("PROGRAM_BOOT_NOT_EXIST","Bootdisk file does not exist.  Failing.\n");
 	MSG_Add("PROGRAM_BOOT_NOT_OPEN","Cannot open bootdisk file.  Failing.\n");
@@ -774,6 +994,7 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_BOOT_IMAGE_OPEN","Opening image file: %s\n");
 	MSG_Add("PROGRAM_BOOT_IMAGE_NOT_OPEN","Cannot open %s");
 	MSG_Add("PROGRAM_BOOT_BOOT","Booting from drive %c...\n");
+	MSG_Add("PROGRAM_BOOT_CART_WO_PCJR","PCJr cartridge found, but machine is not PCJr");
 
 	MSG_Add("PROGRAM_IMGMOUNT_SPECIFY_DRIVE","Must specify drive letter to mount image at.\n");
 	MSG_Add("PROGRAM_IMGMOUNT_SPECIFY2","Must specify drive number (0 or 3) to mount image at (0,1=fda,fdb;2,3=hda,hdb).\n");
@@ -782,6 +1003,7 @@ void DOS_SetupPrograms(void) {
 		"\n"
 		"For \033[33mhardrive\033[0m images: Must specify drive geometry for hard drives:\n"
 		"bytes_per_sector, sectors_per_cylinder, heads_per_cylinder, cylinder_count.\n");
+	MSG_Add("PROGRAM_IMGMOUNT_TYPE_UNSUPPORTED","Type \"%s\" is unsupported. Specify \"hdd\" or \"floppy\" or\"iso\".\n");
 	MSG_Add("PROGRAM_IMGMOUNT_FORMAT_UNSUPPORTED","Format \"%s\" is unsupported. Specify \"fat\" or \"iso\" or \"none\".\n");
 	MSG_Add("PROGRAM_IMGMOUNT_SPECIFY_FILE","Must specify file-image to mount.\n");
 	MSG_Add("PROGRAM_IMGMOUNG_FILE_NOT_FOUND","Image file not found.\n");

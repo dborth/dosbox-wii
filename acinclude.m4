@@ -305,7 +305,7 @@ AC_SUBST(ALSA_LIBS)
 
 AH_TOP([
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -329,6 +329,12 @@ AH_BOTTOM([#if C_HAS_ATTRIBUTE
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
+#endif])
+
+AH_BOTTOM([#if C_HAS_BUILTIN_EXPECT
+#define GCC_UNLIKELY(x) __builtin_expect((x),0)
+#else
+#define GCC_UNLIKELY(x) (x)
 #endif])
 
 AH_BOTTOM([

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ void DEBUG_SetupConsole(void);
 void DEBUG_DrawScreen(void);
 bool DEBUG_Breakpoint(void);
 bool DEBUG_IntBreakpoint(Bit8u intNum);
-void DEBUG_Enable(void);
+void DEBUG_Enable(bool pressed);
 void DEBUG_CheckExecuteBreakpoint(Bit16u seg, Bit32u off);
 bool DEBUG_ExitLoop(void);
 void DEBUG_RefreshPage(char scroll);

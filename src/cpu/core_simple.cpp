@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -165,7 +165,7 @@ restart_opcode:
 //					sprintf(writecode,"%X",mem_readb(core.cseip++));
 					writecode+=2;
 				}
-				LOG(LOG_CPU,LOG_ERROR)("Illegal/Unhandled opcode %s",tempcode);
+				LOG(LOG_CPU,LOG_NORMAL)("Illegal/Unhandled opcode %s",tempcode);
 			}
 #endif
 			CPU_Exception(6,0);
@@ -200,4 +200,3 @@ Bits CPU_Core_Simple_Trap_Run(void) {
 void CPU_Core_Simple_Init(void) {
 
 }
-

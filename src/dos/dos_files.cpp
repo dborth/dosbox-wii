@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_files.cpp,v 1.59 2004/11/16 14:28:15 qbix79 Exp $ */
+/* $Id: dos_files.cpp,v 1.72 2006/03/10 09:38:24 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -53,7 +53,10 @@ void DOS_SetDefaultDrive(Bit8u drive) {
 }
 
 bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
-	if(strlen(name) == 0) {
+
+	if(!name || *name == 0 || *name == ' ') {
+		/* Both \0 and space are seperators and
+		 * empty filenames report file not found */
 		DOS_SetError(DOSERR_FILE_NOT_FOUND);
 		return false;
 	}
@@ -81,15 +84,16 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 		case '/':
 			upname[w++]='\\';
 			break;
-		case ' ':
+		case ' ': /* should be seperator */
 			break;
 		case '\\':	case '$':	case '#':	case '@':	case '(':	case ')':
 		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
 		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
-		case '\'':	case '+':	case '^':
+		case '\'':	case '+':	case '^':	case 246:	case 255:	case 0xa0:
 			upname[w++]=c;
 			break;
 		default:
+			LOG(LOG_FILES,LOG_NORMAL)("Makename encountered an illegal char %c hex:%X !",c,c);
 			DOS_SetError(DOSERR_PATH_NOT_FOUND);return false;
 			break;
 		}
@@ -195,8 +199,20 @@ bool DOS_ChangeDir(char * dir) {
 
 bool DOS_MakeDir(char * dir) {
 	Bit8u drive;char fulldir[DOS_PATHLENGTH];
+	size_t len = strlen(dir);
+	if(!len || dir[len-1] == '\\') {
+		DOS_SetError(DOSERR_PATH_NOT_FOUND);
+		return false;
+	}
 	if (!DOS_MakeName(dir,fulldir,&drive)) return false;
-	return Drives[drive]->MakeDir(fulldir);
+	if(Drives[drive]->MakeDir(fulldir)) return true;
+
+	/* Determine reason for failing */
+	if(Drives[drive]->TestDir(fulldir)) 
+		DOS_SetError(DOSERR_ACCESS_DENIED);
+	else
+		DOS_SetError(DOSERR_PATH_NOT_FOUND);
+	return false;
 }
 
 bool DOS_RemoveDir(char * dir) {
@@ -242,6 +258,12 @@ bool DOS_FindFirst(char * search,Bit16u attr,bool fcb_findfirst) {
 	DOS_DTA dta(dos.dta());
 	Bit8u drive;char fullsearch[DOS_PATHLENGTH];
 	char dir[DOS_PATHLENGTH];char pattern[DOS_PATHLENGTH];
+	size_t len = strlen(search);
+	if(len && search[len - 1] == '\\' && !( (len > 2) && (search[len - 2] == ':') && (attr == DOS_ATTR_VOLUME) )) { 
+		//Dark Forces installer, but c:\ is allright for volume labels(exclusively set)
+		DOS_SetError(DOSERR_NO_MORE_FILES);
+		return false;
+	}
 	if (!DOS_MakeName(search,fullsearch,&drive)) return false;
 	/* Split the search in dir and pattern */
 	char * find_last;
@@ -267,7 +289,14 @@ bool DOS_FindFirst(char * search,Bit16u attr,bool fcb_findfirst) {
 
 bool DOS_FindNext(void) {
 	DOS_DTA dta(dos.dta());
-	if (Drives[dta.GetSearchDrive()]->FindNext(dta)) return true;
+	Bit8u i = dta.GetSearchDrive();
+	if(i >= DOS_DRIVES || !Drives[i]) {
+		/* Corrupt search. */
+		LOG(LOG_FILES,LOG_ERROR)("Corrupt search!!!!");
+		DOS_SetError(DOSERR_NO_MORE_FILES); 
+		return false;
+	} 
+	if (Drives[i]->FindNext(dta)) return true;
 	return false;
 }
 
@@ -394,21 +423,20 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	if (flags>2) LOG(LOG_FILES,LOG_ERROR)("Special file open command %X file %s",flags,name);
 	else LOG(LOG_FILES,LOG_NORMAL)("file open command %X file %s",flags,name);
 
+	DOS_PSP psp(dos.psp());
 	Bit16u attr = 0;
-	if(DOS_GetFileAttr(name,&attr)){ //DON'T ALLOW directories to be openened
+	Bit8u devnum = DOS_FindDevice((char *)name);
+	bool device = (devnum != DOS_DEVICES);
+	if(!device && DOS_GetFileAttr(name,&attr)) {
+	//DON'T ALLOW directories to be openened.(skip test if file is device).
 		if((attr & DOS_ATTR_DIRECTORY) || (attr & DOS_ATTR_VOLUME)){
 			DOS_SetError(DOSERR_ACCESS_DENIED);
 			return false;
 		}
 	}
-      
-	DOS_PSP psp(dos.psp());
-	Bit8u devnum=DOS_DEVICES;
-	devnum=DOS_FindDevice((char *)name);
-	bool device=(devnum!=DOS_DEVICES);
+
 	char fullname[DOS_PATHLENGTH];Bit8u drive;Bit8u i;
-	
-		/* First check if the name is correct */
+	/* First check if the name is correct */
 	if (!DOS_MakeName(name,fullname,&drive)) return false;
 	Bit8u handle=255;		
 	/* Check for a free file handle */
@@ -440,7 +468,11 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 		psp.SetFileHandle(*entry,handle);
 		return true;
 	} else {
-		DOS_SetError(DOSERR_FILE_NOT_FOUND);
+		//Test if file exists, but opened in read-write mode (and writeprotected)
+		if(((flags&3) != OPEN_READ) && Drives[drive]->FileExists(fullname))
+			DOS_SetError(DOSERR_ACCESS_DENIED);
+		else
+			DOS_SetError(DOSERR_FILE_NOT_FOUND);
 		return false;
 	}
 }
@@ -501,7 +533,7 @@ bool DOS_SetFileAttr(char * name,Bit16u attr)
 	Bit16u attrTemp;
 	char fullname[DOS_PATHLENGTH];Bit8u drive;
 	if (!DOS_MakeName(name,fullname,&drive)) return false;	
-	if (strcmp(Drives[drive]->GetInfo(),"CDRom.")==0) {
+	if (strcmp(Drives[drive]->GetInfo(),"CDRom.")==0 || strcmp(Drives[drive]->GetInfo(),"isoDrive")==0) {
 		DOS_SetError(DOSERR_ACCESS_DENIED);
 		return false;
 	}
@@ -558,14 +590,12 @@ bool DOS_DuplicateEntry(Bit16u entry,Bit16u * newentry) {
 };
 
 bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry) {
-	// Dont duplicate console handles
-/*	if (entry<=STDPRN) {
-		newentry = entry;
-		return true;
-	};
-*/
-	Bit8u orig=RealHandle(entry);
-	if (orig>=DOS_FILES) {
+	if(entry == newentry) {
+		DOS_SetError(DOSERR_INVALID_HANDLE);
+		return false;
+	}
+	Bit8u orig = RealHandle(entry);
+	if (orig >= DOS_FILES) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -573,18 +603,13 @@ bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	Bit8u newone=RealHandle(newentry);
-	if (newone>=DOS_FILES) {
-		DOS_SetError(DOSERR_INVALID_HANDLE);
-		return false;
-	};
-	if (Files[newone]) {
+	Bit8u newone = RealHandle(newentry);
+	if (newone < DOS_FILES && Files[newone]) {
 		DOS_CloseFile(newentry);
-		return false;
-	};
+	}
 	DOS_PSP psp(dos.psp());
 	Files[orig]->AddRef();
-	psp.SetFileHandle(newentry,(Bit8u)entry);
+	psp.SetFileHandle(newentry,orig);
 	return true;
 };
 
@@ -626,8 +651,7 @@ static bool isvalid(const char in){
 #define PARSE_RET_WILD          1
 #define PARSE_RET_BADDRIVE      0xff
 
-Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *change){
-    
+Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *change) {
 	char * string_begin=string;Bit8u ret=0;
     DOS_FCB fcb(seg,offset);
 	bool hasdrive,hasname,hasext;
@@ -649,7 +673,9 @@ Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *
 #pragma pack()
 #endif
 	/* Get the old information from the previous fcb */
-	fcb.GetName(fcb_name.full);fcb_name.part.drive[1]=0;fcb_name.part.name[8]=0;fcb_name.part.ext[3]=0;
+	fcb.GetName(fcb_name.full);
+	fcb_name.part.drive[0]-='A'-1;fcb_name.part.drive[1]=0;
+	fcb_name.part.name[8]=0;fcb_name.part.ext[3]=0;
 	/* Strip of the leading sepetaror */
 	if((parser & PARSE_SEP_STOP) && *string)  {       //ignore leading seperator
 		char sep[] = FCB_SEP;char a[2];
@@ -989,7 +1015,7 @@ bool DOS_GetAllocationInfo(Bit8u drive,Bit16u * _bytes_sector,Bit8u * _sectors_c
 	Bit16u _free_clusters;
 	Drives[drive]->AllocationInfo(_bytes_sector,_sectors_cluster,_total_clusters,&_free_clusters);
 	SegSet16(ds,RealSeg(dos.tables.mediaid));
-	reg_bx=RealOff(dos.tables.mediaid+drive);
+	reg_bx=RealOff(dos.tables.mediaid+drive*2);
 	return true;
 }
 
@@ -1034,8 +1060,3 @@ void DOS_SetupFiles (void) {
 	}
 	Drives[25]=new Virtual_Drive();
 }
-
-
-
-
-

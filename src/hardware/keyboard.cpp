@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,11 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: keyboard.cpp,v 1.29 2004/10/12 16:21:22 qbix79 Exp $ */
-
-#include <string.h>
-#include <assert.h>
-#include <timer.h>
+/* $Id: keyboard.cpp,v 1.35 2006/02/09 11:47:49 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "keyboard.h"
@@ -28,6 +24,7 @@
 #include "pic.h"
 #include "mem.h"
 #include "mixer.h"
+#include "timer.h"
 
 #define KEYBUFSIZE 32
 #define KEYDELAY 0.300f			//Considering 20-30 khz serial clock and 11 bits/char
@@ -59,7 +56,8 @@ static struct {
 static void KEYBOARD_SetPort60(Bit8u val) {
 	keyb.p60changed=true;
 	keyb.p60data=val;
-	PIC_ActivateIRQ(1);
+	if (machine==MCH_PCJR) PIC_ActivateIRQ(6);
+	else PIC_ActivateIRQ(1);
 }
 
 static void KEYBOARD_TransferBuffer(Bitu val) {
@@ -75,7 +73,7 @@ static void KEYBOARD_TransferBuffer(Bitu val) {
 }
 
 
-static void KEYBOARD_ClrBuffer(void) {
+void KEYBOARD_ClrBuffer(void) {
 	keyb.used=0;
 	keyb.pos=0;
 	PIC_RemoveEvents(KEYBOARD_TransferBuffer);
@@ -312,6 +310,7 @@ void KEYBOARD_AddKey(KBD_KEYS keytype,bool pressed) {
 	case KBD_kp0:ret=82;break;
 	case KBD_kpperiod:ret=83;break;
 
+	case KBD_extra_lt_gt:ret=86;break;
 	case KBD_f11:ret=87;break;
 	case KBD_f12:ret=88;break;
 
@@ -332,6 +331,10 @@ void KEYBOARD_AddKey(KBD_KEYS keytype,bool pressed) {
 	case KBD_insert:extend=true;ret=82;break;
 	case KBD_delete:extend=true;ret=83;break;
 	case KBD_pause:
+		KEYBOARD_AddBuffer(0xe1);
+		KEYBOARD_AddBuffer(29|(pressed?0:0x80));
+		KEYBOARD_AddBuffer(69|(pressed?0:0x80));
+		return;
 	case KBD_printscreen:
 		/* Not handled yet. But usuable in mapper for special events */
 		return;

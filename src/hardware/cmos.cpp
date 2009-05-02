@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "inout.h"
 #include "mem.h"
 #include "bios.h"
+#include "setup.h"
 
 static struct {
 	Bit8u regs[0x40];
@@ -45,7 +46,10 @@ static struct {
 
 static void cmos_timerevent(Bitu val) {
 	PIC_ActivateIRQ(8); 
-	if (cmos.timer.enabled) PIC_AddEvent(cmos_timerevent,cmos.timer.delay);
+	if (cmos.timer.enabled) {
+		PIC_AddEvent(cmos_timerevent,cmos.timer.delay);
+		cmos.regs[0xc] = 0xC0;//Contraption Zack (music)
+	}
 }
 
 static void cmos_checktimer(void) {
@@ -71,6 +75,7 @@ static void cmos_writereg(Bitu port,Bitu val,Bitu iolen) {
 	case 0x07:		/* Date of month */
 	case 0x08:		/* Month */
 	case 0x09:		/* Year */
+	case 0x32:              /* Century */
 		/* Ignore writes to change alarm */
 		break;
 	case 0x01:		/* Seconds Alarm */
@@ -92,6 +97,9 @@ static void cmos_writereg(Bitu port,Bitu val,Bitu iolen) {
 		if (val&0x10) LOG(LOG_BIOS,LOG_ERROR)("CMOS:Updated ended interrupt not supported yet");
 		cmos_checktimer();
 		break;
+	case 0x0d:/* Status reg D */
+		cmos.regs[cmos.reg]=val & 0x80;	/*Bit 7=1:RTC Pown on*/
+		break;
 	case 0x0f:		/* Shutdown status byte */
 		cmos.regs[cmos.reg]=val & 0x7f;
 		break;
@@ -102,7 +110,7 @@ static void cmos_writereg(Bitu port,Bitu val,Bitu iolen) {
 }
 
 
-#define MAKE_RETURN(_VAL) (cmos.bcd ? (((_VAL / 10) << 4) | (_VAL % 10)) : _VAL);
+#define MAKE_RETURN(_VAL) (cmos.bcd ? ((((_VAL) / 10) << 4) | ((_VAL) % 10)) : (_VAL));
 
 static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 	if (cmos.reg>0x3f) {
@@ -113,7 +121,6 @@ static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 	Bit8u hdparm;
 	time_t curtime;
 	struct tm *loctime;
-
 	/* Get the current time. */
 	curtime = time (NULL);
 
@@ -128,18 +135,20 @@ static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 	case 0x04:		/* Hours */
 		return 	MAKE_RETURN(loctime->tm_hour);
 	case 0x06:		/* Day of week */
-		return 	MAKE_RETURN(loctime->tm_wday);
+		return 	MAKE_RETURN(loctime->tm_wday + 1);
 	case 0x07:		/* Date of month */
 		return 	MAKE_RETURN(loctime->tm_mday);
 	case 0x08:		/* Month */
-		return 	MAKE_RETURN(loctime->tm_mon);
+		return 	MAKE_RETURN(loctime->tm_mon + 1);
 	case 0x09:		/* Year */
-		return 	MAKE_RETURN(loctime->tm_year);
+		return 	MAKE_RETURN(loctime->tm_year % 100);
+	case 0x32:		/* Century */
+		return 	MAKE_RETURN(loctime->tm_year / 100 + 19);
 	case 0x01:		/* Seconds Alarm */
 	case 0x03:		/* Minutes Alarm */
 	case 0x05:		/* Hours Alarm */
 		return cmos.regs[cmos.reg];
-	case 0x0a:		/* Status register C */
+	case 0x0a:		/* Status register A */
 		if (PIC_TickIndex()<0.002) {
 			return (cmos.regs[0x0a]&0x7f) | 0x80;
 		} else {
@@ -245,38 +254,64 @@ static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 
 
 	case 0x0b:		/* Status register B */
+	case 0x0d:		/* Status register D */
 	case 0x0f:		/* Shutdown status byte */
+	case 0x14:		/* Equipment */
+	case 0x15:		/* Base Memory KB Low Byte */
+	case 0x16:		/* Base Memory KB High Byte */
 	case 0x17:		/* Extended memory in KB Low Byte */
 	case 0x18:		/* Extended memory in KB High Byte */
 	case 0x30:		/* Extended memory in KB Low Byte */
 	case 0x31:		/* Extended memory in KB High Byte */
-//		LOG(LOG_BIOS,LOG_NORMAL)("CMOS:Read from reg %F : %04X",cmos.reg,cmos.regs[cmos.reg]);
+//		LOG(LOG_BIOS,LOG_NORMAL)("CMOS:Read from reg %X : %04X",cmos.reg,cmos.regs[cmos.reg]);
 		return cmos.regs[cmos.reg];
 	default:
-		LOG(LOG_BIOS,LOG_NORMAL)("CMOS:Read from reg %F",cmos.reg);
+		LOG(LOG_BIOS,LOG_NORMAL)("CMOS:Read from reg %X",cmos.reg);
 		return cmos.regs[cmos.reg];
 	}
 }
 
-void CMOS_SetRegister(Bitu regNr, Bit8u val)
-{
+void CMOS_SetRegister(Bitu regNr, Bit8u val) {
 	cmos.regs[regNr] = val;
 };
 
-void CMOS_Init(Section* sec) {
-	IO_RegisterWriteHandler(0x70,cmos_selreg,IO_MB);
-	IO_RegisterWriteHandler(0x71,cmos_writereg,IO_MB);
-	IO_RegisterReadHandler(0x71,cmos_readreg,IO_MB);
-	cmos.timer.enabled=false;
-	cmos.reg=0xa;
-	cmos_writereg(0x71,0x26,1);
-	cmos.reg=0xb;
-	cmos_writereg(0x71,0,1);
-	/* Fill in extended memory size */
-	Bitu exsize=(MEM_TotalPages()*4)-1024;
-	cmos.regs[0x17]=(Bit8u)exsize;
-	cmos.regs[0x18]=(Bit8u)(exsize >> 8);
-	cmos.regs[0x30]=(Bit8u)exsize;
-	cmos.regs[0x31]=(Bit8u)(exsize >> 8);
+
+class CMOS:public Module_base{
+private:
+	IO_ReadHandleObject ReadHandler[2];
+	IO_WriteHandleObject WriteHandler[2];	
+public:
+	CMOS(Section* configuration):Module_base(configuration){
+		WriteHandler[0].Install(0x70,cmos_selreg,IO_MB);
+		WriteHandler[1].Install(0x71,cmos_writereg,IO_MB);
+		ReadHandler[0].Install(0x71,cmos_readreg,IO_MB);
+		cmos.timer.enabled=false;
+		cmos.reg=0xa;
+		cmos_writereg(0x71,0x26,1);
+		cmos.reg=0xb;
+		cmos_writereg(0x71,0x2,1);	//Struct tm *loctime is of 24 hour format,
+		cmos.reg=0xd;
+		cmos_writereg(0x71,0x80,1); /* RTC power on */
+		// Equipment is updated from bios.cpp and bios_disk.cpp
+		/* Fill in base memory size, it is 640K always */
+		cmos.regs[0x15]=(Bit8u)0x80;
+		cmos.regs[0x16]=(Bit8u)0x02;
+		/* Fill in extended memory size */
+		Bitu exsize=(MEM_TotalPages()*4)-1024;
+		cmos.regs[0x17]=(Bit8u)exsize;
+		cmos.regs[0x18]=(Bit8u)(exsize >> 8);
+		cmos.regs[0x30]=(Bit8u)exsize;
+		cmos.regs[0x31]=(Bit8u)(exsize >> 8);
+	}
+};
+
+static CMOS* test;
+
+void CMOS_Destroy(Section* sec){
+	delete test;
 }
 
+void CMOS_Init(Section* sec) {
+	test = new CMOS(sec);
+	sec->AddDestroyFunction(&CMOS_Destroy,true);
+}

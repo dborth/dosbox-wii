@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef _BIOS_H_
-#define _BIOS_H_
+#ifndef DOSBOX_BIOS_H
+#define DOSBOX_BIOS_H
 
 #define BIOS_BASE_ADDRESS_COM1          0x400
 #define BIOS_BASE_ADDRESS_COM2          0x402
@@ -30,6 +30,7 @@
 #define BIOS_CONFIGURATION              0x410
 /* 0x412 is reserved */
 #define BIOS_MEMORY_SIZE                0x413
+#define BIOS_TRUE_MEMORY_SIZE           0x415
 /* #define bios_expansion_memory_size      (*(unsigned int   *) 0x415) */
 #define BIOS_KEYBOARD_STATE             0x417
 #define BIOS_KEYBOARD_FLAGS1            BIOS_KEYBOARD_STATE
@@ -72,7 +73,9 @@
 /* 0x47b is reserved */
 #define BIOS_COM1_TIMEOUT               0x47c
 #define BIOS_COM2_TIMEOUT               0x47d
-/* 0x47e is reserved */
+#define BIOS_COM3_TIMEOUT               0x47e
+#define BIOS_COM4_TIMEOUT               0x47f
+/* 0x47e is reserved */ //<- why that?
 /* 0x47f-0x4ff is unknow for me */
 #define BIOS_KEYBOARD_BUFFER_START      0x480
 #define BIOS_KEYBOARD_BUFFER_END        0x482
@@ -112,8 +115,12 @@ struct diskGeo {
 extern diskGeo DiskGeometryList[];
 
 #include <stdio.h>
+#ifndef DOSBOX_MEM_H
 #include "mem.h"
+#endif
+#ifndef DOSBOX_DOS_INC_H
 #include "dos_inc.h"
+#endif
 
 class imageDisk  {
 public:
@@ -153,7 +160,7 @@ extern DOS_DTA *imgDTA;
 void swapInDisks(void);
 void swapInNextDisk(void);
 
-void BIOS_ZeroExtendedSize(void);
+void BIOS_ZeroExtendedSize(bool in);
 void char_out(Bit8u chr,Bit32u att,Bit8u page);
 void INT10_StartUp(void);
 void INT16_StartUp(void);

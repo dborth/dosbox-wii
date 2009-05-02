@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ nextopcode:;
 		SaveIP();
 		continue;
 illegalopcode:
-		LOG_MSG("Illegal opcode");
+		LOG(LOG_CPU,LOG_NORMAL)("Illegal opcode");
 		CPU_Exception(0x6,0);
 	}
 	FillFlags();

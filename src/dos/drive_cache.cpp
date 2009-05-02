@@ -1,6 +1,6 @@
 
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_cache.cpp,v 1.40 2004/11/13 12:08:43 qbix79 Exp $ */
+/* $Id: drive_cache.cpp,v 1.46 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include "drives.h"
 #include "dos_inc.h"
@@ -32,6 +32,12 @@
 #if defined (WIN32)   /* Win 32 */
 #define WIN32_LEAN_AND_MEAN        // Exclude rarely-used stuff from 
 #include <windows.h>
+#endif
+
+#if defined (OS2)
+#define INCL_DOSERRORS
+#define INCL_DOSFILEMGR
+#include <os2.h>
 #endif
 
 int fileInfoCounter = 0;
@@ -155,11 +161,21 @@ void DOS_Drive_Cache::SetBaseDir(const char* baseDir)
 		ReadDir(id,result);
 	};
 	// Get Volume Label
-#if defined (WIN32)
+#if defined (WIN32) || defined (OS2)
 	char labellocal[256]={ 0 };
 	char drive[4] = "C:\\";
 	drive[0] = basePath[0];
+#if defined (WIN32)
 	if (GetVolumeInformation(drive,labellocal,256,NULL,NULL,NULL,NULL,0)) {
+#else // OS2
+	FSINFO fsinfo;
+	ULONG drivenumber = drive[0];
+	if (drivenumber > 26) { // drive letter was lowercase
+		drivenumber = drive[0] - 'a' + 1;
+	}
+	APIRET rc = DosQueryFSInfo(drivenumber, FSIL_VOLSER, &fsinfo, sizeof(FSINFO));
+	if (rc == NO_ERROR) {
+#endif
 		/* Set label and allow being updated */
 		SetLabel(labellocal,true);
 	}
@@ -262,8 +278,7 @@ void DOS_Drive_Cache::CacheOut(const char* path, bool ignoreLastDir)
 		char tmp[CROSS_LEN] = { 0 };
 		Bit32s len = strrchr(path,CROSS_FILESPLIT) - path;
 		if (len>0) { 
-			strncpy(tmp,path,len); 
-			tmp[len] = 0; 
+			safe_strncpy(tmp,path,len+1); 
 		} else	{
 			strcpy(tmp,path);
 		}
@@ -315,9 +330,10 @@ bool DOS_Drive_Cache::GetShortName(const char* fullname, char* shortname)
 
 int DOS_Drive_Cache::CompareShortname(const char* compareName, const char* shortName)
 {
-	char* cpos = strchr(shortName,'~');
+	char const* cpos = strchr(shortName,'~');
 	if (cpos) {
-		Bits compareCount1	= (int)cpos - (int)shortName;
+/* the following code is replaced as it's not safe when char* is 64 bits */
+/*		Bits compareCount1	= (int)cpos - (int)shortName;
 		char* endPos		= strchr(cpos,'.');
 		Bitu numberSize		= endPos ? int(endPos)-int(cpos) : strlen(cpos);
 		
@@ -327,6 +343,18 @@ int DOS_Drive_Cache::CompareShortname(const char* compareName, const char* short
 
 		compareCount2 -= numberSize;
 		if (compareCount2>compareCount1) compareCount1 = compareCount2;
+*/
+		size_t compareCount1 = strcspn(shortName,"~");
+		size_t numberSize    = strcspn(cpos,".");
+		size_t compareCount2 = strcspn(compareName,".");
+		if(compareCount2 > 8) compareCount2 = 8;
+		/* We want 
+		 * compareCount2 -= numberSize;
+		 * if (compareCount2>compareCount1) compareCount1 = compareCount2;
+		 * but to prevent negative numbers: 
+		 */
+		if(compareCount2 > compareCount1 + numberSize)
+			compareCount1 = compareCount2 - numberSize;
 		return strncmp(compareName,shortName,compareCount1);
 	}
 	return strcmp(compareName,shortName);
@@ -450,11 +478,10 @@ void DOS_Drive_Cache::CreateShortName(CFileInfo* curDir, CFileInfo* info)
 		info->shortNr = CreateShortNameID(curDir,tmpName);
 		sprintf(buffer,"%d",info->shortNr);
 		// Copy first letters
-		Bit16u tocopy;
+		Bit16u tocopy = 0;
 		if (len+strlen(buffer)+1>8)	tocopy = 8 - strlen(buffer) - 1;
 		else						tocopy = len;
-		strncpy(info->shortname,tmpName,tocopy);
-		info->shortname[tocopy] = 0;
+		safe_strncpy(info->shortname,tmpName,tocopy+1);
 		// Copy number
 		strcat(info->shortname,"~");
 		strcat(info->shortname,buffer);
@@ -514,7 +541,7 @@ DOS_Drive_Cache::CFileInfo* DOS_Drive_Cache::FindDirInfo(const char* path, char*
 	do {
 //		bool errorcheck = false;
 		pos = strchr(start,CROSS_FILESPLIT);
-		if (pos) { strncpy(dir,start,pos-start); dir[pos-start] = 0; /*errorcheck = true;*/ }
+		if (pos) { safe_strncpy(dir,start,pos-start+1); /*errorcheck = true;*/ }
 		else	 { strcpy(dir,start); };
  
 		// Path found

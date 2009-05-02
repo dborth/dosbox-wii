@@ -42,10 +42,14 @@ static struct {
 	CodePageHandler * last_page;
 } cache;
 
+#if (C_HAVE_MPROTECT)
+static Bit8u cache_code_link_blocks[2][16] GCC_ATTRIBUTE(aligned(PAGESIZE));
+#else
 static Bit8u cache_code_link_blocks[2][16];
-static Bit8u cache_code[CACHE_TOTAL+CACHE_MAXSIZE];
-static CacheBlock cache_blocks[CACHE_BLOCKS];
+#endif
+
 static CacheBlock link_blocks[2];
+
 class CodePageHandler :public PageHandler {
 public:
 	CodePageHandler() {}
@@ -59,21 +63,27 @@ public:
 		memset(&hash_map,0,sizeof(hash_map));
 		memset(&write_map,0,sizeof(write_map));
 	}
-	void InvalidateRange(Bitu start,Bitu end) {
+	bool InvalidateRange(Bitu start,Bitu end) {
 		Bits index=1+(start>>DYN_HASH_SHIFT);
+		bool is_current_block=false;
+		Bit32u ip_point=SegPhys(cs)+reg_eip;
+		ip_point=((paging.tlb.phys_page[ip_point>>12]-phys_page)<<12)+(ip_point&0xfff);
 		while (index>=0) {
 			Bitu map=0;
 			for (Bitu count=start;count<=end;count++) map+=write_map[count];
-			if (!map) return;
+			if (!map) return is_current_block;
 			CacheBlock * block=hash_map[index];
 			while (block) {
 				CacheBlock * nextblock=block->hash.next;
-				if (start<=block->page.end && end>=block->page.start) 
+				if (start<=block->page.end && end>=block->page.start) {
+					if (ip_point<=block->page.end && ip_point>=block->page.start) is_current_block=true;
 					block->Clear();
+				}
 				block=nextblock;
 			}
 			index--;
 		}
+		return is_current_block;
 	}
 	void writeb(PhysPt addr,Bitu val){
 		addr&=4095;
@@ -101,6 +111,48 @@ public:
 			active_count--;
 			if (!active_count) Release();
 		} else InvalidateRange(addr,addr+3);
+	}
+	bool writeb_checked(PhysPt addr,Bitu val) {
+		addr&=4095;
+		if (!*(Bit8u*)&write_map[addr]) {
+			if (!active_blocks) {
+				active_count--;
+				if (!active_count) Release();
+			}
+		} else if (InvalidateRange(addr,addr)) {
+			cpu.exception.which=SMC_CURRENT_BLOCK;
+			return true;
+		}
+		host_writeb(hostmem+addr,val);
+		return false;
+	}
+	bool writew_checked(PhysPt addr,Bitu val) {
+		addr&=4095;
+		if (!*(Bit16u*)&write_map[addr]) {
+			if (!active_blocks) {
+				active_count--;
+				if (!active_count) Release();
+			}
+		} else if (InvalidateRange(addr,addr+1)) {
+			cpu.exception.which=SMC_CURRENT_BLOCK;
+			return true;
+		}
+		host_writew(hostmem+addr,val);
+		return false;
+	}
+	bool writed_checked(PhysPt addr,Bitu val) {
+		addr&=4095;
+		if (!*(Bit32u*)&write_map[addr]) {
+			if (!active_blocks) {
+				active_count--;
+				if (!active_count) Release();
+			}
+		} else if (InvalidateRange(addr,addr+3)) {
+			cpu.exception.which=SMC_CURRENT_BLOCK;
+			return true;
+		}
+		host_writed(hostmem+addr,val);
+		return false;
 	}
     void AddCacheBlock(CacheBlock * block) {
 		Bitu index=1+(block->page.start>>DYN_HASH_SHIFT);
@@ -161,9 +213,12 @@ public:
 		}
 		return 0;
 	}
-	HostPt GetHostPt(Bitu phys_page) { 
-		hostmem=old_pagehandler->GetHostPt(phys_page);
+	HostPt GetHostReadPt(Bitu phys_page) { 
+		hostmem=old_pagehandler->GetHostReadPt(phys_page);
 		return hostmem;
+	}
+	HostPt GetHostWritePt(Bitu phys_page) { 
+		return GetHostReadPt( phys_page );
 	}
 public:
 	Bit8u write_map[4096];
@@ -235,10 +290,13 @@ void CacheBlock::Clear(void) {
 		}
 		if (link[ind].to!=&link_blocks[ind]) {
 			CacheBlock * * wherelink=&link[ind].to->link[ind].from;
-			while (*wherelink!=this) {
-				wherelink=&(*wherelink)->link[ind].next;
+			while (*wherelink != this && *wherelink) {
+				wherelink = &(*wherelink)->link[ind].next;
 			}
-			*wherelink=(*wherelink)->link[ind].next;
+			if(*wherelink) 
+				*wherelink = (*wherelink)->link[ind].next;
+			else
+				LOG(LOG_CPU,LOG_ERROR)("Cache anomaly. please investigate");
 		}
 	} else 
 		cache_addunsedblock(this);
@@ -332,34 +390,68 @@ static INLINE void cache_addd(Bit32u val) {
 
 static void gen_return(BlockReturn retcode);
 
-static void cache_init(void) {
+static Bit8u * cache_code=NULL;
+static CacheBlock * cache_blocks=NULL;
+
+/* Define temporary pagesize so the MPROTECT case and the regular case share as much code as possible */
+#if (C_HAVE_MPROTECT)
+#define PAGESIZE_TEMP PAGESIZE
+#else 
+#define PAGESIZE_TEMP 1
+#endif
+
+
+static void cache_init(bool enable) {
+	static bool cache_initialized = false;
 	Bits i;
-	memset(&cache_blocks,0,sizeof(cache_blocks));
-	cache.block.free=&cache_blocks[0];
-	for (i=0;i<CACHE_BLOCKS-1;i++) {
-		cache_blocks[i].link[0].to=(CacheBlock *)1;
-		cache_blocks[i].link[1].to=(CacheBlock *)1;
-		cache_blocks[i].cache.next=&cache_blocks[i+1];
-	}
-	CacheBlock * block=cache_getblock();
-	cache.block.first=block;
-	cache.block.active=block;
-	block->cache.start=&cache_code[0];
-	block->cache.size=CACHE_TOTAL;
-	block->cache.next=0;								//Last block in the list
-	cache.pos=&cache_code_link_blocks[0][0];
-	link_blocks[0].cache.start=cache.pos;
-	gen_return(BR_Link1);
-	cache.pos=&cache_code_link_blocks[1][0];
-	link_blocks[1].cache.start=cache.pos;
-	gen_return(BR_Link2);
-	cache.free_pages=0;
-	cache.last_page=0;
-	cache.used_pages=0;
-	/* Setup the code pages */
-	for (i=0;i<CACHE_PAGES-1;i++) {
-		CodePageHandler * newpage=new CodePageHandler();
-		newpage->next=cache.free_pages;
-		cache.free_pages=newpage;
+	if (enable) {
+		if (cache_initialized) return;
+		cache_initialized = true;
+		if (cache_blocks == NULL) {
+			cache_blocks=(CacheBlock*)malloc(CACHE_BLOCKS*sizeof(CacheBlock));
+			if(!cache_blocks) E_Exit("Allocating cache_blocks has failed");
+			memset(cache_blocks,0,sizeof(CacheBlock)*CACHE_BLOCKS);
+			cache.block.free=&cache_blocks[0];
+			for (i=0;i<CACHE_BLOCKS-1;i++) {
+				cache_blocks[i].link[0].to=(CacheBlock *)1;
+				cache_blocks[i].link[1].to=(CacheBlock *)1;
+				cache_blocks[i].cache.next=&cache_blocks[i+1];
+			}
+		}
+#if (C_HAVE_MPROTECT)
+		if(mprotect(cache_code_link_blocks,sizeof(cache_code_link_blocks),PROT_WRITE|PROT_READ|PROT_EXEC))
+			LOG_MSG("Setting excute permission on cache code link blocks has failed");
+#endif
+		if (cache_code==NULL) {
+			cache_code=(Bit8u*)malloc(CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1);
+			if(!cache_code) E_Exit("Allocating dynamic cache failed");
+#if (C_HAVE_MPROTECT)
+			cache_code=(Bit8u*)(((int)cache_code + PAGESIZE-1) & ~(PAGESIZE-1)); //MEM LEAK. store old pointer if you want to free it.
+			if(mprotect(cache_code,CACHE_TOTAL+CACHE_MAXSIZE,PROT_WRITE|PROT_READ|PROT_EXEC))
+				LOG_MSG("Setting excute permission on the code cache has failed!");
+#endif
+			CacheBlock * block=cache_getblock();
+			cache.block.first=block;
+			cache.block.active=block;
+			block->cache.start=&cache_code[0];
+			block->cache.size=CACHE_TOTAL;
+			block->cache.next=0;								//Last block in the list
+		}
+		/* Setup the default blocks for block linkage returns */
+		cache.pos=&cache_code_link_blocks[0][0];
+		link_blocks[0].cache.start=cache.pos;
+		gen_return(BR_Link1);
+		cache.pos=&cache_code_link_blocks[1][0];
+		link_blocks[1].cache.start=cache.pos;
+		gen_return(BR_Link2);
+		cache.free_pages=0;
+		cache.last_page=0;
+		cache.used_pages=0;
+		/* Setup the code pages */
+		for (i=0;i<CACHE_PAGES-1;i++) {
+			CodePageHandler * newpage=new CodePageHandler();
+			newpage->next=cache.free_pages;
+			cache.free_pages=newpage;
+		}
 	}
 }
