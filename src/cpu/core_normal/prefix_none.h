@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -431,7 +431,19 @@
 		{	
 			GetRMrb;
 			if (rm >= 0xc0 ) {GetEArb;*earb=*rmrb;}
-			else {GetEAa;SaveMb(eaa,*rmrb);}
+			else {
+				if (cpu.pmode) {
+					if (GCC_UNLIKELY((rm==0x05) && (!cpu.code.big))) {
+						Descriptor desc;
+						cpu.gdt.GetDescriptor(SegValue(core.base_val_ds),desc);
+						if ((desc.Type()==DESC_CODE_R_NC_A) || (desc.Type()==DESC_CODE_R_NC_NA)) {
+							CPU_Exception(EXCEPTION_GP,SegValue(core.base_val_ds) & 0xfffc);
+							continue;
+						}
+					}
+				}
+				GetEAa;SaveMb(eaa,*rmrb);
+			}
 			break;
 		}
 	CASE_W(0x89)												/* MOV Ew,Gw */
@@ -712,7 +724,7 @@
 		}
 		break;
 	CASE_W(0xc9)												/* LEAVE */
-		reg_esp&=~cpu.stack.mask;
+		reg_esp&=cpu.stack.notmask;
 		reg_esp|=(reg_ebp&cpu.stack.mask);
 		reg_bp=Pop_16();
 		break;
@@ -735,7 +747,7 @@
 #endif			
 		CPU_SW_Interrupt_NoIOPLCheck(3,GETIP);
 #if CPU_TRAP_CHECK
-		core.trap.skip=true;
+		cpu.trap_skip=true;
 #endif
 		continue;
 	CASE_B(0xcd)												/* INT Ib */	
@@ -749,7 +761,7 @@
 #endif
 			CPU_SW_Interrupt(num,GETIP);
 #if CPU_TRAP_CHECK
-			core.trap.skip=true;
+			cpu.trap_skip=true;
 #endif
 			continue;
 		}
@@ -758,7 +770,7 @@
 			FillFlags();
 			CPU_SW_Interrupt(4,GETIP);
 #if CPU_TRAP_CHECK
-			core.trap.skip=true;
+			cpu.trap_skip=true;
 #endif
 			continue;
 		}
@@ -944,7 +956,7 @@
 		FillFlags();
 		CPU_SW_Interrupt_NoIOPLCheck(1,GETIP);
 #if CPU_TRAP_CHECK
-		core.trap.skip=true;
+		cpu.trap_skip=true;
 #endif
 		continue;
 	CASE_B(0xf2)												/* REPNZ */

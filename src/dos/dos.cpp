@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.93 2006/03/08 15:57:23 qbix79 Exp $ */
+/* $Id: dos.cpp,v 1.99 2007/01/13 08:35:49 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +30,7 @@
 #include "dos_inc.h"
 #include "setup.h"
 #include "support.h"
+#include "serialport.h"
 
 DOS_Block dos;
 DOS_InfoBlock dos_infoblock;
@@ -40,6 +41,18 @@ Bit8u dos_copybuf[DOS_COPYBUFSIZE];
 void DOS_SetError(Bit16u code) {
 	dos.errorcode=code;
 }
+
+#define DATA_TRANSFERS_TAKE_CYCLES 1
+#ifdef DATA_TRANSFERS_TAKE_CYCLES
+#include "cpu.h"
+static inline void modify_cycles(Bitu value) {
+	if((4*value+5) < CPU_Cycles) CPU_Cycles -= 4*value; else CPU_Cycles = 5;
+}
+#else
+static inline void modify_cycles(Bitu /* value */) {
+	return;
+}
+#endif
 
 #define DOSNAMEBUF 256
 static Bitu DOS_21Handler(void) {
@@ -67,7 +80,27 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x03:		/* Read character from STDAUX */
+		{
+			Bit16u port = real_readw(0x40,0);
+			if(port!=0 && serialports[0]) {
+				// RTS/DTR on
+				IO_WriteB(port+4,0x3);
+				serialports[0]->Getchar(&reg_al,true, 0xFFFFFFFF);
+			}
+		}
+		break;
 	case 0x04:		/* Write Character to STDAUX */
+		{
+			Bit16u port = real_readw(0x40,0);
+			if(port!=0 && serialports[0]) {
+				// RTS/DTR on
+				IO_WriteB(port+4,0x3);
+				serialports[0]->Putchar(reg_dl,true,true, 0xFFFFFFFF);
+				// RTS off
+				IO_WriteB(port+4,0x1);
+			}
+		}
+		break;
 	case 0x05:		/* Write Character to PRINTER */
 		E_Exit("DOS:Unhandled call %02X",reg_ah);
 		break;
@@ -499,6 +532,7 @@ static Bitu DOS_21Handler(void) {
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
 			}
+			modify_cycles(reg_ax);
 			dos.echo=false;
 			break;
 		}
@@ -513,6 +547,7 @@ static Bitu DOS_21Handler(void) {
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
 			}
+			modify_cycles(reg_ax);
 			break;
 		};
 	case 0x41:					/* UNLINK Delete file */
@@ -824,8 +859,8 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x63:					/* DOUBLE BYTE CHARACTER SET */
 		if(reg_al == 0) {
-			SegSet16(ds,RealSeg(dos.tables.dcbs));
-			reg_si=RealOff(dos.tables.dcbs);		
+			SegSet16(ds,RealSeg(dos.tables.dbcs));
+			reg_si=RealOff(dos.tables.dbcs);		
 			reg_al = 0;
 			CALLBACK_SCF(false); //undocumented
 		} else reg_al = 0xff; //Doesn't officially touch carry flag
@@ -848,7 +883,7 @@ static Bitu DOS_21Handler(void) {
 				mem_writeb(data + 0x00,reg_al);
 				mem_writew(data + 0x01,0x26);
 				mem_writew(data + 0x03,1);
-				if(reg_cx > 0x06 ) mem_writew(data+0x05,0x01b5);
+				if(reg_cx > 0x06 ) mem_writew(data+0x05,dos.loaded_codepage);
 				if(reg_cx > 0x08 ) {
 					Bitu amount = (reg_cx>=0x29)?0x22:(reg_cx-7);
 					MEM_BlockWrite(data + 0x07,dos.tables.country,amount);
@@ -856,14 +891,24 @@ static Bitu DOS_21Handler(void) {
 				}
 				CALLBACK_SCF(false);
 				break;
+			case 0x05: // Get pointer to filename terminator table
+				mem_writeb(data + 0x00, reg_al);
+				mem_writed(data + 0x01, dos.tables.filenamechar);
+				reg_cx = 5;
+				CALLBACK_SCF(false);
+				break;
+			case 0x06: // Get pointer to collating sequence table
+				mem_writeb(data + 0x00, reg_al);
+				mem_writed(data + 0x01, dos.tables.collatingseq);
+				reg_cx = 5;
+				CALLBACK_SCF(false);
+				break;
 			case 0x02: // Get pointer to uppercase table
 			case 0x03: // Get pointer to lowercase table
 			case 0x04: // Get pointer to filename uppercase table
-			case 0x05: // Get pointer to filename terminator table
-			case 0x06: // Get pointer to collating sequence table
 			case 0x07: // Get pointer to double byte char set table
 				mem_writeb(data + 0x00, reg_al);
-				mem_writed(data + 0x01, dos.tables.dcbs); //used to be 0
+				mem_writed(data + 0x01, dos.tables.dbcs); //used to be 0
 				reg_cx = 5;
 				CALLBACK_SCF(false);
 				break;
@@ -900,7 +945,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x66:					/* Get/Set global code page table  */
 		if (reg_al==1) {
 			LOG(LOG_DOSMISC,LOG_ERROR)("Getting global code page table");
-			reg_bx=reg_dx=437;
+			reg_bx=reg_dx=dos.loaded_codepage;
 			CALLBACK_SCF(false);
 			break;
 		}
@@ -967,21 +1012,19 @@ static Bitu DOS_21Handler(void) {
 };
 
 
-
 static Bitu DOS_20Handler(void) {
-
 	reg_ax=0x4c00;
 	DOS_21Handler();
 	return CBRET_NONE;
 }
 
-static Bitu DOS_27Handler(void) 
-{
+static Bitu DOS_27Handler(void) {
 	// Terminate & stay resident
 	Bit16u para = (reg_dx/16)+((reg_dx % 16)>0);
 	if (DOS_ResizeMemory(dos.psp(),&para)) DOS_Terminate(true);
 	return CBRET_NONE;
 }
+
 static Bitu DOS_25Handler(void) {
 	if(Drives[reg_al]==0){
 		reg_ax=0x8002;
@@ -1006,20 +1049,6 @@ static Bitu DOS_26Handler(void) {
 	}
     return CBRET_NONE;
 }
-static Bitu DOS_28Handler(void) {
-    return CBRET_NONE;
-}
-
-static Bitu DOS_29Handler(void) {
-	static bool int29warn=false;
-	if(!int29warn) { 
-		LOG(LOG_DOSMISC,LOG_WARN)("Int 29 called. Redirecting to int 10:0x0e");
-		int29warn=true;
-	}
-	reg_ah=0x0e;
-	CALLBACK_RunRealInt(0x10);
-	return CBRET_NONE;
-}
 
 
 class DOS:public Module_base{
@@ -1042,11 +1071,17 @@ public:
 		callback[4].Install(DOS_27Handler,CB_IRET,"DOS Int 27");
 		callback[4].Set_RealVec(0x27);
 
-		callback[5].Install(DOS_28Handler,CB_IRET,"DOS Int 28");
+		callback[5].Install(NULL,CB_IRET,"DOS Int 28");
 		callback[5].Set_RealVec(0x28);
 
-		callback[6].Install(DOS_29Handler,CB_IRET,"CON Output Int 29");
+		callback[6].Install(NULL,CB_INT29,"CON Output Int 29");
 		callback[6].Set_RealVec(0x29);
+		// pseudocode for CB_INT29:
+		//	push ax
+		//	mov ah, 0x0e
+		//	int 0x10
+		//	pop ax
+		//	iret
 
 		DOS_SetupFiles();								/* Setup system File tables */
 		DOS_SetupDevices();							/* Setup dos devices */

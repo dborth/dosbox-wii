@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_local.cpp,v 1.64 2006/03/13 19:58:09 qbix79 Exp $ */
+/* $Id: drive_local.cpp,v 1.74 2007/01/09 17:44:20 c2woody Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,17 +33,18 @@
 
 class localFile : public DOS_File {
 public:
-	localFile(const char* name, FILE * handle,Bit16u devinfo);
+	localFile(const char* name, FILE * handle);
 	bool Read(Bit8u * data,Bit16u * size);
 	bool Write(Bit8u * data,Bit16u * size);
 	bool Seek(Bit32u * pos,Bit32u type);
 	bool Close();
 	Bit16u GetInformation(void);
 	bool UpdateDateTimeFromHost(void);   
+	void FlagReadOnlyMedium(void);
 private:
 	FILE * fhandle;
+	bool read_only_medium;
 	enum { NONE,READ,WRITE } last_action;
-	Bit16u info;
 };
 
 
@@ -72,13 +73,13 @@ bool localDrive::FileCreate(DOS_File * * file,char * name,Bit16u attributes) {
    
 	if(!existing_file) dirCache.AddEntry(newname, true);
 	/* Make the 16 bit device information */
-	*file=new localFile(name,hand,0x202);
+	*file=new localFile(name,hand);
 
 	return true;
 };
 
 bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
-	char * type;
+	const char* type;
 	switch (flags &3) {
 	case OPEN_READ:type="rb"; break;
 	case OPEN_WRITE:type="rb+"; break;
@@ -107,14 +108,14 @@ bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 		}
 		return false;
 	}
-   
-	*file=new localFile(name,hand,0x202);
+
+	*file=new localFile(name,hand);
 	(*file)->flags=flags;  //for the inheritance flag and maybe check for others.
 //	(*file)->SetFileName(newname);
 	return true;
 };
 
-FILE * localDrive::GetSystemFilePtr(char * name, char * type) {
+FILE * localDrive::GetSystemFilePtr(char const * const name, char const * const type) {
 
 	char newname[CROSS_LEN];
 	strcpy(newname,basedir);
@@ -125,7 +126,7 @@ FILE * localDrive::GetSystemFilePtr(char * name, char * type) {
 	return fopen(newname,type);
 }
 
-bool localDrive::GetSystemFilename(char *sysName, char *dosName) {
+bool localDrive::GetSystemFilename(char *sysName, char const * const dosName) {
 
 	strcpy(sysName, basedir);
 	strcat(sysName, dosName);
@@ -135,17 +136,47 @@ bool localDrive::GetSystemFilename(char *sysName, char *dosName) {
 }
 
 bool localDrive::FileUnlink(char * name) {
+
 	char newname[CROSS_LEN];
 	strcpy(newname,basedir);
 	strcat(newname,name);
 	CROSS_FILENAME(newname);
-	if (!unlink(dirCache.GetExpandName(newname))) {
+	char *fullname = dirCache.GetExpandName(newname);
+	if (unlink(fullname)) {
+		//Unlink failed for some reason try finding it.
+		struct stat buffer;
+		if(stat(fullname,&buffer)) return false; // File not found.
+
+		FILE* file_writable = fopen(fullname,"rb+");
+		if(!file_writable) return false; //No acces ? ERROR MESSAGE NOT SET. FIXME ?
+		fclose(file_writable);
+
+		//File exists and can technically be deleted, nevertheless it failed.
+		//This means that the file is probably open by some process.
+		//See if We have it open.
+		bool found_file = false;
+		for(Bitu i = 0;i < DOS_FILES;i++){
+			if(Files[i] && Files[i]->IsName(name)) {
+				Bitu max = DOS_FILES;
+				while(Files[i]->IsOpen() && max--) {
+					Files[i]->Close();
+					if (Files[i]->RemoveRef()<=0) break;
+				}
+				found_file=true;
+			}
+		}
+		if(!found_file) return false;
+		if (!unlink(fullname)) {
+			dirCache.DeleteEntry(newname);
+			return true;
+		}
+		return false;
+	} else {
 		dirCache.DeleteEntry(newname);
 		return true;
-	};
+	}
 	return false;
-};
-
+}
 
 bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 
@@ -173,22 +204,30 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 	Bit8u sAttr;
 	dta.GetSearchParams(sAttr,tempDir);
 
-	if (sAttr == DOS_ATTR_VOLUME) {
-		if ( strcmp(dirCache.GetLabel(), "") == 0 ) {
-//			LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
-//			dta.SetResult("NO_LABEL",0,0,0,DOS_ATTR_VOLUME);
-//			return true;
-			DOS_SetError(DOSERR_NO_MORE_FILES);
-			return false;
-		}
-		dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
-		return true;
-	} else if ((sAttr & DOS_ATTR_VOLUME)  && (*_dir == 0) && !fcb_findfirst) { 
-	//should check for a valid leading directory instead of 0
-	//exists==true if the volume label matches the searchmask and the path is valid
-		if (WildFileCmp(dirCache.GetLabel(),tempDir)) {
+	if (this->isRemote() && this->isRemovable()) {
+		// cdroms behave a bit different than regular drives
+		if (sAttr == DOS_ATTR_VOLUME) {
 			dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
 			return true;
+		}
+	} else {
+		if (sAttr == DOS_ATTR_VOLUME) {
+			if ( strcmp(dirCache.GetLabel(), "") == 0 ) {
+//				LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
+//				dta.SetResult("NO_LABEL",0,0,0,DOS_ATTR_VOLUME);
+//				return true;
+				DOS_SetError(DOSERR_NO_MORE_FILES);
+				return false;
+			}
+			dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
+			return true;
+		} else if ((sAttr & DOS_ATTR_VOLUME)  && (*_dir == 0) && !fcb_findfirst) { 
+		//should check for a valid leading directory instead of 0
+		//exists==true if the volume label matches the searchmask and the path is valid
+			if (WildFileCmp(dirCache.GetLabel(),tempDir)) {
+				dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
+				return true;
+			}
 		}
 	}
 	return FindNext(dta);
@@ -382,6 +421,11 @@ bool localDrive::isRemovable(void) {
 	return false;
 }
 
+Bits localDrive::UnMount(void) { 
+	delete this;
+	return 0; 
+}
+
 localDrive::localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid) {
 	strcpy(basedir,startdir);
 	sprintf(info,"local directory %s",startdir);
@@ -450,7 +494,7 @@ bool localFile::Seek(Bit32u * pos,Bit32u type) {
 bool localFile::Close() {
 	// only close if one reference left
 	if (refCtr==1) {
-		fclose(fhandle);
+		if(fhandle) fclose(fhandle);
 		fhandle = 0;
 		open = false;
 	};
@@ -458,13 +502,12 @@ bool localFile::Close() {
 }
 
 Bit16u localFile::GetInformation(void) {
-	return info;
+	return read_only_medium?0x40:0;
 }
 	
 
-localFile::localFile(const char* _name, FILE * handle,Bit16u devinfo) {
+localFile::localFile(const char* _name, FILE * handle) {
 	fhandle=handle;
-	info=devinfo;
 	struct stat temp_stat;
 	fstat(fileno(handle),&temp_stat);
 	struct tm * ltime;
@@ -477,10 +520,15 @@ localFile::localFile(const char* _name, FILE * handle,Bit16u devinfo) {
 	size=(Bit32u)temp_stat.st_size;
 	attr=DOS_ATTR_ARCHIVE;
 	last_action=NONE;
+	read_only_medium=false;
 
 	open=true;
 	name=0;
 	SetName(_name);
+}
+
+void localFile::FlagReadOnlyMedium(void) {
+	read_only_medium = true;
 }
 
 bool localFile::UpdateDateTimeFromHost(void) {
@@ -502,6 +550,7 @@ bool localFile::UpdateDateTimeFromHost(void) {
 // CDROM DRIVE
 // ********************************************
 
+int  MSCDEX_RemoveDrive(char driveLetter);
 int  MSCDEX_AddDrive(char driveLetter, const char* physicalPath, Bit8u& subUnit);
 bool MSCDEX_HasMediaChanged(Bit8u subUnit);
 bool MSCDEX_GetVolumeName(Bit8u subUnit, char* name);
@@ -512,7 +561,9 @@ cdromDrive::cdromDrive(const char driveLetter, const char * startdir,Bit16u _byt
 {
 	// Init mscdex
 	error = MSCDEX_AddDrive(driveLetter,startdir,subUnit);
-	strcpy(info,"CDRom.");
+	strcpy(info, "CDRom ");
+	strcat(info, startdir);
+	this->driveLetter = driveLetter;
 	// Get Volume Label
 	char name[32];
 	if (MSCDEX_GetVolumeName(subUnit,name)) dirCache.SetLabel(name);
@@ -520,13 +571,15 @@ cdromDrive::cdromDrive(const char driveLetter, const char * startdir,Bit16u _byt
 
 bool cdromDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags)
 {
-	if (flags==OPEN_READWRITE) {
-		flags = OPEN_READ;
-	} else if (flags==OPEN_WRITE) {
+	if ((flags&3)==OPEN_READWRITE) {
+		flags &= ~OPEN_READWRITE;
+	} else if ((flags&3)==OPEN_WRITE) {
 		DOS_SetError(DOSERR_ACCESS_DENIED);
 		return false;
 	}
-	return localDrive::FileOpen(file,name,flags);
+	bool retcode = localDrive::FileOpen(file,name,flags);
+	if(retcode) (dynamic_cast<localFile*>(*file))->FlagReadOnlyMedium();
+	return retcode;
 };
 
 bool cdromDrive::FileCreate(DOS_File * * file,char * name,Bit16u attributes)
@@ -596,4 +649,12 @@ bool cdromDrive::isRemote(void) {
 
 bool cdromDrive::isRemovable(void) {
 	return true;
+}
+
+Bits cdromDrive::UnMount(void) {
+	if(MSCDEX_RemoveDrive(driveLetter)) {
+		delete this;
+		return 0;
+	}
+	return 2;
 }

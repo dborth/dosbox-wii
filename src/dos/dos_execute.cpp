@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_execute.cpp,v 1.54 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: dos_execute.cpp,v 1.60 2007/01/11 16:31:10 c2woody Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -26,8 +26,9 @@
 #include "regs.h"
 #include "callback.h"
 #include "debug.h"
+#include "cpu.h"
 
-char * RunningProgram="DOSBOX";
+const char * RunningProgram="DOSBOX";
 
 #ifdef _MSC_VER
 #pragma pack(1)
@@ -93,7 +94,7 @@ static void RestoreRegisters(void) {
 	reg_sp+=18;
 }
 
-extern void GFX_SetTitle(Bits cycles,Bits frameskip,bool paused);
+extern void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused);
 void DOS_UpdatePSPName(void) {
 	DOS_MCB mcb(dos.psp()-1);
 	static char name[9];
@@ -137,6 +138,27 @@ bool DOS_Terminate(bool tsr) {
 	// Free memory owned by process
 	if (!tsr) DOS_FreeProcessMemory(mempsp);
 	DOS_UpdatePSPName();
+
+	if ((!(CPU_AutoDetermineMode>>CPU_AUTODETERMINE_SHIFT)) || (cpu.pmode)) return true;
+
+	CPU_AutoDetermineMode>>=CPU_AUTODETERMINE_SHIFT;
+	if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CYCLES) {
+		CPU_CycleAutoAdjust=false;
+		CPU_CycleLeft=0;
+		CPU_Cycles=0;
+		CPU_CycleMax=CPU_OldCycleMax;
+		GFX_SetTitle(CPU_OldCycleMax,-1,false);
+	} else {
+		GFX_SetTitle(-1,-1,false);
+	}
+#if (C_DYNAMIC_X86)
+	if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CORE) {
+		cpudecoder=&CPU_Core_Normal_Run;
+		CPU_CycleLeft=0;
+		CPU_Cycles=0;
+	}
+#endif
+
 	return true;
 }
 
@@ -233,16 +255,24 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	Bit16u fhandle;Bit16u len;Bit32u pos;
 	Bit16u pspseg,envseg,loadseg,memsize,readsize;
 	PhysPt loadaddress;RealPt relocpt;
-	Bitu headersize,imagesize;
+	Bitu headersize=0,imagesize=0;
 	DOS_ParamBlock block(block_pt);
 
 	block.LoadData();
+	//Remove the loadhigh flag for the moment!
+	if(flags&0x80) LOG(LOG_EXEC,LOG_ERROR)("using loadhigh flag!!!!!. dropping it");
+	flags &= 0x7f;
 	if (flags!=LOADNGO && flags!=OVERLAY && flags!=LOAD) {
-		E_Exit("DOS:Not supported execute mode %d for file %s",flags,name); 	
+		DOS_SetError(DOSERR_FORMAT_INVALID);
+		return false;
+//		E_Exit("DOS:Not supported execute mode %d for file %s",flags,name);
 	}
 	/* Check for EXE or COM File */
 	bool iscom=false;
-	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) return false;
+	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) {
+		DOS_SetError(DOSERR_FILE_NOT_FOUND);
+		return false;
+	}
 	len=sizeof(EXE_Header);
 	if (!DOS_ReadFile(fhandle,(Bit8u *)&head,&len)) {
 		DOS_CloseFile(fhandle);
@@ -433,7 +463,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		DEBUG_CheckExecuteBreakpoint(RealSeg(csip),RealOff(csip));
 #endif
 		/* Add the filename to PSP and environment MCB's */
-		char stripname[8];Bitu index=0;
+		char stripname[8]= { 0 };Bitu index=0;
 		while (char chr=*name++) {
 			switch (chr) {
 			case ':':case '\\':case '/':index=0;break;

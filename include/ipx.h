@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,23 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: ipx.h,v 1.9 2006/02/26 13:46:31 qbix79 Exp $ */
+/* $Id: ipx.h,v 1.12 2007/01/13 08:35:49 qbix79 Exp $ */
 
 #ifndef DOSBOX_IPX_H
 #define DOSBOX_IPX_H
 
 // Uncomment this for a lot of debug messages:
 //#define IPX_DEBUGMSG 
+
+#ifdef IPX_DEBUGMSG
+#define LOG_IPX LOG_MSG
+#else
+#if defined (_MSC_VER)
+#define LOG_IPX
+#else
+#define LOG_IPX(...)
+#endif
+#endif
 
 #ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
@@ -70,7 +80,7 @@ struct PackedIP {
 
 struct nodeType {
 	Uint8 node[6];
-}GCC_ATTRIBUTE(packed) ;
+} GCC_ATTRIBUTE(packed) ;
 
 struct IPXHeader {
 	Uint8 checkSum[2];
@@ -100,13 +110,18 @@ class ECBClass {
 public:
 	RealPt ECBAddr;
 	bool isInESRList;
-   	ECBClass *prevECB; 
+   	ECBClass *prevECB;	// Linked List
 	ECBClass *nextECB;
-	Bit8u iuflag;
+	
+	Bit8u iuflag;		// Need to save data since we are not always in
+	Bit16u mysocket;	// real mode
 
-	#ifdef IPX_DEBUGMSG 
+	Bit8u* databuffer;	// received data is stored here until we get called
+	Bitu buflen;		// by Interrupt
+
+#ifdef IPX_DEBUGMSG 
 	Bitu SerialNumber;
-	#endif
+#endif
 
 	ECBClass(Bit16u segment, Bit16u offset);
 	Bit16u getSocket(void);
@@ -118,6 +133,9 @@ public:
 	void setCompletionFlag(Bit8u flagval);
 
 	Bit16u getFragCount(void);
+
+	bool writeData();
+	void writeDataBuffer(Bit8u* buffer, Bit16u length);
 
 	void getFragDesc(Bit16u descNum, fragmentDescriptor *fragDesc);
 	RealPt getESRAddr(void);

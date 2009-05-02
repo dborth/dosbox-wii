@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: joystick.h,v 1.8 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: joystick.h,v 1.11 2007/02/22 08:44:06 qbix79 Exp $ */
 #ifndef DOSBOX_JOYSTICK_H
 #define DOSBOX_JOYSTICK_H
 void JOYSTICK_Enable(Bitu which,bool enabled);
@@ -37,6 +37,7 @@ float JOYSTICK_GetMove_Y(Bitu which);
 
 enum JoystickType {
 	JOY_NONE,
+	JOY_AUTO,
 	JOY_2AXIS,
 	JOY_4AXIS,
 	JOY_FCS,
@@ -44,4 +45,5 @@ enum JoystickType {
 };
 
 extern JoystickType joytype;
+extern bool button_wrapping_enabled;
 #endif

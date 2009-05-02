@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: iohandler.cpp,v 1.20 2006/02/09 11:47:49 qbix79 Exp $ */
+/* $Id: iohandler.cpp,v 1.26 2007/02/22 08:32:21 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -29,10 +29,10 @@
 IO_WriteHandler * io_writehandlers[3][IO_MAX];
 IO_ReadHandler * io_readhandlers[3][IO_MAX];
 
-static Bitu IO_ReadBlocked(Bitu port,Bitu iolen) {
+static Bitu IO_ReadBlocked(Bitu /*port*/,Bitu /*iolen*/) {
 	return ~0;
 }
-static void IO_WriteBlocked(Bitu port,Bitu val,Bitu iolen) {
+static void IO_WriteBlocked(Bitu /*port*/,Bitu /*val*/,Bitu /*iolen*/) {
 }
 
 static Bitu IO_ReadDefault(Bitu port,Bitu iolen) {
@@ -150,7 +150,7 @@ static struct {
 static Bits IOFaultCore(void) {
 	CPU_CycleLeft+=CPU_Cycles;
 	CPU_Cycles=1;
-	Bitu ret=CPU_Core_Full_Run();
+	Bits ret=CPU_Core_Full_Run();
 	CPU_CycleLeft+=CPU_Cycles;
 	if (ret<0) E_Exit("Got a dosbox close machine in IO-fault core?");
 	if (ret) 
@@ -162,10 +162,54 @@ static Bits IOFaultCore(void) {
 	return 0;
 }
 
-Bitu DEBUG_EnableDebugger();
+
+/* Some code to make io operations take some virtual time. Helps certain
+ * games with their timing of certain operations
+ */
+
+
+#define IODELAY_READ_MICROS 1.0
+#define IODELAY_WRITE_MICROS 0.75
+
+inline void IO_USEC_read_delay_old() {
+	if(CPU_CycleMax > static_cast<Bit32s>((IODELAY_READ_MICROS*1000.0))) {
+		// this could be calculated whenever CPU_CycleMax changes
+		Bitu delaycyc = static_cast<Bitu>((CPU_CycleMax/1000)*IODELAY_READ_MICROS);
+		if(CPU_Cycles > delaycyc) CPU_Cycles -= delaycyc;
+		else CPU_Cycles = 0;
+	}
+}
+
+inline void IO_USEC_write_delay_old() {
+	if(CPU_CycleMax > static_cast<Bit32s>((IODELAY_WRITE_MICROS*1000.0))) {
+		// this could be calculated whenever CPU_CycleMax changes
+		Bitu delaycyc = static_cast<Bitu>((CPU_CycleMax/1000)*IODELAY_WRITE_MICROS); 
+		if(CPU_Cycles > delaycyc) CPU_Cycles -= delaycyc;
+		else CPU_Cycles = 0;
+	}
+}
+
+
+#define IODELAY_READ_MICROSk (Bit32u)(1024/1.0)
+#define IODELAY_WRITE_MICROSk (Bit32u)(1024/0.75)
+
+inline void IO_USEC_read_delay() {
+	Bitu delaycyc = CPU_CycleMax/IODELAY_READ_MICROSk;
+	if(GCC_UNLIKELY(CPU_Cycles < 3*delaycyc)) delaycyc = 0; //Else port acces will set cycles to 0. which might trigger problem with games which read 16 bit values
+	CPU_Cycles -= delaycyc;
+	CPU_IODelayRemoved += delaycyc;
+}
+
+inline void IO_USEC_write_delay() {
+	Bitu delaycyc = CPU_CycleMax/IODELAY_WRITE_MICROSk; 
+	if(GCC_UNLIKELY(CPU_Cycles < 3*delaycyc)) delaycyc=0;
+	CPU_Cycles -= delaycyc;
+	CPU_IODelayRemoved += delaycyc;
+}
+
 
 void IO_WriteB(Bitu port,Bitu val) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,1))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,1)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -194,11 +238,14 @@ void IO_WriteB(Bitu port,Bitu val) {
 		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
 		cpudecoder=old_cpudecoder;
 	}
-	else io_writehandlers[0][port](port,val,1);
+	else {
+		IO_USEC_write_delay();
+		io_writehandlers[0][port](port,val,1);
+	}
 };
 
 void IO_WriteW(Bitu port,Bitu val) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,2))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,2)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -227,11 +274,14 @@ void IO_WriteW(Bitu port,Bitu val) {
 		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
 		cpudecoder=old_cpudecoder;
 	}
-	else io_writehandlers[1][port](port,val,2);
+	else {
+		IO_USEC_write_delay();
+		io_writehandlers[1][port](port,val,2);
+	}
 };
 
 void IO_WriteD(Bitu port,Bitu val) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,4))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,4)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -264,7 +314,7 @@ void IO_WriteD(Bitu port,Bitu val) {
 };
 
 Bitu IO_ReadB(Bitu port) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,1))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,1)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -293,11 +343,14 @@ Bitu IO_ReadB(Bitu port) {
 		cpudecoder=old_cpudecoder;
 		return retval;
 	}
-	else return io_readhandlers[0][port](port,1);
+	else {
+		IO_USEC_read_delay();
+		return io_readhandlers[0][port](port,1);
+	}
 };
 
 Bitu IO_ReadW(Bitu port) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,2))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,2)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -326,11 +379,14 @@ Bitu IO_ReadW(Bitu port) {
 		cpudecoder=old_cpudecoder;
 		return retval;
 	}
-	else return io_readhandlers[1][port](port,2);
+	else {
+		IO_USEC_read_delay();
+		return io_readhandlers[1][port](port,2);
+	}
 };
 
 Bitu IO_ReadD(Bitu port) {
-	if (GETFLAG(VM) && (CPU_IO_Exception(port,4))) {
+	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,4)))) {
 		LazyFlags old_lflags;
 		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
 		CPU_Decoder * old_cpudecoder;
@@ -377,7 +433,7 @@ public:
 
 static IO* test;
 
-void IO_Destroy(Section* sec) {
+void IO_Destroy(Section*) {
 	delete test;
 }
 

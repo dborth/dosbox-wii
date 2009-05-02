@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: render.cpp,v 1.45 2006/03/29 14:17:27 qbix79 Exp $ */
+/* $Id: render.cpp,v 1.51 2007/02/03 13:00:16 harekiet Exp $ */
 
 #include <sys/types.h>
 #include <dirent.h>
@@ -36,6 +36,8 @@
 
 Render_t render;
 ScalerLineHandler_t RENDER_DrawLine;
+
+static void RENDER_CallBack( GFX_CallBackFunctions_t function );
 
 static void Check_Palette(void) {
 	/* Clean up any previous changed palette data */
@@ -95,6 +97,43 @@ void RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue) {
 static void RENDER_EmptyLineHandler(const void * src) {
 }
 
+static void RENDER_StartLineHandler(const void * s) {
+	if (s) {
+		const Bitu *src = (Bitu*)s;
+		Bitu *cache = (Bitu*)(render.scale.cacheRead);
+		for (Bits x=render.src.start;x>0;) {
+			if (GCC_UNLIKELY(src[0] != cache[0])) {
+				if (!GFX_StartUpdate( render.scale.outWrite, render.scale.outPitch )) {
+					RENDER_DrawLine = RENDER_EmptyLineHandler;
+					return;
+				}
+				render.scale.outWrite += render.scale.outPitch * Scaler_ChangedLines[0];
+				RENDER_DrawLine = render.scale.lineHandler;
+				RENDER_DrawLine( s );
+				return;
+			}
+			x--; src++; cache++;
+		}
+	}
+	render.scale.cacheRead += render.scale.cachePitch;
+	Scaler_ChangedLines[0] += Scaler_Aspect[ render.scale.inLine ];
+	render.scale.inLine++;
+	render.scale.outLine++;
+}
+
+static void RENDER_FinishLineHandler(const void * s) {
+	if (s) {
+		const Bitu *src = (Bitu*)s;
+		Bitu *cache = (Bitu*)(render.scale.cacheRead);
+		for (Bits x=render.src.start;x>0;) {
+			cache[0] = src[0];
+			x--; src++; cache++;
+		}
+	}
+	render.scale.cacheRead += render.scale.cachePitch;
+}
+
+
 static void RENDER_ClearCacheHandler(const void * src) {
 	Bitu x, width;
 	Bit32u *srcLine, *cacheLine;
@@ -119,33 +158,54 @@ bool RENDER_StartUpdate(void) {
 	if (render.scale.inMode == scalerMode8) {
 		Check_Palette();
 	}
-	if (GCC_UNLIKELY(!GFX_StartUpdate(render.scale.outWrite,render.scale.outPitch)))
-		return false;
 	render.scale.inLine = 0;
 	render.scale.outLine = 0;
 	render.scale.cacheRead = (Bit8u*)&scalerSourceCache;
+	render.scale.outWrite = 0;
+	render.scale.outPitch = 0;
 	Scaler_ChangedLines[0] = 0;
 	Scaler_ChangedLineIndex = 0;
 	/* Clearing the cache will first process the line to make sure it's never the same */
 	if (GCC_UNLIKELY( render.scale.clearCache) ) {
 //		LOG_MSG("Clearing cache");
+		//Will always have to update the screen with this one anyway, so let's update already
+		if (GCC_UNLIKELY(!GFX_StartUpdate( render.scale.outWrite, render.scale.outPitch )))
+			return false;
+		render.fullFrame = true;
 		render.scale.clearCache = false;
 		RENDER_DrawLine = RENDER_ClearCacheHandler;
 	} else {
-		if (render.pal.changed)
+		if (render.pal.changed) {
+			/* Assume pal changes always do a full screen update anyway */
+			if (GCC_UNLIKELY(!GFX_StartUpdate( render.scale.outWrite, render.scale.outPitch )))
+				return false;
 			RENDER_DrawLine = render.scale.linePalHandler;
-		else 
-			RENDER_DrawLine = render.scale.lineHandler;
+			render.fullFrame = true;
+		} else {
+			RENDER_DrawLine = RENDER_StartLineHandler;
+			if (GCC_UNLIKELY(CaptureState & (CAPTURE_IMAGE|CAPTURE_VIDEO))) 
+				render.fullFrame = true;
+			else
+				render.fullFrame = false;
+		}
 	}
-	render.updating=true;
+	render.updating = true;
 	return true;
 }
 
-void RENDER_EndUpdate( bool fullUpdate ) {
-	if (!render.updating)
+static void RENDER_Halt( void ) {
+	RENDER_DrawLine = RENDER_EmptyLineHandler;
+	GFX_EndUpdate( 0 );
+	render.updating=false;
+	render.active=false;
+}
+
+extern Bitu PIC_Ticks;
+void RENDER_EndUpdate( void ) {
+	if (GCC_UNLIKELY(!render.updating))
 		return;
 	RENDER_DrawLine = RENDER_EmptyLineHandler;
-	if (CaptureState & (CAPTURE_IMAGE|CAPTURE_VIDEO)) {
+	if (GCC_UNLIKELY(CaptureState & (CAPTURE_IMAGE|CAPTURE_VIDEO))) {
 		Bitu pitch, flags;
 		flags = 0;
 		if (render.src.dblw != render.src.dblh) {
@@ -159,40 +219,46 @@ void RENDER_EndUpdate( bool fullUpdate ) {
 		CAPTURE_AddImage( render.src.width, render.src.height, render.src.bpp, pitch,
 			flags, fps, (Bit8u *)&scalerSourceCache, (Bit8u*)&render.pal.rgb );
 	}
-	GFX_EndUpdate( fullUpdate ? Scaler_ChangedLines : 0);
+	if ( render.scale.outWrite ) {
+		GFX_EndUpdate( Scaler_ChangedLines );
+		render.frameskip.hadSkip[render.frameskip.index] = 0;
+	} else {
+#if 0
+		Bitu total = 0, i;
+		render.frameskip.hadSkip[render.frameskip.index] = 1;
+		for (i = 0;i<RENDER_SKIP_CACHE;i++) 
+			total += render.frameskip.hadSkip[i];
+		LOG_MSG( "Skipped frame %d %d", PIC_Ticks, (total * 100) / RENDER_SKIP_CACHE );
+#endif
+	}
+	render.frameskip.index = (render.frameskip.index + 1) & (RENDER_SKIP_CACHE - 1);
 	render.updating=false;
 }
 
-static Bitu MakeAspectTable(Bitu height,double scaley,Bitu miny) {
+static Bitu MakeAspectTable(Bitu skip,Bitu height,double scaley,Bitu miny) {
+	Bitu i;
 	double lines=0;
 	Bitu linesadded=0;
-	for (Bitu i=0;i<height;i++) {
-		lines+=scaley;
-		if (lines>=miny) {
-			Bitu templines=(Bitu)lines;
-			lines-=templines;
-			linesadded+=templines;
-			Scaler_Aspect[1+i]=templines-miny;
-		} else Scaler_Aspect[1+i]=0;
+	for (i=0;i<skip;i++)
+		Scaler_Aspect[i] = 0;
+
+	height += skip;
+	for (i=skip;i<height;i++) {
+		lines += scaley;
+		if (lines >= miny) {
+			Bitu templines = (Bitu)lines;
+			lines -= templines;
+			linesadded += templines;
+			Scaler_Aspect[i] = templines;
+		} else {
+			Scaler_Aspect[i] = 0;
+		}
 	}
 	return linesadded;
 }
 
-void RENDER_CallBack( GFX_CallBackFunctions_t function ) {
-	if (render.updating) {
-		/* Still updating the current screen, shut it down correctly */
-		RENDER_EndUpdate( false );
-	}
 
-	if (function == GFX_CallBackStop)
-		return;
-	
-	if (function == GFX_CallBackRedraw) {
-		//LOG_MSG("redraw");
-		render.scale.clearCache = true;
-		return;
-	}
-
+static void RENDER_Reset( void ) {
 	Bitu width=render.src.width;
 	Bitu height=render.src.height;
 	bool dblw=render.src.dblw;
@@ -238,6 +304,24 @@ void RENDER_CallBack( GFX_CallBackFunctions_t function ) {
 			else if (render.scale.size == 3)
 				complexBlock = &ScaleAdvMame3x;
 			break;
+		case scalerOpHQ:
+			if (render.scale.size == 2)
+				complexBlock = &ScaleHQ2x;
+			else if (render.scale.size == 3)
+				complexBlock = &ScaleHQ3x;
+			break;
+		case scalerOpSuperSaI:
+			if (render.scale.size == 2)
+				complexBlock = &ScaleSuper2xSaI;
+			break;
+		case scalerOpSuperEagle:
+			if (render.scale.size == 2)
+				complexBlock = &ScaleSuperEagle;
+			break;
+		case scalerOpSaI:
+			if (render.scale.size == 2)
+				complexBlock = &Scale2xSaI;
+			break;
 		case scalerOpTV:
 			if (render.scale.size == 2)
 				simpleBlock = &ScaleTV2x;
@@ -274,27 +358,33 @@ forcenormal:
 		gfx_flags = complexBlock->gfxFlags;
 		xscale = complexBlock->xscale;	
 		yscale = complexBlock->yscale;
+//		LOG_MSG("Scaler:%s",complexBlock->name);
 	} else {
 		gfx_flags = simpleBlock->gfxFlags;
 		xscale = simpleBlock->xscale;	
 		yscale = simpleBlock->yscale;
+//		LOG_MSG("Scaler:%s",simpleBlock->name);
 	}
 	switch (render.src.bpp) {
 	case 8:
+		render.src.start = ( render.src.width * 1) / sizeof(Bitu);
 		if (gfx_flags & GFX_CAN_8)
 			gfx_flags |= GFX_LOVE_8;
 		else
 			gfx_flags |= GFX_LOVE_32;
 			break;
 	case 15:
+			render.src.start = ( render.src.width * 2) / sizeof(Bitu);
 			gfx_flags |= GFX_LOVE_15;
 			gfx_flags = (gfx_flags & ~GFX_CAN_8) | GFX_RGBONLY;
 			break;
 	case 16:
+			render.src.start = ( render.src.width * 2) / sizeof(Bitu);
 			gfx_flags |= GFX_LOVE_16;
 			gfx_flags = (gfx_flags & ~GFX_CAN_8) | GFX_RGBONLY;
 			break;
 	case 32:
+			render.src.start = ( render.src.width * 4) / sizeof(Bitu);
 			gfx_flags |= GFX_LOVE_32;
 			gfx_flags = (gfx_flags & ~GFX_CAN_8) | GFX_RGBONLY;
 			break;
@@ -307,15 +397,16 @@ forcenormal:
 			goto forcenormal;
 	}
 	width *= xscale;
+	Bitu skip = complexBlock ? 1 : 0;
 	if (gfx_flags & GFX_SCALING) {
-		height = MakeAspectTable(render.src.height, yscale, yscale );
+		height = MakeAspectTable(skip, render.src.height, yscale, yscale );
 	} else {
 		if ((gfx_flags & GFX_CAN_RANDOM) && gfx_scaleh > 1) {
 			gfx_scaleh *= yscale;
-			height = MakeAspectTable(render.src.height, gfx_scaleh, yscale );
+			height = MakeAspectTable( skip, render.src.height, gfx_scaleh, yscale );
 		} else {
 			gfx_flags &= ~GFX_CAN_RANDOM;		//Hardware surface when possible
-			height = MakeAspectTable(render.src.height, yscale, yscale);
+			height = MakeAspectTable( skip, render.src.height, yscale, yscale);
 		}
 	}
 /* Setup the scaler variables */
@@ -384,17 +475,34 @@ forcenormal:
 	render.pal.last = 255;
 	render.pal.changed = false;
 	memset(render.pal.modified, 0, sizeof(render.pal.modified));
+	//Finish this frame using a copy only handler
+	RENDER_DrawLine = RENDER_FinishLineHandler;
+	render.scale.outWrite = 0;
 	/* Signal the next frame to first reinit the cache */
 	render.scale.clearCache = true;
 	render.active=true;
 }
 
+static void RENDER_CallBack( GFX_CallBackFunctions_t function ) {
+	if (function == GFX_CallBackStop) {
+		RENDER_Halt( );	
+		return;
+	} else if (function == GFX_CallBackRedraw) {
+		render.scale.clearCache = true;
+		return;
+	} else if ( function == GFX_CallBackReset) {
+		GFX_EndUpdate( 0 );	
+		RENDER_Reset();
+	} else {
+		E_Exit("Unhandled GFX_CallBackReset %d", function );
+	}
+}
+
 void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double ratio,bool dblw,bool dblh) {
+	RENDER_Halt( );
 	if (!width || !height || width > SCALER_MAXWIDTH || height > SCALER_MAXHEIGHT) { 
-		render.active=false;
 		return;	
 	}
-	RENDER_EndUpdate( false );
 	render.src.width=width;
 	render.src.height=height;
 	render.src.bpp=bpp;
@@ -402,10 +510,10 @@ void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double ratio,bool 
 	render.src.dblh=dblh;
 	render.src.fps=fps;
 	render.src.ratio=ratio;
-	RENDER_CallBack( GFX_CallBackReset );
+	RENDER_Reset( );
 }
 
-extern void GFX_SetTitle(Bits cycles, Bits frameskip,bool paused);
+extern void GFX_SetTitle(Bit32s cycles, Bits frameskip,bool paused);
 static void IncreaseFrameSkip(bool pressed) {
 	if (!pressed)
 		return;
@@ -421,6 +529,18 @@ static void DecreaseFrameSkip(bool pressed) {
 	LOG_MSG("Frame Skip at %d",render.frameskip.max);
 	GFX_SetTitle(-1,render.frameskip.max,false);
 }
+/* Disabled as I don't want to waste a keybind for that. Might be used in the future (Qbix)
+static void ChangeScaler(bool pressed) {
+	if (!pressed)
+		return;
+	render.scale.op = (scalerOperation)((int)render.scale.op+1);
+	if((render.scale.op) >= scalerLast || render.scale.size == 1) {
+		render.scale.op = (scalerOperation)0;
+		if(++render.scale.size > 3)
+			render.scale.size = 1;
+	}
+	RENDER_CallBack( GFX_CallBackReset );
+} */
 
 void RENDER_Init(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
@@ -446,8 +566,13 @@ void RENDER_Init(Section * sec) {
 	else if (!strcasecmp(scaler,"normal3x")) { render.scale.op = scalerOpNormal;render.scale.size = 3; }
 	else if (!strcasecmp(scaler,"advmame2x")) { render.scale.op = scalerOpAdvMame;render.scale.size = 2; }
 	else if (!strcasecmp(scaler,"advmame3x")) { render.scale.op = scalerOpAdvMame;render.scale.size = 3; }
-	else if (!strcasecmp(scaler,"advinterp2x")) { render.scale.op = scalerOpAdvMame;render.scale.size = 2; }
-	else if (!strcasecmp(scaler,"advinterp3x")) { render.scale.op = scalerOpAdvMame;render.scale.size = 3; }
+	else if (!strcasecmp(scaler,"advinterp2x")) { render.scale.op = scalerOpAdvInterp;render.scale.size = 2; }
+	else if (!strcasecmp(scaler,"advinterp3x")) { render.scale.op = scalerOpAdvInterp;render.scale.size = 3; }
+	else if (!strcasecmp(scaler,"hq2x")) { render.scale.op = scalerOpHQ;render.scale.size = 2; }
+	else if (!strcasecmp(scaler,"hq3x")) { render.scale.op = scalerOpHQ;render.scale.size = 3; }
+	else if (!strcasecmp(scaler,"2xsai")) { render.scale.op = scalerOpSaI;render.scale.size = 2; }
+	else if (!strcasecmp(scaler,"super2xsai")) { render.scale.op = scalerOpSuperSaI;render.scale.size = 2; }
+	else if (!strcasecmp(scaler,"supereagle")) { render.scale.op = scalerOpSuperEagle;render.scale.size = 2; }
 	else if (!strcasecmp(scaler,"tv2x")) { render.scale.op = scalerOpTV;render.scale.size = 2; }
 	else if (!strcasecmp(scaler,"tv3x")) { render.scale.op = scalerOpTV;render.scale.size = 3; }
 	else if (!strcasecmp(scaler,"rgb2x")){ render.scale.op = scalerOpRGB;render.scale.size = 2; }
@@ -462,6 +587,7 @@ void RENDER_Init(Section * sec) {
 	//If something changed that needs a ReInit
 	if(running && (render.aspect != aspect || render.scale.op != scaleOp))
 		RENDER_CallBack( GFX_CallBackReset );
+
 	if(!running) render.updating=true;
 	running = true;
 

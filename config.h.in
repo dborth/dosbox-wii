@@ -2,7 +2,7 @@
 
 
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 /* Define to 1 to enable internal debugger, requires libcurses */
 #undef C_DEBUG
 
-/* Define to 1 if you want serial passthrough support (Win32 and OS/2 only).
+/* Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).
    */
 #undef C_DIRECTSERIAL
 
@@ -76,6 +76,9 @@
 /* Define to 1 to use a unaligned memory access */
 #undef C_UNALIGNED_MEMORY
 
+/* libm doesn't include powf */
+#undef DB_HAVE_NO_POWF
+
 /* environ can be included */
 #undef ENVIRON_INCLUDED
 
@@ -93,6 +96,9 @@
 
 /* Define to 1 if you have the `asound' library (-lasound). */
 #undef HAVE_LIBASOUND
+
+/* Define to 1 if you have the `m' library (-lm). */
+#undef HAVE_LIBM
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
@@ -145,22 +151,22 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
-/* The size of a `int *', as computed by sizeof. */
+/* The size of `int *', as computed by sizeof. */
 #undef SIZEOF_INT_P
 
-/* The size of a `unsigned char', as computed by sizeof. */
+/* The size of `unsigned char', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_CHAR
 
-/* The size of a `unsigned int', as computed by sizeof. */
+/* The size of `unsigned int', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_INT
 
-/* The size of a `unsigned long', as computed by sizeof. */
+/* The size of `unsigned long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG
 
-/* The size of a `unsigned long long', as computed by sizeof. */
+/* The size of `unsigned long long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG_LONG
 
-/* The size of a `unsigned short', as computed by sizeof. */
+/* The size of `unsigned short', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_SHORT
 
 /* Define to 1 if you have the ANSI C header files. */
@@ -185,7 +191,7 @@
 #undef inline
 #endif
 
-/* Define to `unsigned' if <sys/types.h> does not define. */
+/* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t
 
 #define INLINE inline

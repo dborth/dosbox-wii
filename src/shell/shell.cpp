@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.72 2006/02/26 15:58:49 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.84 2007/02/22 08:34:10 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -48,16 +48,11 @@ typedef std::list<std::string>::iterator auto_it;
 
 void VFILE_Remove(const char *name);
 
-void AutoexecObject::Install(char* line,...) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf);
+void AutoexecObject::Install(const std::string &in) {
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
 	installed = true;
-	va_list msg;
-	
-	va_start(msg,line);
-	vsprintf(buf,line,msg);
-	va_end(msg);
-	autoexec_strings.push_back(std::string(buf));
-
+	buf = in;
+	autoexec_strings.push_back(buf);
 	this->CreateAutoexec();
 
 	//autoexec.bat is normally created AUTOEXEC_Init.
@@ -65,7 +60,10 @@ void AutoexecObject::Install(char* line,...) {
 	//we have to update the envirionment to display changes
 
 	if(first_shell)	{
-		char buf2[256]; strcpy(buf2,buf);//used in shell.h
+		//create a copy as the string will be modified
+		std::string::size_type n = buf.size();
+		char* buf2 = new char[n + 1];
+		safe_strncpy(buf2, buf.c_str(), n + 1);
 		if((strncasecmp(buf2,"set ",4) == 0) && (strlen(buf2) > 4)){
 			char* after_set = buf2 + 4;//move to variable that is being set
 			char* test = strpbrk(after_set,"=");
@@ -74,18 +72,15 @@ void AutoexecObject::Install(char* line,...) {
 			//If the shell is running/exists update the environment
 			first_shell->SetEnv(after_set,test);
 		}
+		delete [] buf2;
 	}
 }
 
-void AutoexecObject::InstallBefore(char* line,...) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf);
+void AutoexecObject::InstallBefore(const std::string &in) {
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
 	installed = true;
-	va_list msg;
-	
-	va_start(msg,line);
-	vsprintf(buf,line,msg);
-	va_end(msg);
-	autoexec_strings.push_front(std::string(buf));
+	buf = in;
+	autoexec_strings.push_front(buf);
 	this->CreateAutoexec();
 }
 
@@ -98,7 +93,7 @@ void AutoexecObject::CreateAutoexec(void) {
 	size_t auto_len;
 	for(auto_it it=  autoexec_strings.begin(); it != autoexec_strings.end(); it++) {
 		auto_len = strlen(autoexec_data);
-		if ((auto_len+strlen((*it).c_str())+3)>AUTOEXEC_SIZE) {
+		if ((auto_len+(*it).length()+3)>AUTOEXEC_SIZE) {
 			E_Exit("SYSTEM:Autoexec.bat file overflow");
 		}
 		sprintf((autoexec_data+auto_len),"%s\r\n",(*it).c_str());
@@ -113,15 +108,19 @@ AutoexecObject::~AutoexecObject(){
 	for(auto_it it = autoexec_strings.begin(); it != autoexec_strings.end(); ) {
 		if((*it) == buf) {
 			it = autoexec_strings.erase(it);
+			std::string::size_type n = buf.size();
+			char* buf2 = new char[n + 1];
+			safe_strncpy(buf2, buf.c_str(), n + 1);
 			// If it's a environment variable remove it from there as well
-			if((strncasecmp(buf,"set ",4) == 0) && (strlen(buf) > 4)){
-				char* after_set = buf + 4;//move to variable that is being set
+			if((strncasecmp(buf2,"set ",4) == 0) && (strlen(buf2) > 4)){
+				char* after_set = buf2 + 4;//move to variable that is being set
 				char* test = strpbrk(after_set,"=");
 				if(!test) continue;
 				*test = 0;
 				//If the shell is running/exists update the environment
 				if(first_shell) first_shell->SetEnv(after_set,"");
 			}
+			delete [] buf2;
 		} else it++;
 	}
 	this->CreateAutoexec();
@@ -263,7 +262,7 @@ void DOS_Shell::ParseLine(char * line) {
 
 void DOS_Shell::RunInternal(void)
 {
-	char input_line[CMD_MAXLINE];
+	char input_line[CMD_MAXLINE] = {0};
 	std::string line;
 	while(bf && bf->ReadLine(input_line)) 
 	{
@@ -281,7 +280,7 @@ void DOS_Shell::RunInternal(void)
 
 
 void DOS_Shell::Run(void) {
-	char input_line[CMD_MAXLINE];
+	char input_line[CMD_MAXLINE] = {0};
 	std::string line;
 	if (cmd->FindStringRemain("/C",line)) {
 		strcpy(input_line,line.c_str());
@@ -292,12 +291,15 @@ void DOS_Shell::Run(void) {
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
-	WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"));
+	if(machine != MCH_HERC) { //Hide it for hercules as that looks too weird
+		WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
 #if C_DEBUG
-	WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
+		WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
 #endif
-	if(machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
-	WriteOut(MSG_Get("SHELL_STARTUP_END"));
+		if(machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+		WriteOut(MSG_Get("SHELL_STARTUP_END"));
+	}
+
 	if (cmd->FindString("/INIT",line,true)) {
 		strcpy(input_line,line.c_str());
 		line.erase();
@@ -320,7 +322,7 @@ void DOS_Shell::Run(void) {
 			if (echo) ShowPrompt();
 			InputCommand(input_line);
 			ParseLine(input_line);
-			if (echo) WriteOut("\n");
+			if (echo && !bf) WriteOut("\n");
 		}
 	} while (!exit);
 }
@@ -350,15 +352,20 @@ public:
 			if(echo_off) autoexec_echo.InstallBefore("@echo off");
 
 			/* Install the stuff from the configfile */
-			autoexec[0].Install("%s",extra);
+			autoexec[0].Install(section->data);
 		}
 
 		/* Check to see for extra command line options to be added (before the command specified on commandline) */
 		/* Maximum of extra commands: 10 */
 		Bitu i = 1;
-		while (control->cmdline->FindString("-c",line,true) && (i <= 11))
-			autoexec[i++].Install((char *)line.c_str());
-	
+		while (control->cmdline->FindString("-c",line,true) && (i <= 11)) {
+#if defined (WIN32) || defined (OS2)
+			//replace single with double quotes so that mount commands can contain spaces
+			for(Bitu temp = 0;temp < line.size();++temp) if(line[temp] == '\'') line[temp]='\"';
+#endif //Linux users can simply use \" in their shell
+			autoexec[i++].Install(line);
+		}
+
 		/* Check for the -exit switch which causes dosbox to when the command on the commandline has finished */
 		bool addexit = control->cmdline->FindExist("-exit",true);
 
@@ -375,7 +382,7 @@ public:
 				if (stat(buffer,&test)) goto nomount;
 			}
 			if (test.st_mode & S_IFDIR) { 
-				autoexec[12].Install("MOUNT C \"%s\"",buffer);
+				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 			} else {
 				char* name = strrchr(buffer,CROSS_FILESPLIT);
@@ -390,17 +397,14 @@ public:
 				}
 				*name++ = 0;
 				if (access(buffer,F_OK)) goto nomount;
-				autoexec[12].Install("MOUNT C \"%s\"",buffer);
+				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				upcase(name);
 				if(strstr(name,".BAT") == 0) {
 					autoexec[14].Install(name);
 				} else {
-				/* BATch files are called else exit will not work */
-					char call[CROSS_LEN] = { 0 };
-					strcpy(call,"CALL ");
-					strcat(call,name);
-					autoexec[14].Install(call);
+					/* BATch files are called else exit will not work */
+					autoexec[14].Install(std::string("CALL ") + name);
 				}
 				if(addexit) autoexec[15].Install("exit");
 			}
@@ -424,10 +428,11 @@ static char * init_line="/INIT AUTOEXEC.BAT";
 void SHELL_Init() {
 	/* Add messages */
 	MSG_Add("SHELL_ILLEGAL_PATH","Illegal Path.\n");
-	MSG_Add("SHELL_CMD_HELP","supported commands are:\n");
+	MSG_Add("SHELL_CMD_HELP","If you want a list of all supported commands type \033[33;1mhelp /all\033[0m .\nA short list of the most often used commands:\n");
 	MSG_Add("SHELL_CMD_ECHO_ON","ECHO is on.\n");
 	MSG_Add("SHELL_CMD_ECHO_OFF","ECHO is off.\n");
 	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s.\n");
+	MSG_Add("SHELL_MISSING_PARAMETER","Required parameter missing.\n");
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s.\n");
@@ -459,10 +464,11 @@ void SHELL_Init() {
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mDOSBox Shell v" VERSION "\033[37m                                                 \xBA\n"
-		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
+		"\xBA \033[32mWelcome to DOSBox v%-8s\033[37m                                        \xBA\n"
+		"\xBA                                                                    \xBA\n"
+//		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
+		"\xBA For a short introduction for new users type: \033[33mINTRO\033[37m                 \xBA\n"
 		"\xBA For supported shell commands type: \033[33mHELP\033[37m                            \xBA\n"
-		"\xBA For a short introduction type: \033[33mINTRO\033[37m                               \xBA\n"
 		"\xBA                                                                    \xBA\n"
 		"\xBA If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  \xBA\n"
 		"\xBA To activate the keymapper \033[31mctrl-F1\033[37m.                                 \xBA\n"
@@ -485,29 +491,53 @@ void SHELL_Init() {
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 	        //"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
-	MSG_Add("SHELL_CMD_CHDIR_HELP","Change Directory.\n");
+	MSG_Add("SHELL_CMD_CHDIR_HELP","Displays/changes the current directory.\n");
+	MSG_Add("SHELL_CMD_CHDIR_HELP_LONG","CHDIR [drive:][path]\n"
+	        "CHDIR [..]\n"
+	        "CD [drive:][path]\n"
+	        "CD [..]\n\n"
+	        "  ..   Specifies that you want to change to the parent directory.\n\n"
+	        "Type CD drive: to display the current directory in the specified drive.\n"
+	        "Type CD without parameters to display the current drive and directory.\n");
 	MSG_Add("SHELL_CMD_CLS_HELP","Clear screen.\n");
 	MSG_Add("SHELL_CMD_DIR_HELP","Directory View.\n");
 	MSG_Add("SHELL_CMD_ECHO_HELP","Display messages and enable/disable command echoing.\n");
 	MSG_Add("SHELL_CMD_EXIT_HELP","Exit from the shell.\n");
 	MSG_Add("SHELL_CMD_HELP_HELP","Show help.\n");
 	MSG_Add("SHELL_CMD_MKDIR_HELP","Make Directory.\n");
+	MSG_Add("SHELL_CMD_MKDIR_HELP_LONG","MKDIR [drive:][path]\n"
+	        "MD [drive:][path]\n");
 	MSG_Add("SHELL_CMD_RMDIR_HELP","Remove Directory.\n");
+	MSG_Add("SHELL_CMD_RMDIR_HELP_LONG","RMDIR [drive:][path]\n"
+	        "RD [drive:][path]\n");
 	MSG_Add("SHELL_CMD_SET_HELP","Change environment variables.\n");
 	MSG_Add("SHELL_CMD_IF_HELP","Performs conditional processing in batch programs.\n");
 	MSG_Add("SHELL_CMD_GOTO_HELP","Jump to a labeled line in a batch script.\n");
+	MSG_Add("SHELL_CMD_SHIFT_HELP","Leftshift commandline parameters in a batch script.\n");
 	MSG_Add("SHELL_CMD_TYPE_HELP","Display the contents of a text-file.\n");
+	MSG_Add("SHELL_CMD_TYPE_HELP_LONG","TYPE [drive:][path][filename]\n");
 	MSG_Add("SHELL_CMD_REM_HELP","Add comments in a batch file.\n");
+	MSG_Add("SHELL_CMD_REM_HELP_LONG","REM [comment]\n");
 	MSG_Add("SHELL_CMD_NO_WILD","This is a simple version of the command, no wildcards allowed!\n");
-	MSG_Add("SHELL_CMD_RENAME_HELP","Renames files.\n");
-	MSG_Add("SHELL_CMD_DELETE_HELP","Removes files.\n");
+	MSG_Add("SHELL_CMD_RENAME_HELP","Renames one or more files.\n");
+	MSG_Add("SHELL_CMD_RENAME_HELP_LONG","RENAME [drive:][path]filename1 filename2.\n"
+	        "REN [drive:][path]filename1 filename2.\n\n"
+	        "Note that you can not specify a new drive or path for your destination file.\n");
+	MSG_Add("SHELL_CMD_DELETE_HELP","Removes one or more files.\n");
 	MSG_Add("SHELL_CMD_COPY_HELP","Copy files.\n");
 	MSG_Add("SHELL_CMD_CALL_HELP","Start a batch file from within another batch file.\n");
 	MSG_Add("SHELL_CMD_SUBST_HELP","Assign an internal directory to a drive.\n");
-	MSG_Add("SHELL_CMD_LOADHIGH_HELP","Run a program. For batch file compatibility only.\n");
+	MSG_Add("SHELL_CMD_LOADHIGH_HELP","Loads a program into upper memory (requires xms=true,umb=true).\n");
 	MSG_Add("SHELL_CMD_CHOICE_HELP","Waits for a keypress and sets ERRORLEVEL.\n");
+	MSG_Add("SHELL_CMD_CHOICE_HELP_LONG","CHOICE [/C:choices] [/N] [/S] text\n"
+	        "  /C[:]choices  -  Specifies allowable keys.  Default is: yn.\n"
+	        "  /N  -  Do not display the choices at end of prompt.\n"
+	        "  /S  -  Enables case-sensitive choices to be selected.\n"
+	        "  text  -  The text to display as a prompt.\n");
 	MSG_Add("SHELL_CMD_ATTRIB_HELP","Does nothing. Provided for compatibility.\n");
 	MSG_Add("SHELL_CMD_PATH_HELP","Provided for compatibility.\n");
+	MSG_Add("SHELL_CMD_VER_HELP","View and set the reported DOS version.\n");
+	MSG_Add("SHELL_CMD_VER_VER","DOSBox version %s. Reported DOS version %d.%d.\n");
 
 	/* Regular startup */
 	call_shellstop=CALLBACK_Allocate();

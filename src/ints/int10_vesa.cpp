@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_vesa.cpp,v 1.23 2006/02/12 23:06:15 harekiet Exp $ */
+/* $Id: int10_vesa.cpp,v 1.26 2007/01/24 16:29:53 harekiet Exp $ */
 
 #include <string.h>
 #include <stddef.h>
@@ -292,6 +292,7 @@ Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u val, Bit16u & bytes,Bit16u & pixe
 	Bit8u bpp;
 	switch (CurMode->type) {
 	case M_LIN4:
+		bpp = 1;
 		break;
 	case M_LIN8:
 		bpp=1;
@@ -356,11 +357,11 @@ Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y) {
 		break;
 	case M_LIN16:
 	case M_LIN15:
-		start=vga.config.scan_len*8*y+x;
+		start=vga.config.scan_len*8*y+x*2;
 		vga.config.display_start=start/4;
 		break;
 	case M_LIN32:
-		start=vga.config.scan_len*8*y+x;
+		start=vga.config.scan_len*8*y+x*4;
 		vga.config.display_start=start/4;
 		break;
 	default:
@@ -443,20 +444,17 @@ void INT10_SetupVESA(void) {
 	int10.rom.pmode_interface_window = int10.rom.used - RealOff( int10.rom.pmode_interface );
 	phys_writew( Real2Phys(int10.rom.pmode_interface) + 0, int10.rom.pmode_interface_window );
 	callback.pmWindow=CALLBACK_Allocate();
-	CALLBACK_Setup(callback.pmWindow, VESA_PMSetWindow, CB_RETF, "VESA PM Set Window");
-	int10.rom.used += CALLBACK_SetupExtra( callback.pmWindow, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	int10.rom.used += CALLBACK_Setup(callback.pmWindow, VESA_PMSetWindow, CB_RETN, PhysMake(0xc000,int10.rom.used), "VESA PM Set Window");
 	/* PM Set start call */
 	int10.rom.pmode_interface_start = int10.rom.used - RealOff( int10.rom.pmode_interface );
 	phys_writew( Real2Phys(int10.rom.pmode_interface) + 2, int10.rom.pmode_interface_start);
 	callback.pmStart=CALLBACK_Allocate();
-	CALLBACK_Setup(callback.pmStart, VESA_PMSetStart, CB_RETF, "VESA PM Set Start");
-	int10.rom.used += CALLBACK_SetupExtra( callback.pmStart, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	int10.rom.used += CALLBACK_Setup(callback.pmStart, VESA_PMSetStart, CB_RETN, PhysMake(0xc000,int10.rom.used), "VESA PM Set Start");
 	/* PM Set Palette call */
 	int10.rom.pmode_interface_palette = int10.rom.used - RealOff( int10.rom.pmode_interface );
 	phys_writew( Real2Phys(int10.rom.pmode_interface) + 4, int10.rom.pmode_interface_palette);
 	callback.pmPalette=CALLBACK_Allocate();
-	CALLBACK_Setup(callback.pmPalette, VESA_PMSetPalette, CB_RETF, "VESA PM Set Palette");
-	int10.rom.used += CALLBACK_SetupExtra( callback.pmPalette, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	int10.rom.used += CALLBACK_Setup(callback.pmPalette, VESA_PMSetPalette, CB_RETN, PhysMake(0xc000,int10.rom.used), "VESA PM Set Palette");
 	/* Finalize the size and clear the required ports pointer */
 	phys_writew( Real2Phys(int10.rom.pmode_interface) + 6, 0);
 	int10.rom.pmode_interface_size=int10.rom.used - RealOff( int10.rom.pmode_interface );

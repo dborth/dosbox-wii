@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: midi_alsa.h,v 1.13 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: midi_alsa.h,v 1.15 2007/01/08 19:45:39 qbix79 Exp $ */
 
 #define ALSA_PCM_OLD_HW_PARAMS_API
 #define ALSA_PCM_OLD_SW_PARAMS_API
@@ -76,7 +76,6 @@ public:
 	}
 
 	void PlayMsg(Bit8u * msg) {
-		unsigned int midiCmd[4];
 		ev.type = SND_SEQ_EVENT_OSS;
 
 		ev.data.raw32.d[0] = msg[0];

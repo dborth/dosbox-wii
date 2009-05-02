@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: directserial_win32.h,v 1.2 2006/02/09 11:47:54 qbix79 Exp $ */
+/* $Id: directserial_win32.h,v 1.4 2007/01/13 08:35:49 qbix79 Exp $ */
 
 // include guard
 #ifndef DOSBOX_DIRECTSERIAL_WIN32_H
@@ -39,43 +39,27 @@ public:
 	DCB dcb;
 	BOOL fSuccess;
 
-	CDirectSerial(
-			IO_ReadHandler* rh,
-			IO_WriteHandler* wh,
-			TIMER_TickHandler th,
-			Bit16u baseAddr,
-			Bit8u initIrq,
-			Bit32u initBps,
-			Bit8u bytesize,
-			const char *parity,
-			Bit8u stopbits,
-			const char * realPort
-		);
-	
-
+	CDirectSerial(Bitu id, CommandLine* cmd/*const char* configstring*/);
 	~CDirectSerial();
+	bool receiveblock;		// It's not a block of data it rather blocks
+
+	Bitu rx_retry;		// counter of retries
+
+	Bitu rx_retry_max;	// how many POLL_EVENTS to wait before causing
+						// a overrun error.
+
+
+	void CheckErrors();
 	
-	
-	Bitu lastChance;		// If there is no space for new
-							// received data, it gets a little chance
-	Bit8u ChanceChar;
-
-	bool CanRecv(void);
-	bool CanSend(void);
-
-	bool InstallationSuccessful;	// check after constructing. If
-									// something was wrong, delete it right away.
-
-	void RXBufferEmpty();
-
-	
-	void updatePortConfig(Bit8u dll, Bit8u dlm, Bit8u lcr);
+	void updatePortConfig(Bit16u divider, Bit8u lcr);
 	void updateMSR();
-	void transmitByte(Bit8u val);
+	void transmitByte(Bit8u val, bool first);
 	void setBreak(bool value);
-	void updateModemControlLines(/*Bit8u mcr*/);
-	void Timer2(void);
 	
+	void setRTSDTR(bool rts, bool dtr);
+	void setRTS(bool val);
+	void setDTR(bool val);
+	void handleUpperEvent(Bit16u type);
 		
 };
 

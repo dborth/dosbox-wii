@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_iso.cpp,v 1.12 2006/02/12 13:32:30 qbix79 Exp $ */
+/* $Id: drive_iso.cpp,v 1.17 2007/01/21 16:21:22 c2woody Exp $ */
 
 #include <cctype>
 #include <cstring>
@@ -30,7 +30,7 @@ using namespace std;
 
 class isoFile : public DOS_File {
 public:
-	isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u offset, Bit16u info);
+	isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u offset);
 	bool Read(Bit8u *data, Bit16u *size);
 	bool Write(Bit8u *data, Bit16u *size);
 	bool Seek(Bit32u *pos, Bit32u type);
@@ -46,7 +46,7 @@ private:
 	Bit16u info;
 };
 
-isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u offset, Bit16u info)
+isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u offset)
 {
 	this->drive = drive;
 	time = stat->time;
@@ -58,7 +58,6 @@ isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u
 	fileEnd = fileBegin + size;
 	cachedSector = -1;
 	open = true;
-	this->info = info;
 	this->name = NULL;
 	SetName(name);
 }
@@ -136,11 +135,13 @@ bool isoFile::Close()
 
 Bit16u isoFile::GetInformation(void)
 {
-	return info;
+	return 0x40;		// read-only drive
 }
 
+int  MSCDEX_RemoveDrive(char driveLetter);
 int  MSCDEX_AddDrive(char driveLetter, const char* physicalPath, Bit8u& subUnit);
-bool MSCDEX_HasMediaChanged(Bit8u subUnit);
+void MSCDEX_ReplaceDrive(CDROM_Interface* cdrom, Bit8u subUnit);
+bool MSCDEX_HasDrive(char driveLetter);
 bool MSCDEX_GetVolumeName(Bit8u subUnit, char* name);
 
 isoDrive::isoDrive(char driveLetter, const char *fileName, Bit8u mediaid, int &error)
@@ -150,11 +151,14 @@ isoDrive::isoDrive(char driveLetter, const char *fileName, Bit8u mediaid, int &e
 	memset(sectorHashEntries, 0, sizeof(sectorHashEntries));
 	memset(&rootEntry, 0, sizeof(isoDirEntry));
 	
-	error = MSCDEX_AddDrive(driveLetter, fileName, subUnit);
+	safe_strncpy(this->fileName, fileName, CROSS_LEN);
+	error = UpdateMscdex(driveLetter, fileName, subUnit);
 
 	if (!error) {
 		if (loadImage()) {
-			strcpy(info, "isoDrive");
+			strcpy(info, "isoDrive ");
+			strcat(info, fileName);
+			this->driveLetter = driveLetter;
 			this->mediaid = mediaid;
 			char buffer[32] = { 0 };
 			if (!MSCDEX_GetVolumeName(subUnit, buffer)) strcpy(buffer, "");
@@ -185,6 +189,28 @@ isoDrive::isoDrive(char driveLetter, const char *fileName, Bit8u mediaid, int &e
 
 isoDrive::~isoDrive() { }
 
+int isoDrive::UpdateMscdex(char driveLetter, const char* path, Bit8u& subUnit) {
+	if (MSCDEX_HasDrive(driveLetter)) {
+		CDROM_Interface_Image* oldCdrom = CDROM_Interface_Image::images[subUnit];
+		CDROM_Interface* cdrom = new CDROM_Interface_Image(subUnit);
+		char pathCopy[CROSS_LEN];
+		safe_strncpy(pathCopy, path, CROSS_LEN);
+		if (!cdrom->SetDevice(pathCopy, 0)) {
+			CDROM_Interface_Image::images[subUnit] = oldCdrom;
+			delete cdrom;
+			return 3;
+		}
+		MSCDEX_ReplaceDrive(cdrom, subUnit);
+		return 0;
+	} else {
+		return MSCDEX_AddDrive(driveLetter, path, subUnit);
+	}
+}
+
+void isoDrive::Activate(void) {
+	UpdateMscdex(driveLetter, fileName, subUnit);
+}
+
 bool isoDrive::FileOpen(DOS_File **file, char *name, Bit32u flags)
 {
 	if (flags == OPEN_WRITE) {
@@ -201,7 +227,7 @@ bool isoDrive::FileOpen(DOS_File **file, char *name, Bit32u flags)
 		file_stat.attr = DOS_ATTR_ARCHIVE | DOS_ATTR_READ_ONLY;
 		file_stat.date = DOS_PackDate(1900 + de.dateYear, de.dateMonth, de.dateDay);
 		file_stat.time = DOS_PackTime(de.timeHour, de.timeMin, de.timeSec);
-		*file = new isoFile(this, name, &file_stat, EXTENT_LOCATION(de) * ISO_FRAMESIZE, 0x202);
+		*file = new isoFile(this, name, &file_stat, EXTENT_LOCATION(de) * ISO_FRAMESIZE);
 		(*file)->flags = flags;
 	}
 	return success;
@@ -374,6 +400,14 @@ bool isoDrive::isRemovable(void)
 	return true;
 }
 
+Bits isoDrive::UnMount(void) {
+	if(MSCDEX_RemoveDrive(driveLetter)) {
+		delete this;
+		return 0;
+	}
+	return 2;
+}
+
 int isoDrive::GetDirIterator(const isoDirEntry* de)
 {
 	int dirIterator = nextFreeDirIterator;
@@ -464,8 +498,8 @@ inline bool isoDrive :: readSector(Bit8u *buffer, Bit32u sector)
 int isoDrive :: readDirEntry(isoDirEntry *de, Bit8u *data)
 {	
 	// copy data into isoDirEntry struct, data[0] = length of DirEntry
-	if (data[0] > sizeof(isoDirEntry)) return -1;
-	memcpy(de, data, data[0]);
+//	if (data[0] > sizeof(isoDirEntry)) return -1;//check disabled as isoDirentry is currently 258 bytes large. So it always fits
+	memcpy(de, data, data[0]);//Perharps care about a zero at the end.
 	
 	// xa not supported
 	if (de->extAttrLength != 0) return -1;

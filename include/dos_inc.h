@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_inc.h,v 1.59 2006/02/09 11:47:47 qbix79 Exp $ */
+/* $Id: dos_inc.h,v 1.65 2007/01/08 20:36:53 qbix79 Exp $ */
 
 #ifndef DOSBOX_DOS_INC_H
 #define DOSBOX_DOS_INC_H
@@ -158,7 +158,7 @@ void DOS_FreeProcessMemory(Bit16u pspseg);
 Bit16u DOS_GetMemory(Bit16u pages);
 bool DOS_SetMemAllocStrategy(Bit16u strat);
 Bit16u DOS_GetMemAllocStrategy(void);
-void DOS_BuildUMBChain(const char* use_umbs,bool ems_active);
+void DOS_BuildUMBChain(bool umb_active,bool ems_active);
 bool DOS_LinkUMBsToMemChain(Bit16u linkstate);
 
 /* FCB stuff */
@@ -186,6 +186,20 @@ void DOS_SetupTables(void);
 
 /* Internal DOS Setup Programs */
 void DOS_SetupPrograms(void);
+
+/* Initialize Keyboard Layout */
+void DOS_KeyboardLayout_Init(Section* sec);
+
+bool DOS_LayoutKey(Bitu key, Bit8u flags1, Bit8u flags2, Bit8u flags3);
+
+enum {
+	KEYB_NOERROR=0,
+	KEYB_FILENOTFOUND,
+	KEYB_INVALIDFILE,
+	KEYB_LAYOUTNOTFOUND,
+	KEYB_INVALIDCPFILE
+};
+
 
 INLINE Bit16u long2para(Bit32u size) {
 	if (size>0xFFFF0) return 0xffff;
@@ -367,6 +381,7 @@ public:
 	Bit16u	GetStartOfUMBChain(void);
 	Bit8u	GetUMBChainState(void);
 	RealPt	GetPointer(void);
+	Bit32u GetDeviceChain(void);
 
 	#ifdef _MSC_VER
 	#pragma pack(1)
@@ -438,8 +453,10 @@ public:
 	void GetSearchParams(Bit8u & _sattr,char * _spattern);
 	void GetResult(char * _name,Bit32u & _size,Bit16u & _date,Bit16u & _time,Bit8u & _attr);
 
-	void	SetDirID(Bit16u entry)		{ sSave(sDTA,dirID,entry); };
+	void	SetDirID(Bit16u entry)			{ sSave(sDTA,dirID,entry); };
+	void	SetDirIDCluster(Bit16u entry)	{ sSave(sDTA,dirCluster,entry); };
 	Bit16u	GetDirID(void)				{ return sGet(sDTA,dirID); };
+	Bit16u	GetDirIDCluster(void)		{ return sGet(sDTA,dirCluster); };
 private:
 	#ifdef _MSC_VER
 	#pragma pack(1)
@@ -450,7 +467,8 @@ private:
 		Bit8u sext[3];						/* The Search pattern for the extenstion */
 		Bit8u sattr;						/* The Attributes that need to be found */
 		Bit16u dirID;						/* custom: dir-search ID for multiple searches at the same time */
-		Bit8u fill[6];
+		Bit16u dirCluster;					/* custom (drive_fat only): cluster number for multiple searches at the same time */
+		Bit8u fill[4];
 		Bit8u attr;
 		Bit16u time;
 		Bit16u date;
@@ -598,9 +616,12 @@ struct DOS_Block {
 		RealPt mediaid;
 		RealPt tempdta;
 		RealPt tempdta_fcbdelete;
-		RealPt dcbs;
+		RealPt dbcs;
+		RealPt filenamechar;
+		RealPt collatingseq;
 		Bit8u* country;//Will be copied to dos memory. resides in real mem
 	} tables;
+	Bit16u loaded_codepage;
 };
 
 extern DOS_Block dos;

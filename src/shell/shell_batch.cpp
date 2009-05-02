@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_batch.cpp,v 1.20 2006/02/23 08:13:14 qbix79 Exp $ */
+/* $Id: shell_batch.cpp,v 1.23 2007/01/08 19:45:42 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +43,7 @@ BatchFile::~BatchFile() {
 }
 
 bool BatchFile::ReadLine(char * line) {
-	Bit8u c;Bit16u n;
+	Bit8u c=0;Bit16u n=1;
 	char temp[CMD_MAXLINE];
 emptyline:
 	char * cmd_write=temp;
@@ -149,3 +149,6 @@ again:
 	goto again;
 	return false;
 };
+void BatchFile::Shift(void) {
+	cmd->Shift(1);
+}

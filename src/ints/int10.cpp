@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -195,6 +195,8 @@ static Bitu INT10_Handler(void) {
 		}
 		break;
 	case 0x11:								/* Character generator functions */
+		if (machine<MCH_VGA) 
+			break;
 		switch (reg_al) {
 /* Textmode calls */
 		case 0x00:			/* Load user font */
@@ -203,14 +205,18 @@ static Bitu INT10_Handler(void) {
 			break;
 		case 0x01:			/* Load 8x14 font */
 		case 0x11:
-			INT10_LoadFont(Real2Phys(int10.rom.font_14),true,256,0,0,14);
+			INT10_LoadFont(Real2Phys(int10.rom.font_14),reg_al==0x11,256,0,0,14);
 			break;
 		case 0x02:			/* Load 8x8 font */
 		case 0x12:
-			INT10_LoadFont(Real2Phys(int10.rom.font_8_first),true,256,0,0,8);
+			INT10_LoadFont(Real2Phys(int10.rom.font_8_first),reg_al==0x12,256,0,0,8);
 			break;
 		case 0x03:			/* Set Block Specifier */
 			IO_Write(0x3c4,0x3);IO_Write(0x3c5,reg_bl);
+			break;
+		case 0x04:			/* Load 8x16 font */
+		case 0x14:
+			INT10_LoadFont(Real2Phys(int10.rom.font_16),reg_al==0x14,256,0,0,16);
 			break;
 /* Graphics mode calls */
 		case 0x20:			/* Set User 8x8 Graphics characters */
@@ -285,7 +291,8 @@ graphics_chars:
 		}
 		break;
 	case 0x12:								/* alternate function select */
-		if (machine<MCH_VGA) break;
+		if (machine<MCH_VGA) 
+			break;
 		switch (reg_bl) {
 		case 0x10:							/* Get EGA Information */
 			reg_bh=(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS)==0x3B4);	

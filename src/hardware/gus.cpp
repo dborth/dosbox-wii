@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@
  */
 
 #include <string.h>
+#include <iomanip>
+#include <sstream>
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
@@ -26,6 +28,7 @@
 #include "shell.h"
 #include "math.h"
 #include "regs.h"
+using namespace std;
 
 //Extra bits of precision over normal gus
 #define WAVE_BITS 2
@@ -82,12 +85,12 @@ struct GFGus {
 		float delay;
 	} timers[2];
 	Bit32u rate;
-	Bit16u portbase;
-	Bit8u dma1;
-	Bit8u dma2;
+	Bitu portbase;
+	Bitu dma1;
+	Bitu dma2;
 
-	Bit16u irq1;
-	Bit16u irq2;
+	Bitu irq1;
+	Bitu irq2;
 
 	char ultradir[512];
 	bool irqenabled;
@@ -738,7 +741,7 @@ static void GUS_DMA_Callback(DmaChannel * chan,DMAEvent event) {
 				for(i=dmaaddr;i<(dmaaddr+read);i++) GUSRam[i] ^= 0x80;
 			} else {
 				// 16-bit data
-				for(i=dmaaddr+1;i<(dmaaddr+read-1);i+=2) GUSRam[i] ^= 0x80;
+				for(i=dmaaddr+1;i<(dmaaddr+read);i+=2) GUSRam[i] ^= 0x80;
 			}
 		}
 	} else {
@@ -861,10 +864,15 @@ public:
 		myGUS.gRegData=0x0;
 		int portat = 0x200+GUS_BASE;
 		// ULTRASND=Port,DMA1,DMA2,IRQ1,IRQ2
-		autoexecline[0].Install("SET ULTRASND=%3X,%d,%d,%d,%d",portat,myGUS.dma1,myGUS.dma2,myGUS.irq1,myGUS.irq2);
-		autoexecline[1].Install("SET ULTRADIR=%s", myGUS.ultradir);
+		// Create autoexec.bat lines
+		ostringstream temp;
+		temp << "SET ULTRASND=" << hex << setw(3) << portat << ","
+		     << dec << myGUS.dma1 << "," << myGUS.dma2 << ","
+		     << myGUS.irq1 << "," << myGUS.irq2 << ends;
+		autoexecline[0].Install(temp.str());
+		autoexecline[1].Install(std::string("SET ULTRADIR=")+ myGUS.ultradir);
 	}
-		
+
 
 	~GUS() {
 		if(machine!=MCH_VGA) return;

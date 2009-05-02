@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,11 +29,23 @@
 #include "mem.h"
 #endif
 
+#define CPU_AUTODETERMINE_NONE		0x00
+#define CPU_AUTODETERMINE_CORE		0x01
+#define CPU_AUTODETERMINE_CYCLES	0x02
+
+#define CPU_AUTODETERMINE_SHIFT		0x02
+#define CPU_AUTODETERMINE_MASK		0x03
+
 /* CPU Cycle Timing */
-extern Bits CPU_Cycles;
-extern Bits CPU_CycleLeft;
-extern Bits CPU_CycleMax;
-extern bool CPU_CycleAuto;
+extern Bit32s CPU_Cycles;
+extern Bit32s CPU_CycleLeft;
+extern Bit32s CPU_CycleMax;
+extern Bit32s CPU_OldCycleMax;
+extern Bit32s CPU_CyclePercUsed;
+extern Bit32s CPU_CycleLimit;
+extern Bit64s CPU_IODelayRemoved;
+extern bool CPU_CycleAutoAdjust;
+extern Bitu CPU_AutoDetermineMode;
 
 /* Some common Defines */
 /* A CPU Handler */
@@ -45,6 +57,7 @@ Bits CPU_Core_Normal_Trap_Run(void);
 Bits CPU_Core_Simple_Run(void);
 Bits CPU_Core_Full_Run(void);
 Bits CPU_Core_Dyn_X86_Run(void);
+Bits CPU_Core_Dyn_X86_Trap_Run(void);
 
 //CPU Stuff
 
@@ -71,6 +84,9 @@ bool CPU_READ_CRX(Bitu cr,Bit32u & retvalue);
 
 bool CPU_WRITE_DRX(Bitu dr,Bitu value);
 bool CPU_READ_DRX(Bitu dr,Bit32u & retvalue);
+
+bool CPU_WRITE_TRX(Bitu dr,Bitu value);
+bool CPU_READ_TRX(Bitu dr,Bit32u & retvalue);
 
 void CPU_SMSW(Bitu & word);
 Bitu CPU_LMSW(Bitu word);
@@ -418,7 +434,7 @@ struct CPUBlock {
 	GDTDescriptorTable gdt;
 	DescriptorTable idt;
 	struct {
-		Bitu mask;
+		Bitu mask,notmask;
 		bool big;
 	} stack;
 	struct {
@@ -432,7 +448,9 @@ struct CPUBlock {
 		Bitu which,error;
 	} exception;
 	Bits direction;
+	bool trap_skip;
 	Bit32u drx[8];
+	Bit32u trx[8];
 };
 
 extern CPUBlock cpu;

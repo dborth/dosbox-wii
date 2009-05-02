@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ char *ltrim(char *str);
 char *rtrim(char *str);
 char *trim(char * str);
 
-bool ScanCMDBool(char * cmd,char * check);
+bool ScanCMDBool(char * cmd,char const * const check);
 char * ScanCMDRemain(char * cmd);
 char * StripWord(char *&cmd);
 bool IsDecWord(char * word);

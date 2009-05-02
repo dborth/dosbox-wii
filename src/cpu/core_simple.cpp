@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -63,6 +63,7 @@ extern Bitu cycle_count;
 #define DO_PREFIX_SEG(_SEG)					\
 	BaseDS=SegBase(_SEG);					\
 	BaseSS=SegBase(_SEG);					\
+	core.base_val_ds=_SEG;					\
 	goto restart_opcode;
 
 #define DO_PREFIX_ADDR()								\
@@ -82,14 +83,16 @@ static const Bit32u AddrMaskTable[2]={0x0000ffff,0xffffffff};
 
 static struct {
 	Bitu opcode_index;
+#if defined (_MSC_VER)
+	volatile HostPt cseip;
+#else
 	HostPt cseip;
+#endif
 	PhysPt base_ds,base_ss;
+	SegNames base_val_ds;
 	bool rep_zero;
 	Bitu prefixes;
 	GetEAHandler * ea_table;
-	struct {
-		bool skip;
-	} trap;
 } core;
 
 #define GETIP		(core.cseip-SegBase(cs)-MemBase)
@@ -137,6 +140,7 @@ Bits CPU_Core_Simple_Run(void) {
 		core.ea_table=&EATable[cpu.code.big*256];
 		BaseDS=SegBase(ds);
 		BaseSS=SegBase(ss);
+		core.base_val_ds=ds;
 #if C_DEBUG
 #if C_HEAVY_DEBUG
 		if (DEBUG_HeavyIsBreakpoint()) {
@@ -181,16 +185,16 @@ decode_end:
 	return CBRET_NONE;
 }
 
+// not really used
 Bits CPU_Core_Simple_Trap_Run(void) {
-
 	Bits oldCycles = CPU_Cycles;
 	CPU_Cycles = 1;
-	core.trap.skip=false;
+	cpu.trap_skip = false;
 
 	Bits ret=CPU_Core_Normal_Run();
-	if (!core.trap.skip) CPU_SW_Interrupt(1,reg_eip);
+	if (!cpu.trap_skip) CPU_HW_Interrupt(1);
 	CPU_Cycles = oldCycles-1;
-	cpudecoder = &CPU_Core_Normal_Run;
+	cpudecoder = &CPU_Core_Simple_Run;
 
 	return ret;
 }

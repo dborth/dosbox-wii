@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -303,15 +303,11 @@ bool DOS_FreeMemory(Bit16u segment) {
 }
 
 
-void DOS_BuildUMBChain(const char* use_umbs,bool ems_active) {
-	if ((strcmp(use_umbs,"false")!=0) && (machine!=MCH_TANDY)) {
-		Bit16u first_umb_seg=0xca00;
-		Bit16u first_umb_size=0x600;
-
-		if (strcmp(use_umbs,"max")==0) {
-			first_umb_seg-=0x100;
-			first_umb_size+=0x100;
-		}
+void DOS_BuildUMBChain(bool umb_active,bool ems_active) {
+	if (umb_active  && (machine!=MCH_TANDY)) {
+		Bit16u first_umb_seg = 0xd000;
+		Bit16u first_umb_size = 0x2000;
+		if(ems_active || (machine == MCH_PCJR)) first_umb_size = 0x1000;
 
 		dos_infoblock.SetStartOfUMBChain(UMB_START_SEG);
 		dos_infoblock.SetUMBChainState(0);		// UMBs not linked yet
@@ -338,27 +334,6 @@ void DOS_BuildUMBChain(const char* use_umbs,bool ems_active) {
 		mcb.SetSize(first_umb_seg-cover_mcb-1);
 		mcb.SetFileName("SC      ");
 
-		if (!ems_active && (strcmp(use_umbs,"max")==0) && (machine!=MCH_PCJR)) {
-			Bit16u ems_umb_seg=0xe000;
-			Bit16u ems_umb_size=0x1000;
-
-			/* Continue UMB-chain */
-			umb_mcb.SetSize(first_umb_size-2);
-			umb_mcb.SetType(0x4d);
-
-			DOS_MCB umb2_mcb(ems_umb_seg);
-			umb2_mcb.SetPSPSeg(0);		// currently free
-			umb2_mcb.SetSize(ems_umb_size-1);
-			umb2_mcb.SetType(0x5a);
-
-			/* A system MCB has to take out the space between the previous and this UMB */
-			cover_mcb=(Bit16u)(first_umb_seg+umb_mcb.GetSize()+1);
-			mcb.SetPt(cover_mcb);
-			mcb.SetType(0x4d);
-			mcb.SetPSPSeg(0x0008);
-			mcb.SetSize(ems_umb_seg-cover_mcb-1);
-			mcb.SetFileName("SC      ");
-		}
 	} else {
 		dos_infoblock.SetStartOfUMBChain(0xffff);
 		dos_infoblock.SetUMBChainState(0);
@@ -419,15 +394,17 @@ void DOS_SetupMemory(void) {
 	 * buggy games, which compare against the interrupt table. (probably a 
 	 * broken linked list implementation) */
 	callbackhandler.Allocate(&DOS_default_handler,"DOS default int");
-	real_writeb(0x70,4,(Bit8u)0xFE);   //GRP 4
-	real_writeb(0x70,5,(Bit8u)0x38);   //Extra Callback instruction
-	real_writew(0x70,6,callbackhandler.Get_callback());  //The immediate word
-	real_writeb(0x70,8,(Bit8u)0xCF);   //An IRET Instruction
-	real_writed(0,0x01*4,0x700004);
-	real_writed(0,0x02*4,0x700004); //BioMenace (segment<0x8000)
-	real_writed(0,0x03*4,0x700004); //Alien Incident (offset!=0)
-	real_writed(0,0x04*4,0x700004); //Shadow President (lower byte of segment!=0)
-//	real_writed(0,0x0f*4,0x700004); //Always a tricky one (soundblaster irq)
+	Bitu ihseg = 0x70;
+	Bitu ihofs = 0x08;
+	real_writeb(ihseg,ihofs+0x00,(Bit8u)0xFE);	//GRP 4
+	real_writeb(ihseg,ihofs+0x01,(Bit8u)0x38);	//Extra Callback instruction
+	real_writew(ihseg,ihofs+0x02,callbackhandler.Get_callback());  //The immediate word
+	real_writeb(ihseg,ihofs+0x04,(Bit8u)0xCF);	//An IRET Instruction
+	RealSetVec(0x01,RealMake(ihseg,ihofs));		//BioMenace (offset!=4)
+	RealSetVec(0x02,RealMake(ihseg,ihofs));		//BioMenace (segment<0x8000)
+	RealSetVec(0x03,RealMake(ihseg,ihofs));		//Alien Incident (offset!=0)
+	RealSetVec(0x04,RealMake(ihseg,ihofs));		//Shadow President (lower byte of segment!=0)
+//	RealSetVec(0x0f,RealMake(ihseg,ihofs));		//Always a tricky one (soundblaster irq)
 
 	// Create a dummy device MCB with PSPSeg=0x0008
 	DOS_MCB mcb_devicedummy((Bit16u)DOS_MEM_START);

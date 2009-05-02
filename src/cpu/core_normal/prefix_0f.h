@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -91,6 +91,10 @@
 				case 0x06:										/* LMSW */
 					limit=LoadMw(eaa);
 					if (CPU_LMSW(limit)) RUNEXCEPTION();
+					break;
+				case 0x07:										/* INVLPG */
+					if (cpu.pmode && cpu.cpl) EXCEPTION(EXCEPTION_GP);
+					PAGING_ClearTLB();
 					break;
 				}
 			} else {
@@ -195,6 +199,32 @@
 			}
 			GetEArd;
 			if (CPU_WRITE_DRX(which,*eard)) RUNEXCEPTION();
+		}
+		break;
+	CASE_0F_B(0x24)												/* MOV Rd,TRx */
+		{
+			GetRM;
+			Bitu which=(rm >> 3) & 7;
+			if (rm < 0xc0 ) {
+				rm |= 0xc0;
+				LOG(LOG_CPU,LOG_ERROR)("MOV XXX,TR% with non-register",which);
+			}
+			GetEArd;
+			Bit32u trx_value;
+			if (CPU_READ_TRX(which,trx_value)) RUNEXCEPTION();
+			*eard=trx_value;
+		}
+		break;
+	CASE_0F_B(0x26)												/* MOV TRx,Rd */
+		{
+			GetRM;
+			Bitu which=(rm >> 3) & 7;
+			if (rm < 0xc0 ) {
+				rm |= 0xc0;
+				LOG(LOG_CPU,LOG_ERROR)("MOV TR%,XXX with non-register",which);
+			}
+			GetEArd;
+			if (CPU_WRITE_TRX(which,*eard)) RUNEXCEPTION();
 		}
 		break;
 	CASE_0F_W(0x80)												/* JO */

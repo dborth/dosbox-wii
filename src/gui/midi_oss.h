@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ private:
 	Bit8u device_num;
 	bool isOpen;
 public:
-	MidiHandler_oss() : isOpen(false),MidiHandler() {};
+	MidiHandler_oss() : MidiHandler(),isOpen(false) {};
 	char * GetName(void) { return "oss";};
 	bool Open(const char * conf) {
 		char devname[512];

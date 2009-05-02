@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -239,6 +239,8 @@ void INT10_SetColorSelect(Bit8u val) {
 	if (machine == MCH_CGA || IS_TANDY_ARCH)
 		IO_Write(0x3d9,temp);
 	else if (machine == MCH_VGA) {
+		if (CurMode->mode <= 3) //Maybe even skip the total function!
+			return;
 		val = (temp & 0x10) | 2 | val;
 		INT10_SetSinglePaletteRegister( 1, val );
 		val+=2;

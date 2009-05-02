@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_tables.cpp,v 1.22 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: dos_tables.cpp,v 1.26 2007/01/08 20:36:53 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -43,7 +43,7 @@ static Bitu call_casemap;
 static Bit16u dos_memseg;
 
 Bit16u DOS_GetMemory(Bit16u pages) {
-	if (pages+dos_memseg>=0xe000) {
+	if (pages+dos_memseg>=0xd000) {
 		E_Exit("DOS:Not enough memory for internal tables");
 	}
 	Bit16u page=dos_memseg;
@@ -73,7 +73,7 @@ static Bit8u country_info[0x22] = {
 };
 
 void DOS_SetupTables(void) {
-	dos_memseg=0xd000;
+	dos_memseg=0xc800;
 	Bit16u seg,seg2;Bitu i;
 	dos.tables.mediaid=RealMake(DOS_GetMemory(4),0);
 	dos.tables.tempdta=RealMake(DOS_GetMemory(4),0);
@@ -108,8 +108,37 @@ void DOS_SetupTables(void) {
 
 
 	/* Allocate DCBS DOUBLE BYTE CHARACTER SET LEAD-BYTE TABLE */
-	dos.tables.dcbs=RealMake(DOS_GetMemory(12),0);
-	mem_writed(Real2Phys(dos.tables.dcbs),0); //empty table
+	dos.tables.dbcs=RealMake(DOS_GetMemory(12),0);
+	mem_writed(Real2Phys(dos.tables.dbcs),0); //empty table
+	/* FILENAME CHARACTER TABLE */
+	dos.tables.filenamechar=RealMake(DOS_GetMemory(2),0);
+	mem_writew(Real2Phys(dos.tables.filenamechar)+0x00,0x16);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x02,0x01);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x03,0x00);	// allowed chars from
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x04,0xff);	// ...to
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x05,0x00);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x06,0x00);	// excluded chars from
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x07,0x20);	// ...to
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x08,0x02);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x09,0x0e);	// number of illegal separators
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0a,0x2e);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0b,0x22);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0c,0x2f);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0d,0x5c);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0e,0x5b);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x0f,0x5d);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x10,0x3a);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x11,0x7c);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x12,0x3c);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x13,0x3e);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x14,0x2b);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x15,0x3d);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x16,0x3b);
+	mem_writeb(Real2Phys(dos.tables.filenamechar)+0x17,0x2c);
+	/* COLLATING SEQUENCE TABLE */
+	dos.tables.collatingseq=RealMake(DOS_GetMemory(17),0);
+	mem_writew(Real2Phys(dos.tables.collatingseq),0x100);
+	for (i=0; i<256; i++) mem_writeb(Real2Phys(dos.tables.collatingseq)+i+2,i);
 
 	/* Create a fake FCB SFT */
 	seg=DOS_GetMemory(4);

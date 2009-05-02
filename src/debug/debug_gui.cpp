@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug_gui.cpp,v 1.28 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: debug_gui.cpp,v 1.31 2007/01/08 19:45:39 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -34,7 +34,7 @@
 #include "debug_inc.h"
 
 struct _LogGroup {
-	char * front;
+	char const* front;
 	bool enabled;
 };
 #include <list>
@@ -52,7 +52,7 @@ extern int old_cursor_state;
 
 
 
-void DEBUG_ShowMsg(char * format,...) {
+void DEBUG_ShowMsg(char const* format,...) {
 	
 	char buf[512];
 	va_list msg;
@@ -97,7 +97,7 @@ void DEBUG_RefreshPage(char scroll) {
 	wrefresh(dbg.win_out);
 }
 
-void LOG::operator() (char* format, ...){
+void LOG::operator() (char const* format, ...){
 	char buf[512];
 	va_list msg;
 	va_start(msg,format);
@@ -144,13 +144,13 @@ static void DrawBars(void) {
 	/* Show the Register bar */
 	mvaddstr(dbg.win_reg->_begy-1,0, "---(Register Overview                   )---");
 	/* Show the Data Overview bar perhaps with more special stuff in the end */
-	mvaddstr(dbg.win_data->_begy-1,0,"---(Data Overview      Scroll: r/f      )---");
+	mvaddstr(dbg.win_data->_begy-1,0,"---(Data Overview   Scroll: page up/down)---");
 	/* Show the Code Overview perhaps with special stuff in bar too */
-	mvaddstr(dbg.win_code->_begy-1,0,"---(Code Overview      Scroll: up/down  )---");
+	mvaddstr(dbg.win_code->_begy-1,0,"---(Code Overview   Scroll: up/down     )---");
 	/* Show the Variable Overview bar */
 	mvaddstr(dbg.win_var->_begy-1,0, "---(Variable Overview                   )---");
 	/* Show the Output OverView */
-	mvaddstr(dbg.win_out->_begy-1,0, "---(OutPut/Input       Scroll: home/end )---");
+	mvaddstr(dbg.win_out->_begy-1,0, "---(OutPut/Input    Scroll: home/end    )---");
 	attrset(0);
 }
 
@@ -188,8 +188,7 @@ static void MakePairs(void) {
 	init_pair(PAIR_BLACK_GREY, COLOR_BLACK /*| FOREGROUND_INTENSITY */, COLOR_WHITE);
 	init_pair(PAIR_GREY_RED, COLOR_WHITE/*| FOREGROUND_INTENSITY */, COLOR_RED);
 }
-static void LOG_Destroy(Section* sec) {
-	
+static void LOG_Destroy(Section*) {
 	if(debuglog) fclose(debuglog);
 }
 
@@ -200,7 +199,7 @@ static void LOG_Init(Section * sec) {
 	}else{
 		debuglog=0;
 	}
-	sect->AddDestroyFunction(LOG_Destroy);
+	sect->AddDestroyFunction(&LOG_Destroy);
 	char buf[1024];
 	for (Bitu i=1;i<LOG_MAX;i++) {
 		strcpy(buf,loggrp[i].front);

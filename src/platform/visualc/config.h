@@ -1,6 +1,6 @@
 #define INLINE __forceinline
 
-#define VERSION "0.63"
+#define VERSION "0.70"
 
 
 /* Define to 1 to enable internal debugger, requires libcurses */
@@ -53,6 +53,10 @@
 
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #define GCC_UNLIKELY(x) (x)
+
+#if defined(_MSC_VER) && (_MSC_VER >= 1400) 
+#pragma warning(disable : 4996) 
+#endif
 
 typedef         double		Real64;
 /* The internal types */
