@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-/* $Id: vga_seq.cpp,v 1.23 2009/04/11 08:02:23 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "inout.h"
@@ -24,30 +22,21 @@
 
 #define seq(blah) vga.seq.blah
 
-Bitu read_p3c4(Bitu /*port*/,Bitu /*iolen*/) {
+Bit8u read_p3c4(Bit32u port) {
 	return seq(index);
 }
 
-void write_p3c4(Bitu /*port*/,Bitu val,Bitu /*iolen*/) {
+void write_p3c4(Bit32u port,Bit8u val) {
 	seq(index)=val;
-}
+};
 
-void write_p3c5(Bitu /*port*/,Bitu val,Bitu iolen) {
-//	LOG_MSG("SEQ WRITE reg %X val %X",seq(index),val);
+void write_p3c5(Bit32u port,Bit8u val) {
 	switch(seq(index)) {
 	case 0:		/* Reset */
 		seq(reset)=val;
 		break;
 	case 1:		/* Clocking Mode */
-		if (val!=seq(clocking_mode)) {
-			// don't resize if only the screen off bit was changed
-			if ((val&(~0x20))!=(seq(clocking_mode)&(~0x20))) {
-				seq(clocking_mode)=val;
-				VGA_StartResize();
-			} else {
-				seq(clocking_mode)=val;
-			}
-		}
+		seq(clocking_mode)=val;
 		/* TODO Figure this out :)
 			0	If set character clocks are 8 dots wide, else 9.
 			2	If set loads video serializers every other character
@@ -64,7 +53,6 @@ void write_p3c5(Bitu /*port*/,Bitu val,Bitu iolen) {
 	case 2:		/* Map Mask */
 		seq(map_mask)=val & 15;
 		vga.config.full_map_mask=FillTable[val & 15];
-		vga.config.full_not_map_mask=~vga.config.full_map_mask;
 		/*
 			0  Enable writes to plane 0 if set
 			1  Enable writes to plane 1 if set
@@ -73,15 +61,7 @@ void write_p3c5(Bitu /*port*/,Bitu val,Bitu iolen) {
 		*/
 		break;
 	case 3:		/* Character Map Select */
-		{
-			seq(character_map_select)=val;
-			Bit8u font1=(val & 0x3) << 1;
-			if (IS_VGA_ARCH) font1|=(val & 0x10) >> 4;
-			vga.draw.font_tables[0]=&vga.draw.font[font1*8*1024];
-			Bit8u font2=((val & 0xc) >> 1);
-			if (IS_VGA_ARCH) font2|=(val & 0x20) >> 5;
-			vga.draw.font_tables[1]=&vga.draw.font[font2*8*1024];
-		}
+		seq(character_map_select)=val;
 		/*
 			0,1,4  Selects VGA Character Map (0..7) if bit 3 of the character
 					attribute is clear.
@@ -101,59 +81,45 @@ void write_p3c5(Bitu /*port*/,Bitu val,Bitu iolen) {
 				rather than the Map Mask and Read Map Select Registers.
 		*/
 		seq(memory_mode)=val;
-		if (IS_VGA_ARCH) {
-			/* Changing this means changing the VGA Memory Read/Write Handler */
-			if (val&0x08) vga.config.chained=true;
-			else vga.config.chained=false;
-			VGA_SetupHandlers();
-		}
+		/* Changing this means changing the VGA Memory Read/Write Handler */
+		if (val&0x08) vga.config.chained=true;
+		else vga.config.chained=false;
+		VGA_FindSettings();
 		break;
 	default:
-		if (svga.write_p3c5) {
-			svga.write_p3c5(seq(index), val, iolen);
-		} else {
-			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:SEQ:Write to illegal index %2X",seq(index));
-		}
-		break;
-	}
-}
+		LOG_ERROR("VGA:SEQ:Write to illegal index %2X",seq(index));
+	};
+};
 
 
-Bitu read_p3c5(Bitu /*port*/,Bitu iolen) {
-//	LOG_MSG("VGA:SEQ:Read from index %2X",seq(index));
+Bit8u read_p3c5(Bit32u port) {
 	switch(seq(index)) {
-	case 0:			/* Reset */
+	case 0:		/* Reset */
 		return seq(reset);
 		break;
-	case 1:			/* Clocking Mode */
+	case 1:		/* Clocking Mode */
 		return seq(clocking_mode);
 		break;
-	case 2:			/* Map Mask */
+	case 2:		/* Map Mask */
 		return seq(map_mask);
 		break;
-	case 3:			/* Character Map Select */
+	case 3:		/* Character Map Select */
 		return seq(character_map_select);
 		break;
-	case 4:			/* Memory Mode */
+	case 4:	/* Memory Mode */
 		return seq(memory_mode);
-		break;
 	default:
-		if (svga.read_p3c5)
-			return svga.read_p3c5(seq(index), iolen);
-		break;
-	}
+		LOG_ERROR("VGA:SEQ:Read from illegal index %2X",seq(index));
+	};
 	return 0;
-}
+};
 
 
 void VGA_SetupSEQ(void) {
-	if (IS_EGAVGA_ARCH) {
-		IO_RegisterWriteHandler(0x3c4,write_p3c4,IO_MB);
-		IO_RegisterWriteHandler(0x3c5,write_p3c5,IO_MB);
-		if (IS_VGA_ARCH) {
-			IO_RegisterReadHandler(0x3c4,read_p3c4,IO_MB);
-			IO_RegisterReadHandler(0x3c5,read_p3c5,IO_MB);
-		}
-	}
+	IO_RegisterWriteHandler(0x3c4,write_p3c4,"VGA:Sequencer Index");
+	IO_RegisterWriteHandler(0x3c5,write_p3c5,"VGA:Sequencer Data");
+	IO_RegisterReadHandler(0x3c4,read_p3c4,"VGA:Sequencer Index");
+	IO_RegisterReadHandler(0x3c5,read_p3c5,"VGA:Sequencer Data");
+
 }
 

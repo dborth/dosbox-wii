@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,211 +9,200 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef DOSBOX_MEM_H
-#define DOSBOX_MEM_H
+#if !defined __MEM_H
+#define __MEM_H
+#include <dosbox.h>
 
-#ifndef DOSBOX_DOSBOX_H
-#include "dosbox.h"
-#endif
+enum { MEMORY_HANDLER=1,MEMORY_RELOCATE=2};
 
+#define bmemcpy(mem1,mem2,size) memcpy((void *)mem1,(void *)mem2,size)
+
+typedef Bit8u (MEMORY_ReadHandler)(Bit32u start);
+typedef void (MEMORY_WriteHandler)(Bit32u start,Bit8u val);
+
+typedef Bit32u PhysOff;
 typedef Bit32u PhysPt;
+typedef Bit8u * HostOff;
 typedef Bit8u * HostPt;
 typedef Bit32u RealPt;
 
-typedef Bit32s MemHandle;
+struct PageEntry {
+	Bit8u type;
+	PhysOff base;						/* Used to calculate relative offset */
+	struct {
+		MEMORY_WriteHandler * write;
+		MEMORY_ReadHandler * read;
+	} handler;
+	HostOff relocate;					/* This points to host machine address */
+};
 
-#define MEM_PAGESIZE 4096
+struct EMM_Handle {
+	Bit16u next;
+	Bit16u size;					/* Size in pages */
+	PhysOff phys_base;
+	HostOff host_base;
+	bool active;
+	bool free;
+};
 
-extern HostPt MemBase;
-HostPt GetMemBase(void);
+INLINE Bit16u PAGES(Bit32u bytes) {
+	if ((bytes & 4095) == 0) return (Bit16u)(bytes>>12);
+	return (Bit16u)(1+(bytes>>12));
+}
 
-bool MEM_A20_Enabled(void);
-void MEM_A20_Enable(bool enable);
+extern Bit8u * memory;
+extern EMM_Handle EMM_Handles[];
+extern PageEntry * PageEntries[]; /* Number of pages */
 
-/* Memory management / EMS mapping */
-HostPt MEM_GetBlockPage(void);
-Bitu MEM_FreeTotal(void);			//Free 4 kb pages
-Bitu MEM_FreeLargest(void);			//Largest free 4 kb pages block
-Bitu MEM_TotalPages(void);			//Total amount of 4 kb pages
-Bitu MEM_AllocatedPages(MemHandle handle); // amount of allocated pages of handle
-MemHandle MEM_AllocatePages(Bitu pages,bool sequence);
-MemHandle MEM_GetNextFreePage(void);
-PhysPt MEM_AllocatePage(void);
-void MEM_ReleasePages(MemHandle handle);
-bool MEM_ReAllocatePages(MemHandle & handle,Bitu pages,bool sequence);
+bool MEMORY_TestSpecial(PhysOff off);
+void MEMORY_SetupHandler(Bit32u page,Bit32u extra,PageEntry * handler);
+void MEMORY_ResetHandler(Bit32u page,Bit32u pages);
 
-MemHandle MEM_NextHandle(MemHandle handle);
-MemHandle MEM_NextHandleAt(MemHandle handle,Bitu where);
+
+void EMM_GetFree(Bit16u * maxblock,Bit16u * total);
+void EMM_Allocate(Bit16u size,Bit16u * handle);
+void EMM_Free(Bit16u handle);
+
 
 /* 
 	The folowing six functions are used everywhere in the end so these should be changed for
 	Working on big or little endian machines 
 */
+ 
 
-#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
-
-static INLINE Bit8u host_readb(HostPt off) {
-	return off[0];
-}
-static INLINE Bit16u host_readw(HostPt off) {
-	return off[0] | (off[1] << 8);
-}
-static INLINE Bit32u host_readd(HostPt off) {
-	return off[0] | (off[1] << 8) | (off[2] << 16) | (off[3] << 24);
-}
-static INLINE void host_writeb(HostPt off,Bit8u val) {
-	off[0]=val;
-}
-static INLINE void host_writew(HostPt off,Bit16u val) {
-	off[0]=(Bit8u)(val);
-	off[1]=(Bit8u)(val >> 8);
-}
-static INLINE void host_writed(HostPt off,Bit32u val) {
-	off[0]=(Bit8u)(val);
-	off[1]=(Bit8u)(val >> 8);
-	off[2]=(Bit8u)(val >> 16);
-	off[3]=(Bit8u)(val >> 24);
-}
-
-#else
-
-static INLINE Bit8u host_readb(HostPt off) {
+INLINE Bit8u readb(HostOff off) {
 	return *(Bit8u *)off;
-}
-static INLINE Bit16u host_readw(HostPt off) {
+};
+INLINE Bit16u readw(HostOff off) {
 	return *(Bit16u *)off;
-}
-static INLINE Bit32u host_readd(HostPt off) {
+};
+INLINE Bit32u readd(HostOff off) {
 	return *(Bit32u *)off;
-}
-static INLINE void host_writeb(HostPt off,Bit8u val) {
+};
+INLINE void writeb(HostOff off,Bit8u val) {
 	*(Bit8u *)(off)=val;
-}
-static INLINE void host_writew(HostPt off,Bit16u val) {
+};
+INLINE void writew(HostOff off,Bit16u val) {
 	*(Bit16u *)(off)=val;
-}
-static INLINE void host_writed(HostPt off,Bit32u val) {
+};
+INLINE void writed(HostOff off,Bit32u val) {
 	*(Bit32u *)(off)=val;
-}
+};
 
-#endif
-
-
-static INLINE void var_write(Bit8u * var, Bit8u val) {
-	host_writeb((HostPt)var, val);
-}
-
-static INLINE void var_write(Bit16u * var, Bit16u val) {
-	host_writew((HostPt)var, val);
-}
-
-static INLINE void var_write(Bit32u * var, Bit32u val) {
-	host_writed((HostPt)var, val);
-}
 
 /* The Folowing six functions are slower but they recognize the paged memory system */
+//TODO maybe make em inline to go a bit faster 
 
-Bit8u  mem_readb(PhysPt pt);
-Bit16u mem_readw(PhysPt pt);
-Bit32u mem_readd(PhysPt pt);
+Bit8u  mem_readb(PhysOff off);
+Bit16u mem_readw(PhysOff off);
+Bit32u mem_readd(PhysOff off);
 
-void mem_writeb(PhysPt pt,Bit8u val);
-void mem_writew(PhysPt pt,Bit16u val);
-void mem_writed(PhysPt pt,Bit32u val);
+void mem_writeb(PhysOff off,Bit8u val);
+void mem_writew(PhysOff off,Bit16u val);
+void mem_writed(PhysOff off,Bit32u val);
 
-static INLINE void phys_writeb(PhysPt addr,Bit8u val) {
-	host_writeb(MemBase+addr,val);
-}
-static INLINE void phys_writew(PhysPt addr,Bit16u val){
-	host_writew(MemBase+addr,val);
-}
-static INLINE void phys_writed(PhysPt addr,Bit32u val){
-	host_writed(MemBase+addr,val);
-}
 
-static INLINE Bit8u phys_readb(PhysPt addr) {
-	return host_readb(MemBase+addr);
-}
-static INLINE Bit16u phys_readw(PhysPt addr){
-	return host_readw(MemBase+addr);
-}
-static INLINE Bit32u phys_readd(PhysPt addr){
-	return host_readd(MemBase+addr);
-}
 
-/* These don't check for alignment, better be sure it's correct */
 
-void MEM_BlockWrite(PhysPt pt,void const * const data,Bitu size);
-void MEM_BlockRead(PhysPt pt,void * data,Bitu size);
-void MEM_BlockCopy(PhysPt dest,PhysPt src,Bitu size);
-void MEM_StrCopy(PhysPt pt,char * data,Bitu size);
 
-void mem_memcpy(PhysPt dest,PhysPt src,Bitu size);
-Bitu mem_strlen(PhysPt pt);
-void mem_strcpy(PhysPt dest,PhysPt src);
+void MEM_BlockWrite(PhysOff off,void * data,Bitu size);
+void MEM_BlockRead(PhysOff off,void * data,Bitu size);
+void MEM_BlockCopy(PhysOff dest,PhysOff src,Bitu size);
+void MEM_StrCopy(PhysOff off,char * data,Bitu size);
+
+
 
 /* The folowing functions are all shortcuts to the above functions using physical addressing */
 
-static INLINE Bit8u real_readb(Bit16u seg,Bit16u off) {
+INLINE HostOff real_off(Bit16u seg,Bit32u off) {
+	return memory+(seg<<4)+off;
+};
+
+INLINE HostOff real_host(Bit16u seg,Bit32u off) {
+	return memory+(seg<<4)+off;
+};
+INLINE PhysOff real_phys(Bit16u seg,Bit32u off) {
+	return (seg<<4)+off;
+};
+
+INLINE Bit8u real_readb(Bit16u seg,Bit16u off) {
 	return mem_readb((seg<<4)+off);
 }
-static INLINE Bit16u real_readw(Bit16u seg,Bit16u off) {
+INLINE Bit16u real_readw(Bit16u seg,Bit16u off) {
 	return mem_readw((seg<<4)+off);
 }
-static INLINE Bit32u real_readd(Bit16u seg,Bit16u off) {
+INLINE Bit32u real_readd(Bit16u seg,Bit16u off) {
 	return mem_readd((seg<<4)+off);
 }
+//#define real_readb(seg,off) mem_readb(((seg)<<4)+(off))
+//#define real_readw(seg,off) mem_readw(((seg)<<4)+(off))
+//#define real_readd(seg,off) mem_readd(((seg)<<4)+(off))
 
-static INLINE void real_writeb(Bit16u seg,Bit16u off,Bit8u val) {
+INLINE void real_writeb(Bit16u seg,Bit16u off,Bit8u val) {
 	mem_writeb(((seg<<4)+off),val);
 }
-static INLINE void real_writew(Bit16u seg,Bit16u off,Bit16u val) {
+INLINE void real_writew(Bit16u seg,Bit16u off,Bit16u val) {
 	mem_writew(((seg<<4)+off),val);
 }
-static INLINE void real_writed(Bit16u seg,Bit16u off,Bit32u val) {
+INLINE void real_writed(Bit16u seg,Bit16u off,Bit32u val) {
 	mem_writed(((seg<<4)+off),val);
 }
 
 
-static INLINE Bit16u RealSeg(RealPt pt) {
+//#define real_writeb(seg,off,val) mem_writeb((((seg)<<4)+(off)),val)
+//#define real_writew(seg,off,val) mem_writew((((seg)<<4)+(off)),val)
+//#define real_writed(seg,off,val) mem_writed((((seg)<<4)+(off)),val)
+
+inline Bit32u real_getvec(Bit8u num) {
+	return real_readd(0,(num<<2));
+}
+/*
+inline void real_setvec(Bit8u num,Bit32u addr) {
+	real_writed(0,(num<<2),addr);
+};
+
+*/
+
+INLINE Bit16u RealSeg(RealPt pt) {
 	return (Bit16u)(pt>>16);
 }
 
-static INLINE Bit16u RealOff(RealPt pt) {
+INLINE Bit16u RealOff(RealPt pt) {
 	return (Bit16u)(pt&0xffff);
 }
 
-static INLINE PhysPt Real2Phys(RealPt pt) {
+INLINE PhysPt Real2Phys(RealPt pt) {
 	return (RealSeg(pt)<<4) +RealOff(pt);
 }
 
-static INLINE PhysPt PhysMake(Bit16u seg,Bit16u off) {
-	return (seg<<4)+off;
+
+INLINE HostPt Real2Host(RealPt pt) {
+	return memory+(RealSeg(pt)<<4) +RealOff(pt);
 }
 
-static INLINE RealPt RealMake(Bit16u seg,Bit16u off) {
+
+INLINE RealPt RealMake(Bit16u seg,Bit16u off) {
 	return (seg<<16)+off;
 }
 
-static INLINE void RealSetVec(Bit8u vec,RealPt pt) {
-	mem_writed(vec<<2,pt);
-}
 
-static INLINE void RealSetVec(Bit8u vec,RealPt pt,RealPt &old) {
-	old = mem_readd(vec<<2);
+INLINE void RealSetVec(Bit8u vec,RealPt pt) {
 	mem_writed(vec<<2,pt);
-}
+}	
 
-static INLINE RealPt RealGetVec(Bit8u vec) {
+INLINE RealPt RealGetVec(Bit8u vec) {
 	return mem_readd(vec<<2);
 }	
+
+
+
 
 #endif
 

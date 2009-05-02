@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,13 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: support.cpp,v 1.36 2009/04/25 16:25:03 harekiet Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -25,26 +24,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <algorithm>
-#include <cctype>
-#include <string>
-  
 #include "dosbox.h"
-#include "debug.h"
 #include "support.h"
-#include "video.h"
 
-
-void upcase(std::string &str) {
-	int (*tf)(int) = std::toupper;
-	std::transform(str.begin(), str.end(), str.begin(), tf);
-}
-
-void lowcase(std::string &str) {
-	int (*tf)(int) = std::tolower;
-	std::transform(str.begin(), str.end(), str.begin(), tf);
-}
-  
 
 /* 
 	Ripped some source from freedos for this one.
@@ -63,41 +45,82 @@ void strreplace(char * str,char o,char n) {
 		str++;
 	}
 }
+/*
+ * Name: ltrim() - left trims a string by removing leading spaces
+ * Input: str - a pointer to a string
+ * Output: returns a trimmed copy of str
+ */
 char *ltrim(char *str) { 
-	while (*str && isspace(*reinterpret_cast<unsigned char*>(str))) str++;
-	return str;
+	char c;
+	assert(str);
+
+	while ((c = *str++) != '\0' && isspace(c));
+	return str - 1;
 }
 
-char *rtrim(char *str) {
+/*
+ * Name: rtrim() - right trims a string by removing trailing spaces
+ * Input: str - a pointer to a string
+ * Output: str will have all spaces removed from the right.
+ */
+void rtrim(char * const str) {
 	char *p;
+
+	assert(str);
+
 	p = strchr(str, '\0');
-	while (--p >= str && isspace(*reinterpret_cast<unsigned char*>(p))) {};
+	while (--p >= str && isspace(*p));
 	p[1] = '\0';
-	return str;
 }
 
+/*
+ *  Combines ltrim() & rtrim()
+ */
 char *trim(char *str) {
-	return ltrim(rtrim(str));
+	assert(str);
+	rtrim(str);
+	return ltrim(str);
 }
 
-char * upcase(char * str) {
-    for (char* idx = str; *idx ; idx++) *idx = toupper(*reinterpret_cast<unsigned char*>(idx));
-    return str;
+bool wildcmp(char *wild, char *string) {
+	char *cp, *mp;
+	while ((*string) && (*wild != '*')) {
+		if ((*wild != *string) && (*wild != '?')) {
+			return false;
+		}
+		wild++;
+		string++;
+	}
+		
+	while (*string) {
+		if (*wild == '*') {
+			if (!*++wild) {
+				return true;
+			}
+			mp = wild;
+			cp = string+1;
+		} else if ((*wild == *string) || (*wild == '?')) {
+			wild++;
+			string++;
+		} else {
+			wild = mp;
+			string = cp++;
+		}
+	}
+		
+	while (*wild == '*') {
+		wild++;
+	}
+	return !*wild;
 }
 
-char * lowcase(char * str) {
-	for(char* idx = str; *idx ; idx++)  *idx = tolower(*reinterpret_cast<unsigned char*>(idx));
-	return str;
-}
 
-
-
-bool ScanCMDBool(char * cmd,char const * const check) {
+bool ScanCMDBool(char * cmd,char * check) {
 	char * scan=cmd;size_t c_len=strlen(check);
-	while ((scan=strchr(scan,'/'))) {
+	while (scan=strchr(scan,'/')) {
 		/* found a / now see behind it */
 		scan++;
-		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]=='\t' || scan[c_len]=='/' || scan[c_len]==0)) {
+		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]==0)) {
 		/* Found a math now remove it from the string */
 			memmove(scan-1,scan+c_len,strlen(scan+c_len)+1);
 			trim(scan-1);
@@ -107,79 +130,95 @@ bool ScanCMDBool(char * cmd,char const * const check) {
 	return false;
 }
 
+
+bool ScanCMDHex(char * cmd,char * check,Bits * result) {
+	char * scan=cmd;size_t c_len=strlen(check);
+	while (scan=strchr(scan,'/')) {
+		/* found a / now see behind it */
+		scan++;
+		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]==0)) {
+			/* Found a match now find the number and remove it from the string */
+			char * begin=scan-1;
+			scan=ltrim(scan+c_len);
+			bool res=true;
+			*result=-1;
+			if (!sscanf(scan,"%X",result)) res=false;
+			scan=strrchr(scan,'/');
+			if (scan) memmove(begin,scan,strlen(scan)+1);
+			else *begin=0;
+			trim(begin);
+			return res;
+		}
+	}
+	return false;
+
+}
+
 /* This scans the command line for a remaining switch and reports it else returns 0*/
 char * ScanCMDRemain(char * cmd) {
 	char * scan,*found;;
-	if ((scan=found=strchr(cmd,'/'))) {
-		while ( *scan && !isspace(*reinterpret_cast<unsigned char*>(scan)) ) scan++;
+	if (scan=found=strchr(cmd,'/')) {
+		while (*scan!=' ' && *scan!=0) scan++;
 		*scan=0;
 		return found;
 	} else return 0; 
 }
 
-char * StripWord(char *&line) {
-	char * scan=line;
-	scan=ltrim(scan);
-	if (*scan=='"') {
-		char * end_quote=strchr(scan+1,'"');
-		if (end_quote) {
-			*end_quote=0;
-			line=ltrim(++end_quote);
-			return (scan+1);
-		}
+char * StripWord(char * cmd) {
+	bool quoted=false;
+	char * begin=cmd;
+	if (*cmd=='"') {
+		quoted=true;
+		cmd++;
 	}
-	char * begin=scan;
-	for (char c = *scan ;(c = *scan);scan++) {
-		if (isspace(*reinterpret_cast<unsigned char*>(&c))) {
-			*scan++=0;
-			break;
-		}
+	char * end;
+	if (quoted) {
+		end=strchr(cmd,'"');	
+	} else {
+		end=strchr(cmd,' ');	
 	}
-	line=scan;
-	return begin;
+	if (!end) {
+		return cmd+strlen(cmd);
+	}
+	*end=0;
+	if (quoted) {
+		memmove(begin,cmd,end-begin+1);
+	}
+	return trim(cmd+strlen(begin)+1);
 }
 
-Bits ConvDecWord(char * word) {
-	bool negative=false;Bitu ret=0;
-	if (*word=='-') {
-		negative=true;
-		word++;
-	}
-	while (char c=*word) {
-		ret*=10;
-		ret+=c-'0';
-		word++;
-	}
-	if (negative) return 0-ret;
-	else return ret;
-}
+void GFX_ShowMsg(char * msg);
+void DEBUG_ShowMsg(char * msg);
 
-Bits ConvHexWord(char * word) {
-	Bitu ret=0;
-	while (char c=toupper(*reinterpret_cast<unsigned char*>(word))) {
-		ret*=16;
-		if (c>='0' && c<='9') ret+=c-'0';
-		else if (c>='A' && c<='F') ret+=10+(c-'A');
-		word++;
-	}
-	return ret;
-}
-
-double ConvDblWord(char * word) {
-	return 0.0f;
-}
-
-
-static char buf[1024];           //greater scope as else it doesn't always gets thrown right (linux/gcc2.95)
-void E_Exit(const char * format,...) {
-#if C_DEBUG && C_HEAVY_DEBUG
- 	DEBUG_HeavyWriteLogInstruction();
-#endif
+void S_Warn(char * format,...) {
+	char buf[1024];
 	va_list msg;
+	
 	va_start(msg,format);
 	vsprintf(buf,format,msg);
 	va_end(msg);
-	strcat(buf,"\n");
-
-	throw(buf);
+#ifdef C_DEBUG
+	DEBUG_ShowMsg(buf);
+#else
+	GFX_ShowMsg(buf);
+#endif
 }
+
+void E_Exit(char * format,...) {
+
+	char buf[1024];
+
+//	SysShutDown();
+	va_list msg;
+	strcpy(buf,"EXIT:");
+	va_start(msg,format);
+	vsprintf(buf+strlen(buf),format,msg);
+	va_end(msg);
+
+	strcat(buf,"\n");
+	printf(buf);
+	printf("Press ENTER to stop\n");
+	fgetc(stdin);
+   	exit(2);
+
+};

@@ -1,14 +1,18 @@
 #!/bin/sh
-
-echo "Generating build information using aclocal, autoheader, automake and autoconf"
+#
+echo "Generating build information using aclocal, auotheader, automake and autoconf"
 echo "This may take a while ..."
 
-# Regenerate configuration files.
+# Touch the timestamps on all the files since CVS messes them up
+directory=`dirname $0`
+touch $directory/configure.in
+
+# Regenerate configuration files
 
 aclocal
 autoheader
-automake --include-deps --add-missing --copy 
+automake --gnits --include-deps --add-missing --copy 
 autoconf
 
-echo "Now you are ready to run ./configure."
-echo "You can also run  ./configure --help for extra features to enable/disable."
+cp $directory/settings.h.cvs $directory/settings.h
+echo "Now you are ready to run ./configure also check settings.h for extra build settings"

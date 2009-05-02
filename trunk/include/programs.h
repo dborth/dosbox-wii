@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,82 +9,50 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.h,v 1.18 2009/03/11 20:18:37 qbix79 Exp $ */
+#ifndef __PROGRAM_H
+#define __PROGRAM_H
+#include <dosbox.h>
+#include <dos_inc.h>
 
-#ifndef DOSBOX_PROGRAMS_H
-#define DOSBOX_PROGRAMS_H
 
-#ifndef DOSBOX_DOSBOX_H
-#include "dosbox.h"
-#endif
-#ifndef DOSBOX_DOS_INC_H
-#include "dos_inc.h"
-#endif
+char * MSG_Get(char * msg);
 
-#ifndef CH_LIST
-#define CH_LIST
-#include <list>
-#endif
-
-#ifndef CH_STRING
-#define CH_STRING
-#include <string>
-#endif
-
-class CommandLine {
-public:
-	CommandLine(int argc,char const * const argv[]);
-	CommandLine(char const * const name,char const * const cmdline);
-	const char * GetFileName(){ return file_name.c_str();}
-
-	bool FindExist(char const * const name,bool remove=false);
-	bool FindHex(char const * const name,int & value,bool remove=false);
-	bool FindInt(char const * const name,int & value,bool remove=false);
-	bool FindString(char const * const name,std::string & value,bool remove=false);
-	bool FindCommand(unsigned int which,std::string & value);
-	bool FindStringBegin(char const * const begin,std::string & value, bool remove=false);
-	bool FindStringRemain(char const * const name,std::string & value);
-	bool GetStringRemain(std::string & value);
-	unsigned int GetCount(void);
-	void Shift(unsigned int amount=1);
-	Bit16u Get_arglength();
-
-private:
-	typedef std::list<std::string>::iterator cmd_it;
-	std::list<std::string> cmds;
-	std::string file_name;
-	bool FindEntry(char const * const name,cmd_it & it,bool neednext=false);
+struct PROGRAM_Info {
+	Bit16u psp_seg;
+	PSP psp_copy;
+	char full_name[32];						//Enough space for programs only on the z:\ drive
+	char * cmd_line;
 };
+
+typedef void (PROGRAMS_Main)(PROGRAM_Info * info);
+void PROGRAMS_MakeFile(char * name,PROGRAMS_Main * main);
 
 class Program {
 public:
-	Program();
-	virtual ~Program(){
-		delete cmd;
-		delete psp;
-	}
-	std::string temp_line;
-	CommandLine * cmd;
-	DOS_PSP * psp;
+	Program(PROGRAM_Info * program_info);
 	virtual void Run(void)=0;
-	bool GetEnvStr(const char * entry,std::string & result);
-	bool GetEnvNum(Bitu num,std::string & result);
-	Bitu GetEnvCount(void);
-	bool SetEnv(const char * entry,const char * new_string);
-	void WriteOut(const char * format,...);				/* Write to standard output */
-	void WriteOut_NoParsing(const char * format);				/* Write to standard output, no parsing */
-	void ChangeToLongCmd();
+	char * GetEnvStr(char * env_entry);
+	char * GetEnvNum(Bit32u num);
+	Bit32u GetEnvCount(void);
+	bool SetEnv(char * env_entry,char * new_string);
+	void WriteOut(char * format,...);					/* Write to standard output */
+	PROGRAM_Info * prog_info;
 
 };
 
-typedef void (PROGRAMS_Main)(Program * * make);
-void PROGRAMS_MakeFile(char const * const name,PROGRAMS_Main * main);
+void SHELL_AddAutoexec(char * line,...);
+
+
+
+
+
 
 #endif
+

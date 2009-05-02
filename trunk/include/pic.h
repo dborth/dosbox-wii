@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,59 +9,36 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef DOSBOX_PIC_H
-#define DOSBOX_PIC_H
-
-
-/* CPU Cycle Timing */
-extern Bit32s CPU_Cycles;
-extern Bit32s CPU_CycleLeft;
-extern Bit32s CPU_CycleMax;
+#ifndef __PIC_H
+#define __PIC_H
 
 typedef void (PIC_EOIHandler) (void);
-typedef void (* PIC_EventHandler)(Bitu val);
+typedef void (PIC_Function)(void);
 
+extern Bit32u PIC_IRQCheck;
 
-#define PIC_MAXIRQ 15
-#define PIC_NOIRQ 0xFF
+void PIC_ActivateIRQ(Bit32u irq);
 
-extern Bitu PIC_IRQCheck;
-extern Bitu PIC_IRQActive;
-extern Bitu PIC_Ticks;
-
-static INLINE float PIC_TickIndex(void) {
-	return (CPU_CycleMax-CPU_CycleLeft-CPU_Cycles)/(float)CPU_CycleMax;
-}
-
-static INLINE Bits PIC_TickIndexND(void) {
-	return CPU_CycleMax-CPU_CycleLeft-CPU_Cycles;
-}
-
-static INLINE Bits PIC_MakeCycles(double amount) {
-	return (Bits)(CPU_CycleMax*amount);
-}
-
-static INLINE double PIC_FullIndex(void) {
-	return PIC_Ticks+(double)PIC_TickIndex();
-}
-
-void PIC_ActivateIRQ(Bitu irq);
-void PIC_DeActivateIRQ(Bitu irq);
+void PIC_DeActivateIRQ(Bit32u irq);
 
 void PIC_runIRQs(void);
-bool PIC_RunQueue(void);
 
-//Delay in milliseconds
-void PIC_AddEvent(PIC_EventHandler handler,float delay,Bitu val=0);
-void PIC_RemoveEvents(PIC_EventHandler handler);
-void PIC_RemoveSpecificEvents(PIC_EventHandler handler, Bitu val);
+void PIC_RegisterIRQ(Bit32u irq,PIC_EOIHandler handler,char * name);
+void PIC_FreeIRQ(Bit32u irq);
 
-void PIC_SetIRQMask(Bitu irq, bool masked);
+bool PIC_IRQActive(Bit32u irq);
+
+/* A Queued function should never queue itself again this will go horribly wrong */
+void PIC_QueueFunction(PIC_Function * function);
+
+
+
 #endif
+

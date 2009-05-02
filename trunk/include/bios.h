@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,15 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-#ifndef DOSBOX_BIOS_H
-#define DOSBOX_BIOS_H
 
 #define BIOS_BASE_ADDRESS_COM1          0x400
 #define BIOS_BASE_ADDRESS_COM2          0x402
@@ -30,7 +27,6 @@
 #define BIOS_CONFIGURATION              0x410
 /* 0x412 is reserved */
 #define BIOS_MEMORY_SIZE                0x413
-#define BIOS_TRUE_MEMORY_SIZE           0x415
 /* #define bios_expansion_memory_size      (*(unsigned int   *) 0x415) */
 #define BIOS_KEYBOARD_STATE             0x417
 #define BIOS_KEYBOARD_FLAGS1            BIOS_KEYBOARD_STATE
@@ -43,7 +39,7 @@
 /* #define bios_keyboard_buffer            (*(unsigned int   *) 0x41e) */
 #define BIOS_DRIVE_ACTIVE               0x43e
 #define BIOS_DRIVE_RUNNING              0x43f
-#define BIOS_DISK_MOTOR_TIMEOUT         0x440
+#define BIOS_MOTOR_NACHLAUFZEIT         0x440
 #define BIOS_DISK_STATUS                0x441
 /* #define bios_fdc_result_buffer          (*(unsigned short *) 0x442) */
 #define BIOS_VIDEO_MODE                 0x449
@@ -73,9 +69,7 @@
 /* 0x47b is reserved */
 #define BIOS_COM1_TIMEOUT               0x47c
 #define BIOS_COM2_TIMEOUT               0x47d
-#define BIOS_COM3_TIMEOUT               0x47e
-#define BIOS_COM4_TIMEOUT               0x47f
-/* 0x47e is reserved */ //<- why that?
+/* 0x47e is reserved */
 /* 0x47f-0x4ff is unknow for me */
 #define BIOS_KEYBOARD_BUFFER_START      0x480
 #define BIOS_KEYBOARD_BUFFER_END        0x482
@@ -90,26 +84,31 @@
 
 #define BIOS_KEYBOARD_FLAGS3            0x496
 #define BIOS_KEYBOARD_LEDS              0x497
-
-#define BIOS_WAIT_FLAG_POINTER          0x498
-#define BIOS_WAIT_FLAG_COUNT	        0x49c		
-#define BIOS_WAIT_FLAG_ACTIVE			0x4a0
-#define BIOS_WAIT_FLAG_TEMP				0x4a1
-
-
 #define BIOS_PRINT_SCREEN_FLAG          0x500
 
 #define BIOS_VIDEO_SAVEPTR              0x4a8
 
-/* maximum of scancodes handled by keyboard bios routines */
-#define MAX_SCAN_CODE 0x58
-
 /* The Section handling Bios Disk Access */
-//#define BIOS_MAX_DISK 10
+#define BIOS_MAX_DISK 10
 
-//#define MAX_SWAPPABLE_DISKS 20
+class BIOS_Disk {
+public:
+	virtual Bit8u Read_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data)=0;
+	virtual Bit8u Write_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data)=0;
+};
 
-void BIOS_ZeroExtendedSize(bool in);
+class imageDisk : public BIOS_Disk {
+public:
+	Bit8u Read_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data);
+	Bit8u Write_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data);
+	imageDisk(char * file);
+private:
+	Bit16u sector_size;
+	Bit16u heads,cylinders,sectors;
+	Bit8u * image;
+};
+
+
 void char_out(Bit8u chr,Bit32u att,Bit8u page);
 void INT10_StartUp(void);
 void INT16_StartUp(void);
@@ -118,10 +117,4 @@ void INT2F_StartUp(void);
 void INT33_StartUp(void);
 void INT13_StartUp(void);
 
-bool BIOS_AddKeyToBuffer(Bit16u code);
 
-void INT10_ReloadRomFonts();
-
-void BIOS_SetComPorts (Bit16u baseaddr[]);
-
-#endif

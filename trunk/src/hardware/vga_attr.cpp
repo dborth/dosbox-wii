@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-/* $Id: vga_attr.cpp,v 1.29 2008/10/05 14:44:52 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "inout.h"
@@ -24,39 +22,14 @@
 
 #define attr(blah) vga.attr.blah
 
-void VGA_ATTR_SetPalette(Bit8u index,Bit8u val) {
-	vga.attr.palette[index] = val;
-	if (vga.attr.mode_control & 0x80) val = (val&0xf) | (vga.attr.color_select << 4);
-	val &= 63;
-	val |= (vga.attr.color_select & 0xc) << 4;
-	if (GCC_UNLIKELY(machine==MCH_EGA)) {
-		if ((vga.crtc.vertical_total | ((vga.crtc.overflow & 1) << 8)) == 260) {
-			// check for intensity bit
-			if (val&0x10) val|=0x38;
-			else {
-				val&=0x7;
-				// check for special brown
-				if (val==6) val=0x14;
-			}
-		}
-	}
-	VGA_DAC_CombineColor(index,val);
-}
-
-Bitu read_p3c0(Bitu port,Bitu iolen) {
-//Wcharts
-	return 0x0;
-}
- 
-void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
+void write_p3c0(Bit32u port,Bit8u val) {
 	if (!vga.internal.attrindex) {
 		attr(index)=val & 0x1F;
 		vga.internal.attrindex=true;
-		attr(enabled)=val & 0x20;
 		/* 
-			0-4	Address of data register to write to port 3C0h or read from port 3C1h
-			5	If set screen output is enabled and the palette can not be modified,
-				if clear screen output is disabled and the palette can be modified.
+			0-4  Address of data register to write to port 3C0h or read from port 3C1h
+			If set screen output is enabled and the palette can not be modified,
+			if clear screen output is disabled and the palette can be modified.
 		*/
 		return;
 	} else {
@@ -67,32 +40,22 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 		case 0x04:		case 0x05:		case 0x06:		case 0x07:
 		case 0x08:		case 0x09:		case 0x0a:		case 0x0b:
 		case 0x0c:		case 0x0d:		case 0x0e:		case 0x0f:
-			if (!attr(enabled)) VGA_ATTR_SetPalette(attr(index),val);
+			attr(palette[attr(index)])=val;
+			VGA_DAC_CombineColor(attr(index),val);
 			/*
 				0-5	Index into the 256 color DAC table. May be modified by 3C0h index
 				10h and 14h.
 			*/
 			break;
 		case 0x10: /* Mode Control Register */
-			if (!IS_VGA_ARCH) val&=0x1f;	// not really correct, but should do it
-			if ((attr(mode_control) ^ val) & 0x80) {
-				attr(mode_control)^=0x80;
-				for (Bitu i=0;i<0x10;i++) {
-					VGA_ATTR_SetPalette(i,vga.attr.palette[i]);
-				}
-			}
-			if ((attr(mode_control) ^ val) & 0x08) {
-				VGA_SetBlinking(val & 0x8);
-			}
-			if ((attr(mode_control) ^ val) & 0x04) {
-				attr(mode_control)=val;
-				VGA_DetermineMode();
-				if ((IS_VGA_ARCH) && (svgaCard==SVGA_None)) VGA_StartResize();
-			} else {
-				attr(mode_control)=val;
-				VGA_DetermineMode();
-			}
-
+			attr(mode_control)=val;
+			vga.config.gfxmode=val&1;
+			vga.config.vga_enabled=(val & 64)>0;
+			VGA_FindSettings();
+			//TODO Monochrome mode
+			//TODO 9 bit characters
+			//TODO line wrapping split screen shit see bit 5
+			//TODO index 14h weirdo dac switch bits
 			/*
 				0	Graphics mode if set, Alphanumeric mode else.
 				1	Monochrome mode if set, color mode else.
@@ -109,6 +72,9 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 					3C0h index 14h bit 0-1, else the bits in the palette register are
 					used.
 			*/
+			if (val&128) {
+				E_Exit("VGA:Special 16 colour DAC Shift");
+			}
 			break;
 		case 0x11:	/* Overscan Color Register */
 			attr(overscan_color)=val;
@@ -129,20 +95,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			break;
 		case 0x13:	/* Horizontal PEL Panning Register */
 			attr(horizontal_pel_panning)=val & 0xF;
-			switch (vga.mode) {
-			case M_TEXT:
-				if ((val==0x7) && (svgaCard==SVGA_None)) vga.config.pel_panning=7;
-				if (val>0x7) vga.config.pel_panning=0;
-				else vga.config.pel_panning=val+1;
-				break;
-			case M_VGA:
-			case M_LIN8:
-				vga.config.pel_panning=(val & 0x7)/2;
-				break;
-			case M_LIN16:
-			default:
-				vga.config.pel_panning=(val & 0x7);
-			}
+			vga.config.pel_panning=val & 0xF;
 			/*
 				0-3	Indicates number of pixels to shift the display left
 					Value  9bit textmode   256color mode   Other modes
@@ -158,16 +111,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			*/
 			break;
 		case 0x14:	/* Color Select Register */
-			if (!IS_VGA_ARCH) {
-				attr(color_select)=0;
-				break;
-			}
-			if (attr(color_select) ^ val) {
-				attr(color_select)=val;
-				for (Bitu i=0;i<0x10;i++) {
-					VGA_ATTR_SetPalette(i,vga.attr.palette[i]);
-				}
-			}
+			attr(color_select)=val;
 			/*
 				0-1	If 3C0h index 10h bit 7 is set these 2 bits are used as bits 4-5 of
 					the index into the DAC table.
@@ -175,20 +119,16 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 					except in 256 color mode.
 					Note: this register does not affect 256 color modes.
 			*/
+			if (val) LOG_DEBUG("VGA:ATTR:DAC index set to %d",val);
 			break;
 		default:
-			if (svga.write_p3c0) {
-				svga.write_p3c0(attr(index), val, iolen);
-				break;
-			}
-			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:ATTR:Write to unkown Index %2X",attr(index));
+			LOG_ERROR("VGA:ATTR:Write to unkown Index %2X",attr(index));
 			break;
 		}
 	}
 }
 
-Bitu read_p3c1(Bitu port,Bitu iolen) {
-//	vga.internal.attrindex=false;
+Bit8u read_p3c1(Bit32u port) {
 	switch (attr(index)) {
 			/* Palette */
 	case 0x00:		case 0x01:		case 0x02:		case 0x03:
@@ -207,20 +147,19 @@ Bitu read_p3c1(Bitu port,Bitu iolen) {
 	case 0x14:	/* Color Select Register */
 		return attr(color_select);
 	default:
-		if (svga.read_p3c1)
-			return svga.read_p3c1(attr(index), iolen);
-		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:ATTR:Read from unkown Index %2X",attr(index));
+		LOG_ERROR("VGA:ATTR:Read from unkown Index %2X",attr(index));
 	}
 	return 0;
-}
+};
+
+
+
+
 
 
 void VGA_SetupAttr(void) {
-	if (IS_EGAVGA_ARCH) {
-		IO_RegisterWriteHandler(0x3c0,write_p3c0,IO_MB);
-		if (IS_VGA_ARCH) {
-			IO_RegisterReadHandler(0x3c0,read_p3c0,IO_MB);
-			IO_RegisterReadHandler(0x3c1,read_p3c1,IO_MB);
-		}
-	}
+	IO_RegisterWriteHandler(0x3c0,write_p3c0,"VGA Attribute controller");
+	IO_RegisterReadHandler(0x3c1,read_p3c1,"VGA Attribute Read");
 }
+
+

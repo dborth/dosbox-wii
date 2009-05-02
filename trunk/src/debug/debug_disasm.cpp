@@ -63,7 +63,7 @@ Any comments/updates/bug reports to:
 
 */
 #include "dosbox.h"
-#if C_DEBUG
+#ifdef C_DEBUG
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -116,6 +116,8 @@ static int modrmv;            /* flag for getting modrm byte */
 static int sibv;              /* flag for getting sib byte   */
 static int opsize;            /* just like it says ...       */
 static int addrsize;
+static int addr20bit=0;
+static int addr24bit=0;
 static int addr32bit=0;
 
 /* some defines for extracting instruction bit fields from bytes */
@@ -176,9 +178,9 @@ static int addr32bit=0;
 
 /* watch out for aad && aam with odd operands */
 
-static char const* (*opmap1)[256];
+static char *(*opmap1)[256];
 
-static char const * op386map1[256] = {
+static char *op386map1[256] = {
 /* 0 */
   "add %Eb,%Gb",      "add %Ev,%Gv",     "add %Gb,%Eb",    "add %Gv,%Ev",
   "add al,%Ib",       "add %eax,%Iv",    "push es",        "pop es",
@@ -220,7 +222,8 @@ static char const * op386map1[256] = {
   "js %Jb",           "jns %Jb",         "jpe %Jb",        "jpo %Jb",
   "jl %Jb",           "jge %Jb",         "jle %Jb",        "jg %Jb",
 /* 8 */
-  "%g0 %Eb,%Ib",      "%g0 %Ev,%Iv",     "%g0 %Eb,%Ib",    "%g0 %Ev,%Ix",
+/*  "%g0 %Eb,%Ib",      "%g0 %Ev,%Iv",     "%g0 %Ev,%Ib",    "%g0 %Ev,%Ib", */
+  "%g0 %Eb,%Ib",      "%g0 %Ev,%Iv",     "%g0 %Ev,%Ix",    "%g0 %Ev,%Ix",
   "test %Eb,%Gb",     "test %Ev,%Gv",    "xchg %Eb,%Gb",   "xchg %Ev,%Gv",
   "mov %Eb,%Gb",      "mov %Ev,%Gv",     "mov %Gb,%Eb",    "mov %Gv,%Ev",
   "mov %Ew,%Sw",      "lea %Gv,%M ",     "mov %Sw,%Ew",    "pop %Ev",
@@ -260,17 +263,17 @@ static char const * op386map1[256] = {
   "call %Jv",         "jmp %Jv",         "jmp %Ap",        "jmp %Ks%Jb",
   "in al,dx",         "in %eax,dx",      "out dx,al",      "out dx,%eax",
 /* f */
-  "lock %p ",         "icebp",           "repne %p ",      "repe %p ",
+  "lock %p ",         0,                 "repne %p ",      "repe %p ",
   "hlt",              "cmc",             "%g2",            "%g2",
   "clc",              "stc",             "cli",            "sti",
   "cld",              "std",             "%g3",            "%g4"
 };
 
-static char const *second[] = {
+static char *second[] = {
 /* 0 */
   "%g5",              "%g6",             "lar %Gv,%Ew",    "lsl %Gv,%Ew",
-  0,                  "[loadall]",       "clts",           "[loadall]",
-  "invd",             "wbinvd",          0,                "UD2",
+  0,                  "loadall",         "clts",           "loadall",
+  "invd",             "wbinvd",          0,                0,
   0,                  0,                 0,                0,
 /* 1 */
   "mov %Eb,%Gb",      "mov %Ev,%Gv",     "mov %Gb,%Eb",    "mov %Gv,%Ev",
@@ -308,7 +311,7 @@ static char const *second[] = {
   "sets %Eb",         "setns %Eb",       "setp %Eb",       "setnp %Eb",
   "setl %Eb",         "setge %Eb",       "setle %Eb",      "setg %Eb",
 /* a */
-  "push fs",          "pop fs",          "cpuid",          "bt %Ev,%Gv",
+  "push fs",          "pop fs",          0,                "bt %Ev,%Gv",
   "shld %Ev,%Gv,%Ib", "shld %Ev,%Gv,cl", 0,                0,
   "push gs",          "pop gs",          0,                "bts %Ev,%Gv",
   "shrd %Ev,%Gv,%Ib", "shrd %Ev,%Gv,cl", 0,                "imul %Gv,%Ev",
@@ -333,7 +336,7 @@ static char const *second[] = {
   0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static char const *groups[][8] = {   /* group 0 is group 3 for %Ev set */
+static char *groups[][8] = {   /* group 0 is group 3 for %Ev set */
 /* 0 */
   { "add",            "or",              "adc",            "sbb",
     "and",            "sub",             "xor",            "cmp"           },
@@ -341,7 +344,7 @@ static char const *groups[][8] = {   /* group 0 is group 3 for %Ev set */
   { "rol",            "ror",             "rcl",            "rcr",
     "shl",            "shr",             "shl",            "sar"           },
 /* 2 */  /* v   v*/
-  { "test %Eq,%Iq",   "test %Eq,%Iq",    "not %Ec",        "neg %Ec",
+  { "test %Eq,%Iq",   "test %Eq,%Iq",    "not %Ec",        "neg %Ev",
     "mul %Ec",        "imul %Ec",        "div %Ec",        "idiv %Ec"      },
 /* 3 */
   { "inc %Eb",        "dec %Eb",         0,                0,
@@ -354,7 +357,7 @@ static char const *groups[][8] = {   /* group 0 is group 3 for %Ev set */
     "verr %Ew",       "verw %Ew",        0,                0               },
 /* 6 */
   { "sgdt %Ms",       "sidt %Ms",        "lgdt %Ms",       "lidt %Ms",
-    "smsw %Ew",       0,                 "lmsw %Ew",       "invlpg"        },
+    "smsw %Ew",       0,                 "lmsw %Ew",       0               },
 /* 7 */
   { 0,                0,                 0,                0,
     "bt",             "bts",             "btr",            "btc"           }
@@ -362,56 +365,50 @@ static char const *groups[][8] = {   /* group 0 is group 3 for %Ev set */
 
 /* zero here means invalid.  If first entry starts with '*', use st(i) */
 /* no assumed %EFs here.  Indexed by RM(modrm())                       */
-static char const *f0[]     = { 0, 0, 0, 0, 0, 0, 0, 0};
-static char const *fop_8[]  = { "*fld st,%GF" };
-static char const *fop_9[]  = { "*fxch st,%GF" };
-static char const *fop_10[] = { "fnop", 0, 0, 0, 0, 0, 0, 0 };
-static char const *fop_11[]  = { "*fst st,%GF" };
-static char const *fop_12[] = { "fchs", "fabs", 0, 0, "ftst", "fxam", 0, 0 };
-static char const *fop_13[] = { "fld1", "fldl2t", "fldl2e", "fldpi",
+static char *f0[]     = { 0, 0, 0, 0, 0, 0, 0, 0};
+static char *fop_9[]  = { "*fxch st,%GF" };
+static char *fop_10[] = { "fnop", 0, 0, 0, 0, 0, 0, 0 };
+static char *fop_12[] = { "fchs", "fabs", 0, 0, "ftst", "fxam", 0, 0 };
+static char *fop_13[] = { "fld1", "fldl2t", "fldl2e", "fldpi",
                    "fldlg2", "fldln2", "fldz", 0 };
-static char const *fop_14[] = { "f2xm1", "fyl2x", "fptan", "fpatan",
+static char *fop_14[] = { "f2xm1", "fyl2x", "fptan", "fpatan",
                    "fxtract", "fprem1", "fdecstp", "fincstp" };
-static char const *fop_15[] = { "fprem", "fyl2xp1", "fsqrt", "fsincos",
+static char *fop_15[] = { "fprem", "fyl2xp1", "fsqrt", "fsincos",
                    "frndint", "fscale", "fsin", "fcos" };
-static char const *fop_21[] = { 0, "fucompp", 0, 0, 0, 0, 0, 0 };
-static char const *fop_28[] = { "[fneni]", "[fndis]", "fclex", "finit", "[fnsetpm]", "[frstpm]", 0, 0 };
-static char const *fop_32[] = { "*fadd %GF,st" };
-static char const *fop_33[] = { "*fmul %GF,st" };
-static char const *fop_34[] = { "*fcom %GF,st" };
-static char const *fop_35[] = { "*fcomp %GF,st" };
-static char const *fop_36[] = { "*fsubr %GF,st" };
-static char const *fop_37[] = { "*fsub %GF,st" };
-static char const *fop_38[] = { "*fdivr %GF,st" };
-static char const *fop_39[] = { "*fdiv %GF,st" };
-static char const *fop_40[] = { "*ffree %GF" };
-static char const *fop_41[] = { "*fxch %GF" };
-static char const *fop_42[] = { "*fst %GF" };
-static char const *fop_43[] = { "*fstp %GF" };
-static char const *fop_44[] = { "*fucom %GF" };
-static char const *fop_45[] = { "*fucomp %GF" };
-static char const *fop_48[] = { "*faddp %GF,st" };
-static char const *fop_49[] = { "*fmulp %GF,st" };
-static char const *fop_50[] = { "*fcomp %GF,st" };
-static char const *fop_51[] = { 0, "fcompp", 0, 0, 0, 0, 0, 0 };
-static char const *fop_52[] = { "*fsubrp %GF,st" };
-static char const *fop_53[] = { "*fsubp %GF,st" };
-static char const *fop_54[] = { "*fdivrp %GF,st" };
-static char const *fop_55[] = { "*fdivp %GF,st" };
-static char const *fop_60[] = { "fstsw ax", 0, 0, 0, 0, 0, 0, 0 };
+static char *fop_21[] = { 0, "fucompp", 0, 0, 0, 0, 0, 0 };
+static char *fop_28[] = { 0, 0, "fclex", "finit", 0, 0, 0, 0 };
+static char *fop_32[] = { "*fadd %GF,st" };
+static char *fop_33[] = { "*fmul %GF,st" };
+static char *fop_36[] = { "*fsubr %GF,st" };
+static char *fop_37[] = { "*fsub %GF,st" };
+static char *fop_38[] = { "*fdivr %GF,st" };
+static char *fop_39[] = { "*fdiv %GF,st" };
+static char *fop_40[] = { "*ffree %GF" };
+static char *fop_42[] = { "*fst %GF" };
+static char *fop_43[] = { "*fstp %GF" };
+static char *fop_44[] = { "*fucom %GF" };
+static char *fop_45[] = { "*fucomp %GF" };
+static char *fop_48[] = { "*faddp %GF,st" };
+static char *fop_49[] = { "*fmulp %GF,st" };
+static char *fop_51[] = { 0, "fcompp", 0, 0, 0, 0, 0, 0 };
+static char *fop_52[] = { "*fsubrp %GF,st" };
+static char *fop_53[] = { "*fsubp %GF,st" };
+static char *fop_54[] = { "*fdivrp %GF,st" };
+static char *fop_55[] = { "*fdivp %GF,st" };
+static char *fop_60[] = { "fstsw ax", 0, 0, 0, 0, 0, 0, 0 };
 
-static char const **fspecial[] = { /* 0=use st(i), 1=undefined 0 in fop_* means undefined */
+static char **fspecial[] = { /* 0=use st(i), 1=undefined 0 in fop_* means undefined */
   0, 0, 0, 0, 0, 0, 0, 0,
-  fop_8, fop_9, fop_10, fop_11, fop_12, fop_13, fop_14, fop_15,
+  0, fop_9, fop_10, 0, fop_12, fop_13, fop_14, fop_15,
   f0, f0, f0, f0, f0, fop_21, f0, f0,
   f0, f0, f0, f0, fop_28, f0, f0, f0,
-  fop_32, fop_33, fop_34, fop_35, fop_36, fop_37, fop_38, fop_39,
-  fop_40, fop_41, fop_42, fop_43, fop_44, fop_45, f0, f0,
-  fop_48, fop_49, fop_50, fop_51, fop_52, fop_53, fop_54, fop_55,
+  fop_32, fop_33, f0, f0, fop_36, fop_37, fop_38, fop_39,
+  fop_40, f0, fop_42, fop_43, fop_44, fop_45, f0, f0,
+  fop_48, fop_49, f0, fop_51, fop_52, fop_53, fop_54, fop_55,
   f0, f0, f0, f0, fop_60, f0, f0, f0,
 };
 
-static const char *floatops[] = { /* assumed " %EF" at end of each.  mod != 3 only */
+static char *floatops[] = { /* assumed " %EF" at end of each.  mod != 3 only */
 /*00*/ "fadd", "fmul", "fcom", "fcomp",
        "fsub", "fsubr", "fdiv", "fdivr",
 /*08*/ "fld", 0, "fst", "fstp",
@@ -447,15 +444,20 @@ static char *addr_to_hex(UINT32 addr, int splitup) {
     else
 #endif
 
-	sprintf(buffer, "%08X", addr );
-	
+		if (addr20bit) {
+			sprintf(buffer, "%05X", addr&0xfffff );
+		} else if (addr24bit) {
+			sprintf(buffer, "%06X", addr&0xffffff );
+		} else if (addr32bit) {
+			sprintf(buffer, "%08X", addr );
+		}
   }
 
   return buffer;
 }
 
-static PhysPt getbyte_mac;
-static PhysPt startPtr;
+static PhysOff getbyte_mac;
+
 
 static UINT8 getbyte(void) {
 	return mem_readb(getbyte_mac++);
@@ -482,7 +484,7 @@ static int sib(void)
 
 /*------------------------------------------------------------------------*/
 
-static void uprintf(char const *s, ...)
+static void uprintf(char *s, ...)
 {
 	va_list	arg_ptr;
 	va_start (arg_ptr, s);
@@ -660,7 +662,7 @@ static void reg_name(int regnum, char size)
     uprintf("st(%d)", regnum);
     return;
   }
-  if ((((size == 'c') || (size == 'v')) && (opsize == 32)) || (size == 'd'))
+  if (((size == 'v') && (opsize == 32)) || (size == 'd'))
     uputchar('e');
   if ((size=='q' || size == 'b' || size=='c') && !wordop) {
     uputchar("acdbacdb"[regnum]);
@@ -674,7 +676,7 @@ static void reg_name(int regnum, char size)
 
 /*------------------------------------------------------------------------*/
 
-static void ua_str(char const *str);
+static void ua_str(char *str);
 
 static void do_sib(int m)
 {
@@ -820,8 +822,6 @@ static void floating_point(int e1)
 /*------------------------------------------------------------------------*/
 /* Main table driver                                                      */
 
-#define INSTRUCTION_SIZE (int)getbyte_mac - (int)startPtr
-
 static void percent(char type, char subtype)
 {
   INT32 vofs = 0;
@@ -835,12 +835,12 @@ static void percent(char type, char subtype)
        break;
 
   case 'C':                          /* reg(r/m) picks control reg */
-       uprintf("CR%d", REG(modrm()));
+       uprintf("C%d", REG(modrm()));
        must_do_size = 0;
        break;
 
   case 'D':                          /* reg(r/m) picks debug reg */
-       uprintf("DR%d", REG(modrm()));
+       uprintf("D%d", REG(modrm()));
        must_do_size = 0;
        break;
 
@@ -864,22 +864,24 @@ static void percent(char type, char subtype)
        switch (bytes(subtype)) {              /* sizeof offset value */
        case 1:
             vofs = (INT8)getbyte();
-			name = addr_to_hex(vofs+instruction_offset+INSTRUCTION_SIZE,0);
+			name = addr_to_hex(vofs+instruction_offset,0);
             break;
        case 2:
             vofs = getbyte();
             vofs += getbyte()<<8;
             vofs = (INT16)vofs;
-			name = addr_to_hex(vofs+instruction_offset+INSTRUCTION_SIZE,0);
+			name = addr_to_hex(vofs+instruction_offset,0);
             break;
+#if 0
 			/* i386 */
        case 4:
             vofs = (UINT32)getbyte();           /* yuk! */
             vofs |= (UINT32)getbyte() << 8;
             vofs |= (UINT32)getbyte() << 16;
             vofs |= (UINT32)getbyte() << 24;
-			name = addr_to_hex(vofs+instruction_offset+INSTRUCTION_SIZE,(addrsize == 32)?0:1);
+			name = addr_to_hex(vofs+instruction_offset,1);
             break;
+#endif
        }
 	   if (vofs<0)
 		   uprintf("%s ($-%x)", name, -vofs);
@@ -916,7 +918,7 @@ static void percent(char type, char subtype)
        break;
 
   case 'R':                            /* mod(r/m) picks register */
-       reg_name(RM(modrm()), subtype);      /* rh */
+       reg_name(REG(modrm()), subtype);      /* rh */
        must_do_size = 0;
        break;
 
@@ -1035,7 +1037,7 @@ static void percent(char type, char subtype)
 }
 
 
-static void ua_str(char const *str)
+static void ua_str(char *str)
 {
   char c;
 
@@ -1068,14 +1070,13 @@ static void ua_str(char const *str)
 }
 
 
-Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32)
+Bitu DasmI386(char* buffer, PhysOff pc, Bitu cur_ip, bool bit32)
 {
   	Bitu c;
 
 
 	instruction_offset = cur_ip;
 	/* input buffer */
-	startPtr	= pc;
 	getbyte_mac = pc;
 
 	/* output buffer */
@@ -1083,7 +1084,7 @@ Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32)
 	ubufp = buffer;
 	first_space = 1;
 
-	addr32bit=1;
+	addr32bit=1;addr20bit=addr24bit=0;
 
 	prefix = 0;
 	modrmv = sibv = -1;     /* set modrm and sib flags */
@@ -1107,11 +1108,5 @@ Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32)
 	return getbyte_mac-pc;
 }
 
-int DasmLastOperandSize()
-{
-	return opsize;
-};
-
 
 #endif
-

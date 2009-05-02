@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-/* $Id: messages.cpp,v 1.21 2009/02/01 14:18:12 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,56 +23,26 @@
 #include "cross.h"
 #include "support.h"
 #include "setup.h"
-#include "control.h"
-#include <list>
-#include <string>
-using namespace std;
 
 
 
-#define LINE_IN_MAXLEN 2048
+#define LINE_IN_MAXLEN 1024
 
-struct MessageBlock {
-	string name;
-	string val;
-	MessageBlock(const char* _name, const char* _val):
-	name(_name),val(_val){}
+struct MessageBlock
+{
+   char * name;
+   char * string;
+   MessageBlock * next;
 };
 
-static list<MessageBlock> Lang;
-typedef list<MessageBlock>::iterator itmb;
+static MessageBlock * first_message;
 
-void MSG_Add(const char * _name, const char* _val) {
-	/* Find the message */
-	for(itmb tel=Lang.begin();tel!=Lang.end();tel++) {
-		if((*tel).name==_name) { 
-//			LOG_MSG("double entry for %s",_name); //Message file might be loaded before default text messages
-			return;
-		}
-	}
-	/* if the message doesn't exist add it */
-	Lang.push_back(MessageBlock(_name,_val));
-}
 
-void MSG_Replace(const char * _name, const char* _val) {
-	/* Find the message */
-	for(itmb tel=Lang.begin();tel!=Lang.end();tel++) {
-		if((*tel).name==_name) { 
-			Lang.erase(tel);
-			break;
-		}
-	}
-	/* Even if the message doesn't exist add it */
-	Lang.push_back(MessageBlock(_name,_val));
-}
-
-static void LoadMessageFile(const char * fname) {
-	if (!fname) return;
-	if(*fname=='\0') return;//empty string=no languagefile
-	FILE * mfile=fopen(fname,"rt");
-	/* This should never happen and since other modules depend on this use a normal printf */
+static void LoadMessageFile(char * fname) {
+	FILE * mfile=fopen(fname,"rb");
+/* This should never happen and since other modules depend on this use a normal printf */
 	if (!mfile) {
-		E_Exit("MSG:Can't load messages: %s",fname);
+		E_Exit("MSG:Can't load messages",fname);
 	}
 	char linein[LINE_IN_MAXLEN];
 	char name[LINE_IN_MAXLEN];
@@ -99,8 +67,15 @@ static void LoadMessageFile(const char * fname) {
 			strcpy(name,linein+1);
 		/* End of string marker */
 		} else if (linein[0]=='.') {
-		/* Replace/Add the string to the internal langaugefile */
-		   MSG_Replace(name,string);
+		/* Save the string internally */
+			size_t total=sizeof(MessageBlock)+strlen(name)+1+strlen(string)+1;
+			MessageBlock * newblock=(MessageBlock *)malloc(total);
+			newblock->name=((char *)newblock)+sizeof(MessageBlock);
+			newblock->string=newblock->name+strlen(name)+1;
+			strcpy(newblock->name,name);
+			strcpy(newblock->string,string);
+			newblock->next=first_message;
+			first_message=newblock;
 		} else {
 		/* Normal string to be added */
 			strcat(string,linein);
@@ -110,32 +85,23 @@ static void LoadMessageFile(const char * fname) {
 	fclose(mfile);
 }
 
-const char * MSG_Get(char const * msg) {
-	for(itmb tel=Lang.begin();tel!=Lang.end();tel++){	
-		if((*tel).name==msg)
-		{
-			return  (*tel).val.c_str();
-		}
+
+char * MSG_Get(char * msg) {
+	MessageBlock * index=first_message;
+	while (index) {
+		if (!strcmp(msg,index->name)) return index->string;
+		index=index->next;
 	}
-	return "Message not Found!\n";
+	return "Message not found";
 }
 
 
-void MSG_Write(const char * location) {
-	FILE* out=fopen(location,"w+t");
-	if(out==NULL) return;//maybe an error?
-	for(itmb tel=Lang.begin();tel!=Lang.end();tel++){
-		fprintf(out,":%s\n%s.\n",(*tel).name.c_str(),(*tel).val.c_str());
-	}
-	fclose(out);
-}
 
-void MSG_Init(Section_prop * section) {
-	std::string file_name;
-	if (control->cmdline->FindString("-lang",file_name,true)) {
-		LoadMessageFile(file_name.c_str());
-	} else {
-		Prop_path* pathprop = section->Get_path("language");
-		if(pathprop) LoadMessageFile(pathprop->realpath.c_str());
-	}
+void MSG_Init(void) {
+	/* Load the messages from "dosbox.lang file" */
+	first_message=0;
+	char filein[CROSS_LEN];
+	strcpy(filein,dosbox_basedir);
+	strcat(filein,"dosbox.lang");
+	LoadMessageFile(filein);
 }
