@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mixer.cpp,v 1.44 2007/01/08 19:45:40 qbix79 Exp $ */
+/* $Id: mixer.cpp,v 1.46 2007/06/12 20:22:08 c2woody Exp $ */
 
 /* 
 	Remove the sdl code from here and have it handeld in the sdlmain.
@@ -429,7 +429,7 @@ static void MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
 	}
 	/* Reduce done count in all channels */
 	for (MixerChannel * chan=mixer.channels;chan;chan=chan->next) {
-		if (chan->done>need) chan->done-=reduce;
+		if (chan->done>reduce) chan->done-=reduce;
 		else chan->done=0;
 	}
    
@@ -595,7 +595,7 @@ void MIXER_Init(Section* sec) {
 	spec.channels=2;
 	spec.callback=MIXER_CallBack;
 	spec.userdata=NULL;
-	spec.samples=mixer.blocksize;
+	spec.samples=(Uint16)mixer.blocksize;
 
 	mixer.tick_remain=0;
 	if (mixer.nosound) {

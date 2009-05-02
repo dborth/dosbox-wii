@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.84 2007/02/22 08:34:10 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.86 2007/07/03 17:32:14 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -400,12 +400,16 @@ public:
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				upcase(name);
-				if(strstr(name,".BAT") == 0) {
-					autoexec[14].Install(name);
-				} else {
+				if(strstr(name,".BAT") != 0) {
 					/* BATch files are called else exit will not work */
 					autoexec[14].Install(std::string("CALL ") + name);
+				} else if((strstr(name,".IMG") != 0) || (strstr(name,".IMA") !=0)) {
+					/* Boot image files */
+					autoexec[14].Install(std::string("BOOT ") + name);
+				} else {
+					autoexec[14].Install(name);
 				}
+
 				if(addexit) autoexec[15].Install("exit");
 			}
 		}
@@ -420,10 +424,10 @@ void AUTOEXEC_Init(Section * sec) {
 	test = new AUTOEXEC(sec);
 }
 
-static char * path_string="PATH=Z:\\";
-static char * comspec_string="COMSPEC=Z:\\COMMAND.COM";
-static char * full_name="Z:\\COMMAND.COM";
-static char * init_line="/INIT AUTOEXEC.BAT";
+static char const * const path_string="PATH=Z:\\";
+static char const * const comspec_string="COMSPEC=Z:\\COMMAND.COM";
+static char const * const full_name="Z:\\COMMAND.COM";
+static char const * const init_line="/INIT AUTOEXEC.BAT";
 
 void SHELL_Init() {
 	/* Add messages */

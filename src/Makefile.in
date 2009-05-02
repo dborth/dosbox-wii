@@ -36,7 +36,6 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 host_triplet = @host@
-@HAVE_WINDRES_TRUE@am__append_1 = dosbox_ico.o
 ACLOCAL = @ACLOCAL@
 ALSA_CFLAGS = @ALSA_CFLAGS@
 ALSA_LIBS = @ALSA_LIBS@
@@ -145,10 +144,13 @@ SUBDIRS = cpu debug dos fpu gui hardware libs ints misc shell platform
 
 bin_PROGRAMS = dosbox
 
+@HAVE_WINDRES_TRUE@ico_stuff = dosbox_ico.o
+
 dosbox_SOURCES = dosbox.cpp
 dosbox_LDADD = cpu/libcpu.a debug/libdebug.a dos/libdos.a fpu/libfpu.a  hardware/libhardware.a gui/libgui.a \
-               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a\
-$(am__append_1)
+               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a \
+	       $(ico_stuff)
+
 
 EXTRA_DIST = dosbox.rc dosbox.ico
 subdir = src

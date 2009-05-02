@@ -33,6 +33,10 @@
 /* Define to 1 to use x86 dynamic cpu core */
 #undef C_DYNAMIC_X86
 
+/* Define to 1 to use recompiling cpu core. Can not be used together with the
+   dynamic-x86 core */
+#undef C_DYNREC
+
 /* Define to 1 to enable floating point emulation */
 #undef C_FPU
 
@@ -52,9 +56,6 @@
 /* Define to 1 to enable heavy debugging, also have to enable C_DEBUG */
 #undef C_HEAVY_DEBUG
 
-/* The type of cpu this host has */
-#undef C_HOSTCPU
-
 /* Define to 1 to enable IPX over Internet networking, requires SDL_net */
 #undef C_IPX
 
@@ -72,6 +73,9 @@
 
 /* Define to 1 to enable screenshots, requires libpng */
 #undef C_SSHOT
+
+/* The type of cpu this target has */
+#undef C_TARGETCPU
 
 /* Define to 1 to use a unaligned memory access */
 #undef C_UNALIGNED_MEMORY
@@ -103,6 +107,12 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
+/* Define to 1 if you have the <netinet/in.h> header file. */
+#undef HAVE_NETINET_IN_H
+
+/* Define to 1 if you have the <pwd.h> header file. */
+#undef HAVE_PWD_H
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
 
@@ -115,6 +125,9 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
+/* Define to 1 if you have the <sys/socket.h> header file. */
+#undef HAVE_SYS_SOCKET_H
+
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
@@ -124,7 +137,7 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
-/* Compiling on GNU/Linux */
+/* Compiling on GNU/Linux or *BSD */
 #undef LINUX
 
 /* Compiling on Mac OS X */
@@ -193,6 +206,9 @@
 
 /* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t
+
+/* Define to `int` if you don't have socklen_t */
+#undef socklen_t
 
 #define INLINE inline
 

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_iso.cpp,v 1.17 2007/01/21 16:21:22 c2woody Exp $ */
+/* $Id: drive_iso.cpp,v 1.20 2007/06/15 19:05:48 c2woody Exp $ */
 
 #include <cctype>
 #include <cstring>
@@ -52,10 +52,9 @@ isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u
 	time = stat->time;
 	date = stat->date;
 	attr = stat->attr;
-	size = stat->size;
 	fileBegin = offset;
 	filePos = fileBegin;
-	fileEnd = fileBegin + size;
+	fileEnd = fileBegin + stat->size;
 	cachedSector = -1;
 	open = true;
 	this->name = NULL;
@@ -65,11 +64,11 @@ isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u
 bool isoFile::Read(Bit8u *data, Bit16u *size)
 {
 	if (filePos + *size > fileEnd)
-		*size = fileEnd - filePos;
+		*size = (Bit16u)(fileEnd - filePos);
 	
 	Bit16u nowSize = 0;
 	int sector = filePos / ISO_FRAMESIZE;
-	Bit16u sectorPos = filePos % ISO_FRAMESIZE;
+	Bit16u sectorPos = (Bit16u)(filePos % ISO_FRAMESIZE);
 	
 	if (sector != cachedSector) {
 		if (drive->readSector(buffer, sector)) cachedSector = sector;
@@ -272,7 +271,7 @@ bool isoDrive::FindFirst(char *dir, DOS_DTA &dta, bool fcb_findfirst)
 	}
 	
 	// get a directory iterator and save its id in the dta
-	dta.SetDirID(GetDirIterator(&de));
+	dta.SetDirID((Bit16u)GetDirIterator(&de));
 
 	Bit8u attr;
 	char pattern[ISO_MAXPATHNAME];
@@ -349,6 +348,7 @@ bool isoDrive::GetFileAttr(char *name, Bit16u *attr)
 	bool success = lookup(&de, name);
 	if (success) {
 		*attr = DOS_ATTR_ARCHIVE | DOS_ATTR_READ_ONLY;
+		if (IS_HIDDEN(de.fileFlags)) *attr |= DOS_ATTR_HIDDEN;
 		if (IS_DIR(de.fileFlags)) *attr |= DOS_ATTR_DIRECTORY;
 	}
 	return success;
@@ -532,7 +532,7 @@ bool isoDrive :: loadImage()
 	isoPVD pvd;
 	readSector((Bit8u*)(&pvd), ISO_FIRST_VD);
 	if (pvd.type != 1 || strncmp((char*)pvd.standardIdent, "CD001", 5) || pvd.version != 1) return false;
-	return (readDirEntry(&this->rootEntry, pvd.rootEntry));
+	return (readDirEntry(&this->rootEntry, pvd.rootEntry)>0);
 }
 
 bool isoDrive :: lookup(isoDirEntry *de, const char *path)

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.115 2007/02/22 08:44:06 qbix79 Exp $ */
+/* $Id: dosbox.cpp,v 1.118 2007/07/02 20:06:59 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -236,6 +236,10 @@ static void DOSBOX_RealInit(Section * sec) {
 	ticksLocked = false;
 	DOSBOX_SetLoop(&Normal_Loop);
 	MSG_Init(section);
+	MSG_Add("CONFIGFILE_INTRO",
+	        "# This is the configurationfile for DOSBox %s.\n"
+	        "# Lines starting with a # are commentlines.\n"
+	        "# They are used to (briefly) document the effect of each option.\n");
 
 	MAPPER_AddHandler(DOSBOX_UnlockSpeed, MK_f12, MMOD2,"speedlock","Speedlock");
 	svgaCard = SVGA_S3Trio; 
@@ -299,6 +303,8 @@ void DOSBOX_Init(void) {
 		"          Supported are none,normal2x,normal3x,advmame2x,advmame3x,hq2x,hq3x,\n"
 		"                        2xsai,super2xsai,supereagle,advinterp2x,advinterp3x,\n"
 		"                        tv2x,tv3x,rgb2x,rgb3x,scan2x,scan3x.\n"
+		"          If forced is appended (like scaler=hq2x forced), the scaler will be used\n"
+		"          even if the result might not be desired.\n"
 	);
 
 	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
@@ -420,7 +426,7 @@ void DOSBOX_Init(void) {
 		"tandy -- Enable Tandy Sound System emulation (off,on,auto).\n"
 		"         For auto Tandysound emulation is present only if machine is set to tandy.\n"
 		"tandyrate -- Sample rate of the Tandy 3-Voice generation.\n"
-		"disney -- Enable Disney Sound Source emulation.\n"
+		"disney -- Enable Disney Sound Source emulation. Covox Voice Master and Speech Thing compatible.\n"
 	);
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
