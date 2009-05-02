@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 
 #if !defined __DOSBOX_H
 #define __DOSBOX_H
-
 
 void E_Exit(char * message,...);
 
@@ -59,6 +58,16 @@ void DOSBOX_Init(void);
 
 class Config;
 extern Config * control;
+
+enum MachineType {
+	MCH_HERC,
+	MCH_CGA,
+	MCH_TANDY,
+	MCH_VGA,
+	MCH_AUTO
+};
+
+extern MachineType machine;
 
 #ifndef __LOGGING_H_
 #include "logging.h"

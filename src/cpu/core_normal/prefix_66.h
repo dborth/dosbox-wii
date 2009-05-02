@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,8 +24,8 @@
 		EAXId(ADDD);break;
 	CASE_D(0x06)												/* PUSH ES */		
 		Push_32(SegValue(es));break;
-	CASE_D(0x07)												/* POP ES */		
-		CPU_SetSegGeneral(es,(Bit16u)Pop_32());break;
+	CASE_D(0x07)												/* POP ES */
+		POPSEG(es,Pop_32(),4);break;
 	CASE_D(0x09)												/* OR Ed,Gd */
 		RMEdGd(ORD);break;
 	CASE_D(0x0b)												/* OR Gd,Ed */
@@ -40,10 +40,12 @@
 		RMGdEd(ADCD);break;
 	CASE_D(0x15)												/* ADC EAX,Id */
 		EAXId(ADCD);break;
-	CASE_D(0x16)												/* PUSH SS */		
+	CASE_D(0x16)												/* PUSH SS */
 		Push_32(SegValue(ss));break;
-	CASE_D(0x17)												/* POP SS */		
-		CPU_SetSegGeneral(ss,(Bit16u)Pop_32());break;
+	CASE_D(0x17)												/* POP SS */
+		POPSEG(ss,Pop_32(),4);
+		CPU_Cycles++;
+		break;
 	CASE_D(0x19)												/* SBB Ed,Gd */
 		RMEdGd(SBBD);break;
 	CASE_D(0x1b)												/* SBB Gd,Ed */
@@ -53,7 +55,7 @@
 	CASE_D(0x1e)												/* PUSH DS */		
 		Push_32(SegValue(ds));break;
 	CASE_D(0x1f)												/* POP DS */
-		CPU_SetSegGeneral(ds,(Bit16u)Pop_32());break;
+		POPSEG(ds,Pop_32(),4);break;
 	CASE_D(0x21)												/* AND Ed,Gd */
 		RMEdGd(ANDD);break;	
 	CASE_D(0x23)												/* AND Gd,Ed */
@@ -143,9 +145,11 @@
 	CASE_D(0x5f)												/* POP EDI */
 		reg_edi=Pop_32();break;
 	CASE_D(0x60)												/* PUSHAD */
+	{
+		Bitu tmpesp = reg_esp;
 		Push_32(reg_eax);Push_32(reg_ecx);Push_32(reg_edx);Push_32(reg_ebx);
-		Push_32(reg_esp);Push_32(reg_ebp);Push_32(reg_esi);Push_32(reg_edi);
-		break;
+		Push_32(tmpesp);Push_32(reg_ebp);Push_32(reg_esi);Push_32(reg_edi);
+	}; break;
 	CASE_D(0x61)												/* POPAD */
 		reg_edi=Pop_32();reg_esi=Pop_32();reg_ebp=Pop_32();Pop_32();//Don't save ESP
 		reg_ebx=Pop_32();reg_edx=Pop_32();reg_ecx=Pop_32();reg_eax=Pop_32();
@@ -186,6 +190,38 @@
 	CASE_D(0x6b)												/* IMUL Gd,Ed,Ib */
 		RMGdEdOp3(DIMULD,Fetchbs());
 		break;
+	CASE_D(0x70)												/* JO */
+		JumpCond32_b(TFLG_O);break;
+	CASE_D(0x71)												/* JNO */
+		JumpCond32_b(TFLG_NO);break;
+	CASE_D(0x72)												/* JB */
+		JumpCond32_b(TFLG_B);break;
+	CASE_D(0x73)												/* JNB */
+		JumpCond32_b(TFLG_NB);break;
+	CASE_D(0x74)												/* JZ */
+  		JumpCond32_b(TFLG_Z);break;
+	CASE_D(0x75)												/* JNZ */
+		JumpCond32_b(TFLG_NZ);break;
+	CASE_D(0x76)												/* JBE */
+		JumpCond32_b(TFLG_BE);break;
+	CASE_D(0x77)												/* JNBE */
+		JumpCond32_b(TFLG_NBE);break;
+	CASE_D(0x78)												/* JS */
+		JumpCond32_b(TFLG_S);break;
+	CASE_D(0x79)												/* JNS */
+		JumpCond32_b(TFLG_NS);break;
+	CASE_D(0x7a)												/* JP */
+		JumpCond32_b(TFLG_P);break;
+	CASE_D(0x7b)												/* JNP */
+		JumpCond32_b(TFLG_NP);break;
+	CASE_D(0x7c)												/* JL */
+		JumpCond32_b(TFLG_L);break;
+	CASE_D(0x7d)												/* JNL */
+		JumpCond32_b(TFLG_NL);break;
+	CASE_D(0x7e)												/* JLE */
+		JumpCond32_b(TFLG_LE);break;
+	CASE_D(0x7f)												/* JNLE */
+		JumpCond32_b(TFLG_NLE);break;
 	CASE_D(0x81)												/* Grpl Ed,Id */
 		{
 			GetRM;Bitu which=(rm>>3)&7;
@@ -307,9 +343,10 @@
 		}
 	CASE_D(0x8f)												/* POP Ed */
 		{
+			Bit32u val=Pop_32();
 			GetRM;
-			if (rm >= 0xc0 ) {GetEArd;*eard=Pop_32();}
-			else {GetEAa;SaveMd(eaa,Pop_32());}
+			if (rm >= 0xc0 ) {GetEArd;*eard=val;}
+			else {GetEAa;SaveMd(eaa,val);}
 			break;
 		}
 	CASE_D(0x91)												/* XCHG ECX,EAX */
@@ -341,27 +378,28 @@
 	CASE_D(0x9a)												/* CALL FAR Ad */
 		{ 
 			Bit32u newip=Fetchd();Bit16u newcs=Fetchw();
-			SAVEIP;
-			if (CPU_CALL(true,newcs,newip)) {
-				LOADIP;
-			} else {
-				FillFlags();return CBRET_NONE;
-			}
-			break;
+			LEAVECORE;
+			CPU_CALL(true,newcs,newip);
+			goto decode_start;
 		}
 	CASE_D(0x9c)												/* PUSHFD */
 		FillFlags();
-		Push_32(flags.word);
+		Push_32(reg_flags);
 		break;
 	CASE_D(0x9d)												/* POPFD */
+		if ((reg_flags & FLAG_VM) && ((reg_flags & FLAG_IOPL)!=FLAG_IOPL)) {
+			LEAVECORE;reg_eip-=core.ip_lookup-core.op_start;
+			CPU_Exception(13,0);
+			goto decode_start;
+		}
 		SETFLAGSd(Pop_32())
 #if CPU_TRAP_CHECK
 		if (GETFLAG(TF)) {	
-			cpudecoder=CPU_Core_Normal_Decode_Trap;
+			cpudecoder=CPU_Core_Normal_Trap_Run;
 			goto decode_end;
 		}
 #endif
-#ifdef CPU_PIC_CHECK
+#if CPU_PIC_CHECK
 		if (GETFLAG(IF) && PIC_IRQCheck) goto decode_end;
 #endif
 
@@ -420,13 +458,15 @@
 	CASE_D(0xc4)												/* LES */
 		{	
 			GetRMrd;GetEAa;
-			*rmrd=LoadMd(eaa);CPU_SetSegGeneral(es,LoadMw(eaa+4));
+			LOADSEG(es,LoadMw(eaa+4));
+			*rmrd=LoadMd(eaa);
 			break;
 		}
 	CASE_D(0xc5)												/* LDS */
 		{	
 			GetRMrd;GetEAa;
-			*rmrd=LoadMd(eaa);CPU_SetSegGeneral(ds,LoadMw(eaa+4));
+			LOADSEG(ds,LoadMw(eaa+4));
+			*rmrd=LoadMd(eaa);
 			break;
 		}
 	CASE_D(0xc7)												/* MOV Ed,Id */
@@ -475,61 +515,43 @@
 		break;
 	CASE_D(0xca)												/* RETF Iw */
 		{ 
-			if (CPU_RET(true,Fetchw())) {
-				LOADIP;
-			} else {
-				FillFlags();return CBRET_NONE;
-			}
-			break;
-			}
+			Bitu words=Fetchw();
+			LEAVECORE;
+			CPU_RET(true,words,core.ip_lookup-core.op_start);
+			goto decode_start;
+		}
 	CASE_D(0xcb)												/* RETF */			
 		{ 
-			if (CPU_RET(true,0)) {
-				LOADIP;
-			} else {
-				FillFlags();return CBRET_NONE;
-			}
-			break;
+			LEAVECORE;
+            CPU_RET(true,0,core.ip_lookup-core.op_start);
+			goto decode_start;
 		}
 	CASE_D(0xcf)												/* IRET */
 		{
-			if (CPU_IRET(true)) {
+			LEAVECORE;
+			CPU_IRET(true);
 #if CPU_TRAP_CHECK
-				if (GETFLAG(TF)) {	
-					cpudecoder=CPU_Core_Normal_Decode_Trap;
-					return CBRET_NONE;
-				}
+			if (GETFLAG(TF)) {	
+				cpudecoder=CPU_Core_Normal_Trap_Run;
+				return CBRET_NONE;
+			}
 #endif
-#ifdef CPU_PIC_CHECK
-				if (GETFLAG(IF) && PIC_IRQCheck) return CBRET_NONE;
+#if CPU_PIC_CHECK
+			if (GETFLAG(IF) && PIC_IRQCheck) return CBRET_NONE;
 #endif
 //TODO TF check
-				goto decode_start;
-			} else return CBRET_NONE;
-			break;
+			goto decode_start;
 		}
 	CASE_D(0xd1)												/* GRP2 Ed,1 */
 		GRP2D(1);break;
 	CASE_D(0xd3)												/* GRP2 Ed,CL */
 		GRP2D(reg_cl);break;
 	CASE_D(0xe5)												/* IN EAX,Ib */
-		{ 
-			Bit16u port=Fetchb();
-			reg_eax=IO_Read(port)        | 
-				(IO_Read(port+1) << 8 )  |
-				(IO_Read(port+2) << 16 ) |
-				(IO_Read(port+3) << 24 );
-			break;
-		}
+		reg_eax=IO_ReadD(Fetchb());
+		break;
 	CASE_D(0xe7)												/* OUT Ib,EAX */
-		{	
-			Bit16u port=Fetchb();
-			IO_Write(port+0,(Bit8u)(reg_eax >> 0));
-			IO_Write(port+1,(Bit8u)(reg_eax >> 8));
-			IO_Write(port+2,(Bit8u)(reg_eax >> 16));
-			IO_Write(port+3,(Bit8u)(reg_eax >> 24));
-			break;
-		}
+		IO_WriteD(Fetchb(),reg_eax);
+		break;
 	CASE_D(0xe8)												/* CALL Jd */
 		{ 
 			Bit32s newip=Fetchds();
@@ -544,25 +566,15 @@
 		{ 
 			Bit32u newip=Fetchd();
 			Bit16u newcs=Fetchw();
-			SAVEIP;
-			if (CPU_JMP(true,newcs,newip)) {
-				LOADIP;
-			} else {
-				FillFlags();return CBRET_NONE;
-			}
-			break;
+			LEAVECORE;
+			CPU_JMP(true,newcs,newip,core.ip_lookup-core.op_start);
+			goto decode_start;
 		}
 	CASE_D(0xed)												/* IN EAX,DX */
-		reg_eax=IO_Read(reg_dx) | 
-				(IO_Read(reg_dx+1) << 8) | 
-				(IO_Read(reg_dx+2) << 16) | 
-				(IO_Read(reg_dx+3) << 24);
+		reg_eax=IO_ReadD(reg_dx);
 		break;
 	CASE_D(0xef)												/* OUT DX,EAX */
-		IO_Write(reg_dx,(Bit8u)(reg_eax>>0));
-		IO_Write(reg_dx+1,(Bit8u)(reg_eax>>8));
-		IO_Write(reg_dx+2,(Bit8u)(reg_eax>>16));
-		IO_Write(reg_dx+3,(Bit8u)(reg_eax>>24));
+		IO_WriteD(reg_dx,reg_eax);
 		break;
 	CASE_D(0xf7)												/* GRP3 Ed(,Id) */
 		{ 
@@ -583,13 +595,13 @@
 				}
 			case 0x03:											/* NEG Ed */
 				{
-					flags.type=t_NEGd;
+					lflags.type=t_NEGd;
 					if (rm >= 0xc0 ) {
-							GetEArd;flags.var1.d=*eard;flags.result.d=0-flags.var1.d;
-						*eard=flags.result.d;
+							GetEArd;lf_var1d=*eard;lf_resd=0-lf_var1d;
+						*eard=lf_resd;
 					} else {
-						GetEAa;flags.var1.d=LoadMd(eaa);flags.result.d=0-flags.var1.d;
-							SaveMd(eaa,flags.result.d);
+						GetEAa;lf_var1d=LoadMd(eaa);lf_resd=0-lf_var1d;
+							SaveMd(eaa,lf_resd);
 					}
 					break;
 				}
@@ -627,12 +639,9 @@
 					GetEAa;
 					Bit32u newip=LoadMd(eaa);
 					Bit16u newcs=LoadMw(eaa+4);
-					SAVEIP;
-					if (CPU_CALL(true,newcs,newip)) {
-						LOADIP;
-					} else {
-						FillFlags();return CBRET_NONE;
-					}
+					LEAVECORE;
+					CPU_CALL(true,newcs,newip);
+					goto decode_start;
 				}
 				break;
 			case 0x04:											/* JMP NEAR Ed */	
@@ -644,12 +653,9 @@
 					GetEAa;
 					Bit32u newip=LoadMd(eaa);
 					Bit16u newcs=LoadMw(eaa+4);
-					SAVEIP;
-					if (CPU_JMP(true,newcs,newip)) {
-						LOADIP;
-					} else {
-						FillFlags();return CBRET_NONE;
-					}
+					LEAVECORE;
+					CPU_JMP(true,newcs,newip,core.ip_lookup-core.op_start);
+					goto decode_start;
 				}
 				break;
 			case 0x06:											/* Push Ed */

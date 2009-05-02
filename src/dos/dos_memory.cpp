@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -165,6 +165,11 @@ bool DOS_ResizeMemory(Bit16u segment,Bit16u * blocks) {
 
 bool DOS_FreeMemory(Bit16u segment) {
 //TODO Check if allowed to free this segment
+	if ((segment-1) < MEM_START){
+		LOG(LOG_DOSMISC,LOG_ERROR)("Program tried to free %X ---ERROR",segment);
+		return false;
+	}
+      
 	DOS_MCB mcb(segment-1);
 	mcb.SetPSPSeg(MCB_FREE);
 	DOS_CompressMemory();

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,6 +47,8 @@ typedef PhysPt EAPoint;
 #define LoadD(reg) reg
 #define SaveD(reg,val)	reg=val
 
+
+
 #include "core_full/loadwrite.h"
 #include "core_full/support.h"
 #include "core_full/optable.h"
@@ -59,15 +61,16 @@ typedef PhysPt EAPoint;
 #define EXCEPTION(blah)										\
 	{														\
 		Bit8u new_num=blah;									\
-		IPPoint=inst.start_entry;							\
+		IPPoint=inst.opcode_start;							\
 		LEAVECORE;											\
-		Interrupt(new_num);									\
+		CPU_Exception(new_num,0);							\
 		LoadIP();											\
 		goto nextopcode;									\
 	}
 
-Bits Full_DeCode(void) {
+Bits CPU_Core_Full_Run(void) {
 	FullData inst;	
+restart_core:
 	if (!cpu.code.big) {
 		inst.start_prefix=0x0;;
 		inst.start_entry=0x0;
@@ -77,8 +80,8 @@ Bits Full_DeCode(void) {
 	}
 	EAPoint IPPoint;
 	LoadIP();
-	flags.type=t_UNKNOWN;
-	while (CPU_Cycles>0) {
+	lflags.type=t_UNKNOWN;
+	while (CPU_Cycles-->0) {
 #if C_DEBUG
 		cycle_count++;
 #if C_HEAVY_DEBUG
@@ -89,7 +92,7 @@ Bits Full_DeCode(void) {
 		};
 #endif
 #endif
-		inst.start=IPPoint;
+		inst.opcode_start=IPPoint;
 		inst.entry=inst.start_entry;
 		inst.prefix=inst.start_prefix;
 restartopcode:
@@ -99,13 +102,13 @@ restartopcode:
 		#include "core_full/op.h"
 		#include "core_full/save.h"
 nextopcode:;
-		CPU_Cycles--;
 	}
+exit_core:
 	LEAVECORE;
 	return CBRET_NONE;
 }
 
 
-void CPU_Core_Full_Start(bool big) {
-	cpudecoder=&Full_DeCode;
+void CPU_Core_Full_Init(void) {
+
 }

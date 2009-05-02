@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -140,4 +140,18 @@
 		GetEAa;FPU_ESC ## code ## _EA(rm,eaa);								\
 	}																		\
 }
+
+#define POPSEG(_SEG_,_VAL_,_ESP_CHANGE_)									\
+	if (CPU_SetSegGeneral(_SEG_,_VAL_)) {									\
+		LEAVECORE;															\
+		reg_eip-=(core.ip_lookup-core.op_start);reg_esp-=_ESP_CHANGE_;		\
+		CPU_StartException();goto decode_start;								\
+	}
+
+#define LOADSEG(_SEG_,_SEG_VAL_)											\
+	if (CPU_SetSegGeneral(_SEG_,_SEG_VAL_)) {								\
+		LEAVECORE;															\
+		reg_eip-=(core.ip_lookup-core.op_start);							\
+		CPU_StartException();goto decode_start;								\
+	}																		\
 

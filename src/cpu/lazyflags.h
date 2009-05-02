@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,9 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#if !defined __LAZYFLAGS_H
+#define __LAZYFLAG_H
+
 //Flag Handling
 Bitu get_CF(void);
 Bitu get_AF(void);
@@ -24,25 +27,51 @@ Bitu get_SF(void);
 Bitu get_OF(void);
 Bitu get_PF(void);
 
-void FillFlags(void);
+Bitu FillFlags(void);
+
+#include "regs.h"
+
+struct LazyFlags {
+    GenReg32 var1,var2,res;
+	Bitu type;
+	Bitu prev_type;
+	Bitu oldcf;
+};
+
+extern LazyFlags lfags;
+
+#define lf_var1b lflags.var1.byte[BL_INDEX]
+#define lf_var2b lflags.var2.byte[BL_INDEX]
+#define lf_resb lflags.res.byte[BL_INDEX]
+
+#define lf_var1w lflags.var1.word[W_INDEX]
+#define lf_var2w lflags.var2.word[W_INDEX]
+#define lf_resw lflags.res.word[W_INDEX]
+
+#define lf_var1d lflags.var1.dword[DW_INDEX]
+#define lf_var2d lflags.var2.dword[DW_INDEX]
+#define lf_resd lflags.res.dword[DW_INDEX]
+
+
+extern LazyFlags lflags;
 
 #define SETFLAGSb(FLAGB)													\
 {																			\
 	SETFLAGBIT(OF,get_OF());												\
-	flags.type=t_UNKNOWN;													\
-	CPU_SetFlags((flags.word&0xffffff00)|((FLAGB) & 0xff));					\
+	lflags.type=t_UNKNOWN;													\
+	CPU_SetFlags(FLAGB,FMASK_NORMAL & 0xff);								\
 }
 
 #define SETFLAGSw(FLAGW)													\
 {																			\
-	flags.type=t_UNKNOWN;													\
+	lflags.type=t_UNKNOWN;													\
 	CPU_SetFlagsw(FLAGW);													\
 }
 
 #define SETFLAGSd(FLAGD)													\
 {																			\
-	flags.type=t_UNKNOWN;													\
-	CPU_SetFlags(FLAGD);													\
+	lflags.type=t_UNKNOWN;													\
+	CPU_SetFlagsd(FLAGD);													\
 }
 
 #define LoadCF SETFLAGBIT(CF,get_CF());
@@ -50,6 +79,23 @@ void FillFlags(void);
 #define LoadSF SETFLAGBIT(SF,get_SF());
 #define LoadOF SETFLAGBIT(OF,get_OF());
 #define LoadAF SETFLAGBIT(AF,get_AF());
+
+#define TFLG_O		(get_OF())
+#define TFLG_NO		(!get_OF())
+#define TFLG_B		(get_CF())
+#define TFLG_NB		(!get_CF())
+#define TFLG_Z		(get_ZF())
+#define TFLG_NZ		(!get_ZF())
+#define TFLG_BE		(get_CF() || get_ZF())
+#define TFLG_NBE	(!get_CF() && !get_ZF())
+#define TFLG_S		(get_SF())
+#define TFLG_NS		(!get_SF())
+#define TFLG_P		(get_PF())
+#define TFLG_NP		(!get_PF())
+#define TFLG_L		((get_SF()!=0) != (get_OF()!=0))
+#define TFLG_NL		((get_SF()!=0) == (get_OF()!=0))
+#define TFLG_LE		(get_ZF()  || ((get_SF()!=0) != (get_OF()!=0)))
+#define TFLG_NLE	(!get_ZF() && ((get_SF()!=0) == (get_OF()!=0)))
 
 //Types of Flag changing instructions
 enum {
@@ -73,8 +119,7 @@ enum {
 	t_RCLb,t_RCLw,t_RCLd,
 	t_RCRb,t_RCRw,t_RCRd,
 	t_NEGb,t_NEGw,t_NEGd,
-	t_CF,t_ZF,
-
+	
 	t_DSHLw,t_DSHLd,
 	t_DSHRw,t_DSHRd,
 	t_MUL,t_DIV,
@@ -82,3 +127,4 @@ enum {
 	t_LASTFLAG
 };
 
+#endif

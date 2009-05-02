@@ -1,5 +1,5 @@
  /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,8 +23,9 @@
 #include "dosbox.h"
 
 enum VGAModes {
-	M_TEXT16,
-	M_CGA2,M_CGA4,
+	M_TEXT2,M_TEXT16,
+	M_HERC,
+	M_CGA2,M_CGA4,M_CGA16,
 	M_TANDY16,
 	M_EGA2,M_EGA4,M_EGA16,
 	M_VGA,
@@ -41,16 +42,6 @@ enum VGAModes {
 #define S3_CLOCK_REF	14318	/* KHz */
 #define S3_CLOCK(_M,_N,_R)	((S3_CLOCK_REF * ((_M) + 2)) / (((_N) + 2) * (1 << (_R))))
 #define S3_MAX_CLOCK	150000	/* KHz */
-
-/* Different functions that should be handle by memory handler */
-
-#define MH_ROTATEOP		0x0001;
-#define MH_SETRESET		0x0002;
-#define MH_BITMASK		0x0004;
-
-
-typedef Bit8u VGA_ReadHandler(PhysPt off);
-typedef void VGA_WriteHandler(PhysPt off,Bit8u val);
 
 typedef struct {
 	bool attrindex;
@@ -73,18 +64,12 @@ typedef struct {
 	bool chained;					/* Enable or Disabled Chain 4 Mode */
 	bool blinking;					/* Attribute bit 7 is blinking */
 
-	bool vline_double;
-	Bit8u vline_height;
-
 	/* Pixel Scrolling */
 	Bit8u pel_panning;				/* Amount of pixels to skip when starting horizontal line */
 	Bit8u hlines_skip;
 	Bit8u bytes_skip;
 
 /* Specific stuff memory write/read handling */
-
-	VGA_ReadHandler * readhandler;
-	VGA_WriteHandler * writehandler;
 	
 	Bit8u read_mode;
 	Bit8u write_mode;
@@ -106,18 +91,40 @@ typedef struct {
 
 typedef struct {
 	bool resizing;
+	bool drawing;
 	Bitu width;
 	Bitu height;
 	Bitu pitch;
-	Bitu blank;
-	bool double_width;
-	bool double_height;
-	Bitu lines;
+	Bitu blocks;
+	Bitu panning;
+	Bitu address;
+	Bitu address_add;
+	Bitu address_line_total;
+	Bitu address_line;
+	Bitu lines_total;
+	Bitu lines_left;
+	Bitu lines_scaled;
+	Bitu split_line;
+	Bitu parts_total;
+	Bitu parts_lines;
+	Bitu parts_left;
+	struct {
+		Bitu vtotal;
+		Bitu vstart;
+		Bitu vend;
+		Bitu htotal;
+		Bitu hstart;
+		Bitu hend;
+		Bitu parts;
+	} micro;
+	Bitu scaleh;
+	bool double_scan;
+	bool double_scan_active;
 	Bit8u font_height;
 	Bit8u font[64*1024];
 	Bitu font1_start;
 	Bitu font2_start;
-	Bitu rows,cols;
+	Bitu blinking;
 	struct {
 		Bit8u sline,eline;
 		Bit8u count,delay;
@@ -150,6 +157,12 @@ typedef struct {
 } VGA_S3;
 
 typedef struct {
+	Bit8u mode_control;
+	Bit8u enable_bits;
+} VGA_HERC;
+
+typedef struct {
+	Bit8u mode_control;
 	Bit8u color_select;
 } VGA_CGA;
 
@@ -157,6 +170,10 @@ typedef struct {
 	Bit8u mem_bank;
 	Bit8u disp_bank;
 	Bit8u reg_index;
+	Bit8u mode_control1;
+	Bit8u palette_mask;
+	Bit8u border_color;
+	Bit8u mode_control2;
 } VGA_TANDY;
 
 typedef struct {
@@ -267,6 +284,7 @@ typedef struct {
 	VGA_Dac dac;
 	VGA_Latch latch;
 	VGA_S3 s3;
+	VGA_HERC herc;
 	VGA_CGA cga;
 	VGA_TANDY tandy;
 	VGA_Memory mem;
@@ -298,12 +316,18 @@ void VGA_SetClock(Bitu which,Bitu target);
 void VGA_DACSetEntirePalette(void);
 void VGA_StartRetrace(void);
 void VGA_StartUpdateLFB(void);
+void VGA_SetBlinking(Bitu enabled);
 
 extern VGA_Type vga;
 
 extern Bit32u ExpandTable[256];
 extern Bit32u FillTable[16];
+extern Bit32u CGA_2_Table[16];
 extern Bit32u CGA_4_Table[256];
+extern Bit32u CGA_16_Table[256];
+extern Bit32u TXT_Font_Table[16];
+extern Bit32u TXT_FG_Table[16];
+extern Bit32u TXT_BG_Table[16];
 extern Bit32u Expand16Table[4][16];
 extern Bit32u Expand16BigTable[0x10000];
 

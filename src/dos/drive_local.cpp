@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: drive_local.cpp,v 1.44 2004/01/11 16:48:32 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +53,11 @@ bool localDrive::FileCreate(DOS_File * * file,char * name,Bit16u attributes) {
 	strcat(newname,name);
 	CROSS_FILENAME(newname);
 	FILE * hand=fopen(dirCache.GetExpandName(newname),"wb+");
-	if (!hand) return false;
+	if (!hand){
+		LOG_MSG("Warning: file creation failed: %s",newname);
+		return false;
+	}
+   
 	dirCache.AddEntry(newname, true);
 	/* Make the 16 bit device information */
 	*file=new localFile(name,hand,0x202);
@@ -79,7 +85,17 @@ bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 
 	FILE * hand=fopen(newname,type);
 //	Bit32u err=errno;
-	if (!hand) return false;
+	if (!hand) { 
+		if((flags&3) != OPEN_READ) {
+			FILE * hmm=fopen(newname,"rb");
+			if (hmm) {
+				fclose(hmm);
+				LOG_MSG("Warning: file %s exists and failed to open in write mode.\nPlease Remove write-protection",newname);
+			}
+		}
+		return false;
+	}
+   
 	*file=new localFile(name,hand,0x202);
 	(*file)->flags=flags;  //for the inheritance flag and maybe check for others.
 //	(*file)->SetFileName(newname);
@@ -100,12 +116,16 @@ bool localDrive::FileUnlink(char * name) {
 
 
 bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
-	
+
 	char tempDir[CROSS_LEN];
 	strcpy(tempDir,basedir);
 	strcat(tempDir,_dir);
 	CROSS_FILENAME(tempDir);
 
+	if (allocation.mediaid==0xF0 ) {
+		EmptyCache(); //rescan floppie-content on each findfirst
+	}
+    
 	char end[2]={CROSS_FILESPLIT,0};
 	if (tempDir[strlen(tempDir)-1]!=CROSS_FILESPLIT) strcat(tempDir,end);
 	
@@ -121,7 +141,13 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
 	Bit8u sAttr;
 	dta.GetSearchParams(sAttr,tempDir);
 	if ((sAttr & DOS_ATTR_VOLUME) && (*_dir==0)) {
-		// Get Volume Label (DOS_ATTR_VOLUME) and only in basedir
+	// Get Volume Label (DOS_ATTR_VOLUME) and only in basedir
+		if ( strcmp(dirCache.GetLabel(), "") == 0 ) {
+			LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
+			dta.SetResult("NOLABEL",0,0,0,DOS_ATTR_VOLUME);
+			return true;
+		}
+	    
 		if (WildFileCmp(dirCache.GetLabel(),tempDir)) {
 			// Get Volume Label
 			dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
@@ -132,7 +158,7 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
 }
 
 bool localDrive::FindNext(DOS_DTA & dta) {
-	
+
 	char * dir_ent;
 	struct stat stat_block;
 	char full_name[CROSS_LEN];
@@ -311,6 +337,10 @@ Bit8u localDrive::GetMediaByte(void) {
 	return allocation.mediaid;
 }
 
+bool localDrive::isRemote(void) {
+	return false;
+}
+
 localDrive::localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid) {
 	strcpy(basedir,startdir);
 	sprintf(info,"local directory %s",startdir);
@@ -372,7 +402,6 @@ bool localFile::Seek(Bit32u * pos,Bit32u type) {
 }
 
 bool localFile::Close() {
-	
 	// only close if one reference left
 	if (refCtr==1) {
 		fclose(fhandle);
@@ -499,3 +528,7 @@ void cdromDrive::SetDir(const char* path)
 	}
 	localDrive::SetDir(path);
 };
+
+bool cdromDrive::isRemote(void) {
+	return true;
+}

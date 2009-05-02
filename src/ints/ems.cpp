@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: ems.cpp,v 1.31 2004/02/02 20:23:54 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -92,7 +93,7 @@ struct EMM_Handle {
 
 static EMM_Handle emm_handles[EMM_MAX_HANDLES];
 static EMM_Mapping emm_mappings[EMM_MAX_PHYS];
-static Bitu call_int67;
+static Bitu call_int67,call_vdma;
 
 struct MoveRegion {
 	Bit32u bytes;
@@ -156,13 +157,21 @@ static Bit8u EMM_MapPage(Bitu phys_page,Bit16u handle,Bit16u log_page) {
 		/* Mapping it is */
 		emm_mappings[phys_page].handle=handle;
 		emm_mappings[phys_page].page=log_page;
-		MEM_MapPagesHandle(EMM_PAGEFRAME4K+phys_page*4,emm_handles[handle].mem,log_page*4,4);
+		
+		MemHandle memh=MEM_NextHandleAt(emm_handles[handle].mem,log_page*4);;
+		for (Bitu i=0;i<4;i++) {
+			PAGING_MapPage(EMM_PAGEFRAME4K+phys_page*4+i,memh);
+			memh=MEM_NextHandle(memh);
+		}
+		PAGING_ClearTLB();
 		return EMM_NO_ERROR;
 	} else if (log_page==NULL_PAGE) {
 		/* Unmapping it is */
 		emm_mappings[phys_page].handle=NULL_HANDLE;
 		emm_mappings[phys_page].page=NULL_PAGE;
-		MEM_UnmapPages(EMM_PAGEFRAME4K+phys_page*4,4);
+		for (Bitu i=0;i<4;i++) 
+			PAGING_MapPage(EMM_PAGEFRAME4K+phys_page*4+i,EMM_PAGEFRAME4K+phys_page*4+i);
+		PAGING_ClearTLB();
 		return EMM_NO_ERROR;
 	} else {
 		/* Illegal logical page it is */
@@ -436,6 +445,7 @@ static Bit8u MemoryRegion(void) {
 	return EMM_NO_ERROR;
 }
 
+
 static Bitu INT67_Handler(void) {
 	Bitu i;
 	switch (reg_ah) {
@@ -573,10 +583,28 @@ static Bitu INT67_Handler(void) {
 	return CBRET_NONE;
 }
 
+static Bitu INT4B_Handler() {
+	switch (reg_ah) {
+	case 0x81:
+		CALLBACK_SCF(true);
+		reg_ax=0x1;
+		break;
+	default:
+		LOG(LOG_MISC,LOG_WARN)("Unhandled interrupt 4B function %x",reg_ah);
+		break;
+	}
+	return CBRET_NONE;
+}
 
 void EMS_Init(Section* sec) {
+	/* Virtual DMA interrupt callback */
+	call_vdma=CALLBACK_Allocate();
+	CALLBACK_Setup(call_vdma,&INT4B_Handler,CB_IRET);
+	RealSetVec(0x4b,CALLBACK_RealPointer(call_vdma));
+
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	if (!section->Get_bool("ems")) return;
+	BIOS_ZeroExtendedSize();
 	call_int67=CALLBACK_Allocate();	
 	CALLBACK_Setup(call_int67,&INT67_Handler,CB_IRET);
 /* Register the ems device */

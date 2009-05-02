@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,6 +33,9 @@
 //#define	nocasestrcmp(a,b) stricmp(a,b)
 #endif
 
+#ifdef HAVE_STRINGS_H
+#include <strings.h>
+#endif
 
 void strreplace(char * str,char o,char n);
 char *ltrim(char *str);

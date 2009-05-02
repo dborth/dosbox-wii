@@ -26,6 +26,9 @@
 /* Define to 1 to enable internal debugger, requires libcurses */
 #undef C_DEBUG
 
+/* Define to 1 to use x86 dynamic cpu core */
+#undef C_DYNAMIC_X86
+
 /* Define to 1 to enable floating point emulation */
 #undef C_FPU
 
@@ -35,8 +38,14 @@
 /* Define to 1 to enable heavy debugging, also have to enable C_DEBUG */
 #undef C_HEAVY_DEBUG
 
+/* The type of cpu this host has */
+#undef C_HOSTCPU
+
 /* Define to 1 to enable internal modem support, requires SDL_net */
 #undef C_MODEM
+
+/* Define to 1 to use opengl display output support */
+#undef C_OPENGL
 
 /* Define to 1 to enable screenshots, requires libpng */
 #undef C_SSHOT
@@ -80,6 +89,9 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
+/* Compiling on GNU/Linux */
+#undef LINUX
+
 /* Compiling on Mac OS X */
 #undef MACOSX
 
@@ -117,9 +129,11 @@
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
 
-/* Define as `__inline' if that's what the C compiler calls it, or to nothing
-   if it is not supported. */
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
 #undef inline
+#endif
 
 /* Define to `unsigned' if <sys/types.h> does not define. */
 #undef size_t

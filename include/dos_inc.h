@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -106,6 +106,8 @@ bool DOS_Canonicalize(char * name,char * big);
 bool DOS_CreateTempFile(char * name,Bit16u * entry);
 bool DOS_FileExists(char * name);
 
+/* Helper Functions */
+bool DOS_MakeName(char * name,char * fullname,Bit8u * drive);
 /* Drive Handing Routines */
 Bit8u DOS_GetDefaultDrive(void);
 void DOS_SetDefaultDrive(Bit8u drive);
@@ -117,6 +119,7 @@ bool DOS_RemoveDir(char * dir);
 bool DOS_Rename(char * oldname,char * newname);
 bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit8u * sectors,Bit16u * clusters,Bit16u * free);
 bool DOS_GetFileAttr(char * name,Bit16u * attr);
+bool DOS_SetFileAttr(char * name,Bit16u attr);
 
 /* IOCTL Stuff */
 bool DOS_IOCTL(void);

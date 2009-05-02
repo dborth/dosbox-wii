@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -590,7 +590,7 @@ void MODEM_Init(Section* sec) {
 	unsigned long args = 1;
 	Section_prop * section=static_cast<Section_prop *>(sec);
 
-	if(!section->Get_bool("enabled")) return;
+	if(!section->Get_bool("modem")) return;
 
 	if(SDLNet_Init()==-1) {
 		LOG_MSG("SDLNet_Init failed: %s\n", SDLNet_GetError());

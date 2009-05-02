@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.16 2003/10/09 13:50:27 finsterr Exp $ */
+/* $Id: dos_system.h,v 1.20 2004/01/12 20:25:57 finsterr Exp $ */
 
 #ifndef DOSSYSTEM_H_
 #define DOSSYSTEM_H_
@@ -117,6 +117,11 @@ public:
 
 	class CFileInfo {
 	public:	
+		CFileInfo(void) {
+			orgname[0] = shortname[0] = 0;
+			nextEntry = shortNr = compareCount = 0;
+			isDir = false;
+		}
 		~CFileInfo(void) {
 			for (Bit32u i=0; i<fileList.size(); i++) delete fileList[i];
 			fileList.clear();
@@ -140,6 +145,7 @@ private:
 	Bits		GetLongName			(CFileInfo* info, char* shortname);
 	void		CreateShortName		(CFileInfo* dir, CFileInfo* info);
 	Bit16u		CreateShortNameID	(CFileInfo* dir, const char* name);
+	int			CompareShortname	(const char* compareName, const char* shortName);
 	bool		SetResult			(CFileInfo* dir, char * &result, Bit16u entryNr);
 	bool		IsCachedIn			(CFileInfo* dir);
 	CFileInfo*	FindDirInfo			(const char* path, char* expandedPath);
@@ -221,6 +227,7 @@ public:
 	virtual Bit8u GetMediaByte(void)=0;
 	virtual void SetDir(const char* path) { strcpy(curdir,path); };
 	virtual void EmptyCache(void) { dirCache.EmptyCache(); };
+	virtual bool isRemote(void)=0;
 	char * GetInfo(void);
 	char curdir[DOS_PATHLENGTH];
 	char info[256];

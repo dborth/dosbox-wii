@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mouse.cpp,v 1.24 2003/09/24 19:35:01 qbix79 Exp $ */
+/* $Id: mouse.cpp,v 1.31 2004/01/31 22:42:49 harekiet Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -100,7 +100,14 @@ static struct {
 	float	mickeysPerPixel_y;
 	float	pixelPerMickey_x;
 	float	pixelPerMickey_y;
-
+	Bit16u  updateRegion_x[2];
+	Bit16u  updateRegion_y[2];
+	Bit16u  page;
+	Bit16u  doubleSpeedThreshold;
+	Bit16u  language;
+	Bit16u  cursorType;
+	bool enabled;
+	Bit16s oldshown;
 } mouse;
 
 #define X_MICKEY 8
@@ -116,11 +123,16 @@ static struct {
 
 INLINE void Mouse_AddEvent(Bit16u type) {
 	if (mouse.events<QUEUE_SIZE) {
-		mouse.event_queue[mouse.events].type=type;
-		mouse.event_queue[mouse.events].buttons=mouse.buttons;
+/* Always put the newest element in the front as that the events are 
+ * handled backwards (prevents doubleclicks while moving)
+ */
+		for(Bitu i = mouse.events ; i ; i--)
+			mouse.event_queue[i] = mouse.event_queue[i-1];
+		mouse.event_queue[0].type=type;
+		mouse.event_queue[0].buttons=mouse.buttons;
 		mouse.events++;
 	}
-	PIC_ActivateIRQ(12);
+	PIC_ActivateIRQ(MOUSE_IRQ);
 }
 
 // ***************************************************************************
@@ -253,11 +265,25 @@ void RestoreCursorBackground()
 void DrawCursor() {
 	
 	if (mouse.shown<0) return;
+// Check video page
+	if (real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAGE)!=mouse.page) return;
 
+// Check if cursor in update region
+/*	if ((POS_X >= mouse.updateRegion_x[0]) && (POS_X <= mouse.updateRegion_x[1]) &&
+	    (POS_Y >= mouse.updateRegion_y[0]) && (POS_Y <= mouse.updateRegion_y[1])) {
+		if (CurMode->type==M_TEXT16)
+			RestoreCursorBackgroundText();
+		else
+			RestoreCursorBackground();
+		mouse.shown--;
+		return;
+	}
+   */ /*Not sure yet what to do update region should be set to ??? */
+		 
 	// Get Clipping ranges
 
 	// In Textmode ?
-	if (CurMode->type==M_TEXT16) {
+	if (CurMode->type<=M_TEXT16) {
 		DrawCursorText();
 		return;
 	}
@@ -392,15 +418,20 @@ static void SetMickeyPixelRate(Bit16s px, Bit16s py)
 };
 
 static void mouse_reset_hardware(void){
-	mouse.sub_mask=0;
-	mouse.sub_seg=0;
-	mouse.sub_ofs=0;
+	PIC_SetIRQMask(MOUSE_IRQ,false);
 };
 
-static void  mouse_reset(void) 
-{
+void Mouse_NewVideoMode(void)
+{ //Does way to much. Many of this stuff should be moved to mouse_reset one day
 	WriteMouseIntVector();
-	real_writed(0,(0x74<<2),CALLBACK_RealPointer(call_int74));
+   
+//	real_writed(0,(0x74<<2),CALLBACK_RealPointer(call_int74));
+	if(MOUSE_IRQ > 7) {
+		real_writed(0,((0x70+MOUSE_IRQ-8)<<2),CALLBACK_RealPointer(call_int74));
+	} else {
+		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
+	}
+
 	mouse.shown=-1;
 	/* Get the correct resolution from the current video mode */
 	Bitu mode=mem_readb(BIOS_VIDEO_MODE);
@@ -448,14 +479,30 @@ static void  mouse_reset(void)
 	mouse.cursorMask = defaultCursorMask;
 	mouse.textAndMask= defaultTextAndMask;
 	mouse.textXorMask= defaultTextXorMask;
+	mouse.language   = 0;
+	mouse.page               = 0;
+	mouse.doubleSpeedThreshold = 64;
+	mouse.updateRegion_x[0] = 1;
+	mouse.updateRegion_y[0] = 1;
+	mouse.updateRegion_x[1] = 1;
+	mouse.updateRegion_y[1] = 1;
+	mouse.cursorType = 0;
+	mouse.enabled=true;
+	mouse.oldshown=-1;
 
 	SetMickeyPixelRate(8,16);
 }
 
-void Mouse_NewVideoMode(void)
-{
-	//mouse.shown = -1;	
-	mouse_reset();
+
+
+static void mouse_reset(void) {
+//Much to empty Mouse_NewVideoMode contains stuff that should be in here
+	Mouse_NewVideoMode();
+
+   	mouse.sub_mask=0;
+	mouse.sub_seg=0;
+	mouse.sub_ofs=0;
+
 	//Added this for cd-v19
 }
 
@@ -479,7 +526,7 @@ static Bitu INT33_Handler(void) {
 		break;
 	case 0x02:	/* Hide Mouse */
 		{
-			if (CurMode->type!=M_TEXT16)	RestoreCursorBackground();
+			if (CurMode->type>M_TEXT16)		RestoreCursorBackground();
 			else							RestoreCursorBackgroundText();
 			mouse.shown--;
 		}
@@ -549,10 +596,12 @@ static Bitu INT33_Handler(void) {
 			mouse.cursorMask = userdefCursorMask;
 			mouse.hotx		 = reg_bx;
 			mouse.hoty		 = reg_cx;
+			mouse.cursorType = 2;
 			DrawCursor();
 		}
 		break;
 	case 0x0a:	/* Define Text Cursor */
+		mouse.cursorType = reg_bx;
 		mouse.textAndMask = reg_cx;
 		mouse.textXorMask = reg_dx;
 		break;
@@ -570,6 +619,19 @@ static Bitu INT33_Handler(void) {
 		mouse.mickey_x=0;
 		mouse.mickey_y=0;
 		break;
+	case 0x10:      /* Define screen region for updating */
+		mouse.updateRegion_x[0]=reg_cx;
+		mouse.updateRegion_y[0]=reg_dx;
+		mouse.updateRegion_x[1]=reg_si;
+		mouse.updateRegion_y[1]=reg_di;
+		break;
+	case 0x11:      /* Get number of buttons */
+		reg_ax=0xffff;
+		reg_bx=MOUSE_BUTTONS;
+		break;
+	case 0x13:      /* Set double-speed threshold */
+		mouse.doubleSpeedThreshold=(reg_bx ? reg_bx : 64);
+ 		break;
 	case 0x14: /* Exchange event-handler */ 
 		{	
 			Bit16u oldSeg = mouse.sub_seg;
@@ -585,6 +647,23 @@ static Bitu INT33_Handler(void) {
 			SegSet16(es,oldSeg);
 		}
 		break;		
+	case 0x15: /* Get Driver storage space requirements */
+		reg_bx = sizeof(mouse);
+		break;
+	case 0x16: /* Save driver state */
+		{
+			LOG(LOG_MOUSE,LOG_WARN)("Saving driver state...");
+			PhysPt dest = SegPhys(es)+reg_dx;
+			MEM_BlockWrite(dest, &mouse, sizeof(mouse));
+		}
+		break;
+	case 0x17: /* load driver state */
+		{
+			LOG(LOG_MOUSE,LOG_WARN)("Loading driver state...");
+			PhysPt src = SegPhys(es)+reg_dx;
+			MEM_BlockRead(src, &mouse, sizeof(mouse));
+		}
+		break;
 	case 0x1a:	/* Set mouse sensitivity */
 		SetMickeyPixelRate(reg_bx,reg_cx);
 		// ToDo : double mouse speed value
@@ -598,13 +677,56 @@ static Bitu INT33_Handler(void) {
 	case 0x1c:	/* Set interrupt rate */
 		/* Can't really set a rate this is host determined */
 		break;
+	case 0x1d:      /* Set display page number */
+		mouse.page=reg_bx;
+		break;
+	case 0x1e:      /* Get display page number */
+		reg_bx=mouse.page;
+		break;
+	case 0x1f:	/* Disable Mousedriver */
+		/* ES:BX old mouse driver Zero at the moment TODO */ 
+		reg_bx=0;
+		SegSet16(es,0);	   
+		mouse.enabled=false; /* Just for reporting not doing a thing with it */
+		mouse.oldshown=mouse.shown;
+		mouse.shown=-1;
+		break;
+	case 0x20:	/* Enable Mousedriver */
+		mouse.enabled=true;
+		mouse.shown=mouse.oldshown;
+		break;
+	case 0x22:      /* Set language for messages */
+ 			/*
+			 *                        Values for mouse driver language:
+			 * 
+			 *                        00h     English
+			 *                        01h     French
+			 *                        02h     Dutch
+			 *                        03h     German
+			 *                        04h     Swedish
+			 *                        05h     Finnish
+			 *                        06h     Spanish
+			 *                        07h     Portugese
+			 *                        08h     Italian
+			 *                
+			 */
+		mouse.language=reg_bx;
+		break;
+	case 0x23:      /* Get language for messages */
+		reg_bx=mouse.language;
+		break;
 	case 0x24:	/* Get Software version and mouse type */
 		reg_bx=0x805;	//Version 8.05 woohoo 
-		reg_ch=0xff;	/* Unkown type */
-		reg_cl=0;		/* Hmm ps2 irq dunno */
+		reg_ch=0x04;	/* PS/2 type */
+		reg_cl=0;//MOUSE_IRQ;		/* Hmm ps2 irq 0!!!! */
+		break;
+	case 0x26: /* Get Maximum virtual coordinates */
+		reg_bx=(mouse.enabled ? 0x0000 : 0xffff);
+		reg_cx=mouse.max_x;
+		reg_dx=mouse.max_y;
 		break;
 	default:
-		LOG(LOG_MOUSE,LOG_ERROR)("Mouse Function %2X",reg_ax);
+		LOG(LOG_MOUSE,LOG_ERROR)("Mouse Function %04X not implemented!",reg_ax);
 	}
 	return CBRET_NONE;
 }
@@ -642,7 +764,7 @@ static Bitu INT74_Handler(void) {
 	IO_Write(0x20,0x20);
 	/* Check for more Events if so reactivate IRQ */
 	if (mouse.events) {
-		PIC_ActivateIRQ(12);
+		PIC_ActivateIRQ(MOUSE_IRQ);
 	}
 	return CBRET_NONE;
 }
@@ -678,7 +800,11 @@ void MOUSE_Init(Section* sec) {
 
 	call_int74=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int74,&INT74_Handler,CB_IRET);
-	real_writed(0,(0x74<<2),CALLBACK_RealPointer(call_int74));
+	if(MOUSE_IRQ > 7) {
+		real_writed(0,((0x70+MOUSE_IRQ-8)<<2),CALLBACK_RealPointer(call_int74));
+	} else {
+		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
+	}
 
 	memset(&mouse,0,sizeof(mouse));
 	mouse_reset_hardware();

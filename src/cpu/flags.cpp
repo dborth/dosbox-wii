@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,15 +26,15 @@
 #include "lazyflags.h"
 #include "pic.h"
 
+LazyFlags lflags;
 
 /* CF     Carry Flag -- Set on high-order bit carry or borrow; cleared
           otherwise.
 */
 Bitu get_CF(void) {
 
-	switch (flags.type) {
+	switch (lflags.type) {
 	case t_UNKNOWN:
-	case t_CF:
 	case t_INCb:
 	case t_INCw:
 	case t_INCd:
@@ -48,77 +48,77 @@ Bitu get_CF(void) {
 		return GETFLAG(CF);
 		break;
 	case t_ADDb:	
-		return (flags.result.b<flags.var1.b);
+		return (lf_resb<lf_var1b);
 	case t_ADDw:	
-		return (flags.result.w<flags.var1.w);
+		return (lf_resw<lf_var1w);
 	case t_ADDd:
-		return (flags.result.d<flags.var1.d);
+		return (lf_resd<lf_var1d);
 	case t_ADCb:
-		return (flags.result.b < flags.var1.b) || (flags.oldcf && (flags.result.b == flags.var1.b));
+		return (lf_resb < lf_var1b) || (lflags.oldcf && (lf_resb == lf_var1b));
 	case t_ADCw:
-		return (flags.result.w < flags.var1.w) || (flags.oldcf && (flags.result.w == flags.var1.w));
+		return (lf_resw < lf_var1w) || (lflags.oldcf && (lf_resw == lf_var1w));
 	case t_ADCd:
-		return (flags.result.d < flags.var1.d) || (flags.oldcf && (flags.result.d == flags.var1.d));
+		return (lf_resd < lf_var1d) || (lflags.oldcf && (lf_resd == lf_var1d));
 	case t_SBBb:
-		return (flags.var1.b < flags.result.b) || (flags.oldcf && (flags.var2.b==0xff));
+		return (lf_var1b < lf_resb) || (lflags.oldcf && (lf_var2b==0xff));
 	case t_SBBw:
-		return (flags.var1.w < flags.result.w) || (flags.oldcf && (flags.var2.w==0xffff));
+		return (lf_var1w < lf_resw) || (lflags.oldcf && (lf_var2w==0xffff));
 	case t_SBBd:
-		return (flags.var1.d < flags.result.d) || (flags.oldcf && (flags.var2.d==0xffffffff));
+		return (lf_var1d < lf_resd) || (lflags.oldcf && (lf_var2d==0xffffffff));
 	case t_SUBb:
 	case t_CMPb:
-		return (flags.var1.b<flags.var2.b);
+		return (lf_var1b<lf_var2b);
 	case t_SUBw:
 	case t_CMPw:
-		return (flags.var1.w<flags.var2.w);
+		return (lf_var1w<lf_var2w);
 	case t_SUBd:
 	case t_CMPd:
-		return (flags.var1.d<flags.var2.d);
+		return (lf_var1d<lf_var2d);
 	case t_SHLb:
-		if (flags.var2.b>8) return false;
-		else return (flags.var1.b >> (8-flags.var2.b)) & 1;
+		if (lf_var2b>8) return false;
+		else return (lf_var1b >> (8-lf_var2b)) & 1;
 	case t_SHLw:
-		if (flags.var2.b>16) return false;
-		else return (flags.var1.w >> (16-flags.var2.b)) & 1;
+		if (lf_var2b>16) return false;
+		else return (lf_var1w >> (16-lf_var2b)) & 1;
 	case t_SHLd:
 	case t_DSHLw:	/* Hmm this is not correct for shift higher than 16 */
 	case t_DSHLd:
-		return (flags.var1.d >> (32 - flags.var2.b)) & 1;
+		return (lf_var1d >> (32 - lf_var2b)) & 1;
 	case t_RCRb:
 	case t_SHRb:
-		return (flags.var1.b >> (flags.var2.b - 1)) & 1;
+		return (lf_var1b >> (lf_var2b - 1)) & 1;
 	case t_RCRw:
 	case t_SHRw:
-		return (flags.var1.w >> (flags.var2.b - 1)) & 1;
+		return (lf_var1w >> (lf_var2b - 1)) & 1;
 	case t_RCRd:
 	case t_SHRd:
 	case t_DSHRw:	/* Hmm this is not correct for shift higher than 16 */
 	case t_DSHRd:
-		return (flags.var1.d >> (flags.var2.b - 1)) & 1;
+		return (lf_var1d >> (lf_var2b - 1)) & 1;
 	case t_SARb:
-		return (((Bit8s) flags.var1.b) >> (flags.var2.b - 1)) & 1;
+		return (((Bit8s) lf_var1b) >> (lf_var2b - 1)) & 1;
 	case t_SARw:
-		return (((Bit16s) flags.var1.w) >> (flags.var2.b - 1)) & 1;
+		return (((Bit16s) lf_var1w) >> (lf_var2b - 1)) & 1;
 	case t_SARd:
-		return (((Bit32s) flags.var1.d) >> (flags.var2.b - 1)) & 1;
+		return (((Bit32s) lf_var1d) >> (lf_var2b - 1)) & 1;
 	case t_NEGb:
-		return (flags.var1.b!=0);
+		return lf_var1b;
 	case t_NEGw:
-		return (flags.var1.w!=0);
+		return lf_var1w;
 	case t_NEGd:
-		return (flags.var1.d!=0);
+		return lf_var1d;
 	case t_ROLb:
-		return flags.result.b & 1;
+		return lf_resb & 1;
 	case t_ROLw:
-		return flags.result.w & 1;
+		return lf_resw & 1;
 	case t_ROLd:
-		return flags.result.d & 1;
+		return lf_resd & 1;
 	case t_RORb:
-		return (flags.result.b & 0x80)>0;
+		return (lf_resb & 0x80);
 	case t_RORw:
-		return (flags.result.w & 0x8000)>0;
+		return (lf_resw & 0x8000);
 	case t_RORd:
-		return (flags.result.d & 0x80000000)>0;
+		return (lf_resd & 0x80000000);
 	case t_ORb:
 	case t_ORw:
 	case t_ORd:
@@ -135,7 +135,7 @@ Bitu get_CF(void) {
 	case t_DIV:
 		return false;	/* Unkown */
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("get_CF Unknown %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("get_CF Unknown %d",lflags.type);
 	}
 	return 0;
 }
@@ -145,8 +145,7 @@ Bitu get_CF(void) {
             arithmetic.
 */
 Bitu get_AF(void) {
-	Bitu type=flags.type;
-again:	
+	Bitu type=lflags.type;
 	switch (type) {
 	case t_UNKNOWN:
 	case t_ROLb:
@@ -162,45 +161,42 @@ again:
 	case t_RCLd:
 	case t_RCRd:
 		return GETFLAG(AF);
-	case t_CF:
-		type=flags.prev_type;
-		goto again;
 	case t_ADDb:	
 	case t_ADCb:
 	case t_SBBb:
 	case t_SUBb:
 	case t_CMPb:
-		return (((flags.var1.b ^ flags.var2.b) ^ flags.result.b) & 0x10)>0;
+		return ((lf_var1b ^ lf_var2b) ^ lf_resb) & 0x10;
 	case t_ADDw:
 	case t_ADCw:
 	case t_SBBw:
 	case t_SUBw:
 	case t_CMPw:
-		return (((flags.var1.w ^ flags.var2.w) ^ flags.result.w) & 0x10)>0;
+		return ((lf_var1w ^ lf_var2w) ^ lf_resw) & 0x10;
 	case t_ADCd:
 	case t_ADDd:
 	case t_SBBd:
 	case t_SUBd:
 	case t_CMPd:
-		return (((flags.var1.d ^ flags.var2.d) ^ flags.result.d) & 0x10)>0;
+		return ((lf_var1d ^ lf_var2d) ^ lf_resd) & 0x10;
 	case t_INCb:
-		return (flags.result.b & 0x0f) == 0;
+		return (lf_resb & 0x0f) == 0;
 	case t_INCw:
-		return (flags.result.w & 0x0f) == 0;
+		return (lf_resw & 0x0f) == 0;
 	case t_INCd:
-		return (flags.result.d & 0x0f) == 0;
+		return (lf_resd & 0x0f) == 0;
 	case t_DECb:
-		return (flags.result.b & 0x0f) == 0x0f;
+		return (lf_resb & 0x0f) == 0x0f;
 	case t_DECw:
-		return (flags.result.w & 0x0f) == 0x0f;
+		return (lf_resw & 0x0f) == 0x0f;
 	case t_DECd:
-		return (flags.result.d & 0x0f) == 0x0f;
+		return (lf_resd & 0x0f) == 0x0f;
 	case t_NEGb:
-		return (flags.var1.b & 0x0f) > 0;
+		return lf_var1b & 0x0f;
 	case t_NEGw:
-		return (flags.var1.w & 0x0f) > 0;
+		return lf_var1w & 0x0f;
 	case t_NEGd:
-		return (flags.var1.d & 0x0f) > 0;
+		return lf_var1d & 0x0f;
 	case t_ORb:
 	case t_ORw:
 	case t_ORd:
@@ -230,7 +226,7 @@ again:
 	case t_MUL:
 		return false;			          /* Unkown */
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("get_AF Unknown %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("get_AF Unknown %d",lflags.type);
 	}
 	return 0;
 }
@@ -239,8 +235,7 @@ again:
 */
 
 Bitu get_ZF(void) {
-	Bitu type=flags.type;
-again:	
+	Bitu type=lflags.type;
 	switch (type) {
 	case t_UNKNOWN:
 	case t_ROLb:
@@ -256,9 +251,6 @@ again:
 	case t_RCLd:
 	case t_RCRd:
 		return GETFLAG(ZF);
-	case t_CF:
-		type=flags.prev_type;
-		goto again;
 	case t_ADDb:	
 	case t_ORb:
 	case t_ADCb:
@@ -274,7 +266,7 @@ again:
 	case t_SHRb:
 	case t_SARb:
 	case t_NEGb:
-		return (flags.result.b==0);
+		return (lf_resb==0);
 	case t_ADDw:	
 	case t_ORw:
 	case t_ADCw:
@@ -292,7 +284,7 @@ again:
 	case t_DSHLw:
 	case t_DSHRw:
 	case t_NEGw:
-		return (flags.result.w==0);
+		return (lf_resw==0);
 	case t_ADDd:
 	case t_ORd:
 	case t_ADCd:
@@ -310,12 +302,12 @@ again:
 	case t_DSHLd:
 	case t_DSHRd:
 	case t_NEGd:
-		return (flags.result.d==0);
+		return (lf_resd==0);
 	case t_DIV:
 	case t_MUL:
 		return false;		/* Unkown */
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("get_ZF Unknown %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("get_ZF Unknown %d",lflags.type);
 	}
 	return false;
 }
@@ -323,8 +315,7 @@ again:
             positive, 1 if negative).
 */
 Bitu get_SF(void) {
-	Bitu type=flags.type;
-again:	
+	Bitu type=lflags.type;
 	switch (type) {
 	case t_UNKNOWN:
 	case t_ROLb:
@@ -340,9 +331,6 @@ again:
 	case t_RCLd:
 	case t_RCRd:
 		return GETFLAG(SF);
-	case t_CF:
-		type=flags.prev_type;
-		goto again;
 	case t_ADDb:
 	case t_ORb:
 	case t_ADCb:
@@ -358,7 +346,7 @@ again:
 	case t_SHRb:
 	case t_SARb:
 	case t_NEGb:
-		return	(flags.result.b>=0x80);
+		return	(lf_resb&0x80);
 	case t_ADDw:
 	case t_ORw:
 	case t_ADCw:
@@ -376,7 +364,7 @@ again:
 	case t_DSHLw:
 	case t_DSHRw:
 	case t_NEGw:
-		return	(flags.result.w>=0x8000);
+		return	(lf_resw&0x8000);
 	case t_ADDd:
 	case t_ORd:
 	case t_ADCd:
@@ -394,136 +382,86 @@ again:
 	case t_DSHLd:
 	case t_DSHRd:
 	case t_NEGd:
-		return	(flags.result.d>=0x80000000);
+		return	(lf_resd&0x80000000);
 	case t_DIV:
 	case t_MUL:
 		return false;	/* Unkown */
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("get_SF Unkown %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("get_SF Unkown %d",lflags.type);
 	}
 	return false;
 
 }
 Bitu get_OF(void) {
-  Bit8u		var1b7, var2b7, resultb7;
-  Bit16u	var1w15, var2w15, resultw15;
-  Bit32u	var1d31, var2d31, resultd31;
-  
-	Bitu type=flags.type;
-again:	
+	Bitu type=lflags.type;
 	switch (type) {
 	case t_UNKNOWN:
 	case t_MUL:
-	case t_RCLb:
-	case t_RCLw:
-	case t_RCLd:
-	case t_SARb:
-	case t_SARw:
-	case t_SARd:
 		return GETFLAG(OF);
-	case t_CF:
-		type=flags.prev_type;
-		goto again;
 	case t_ADDb:
 	case t_ADCb:
-//		return (((flags.result.b) ^ (flags.var2.b)) & ((flags.result.b) ^ (flags.var1.b)) & 0x80)>0;
-		var1b7 = flags.var1.b & 0x80;
-		var2b7 = flags.var2.b & 0x80;
-		resultb7 = flags.result.b & 0x80;
-		return (var1b7 == var2b7) && (resultb7 ^ var2b7);
+		return ((lf_var1b ^ lf_var2b ^ 0x80) & (lf_resb ^ lf_var2b)) & 0x80;
 	case t_ADDw:
 	case t_ADCw:
-//		return (((flags.result.w) ^ (flags.var2.w)) & ((flags.result.w) ^ (flags.var1.w)) & 0x8000)>0;
-		var1w15 = flags.var1.w & 0x8000;
-		var2w15 = flags.var2.w & 0x8000;
-		resultw15 = flags.result.w & 0x8000;
-		return (var1w15 == var2w15) && (resultw15 ^ var2w15);
+		return ((lf_var1w ^ lf_var2w ^ 0x8000) & (lf_resw ^ lf_var2w)) & 0x8000;
 	case t_ADDd:
 	case t_ADCd:
-//TODO fix dword Overflow
-		var1d31 = flags.var1.d & 0x80000000;
-		var2d31 = flags.var2.d & 0x80000000;
-		resultd31 = flags.result.d & 0x80000000;
-		return (var1d31 == var2d31) && (resultd31 ^ var2d31);	
+		return ((lf_var1d ^ lf_var2d ^ 0x80000000) & (lf_resd ^ lf_var2d)) & 0x80000000;
 	case t_SBBb:
 	case t_SUBb:
 	case t_CMPb:
-//		return (((flags.var1.b) ^ (flags.var2.b)) & ((flags.var1.b) ^ (flags.result.b)) & 0x80)>0;
-		var1b7 = flags.var1.b & 0x80;
-		var2b7 = flags.var2.b & 0x80;
-		resultb7 = flags.result.b & 0x80;
-		return (var1b7 ^ var2b7) && (var1b7 ^ resultb7);
+		return ((lf_var1b ^ lf_var2b) & (lf_var1b ^ lf_resb)) & 0x80;
 	case t_SBBw:
 	case t_SUBw:
 	case t_CMPw:
-//		return (((flags.var1.w) ^ (flags.var2.w)) & ((flags.var1.w) ^ (flags.result.w)) & 0x8000)>0;
-		var1w15 = flags.var1.w & 0x8000;
-		var2w15 = flags.var2.w & 0x8000;
-		resultw15 = flags.result.w & 0x8000;
-		return (var1w15 ^ var2w15) && (var1w15 ^ resultw15);
+		return ((lf_var1w ^ lf_var2w) & (lf_var1w ^ lf_resw)) & 0x8000;
 	case t_SBBd:
 	case t_SUBd:
 	case t_CMPd:
-		var1d31 = flags.var1.d & 0x80000000;
-		var2d31 = flags.var2.d & 0x80000000;
-		resultd31 = flags.result.d & 0x80000000;
-		return (var1d31 ^ var2d31) && (var1d31 ^ resultd31);
+		return ((lf_var1d ^ lf_var2d) & (lf_var1d ^ lf_resd)) & 0x80000000;
 	case t_INCb:
-		return (flags.result.b == 0x80);
+		return (lf_resb == 0x80);
 	case t_INCw:
-		return (flags.result.w == 0x8000);
+		return (lf_resw == 0x8000);
 	case t_INCd:
-		return (flags.result.d == 0x80000000);
+		return (lf_resd == 0x80000000);
 	case t_DECb:
-		return (flags.result.b == 0x7f);
+		return (lf_resb == 0x7f);
 	case t_DECw:
-		return (flags.result.w == 0x7fff);
+		return (lf_resw == 0x7fff);
 	case t_DECd:
-		return (flags.result.d == 0x7fffffff);
+		return (lf_resd == 0x7fffffff);
 	case t_NEGb:
-		return (flags.var1.b == 0x80);
+		return (lf_var1b == 0x80);
 	case t_NEGw:
-		return (flags.var1.w == 0x8000);
+		return (lf_var1w == 0x8000);
 	case t_NEGd:
-		return (flags.var1.d == 0x80000000);
+		return (lf_var1d == 0x80000000);
 	case t_ROLb:
-		return ((flags.result.b & 0x80) ^ (flags.result.b & 1 ? 0x80 : 0)) != 0;
-	case t_ROLw:
-		return ((flags.result.w & 0x8000) ^ (flags.result.w & 1 ? 0x8000 : 0)) != 0;
-	case t_ROLd:
-		return ((flags.result.d & 0x80000000) ^ (flags.result.d & 1 ? 0x80000000 : 0)) != 0;
-	case t_SHLb:
-		if (flags.var2.b>9) return false;
-		return ((flags.result.b & 0x80) ^
-			((flags.var1.b << (flags.var2.b - 1)) & 0x80)) != 0;
-	case t_SHLw:
-		if (flags.var2.b>17) return false;
-		return ((flags.result.w & 0x8000) ^
-			((flags.var1.w << (flags.var2.b - 1)) & 0x8000)) != 0;
-	case t_DSHLw:	/* Hmm this is not correct for shift higher than 16 */
-		return ((flags.result.w & 0x8000) ^
-			(((flags.var1.d << (flags.var2.b - 1)) >> 16) & 0x8000)) != 0;
-	case t_SHLd:
-	case t_DSHLd:
-		return ((flags.result.d & 0x80000000) ^
-			((flags.var1.d << (flags.var2.b - 1)) & 0x80000000)) != 0;
 	case t_RORb:
+	case t_RCLb:
 	case t_RCRb:
-		return ((flags.result.b ^ (flags.result.b << 1)) & 0x80) > 0;
-	case t_RORw:
-	case t_RCRw:
-	case t_DSHRw:
-		return ((flags.result.w ^ (flags.result.w << 1)) & 0x8000) > 0;
-	case t_RORd:
-	case t_RCRd:
-	case t_DSHRd:
-		return ((flags.result.d ^ (flags.result.d << 1)) & 0x80000000) > 0;
+	case t_SHLb:
 	case t_SHRb:
-		return (flags.result.b >= 0x40);
+		return (lf_resb ^ lf_var1b) & 0x80;
+	case t_ROLw:
+	case t_RORw:
+	case t_RCLw:
+	case t_RCRw:
+	case t_SHLw:
 	case t_SHRw:
-		return (flags.result.w >= 0x4000);
+	case t_DSHRw:
+	case t_DSHLw:
+		return (lf_resw ^ lf_var1w) & 0x8000;
+	case t_ROLd:
+	case t_RORd:
+	case t_RCLd:
+	case t_RCRd:
+	case t_SHLd:
 	case t_SHRd:
-		return (flags.result.d >= 0x40000000);
+	case t_DSHRd:
+	case t_DSHLd:
+		return (lf_resd ^ lf_var1d) & 0x80000000;
 	case t_ORb:
 	case t_ORw:
 	case t_ORd:
@@ -536,286 +474,495 @@ again:
 	case t_TESTb:
 	case t_TESTw:
 	case t_TESTd:
-	return false;			/* Return false */
+	case t_SARb:
+	case t_SARw:
+	case t_SARd:
+		return false;			/* Return false */
 	case t_DIV:
 		return false;		/* Unkown */
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("get_OF Unkown %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("get_OF Unkown %d",lflags.type);
 	}
 	return false;
 }
 
-bool parity_lookup[256] = {
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
+Bit16u parity_lookup[256] = {
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0,
+  FLAG_PF, 0, 0, FLAG_PF, 0, FLAG_PF, FLAG_PF, 0, 0, FLAG_PF, FLAG_PF, 0, FLAG_PF, 0, 0, FLAG_PF
   };
 
 Bitu get_PF(void) {
-	switch (flags.type) {
+	switch (lflags.type) {
 		case t_UNKNOWN:
 		return GETFLAG(PF);
 	default:
-		return	(parity_lookup[flags.result.b]);;
+		return	(parity_lookup[lf_resb]);;
 	};
 	return false;
 }
 
 
-void FillFlags(void) {
-	Bitu new_word=(flags.word & ~FLAG_MASK);
+#if 0
+
+Bitu FillFlags(void) {
+//	if (lflags.type==t_UNKNOWN) return reg_flags;
+	Bitu new_word=(reg_flags & ~FLAG_MASK);
 	if (get_CF()) new_word|=FLAG_CF;
 	if (get_PF()) new_word|=FLAG_PF;
 	if (get_AF()) new_word|=FLAG_AF;
 	if (get_ZF()) new_word|=FLAG_ZF;
 	if (get_SF()) new_word|=FLAG_SF;
 	if (get_OF()) new_word|=FLAG_OF;
-	flags.word=new_word;
-	flags.type=t_UNKNOWN;
+	reg_flags=new_word;
+	lflags.type=t_UNKNOWN;
+	return reg_flags;
 }
 
-#if 0
+#else
 
-Bitu get_Flags(void) {
-	Bitu new_flags=0;
-	switch (flags.type) {
+#define DOFLAG_PF	reg_flags=(reg_flags & ~FLAG_PF) | parity_lookup[lf_resb];
+
+#define DOFLAG_AF	reg_flags=(reg_flags & ~FLAG_AF) | (((lf_var1b ^ lf_var2b) ^ lf_resb) & 0x10);
+
+#define DOFLAG_ZFb	SETFLAGBIT(ZF,lf_resb==0);
+#define DOFLAG_ZFw	SETFLAGBIT(ZF,lf_resw==0);
+#define DOFLAG_ZFd	SETFLAGBIT(ZF,lf_resd==0);
+
+#define DOFLAG_SFb	reg_flags=(reg_flags & ~FLAG_SF) | ((lf_resb & 0x80) >> 0);
+#define DOFLAG_SFw	reg_flags=(reg_flags & ~FLAG_SF) | ((lf_resw & 0x8000) >> 8);
+#define DOFLAG_SFd	reg_flags=(reg_flags & ~FLAG_SF) | ((lf_resd & 0x80000000) >> 24);
+
+#define SETCF(NEWBIT) reg_flags=(reg_flags & ~FLAG_CF)|(NEWBIT);
+
+#define SET_FLAG SETFLAGBIT
+Bitu FillFlags(void) {
+	switch (lflags.type) {
+	case t_UNKNOWN:
+		break;
 	case t_ADDb:	
-		SET_FLAG(FLAG_CF,(flags.result.b<flags.var1.b));
-		SET_FLAG(FLAG_AF,(((flags.var1.b ^ flags.var2.b) ^ flags.result.b) & 0x10)>0);
+		SET_FLAG(CF,(lf_resb<lf_var1b));
+		DOFLAG_AF;
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,((lf_var1b ^ lf_var2b ^ 0x80) & (lf_resb ^ lf_var1b)) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_ADDw:	
-		SET_FLAG(FLAG_CF,(flags.result.w<flags.var1.w));
-		SET_FLAG(FLAG_AF,(((flags.var1.w ^ flags.var2.w) ^ flags.result.w) & 0x10)>0);
+		SET_FLAG(CF,(lf_resw<lf_var1w));
+		DOFLAG_AF;
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,((lf_var1w ^ lf_var2w ^ 0x8000) & (lf_resw ^ lf_var1w)) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_ADDd:
-		SET_FLAG(FLAG_CF,(flags.result.d<flags.var1.d));
-		SET_FLAG(FLAG_AF,(((flags.var1.d ^ flags.var2.d) ^ flags.result.d) & 0x10)>0);
+		SET_FLAG(CF,(lf_resd<lf_var1d));
+		DOFLAG_AF;
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,((lf_var1d ^ lf_var2d ^ 0x80000000) & (lf_resd ^ lf_var1d)) & 0x80000000);
+		DOFLAG_PF;
 		break;
-
-
 	case t_ADCb:
-		SET_FLAG(FLAG_CF,(flags.result.b < flags.var1.b) || (flags.oldcf && (flags.result.b == flags.var1.b)));
-		SET_FLAG(FLAG_AF,(((flags.var1.b ^ flags.var2.b) ^ flags.result.b) & 0x10)>0);
+		SET_FLAG(CF,(lf_resb < lf_var1b) || (lflags.oldcf && (lf_resb == lf_var1b)));
+		DOFLAG_AF;
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,((lf_var1b ^ lf_var2b ^ 0x80) & (lf_resb ^ lf_var1b)) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_ADCw:
-		SET_FLAG(FLAG_CF,(flags.result.w < flags.var1.w) || (flags.oldcf && (flags.result.w == flags.var1.w)));
-		SET_FLAG(FLAG_AF,(((flags.var1.w ^ flags.var2.w) ^ flags.result.w) & 0x10)>0);
+		SET_FLAG(CF,(lf_resw < lf_var1w) || (lflags.oldcf && (lf_resw == lf_var1w)));
+		DOFLAG_AF;
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,((lf_var1w ^ lf_var2w ^ 0x8000) & (lf_resw ^ lf_var1w)) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_ADCd:
-		SET_FLAG(FLAG_CF,(flags.result.d < flags.var1.d) || (flags.oldcf && (flags.result.d == flags.var1.d)));
-		SET_FLAG(FLAG_AF,(((flags.var1.d ^ flags.var2.d) ^ flags.result.d) & 0x10)>0);
+		SET_FLAG(CF,(lf_resd < lf_var1d) || (lflags.oldcf && (lf_resd == lf_var1d)));
+		DOFLAG_AF;
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,((lf_var1d ^ lf_var2d ^ 0x80000000) & (lf_resd ^ lf_var1d)) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
-	
+
 	case t_SBBb:
-		SET_FLAG(FLAG_CF,(flags.var1.b < flags.result.b) || (flags.oldcf && (flags.var2.b==0xff)));
-		SET_FLAG(FLAG_AF,(((flags.var1.b ^ flags.var2.b) ^ flags.result.b) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1b < lf_resb) || (lflags.oldcf && (lf_var2b==0xff)));
+		DOFLAG_AF;
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_var1b ^ lf_var2b) & (lf_var1b ^ lf_resb) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_SBBw:
-		SET_FLAG(FLAG_CF,(flags.var1.w < flags.result.w) || (flags.oldcf && (flags.var2.w==0xffff)));
-		SET_FLAG(FLAG_AF,(((flags.var1.w ^ flags.var2.w) ^ flags.result.w) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1w < lf_resw) || (lflags.oldcf && (lf_var2w==0xffff)));
+		DOFLAG_AF;
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_var1w ^ lf_var2w) & (lf_var1w ^ lf_resw) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_SBBd:
-		SET_FLAG(FLAG_CF,(flags.var1.d < flags.result.d) || (flags.oldcf && (flags.var2.d==0xffffffff)));
-		SET_FLAG(FLAG_AF,(((flags.var1.d ^ flags.var2.d) ^ flags.result.d) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1d < lf_resd) || (lflags.oldcf && (lf_var2d==0xffffffff)));
+		DOFLAG_AF;
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_var1d ^ lf_var2d) & (lf_var1d ^ lf_resd) & 0x80000000);
+		DOFLAG_PF;
 		break;
 	
 
 	case t_SUBb:
 	case t_CMPb:
-		SET_FLAG(FLAG_CF,(flags.var1.b<flags.var2.b));
-		SET_FLAG(FLAG_AF,(((flags.var1.b ^ flags.var2.b) ^ flags.result.b) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1b<lf_var2b));
+		DOFLAG_AF;
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_var1b ^ lf_var2b) & (lf_var1b ^ lf_resb) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_SUBw:
 	case t_CMPw:
-		SET_FLAG(FLAG_CF,(flags.var1.w<flags.var2.w));
-		SET_FLAG(FLAG_AF,(((flags.var1.w ^ flags.var2.w) ^ flags.result.w) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1w<lf_var2w));
+		DOFLAG_AF;
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_var1w ^ lf_var2w) & (lf_var1w ^ lf_resw) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_SUBd:
 	case t_CMPd:
-		SET_FLAG(FLAG_CF,(flags.var1.d<flags.var2.d));
-		SET_FLAG(FLAG_AF,(((flags.var1.d ^ flags.var2.d) ^ flags.result.d) & 0x10)>0);
+		SET_FLAG(CF,(lf_var1d<lf_var2d));
+		DOFLAG_AF;
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_var1d ^ lf_var2d) & (lf_var1d ^ lf_resd) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
-	
+
 	case t_ORb:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_ORw:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_ORd:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	
 	
 	case t_TESTb:
 	case t_ANDb:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_TESTw:
 	case t_ANDw:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_TESTd:
 	case t_ANDd:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 
 	
 	case t_XORb:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_XORw:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_XORd:
-		SET_FLAG(FLAG_CF,false);
+		SET_FLAG(CF,false);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 
-		
+
 	case t_SHLb:
-		if (flags.var2.b>8) SET_FLAG(FLAG_CF,false);
-		else SET_FLAG(FLAG_CF,(flags.var1.b >> (8-flags.var2.b)) & 1);
+		if (lf_var2b>8) SET_FLAG(CF,false);
+		else SET_FLAG(CF,(lf_var1b >> (8-lf_var2b)) & 1);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_SHLw:
-		if (flags.var2.b>16) SET_FLAG(FLAG_CF,false);
-		else SET_FLAG(FLAG_CF,(flags.var1.w >> (16-flags.var2.b)) & 1);
+		if (lf_var2b>16) SET_FLAG(CF,false);
+		else SET_FLAG(CF,(lf_var1w >> (16-lf_var2b)) & 1);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_SHLd:
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (32 - flags.var2.b)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (32 - lf_var2b)) & 1);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
 
-	case t_DSHLw:	/* Hmm this is not correct for shift higher than 16 */
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (32 - flags.var2.b)) & 1);
+	case t_DSHLw:
+		SET_FLAG(CF,(lf_var1d >> (32 - lf_var2b)) & 1);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_DSHLd:
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (32 - flags.var2.b)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (32 - lf_var2b)) & 1);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
 
 	case t_SHRb:
-		SET_FLAG(FLAG_CF,(flags.var1.b >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1b >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);
+		DOFLAG_PF;
 		break;
 	case t_SHRw:
-		SET_FLAG(FLAG_CF,(flags.var1.w >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1w >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_SHRd:
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
 	
 	case t_DSHRw:	/* Hmm this is not correct for shift higher than 16 */
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
+		DOFLAG_PF;
 		break;
 	case t_DSHRd:
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
+		DOFLAG_PF;
 		break;
 
 
 	case t_SARb:
-		SET_FLAG(FLAG_CF,(((Bit8s) flags.var1.b) >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(((Bit8s) lf_var1b) >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_SARw:
-		SET_FLAG(FLAG_CF,(((Bit16s) flags.var1.w) >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(((Bit16s) lf_var1w) >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 	case t_SARd:
-		SET_FLAG(FLAG_CF,(((Bit32s) flags.var1.d) >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(((Bit32s) lf_var1d) >> (lf_var2b - 1)) & 1);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,false);
+		DOFLAG_PF;
 		break;
 
 
 	case t_ROLb:
-		SET_FLAG(FLAG_CF,flags.result.b & 1);
+		SET_FLAG(CF,lf_resb & 1);
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);
 		break;
 	case t_ROLw:
-		SET_FLAG(FLAG_CF,flags.result.w & 1);
+		SET_FLAG(CF,lf_resw & 1);
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
 		break;
 	case t_ROLd:
-		SET_FLAG(FLAG_CF,flags.result.d & 1);
+		SET_FLAG(CF,lf_resd & 1);
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
 		break;
 
 
 	case t_RORb:
-		SET_FLAG(FLAG_CF,(flags.result.b & 0x80)>0);
+		SET_FLAG(CF,(lf_resb & 0x80));
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);
 		break;
 	case t_RORw:
-		SET_FLAG(FLAG_CF,(flags.result.w & 0x8000)>0);
+		SET_FLAG(CF,(lf_resw & 0x8000));
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
 		break;
 	case t_RORd:
-		SET_FLAG(FLAG_CF,(flags.result.d & 0x80000000)>0);
+		SET_FLAG(CF,(lf_resd & 0x80000000));
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
 		break;
 
+	case t_RCLb:
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);
+		break;
+	case t_RCLw:
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
+		break;
+	case t_RCLd:
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
+		break;
 	
 	case t_RCRb:
-		SET_FLAG(FLAG_CF,(flags.var1.b >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1b >> (lf_var2b - 1)) & 1);
+		SET_FLAG(OF,(lf_resb ^ lf_var1b) & 0x80);	
 		break;
 	case t_RCRw:
-		SET_FLAG(FLAG_CF,(flags.var1.w >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1w >> (lf_var2b - 1)) & 1);
+		SET_FLAG(OF,(lf_resw ^ lf_var1w) & 0x8000);
 		break;
 	case t_RCRd:
-		SET_FLAG(FLAG_CF,(flags.var1.d >> (flags.var2.b - 1)) & 1);
+		SET_FLAG(CF,(lf_var1d >> (lf_var2b - 1)) & 1);
+		SET_FLAG(OF,(lf_resd ^ lf_var1d) & 0x80000000);
 		break;
-
 
 	case t_INCb:
-		SET_FLAG(FLAG_OF,(flags.result.b == 0x80));
-		SET_FLAG(FLAG_AF,((flags.result.b & 0x0f) == 0));
+		SET_FLAG(AF,(lf_resb & 0x0f) == 0);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_resb == 0x80));
+		DOFLAG_PF;
 		break;
 	case t_INCw:
-		SET_FLAG(FLAG_OF,(flags.result.w == 0x8000));
-		SET_FLAG(FLAG_AF,((flags.result.w & 0x0f) == 0));
+		SET_FLAG(AF,(lf_resw & 0x0f) == 0);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw == 0x8000));
+		DOFLAG_PF;
 		break;
 	case t_INCd:
-		SET_FLAG(FLAG_OF,(flags.result.d == 0x80000000));
-		SET_FLAG(FLAG_AF,((flags.result.d & 0x0f) == 0));
+		SET_FLAG(AF,(lf_resd & 0x0f) == 0);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd == 0x80000000));
+		DOFLAG_PF;
 		break;
-
 
 	case t_DECb:
-		SET_FLAG(FLAG_OF,(flags.result.b == 0x7f));
+		SET_FLAG(AF,(lf_resb & 0x0f) == 0);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_resb == 0x7f));
+		DOFLAG_PF;
 		break;
 	case t_DECw:
-		SET_FLAG(FLAG_OF,(flags.result.w == 0x7fff));
+		SET_FLAG(AF,(lf_resw & 0x0f) == 0);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_resw == 0x7fff));
+		DOFLAG_PF;
 		break;
 	case t_DECd:
-		SET_FLAG(FLAG_OF,(flags.result.d == 0x7fffffff));
+		SET_FLAG(AF,(lf_resd & 0x0f) == 0);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_resd == 0x7fffffff));
+		DOFLAG_PF;
 		break;
-
 
 	case t_NEGb:
-		SET_FLAG(FLAG_CF,(flags.var1.b!=0));
+		SET_FLAG(CF,(lf_var1b!=0));
+		SET_FLAG(AF,(lf_resb & 0x0f) == 0);
+		DOFLAG_ZFb;
+		DOFLAG_SFb;
+		SET_FLAG(OF,(lf_var1b == 0x80));
+		DOFLAG_PF;
 		break;
 	case t_NEGw:
-		SET_FLAG(FLAG_CF,(flags.var1.w!=0));
+		SET_FLAG(CF,(lf_var1w!=0));
+		SET_FLAG(AF,(lf_resw & 0x0f) == 0);
+		DOFLAG_ZFw;
+		DOFLAG_SFw;
+		SET_FLAG(OF,(lf_var1w == 0x8000));
+		DOFLAG_PF;
 		break;
 	case t_NEGd:
-		SET_FLAG(FLAG_CF,(flags.var1.d!=0));
+		SET_FLAG(CF,(lf_var1d!=0));
+		SET_FLAG(AF,(lf_resd & 0x0f) == 0);
+		DOFLAG_ZFd;
+		DOFLAG_SFd;
+		SET_FLAG(OF,(lf_var1d == 0x80000000));
+		DOFLAG_PF;
 		break;
 
 	
 	case t_DIV:
-		SET_FLAG(FLAG_CF,false);	/* Unkown */
+	case t_MUL:
 		break;
+
 	default:
-		LOG(LOG_CPU,LOG_ERROR)("Unhandled flag type %d",flags.type);
+		LOG(LOG_CPU,LOG_ERROR)("Unhandled flag type %d",lflags.type);
 		return 0;
 	}
-	flags.word=new_flags;
-	return 0;
+	lflags.type=t_UNKNOWN;
+	return reg_flags;
 }
 
 #endif

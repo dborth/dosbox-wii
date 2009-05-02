@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: pic.cpp,v 1.16 2004/01/10 14:03:35 qbix79 Exp $ */
 
 #include <list>
 
@@ -55,14 +57,7 @@ Bitu PIC_IRQActive;
 static IRQ_Block irqs[16];
 static PIC_Controller pics[2];
 
-
-enum QUEUE_TYPE { 
-	IRQ,EVENT
-};
-
 struct PICEntry {
-	QUEUE_TYPE type;
-	Bitu irq;
 	Bitu index;
 	PIC_EventHandler event;
 	PICEntry * next;
@@ -77,6 +72,9 @@ static struct {
 static void write_command(Bit32u port,Bit8u val) {
 	PIC_Controller * pic=&pics[port==0x20 ? 0 : 1];
 	Bitu irq_base=port==0x20 ? 0 : 8;
+	Bitu i;
+	Bit16u IRQ_priority_table[16] = 
+	{ 0,1,8,9,10,11,12,13,14,15,2,3,4,5,6,7 };
 	switch (val) {
 	case 0x0A: /* select read interrupt request register */
 		pic->request_issr=false;
@@ -97,7 +95,13 @@ static void write_command(Bit32u port,Bit8u val) {
 			irqs[PIC_IRQActive].inservice=false;
 			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
 			PIC_IRQActive=PIC_NOIRQ;
-		}//TODO Warnings?
+			for (i=0; i<=15; i++){
+				if(irqs[IRQ_priority_table[i]].inservice) {
+					PIC_IRQActive=IRQ_priority_table[i];
+					break;
+				}
+			}
+		} //TODO Warnings?
 		break;
 	case 0x60:case 0x61:case 0x62:case 0x63:case 0x64:case 0x65:case 0x66:case 0x67:
 		/* Spefific EOI 0-7 */
@@ -105,6 +109,12 @@ static void write_command(Bit32u port,Bit8u val) {
 			irqs[PIC_IRQActive].inservice=false;
 			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
 			PIC_IRQActive=PIC_NOIRQ;
+			for (i=0; i<=15; i++) {
+				if (irqs[IRQ_priority_table[i]].inservice) {
+					PIC_IRQActive=IRQ_priority_table[i];
+					break;
+				}
+			}
 		}//TODO Warnings?
 		break;
 	case 0xC0:case 0xC1:case 0xC2:case 0xC3:case 0xC4:case 0xC5:case 0xC6:case 0xC7:
@@ -121,21 +131,28 @@ static void write_data(Bit32u port,Bit8u val) {
 	Bitu i;
 	switch(pic->icw_index) {
 	case 0:                        /* mask register */
+		LOG(LOG_PIC,LOG_NORMAL)("%d mask %X",port==0x21 ? 0 : 1,val);
 		for (i=0;i<=7;i++) {
 			irqs[i+irq_base].masked=(val&(1<<i))>0;
 			if (irqs[i+irq_base].active && !irqs[i+irq_base].masked) PIC_IRQCheck|=(1 << (i+irq_base));
 			else PIC_IRQCheck&=~(1 << (i+irq_base));
 		};
+#if 0
+		if (PIC_IRQCheck) {
+			CPU_CycleLeft+=CPU_Cycles;
+			CPU_Cycles=0;
+		}
+#endif
 		break;
 	case 1:                        /* icw2          */
-		LOG(LOG_PIC,LOG_NORMAL)("%d:Base vector %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
+		LOG(LOG_PIC,LOG_NORMAL)("%d:Base vector %X",port==0x21 ? 0 : 1,val);
 		for (i=0;i<=7;i++) {
 			irqs[i+irq_base].vector=(val&0xf8)+i;
 		};
 		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
 		break;
 	case 2:							/* icw 3 */
-		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 3 %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
+		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 3 %X",port==0x21 ? 0 : 1,val);
 		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
 		break;
 	case 3:							/* icw 4 */
@@ -149,7 +166,7 @@ static void write_data(Bit32u port,Bit8u val) {
 		*/
 		pic->auto_eoi=(val & 0x2)>0;
 		
-		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 4 %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
+		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 4 %X",port==0x21 ? 0 : 1,val);
 		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
 		break;
 	default:                       /* icw 3, and 4*/
@@ -187,13 +204,13 @@ static Bit8u read_data(Bit32u port) {
 	return ret;
 }
 
-void PIC_RegisterIRQ(Bit32u irq,PIC_EOIHandler handler,char * name) {
+void PIC_RegisterIRQ(Bitu irq,PIC_EOIHandler handler,char * name) {
 	if (irq>15) E_Exit("PIC:Illegal IRQ");
 	irqs[irq].name=name;
 	irqs[irq].handler=handler;
 }
 
-void PIC_FreeIRQ(Bit32u irq) {
+void PIC_FreeIRQ(Bitu irq) {
 	if (irq>15) E_Exit("PIC:Illegal IRQ");
 	irqs[irq].name=0;
 	irqs[irq].handler=0;
@@ -202,7 +219,7 @@ void PIC_FreeIRQ(Bit32u irq) {
 	PIC_IRQCheck&=~(1 << irq);
 }
 
-void PIC_ActivateIRQ(Bit32u irq) {
+void PIC_ActivateIRQ(Bitu irq) {
 	if (irq<16) {
 		irqs[irq].active=true;
 		if (!irqs[irq].masked) {
@@ -211,7 +228,7 @@ void PIC_ActivateIRQ(Bit32u irq) {
 	}
 }
 
-void PIC_DeActivateIRQ(Bit32u irq) {
+void PIC_DeActivateIRQ(Bitu irq) {
 	if (irq<16) {
 		irqs[irq].active=false;
 		PIC_IRQCheck&=~(1 << irq);
@@ -221,21 +238,39 @@ void PIC_DeActivateIRQ(Bit32u irq) {
 void PIC_runIRQs(void) {
 	Bitu i;
 	if (!GETFLAG(IF)) return;
-	if (PIC_IRQActive!=PIC_NOIRQ) return;
 	if (!PIC_IRQCheck) return;
+	Bit16u IRQ_priority_lookup[17] = 
+		{ 0,1,10,11,12,13,14,15,2,3,4,5,6,7,8,9,16 };
+	Bit16u activeIRQ = PIC_IRQActive;
+	if (activeIRQ==PIC_NOIRQ) activeIRQ = 16;
 	for (i=0;i<=15;i++) {
-		if (i!=2) {
-			if (!irqs[i].masked && irqs[i].active) {
-				irqs[i].active=false;
-				PIC_IRQCheck&=~(1 << i);
-				Interrupt(irqs[i].vector);
-				if (!pics[0].auto_eoi) {
-					PIC_IRQActive=i;
-					irqs[i].inservice=true;
+		if (IRQ_priority_lookup[i]<IRQ_priority_lookup[activeIRQ]){ 
+			if (i!=2) {
+				if (!irqs[i].masked && irqs[i].active) {
+					irqs[i].active=false;
+					PIC_IRQCheck&=~(1 << i);
+					CPU_HW_Interrupt(irqs[i].vector);
+					if (!pics[0].auto_eoi) {
+						PIC_IRQActive=i;
+						irqs[i].inservice=true;
+					}
+					return;
 				}
-				return;
 			}
 		}
+	}
+}
+
+void PIC_SetIRQMask(Bitu irq, bool masked) {
+	irqs[irq].masked=masked;
+	if (irqs[irq].active && !irqs[irq].masked) { 
+		PIC_IRQCheck|=(1 << (irq));
+	} else { 
+		PIC_IRQCheck&=~(1 << (irq));
+	};
+	if (PIC_IRQCheck) {
+		CPU_CycleLeft+=CPU_Cycles;
+		CPU_Cycles=0;
 	}
 }
 
@@ -279,22 +314,6 @@ void PIC_AddEvent(PIC_EventHandler handler,Bitu delay) {
 	Bitu index=delay+PIC_Index();
 	entry->index=index;
 	entry->event=handler;
-	entry->type=EVENT;
-	pic.free_entry=pic.free_entry->next;
-	AddEntry(entry);
-}
-
-void PIC_AddIRQ(Bitu irq,Bitu delay) {
-	if (irq>15) E_Exit("PIC:Illegal IRQ");
-	if (!pic.free_entry) {
-		LOG(LOG_PIC,LOG_ERROR)("Event queue full");
-		return;
-	}
-	PICEntry * entry=pic.free_entry;
-	Bitu index=delay+PIC_Index();
-	entry->index=index;
-	entry->irq=irq;
-	entry->type=IRQ;
 	pic.free_entry=pic.free_entry->next;
 	AddEntry(entry);
 }
@@ -305,29 +324,26 @@ void PIC_RemoveEvents(PIC_EventHandler handler) {
 	PICEntry * prev_entry;
 	prev_entry=0;
 	while (entry) {
-		switch (entry->type) {
-		case EVENT:
-			if (entry->event==handler) {
-				if (prev_entry) {
-					prev_entry->next=entry->next;
-					entry->next=pic.free_entry;
-					pic.free_entry=entry;
-					entry=prev_entry->next;
-					continue;
-				} else {
-					pic.next_entry=entry->next;
-					entry->next=pic.free_entry;
-					pic.free_entry=entry;
-					entry=pic.next_entry;
-					continue;
-				}
+		if (entry->event==handler) {
+			if (prev_entry) {
+				prev_entry->next=entry->next;
+				entry->next=pic.free_entry;
+				pic.free_entry=entry;
+				entry=prev_entry->next;
+				continue;
+			} else {
+				pic.next_entry=entry->next;
+				entry->next=pic.free_entry;
+				pic.free_entry=entry;
+				entry=pic.next_entry;
+				continue;
 			}
-			break;
 		}
 		prev_entry=entry;
 		entry=entry->next;
-	}
+	}	
 }
+
 
 bool PIC_RunQueue(void) {
 	/* Check to see if a new milisecond needs to be started */
@@ -341,14 +357,7 @@ bool PIC_RunQueue(void) {
 	while (pic.next_entry && pic.next_entry->index<=index) {
 		PICEntry * entry=pic.next_entry;
 		pic.next_entry=entry->next;
-		switch (entry->type) {
-		case EVENT:
-			(entry->event)();
-			break;
-		case IRQ:
-			PIC_ActivateIRQ(entry->irq);
-			break;
-		}
+		(entry->event)();
 		/* Put the entry in the free list */
 		entry->next=pic.free_entry;
 		pic.free_entry=entry;
@@ -487,7 +496,7 @@ void PIC_Init(Section* sec) {
 	irqs[0].masked=false;					/* Enable system timer */
 	irqs[1].masked=false;					/* Enable Keyboard IRQ */
 	irqs[8].masked=false;					/* Enable RTC IRQ */
-	irqs[12].masked=false;					/* Enable Mouse IRQ */
+/*	irqs[12].masked=false;	moved to mouse.cpp */				/* Enable Mouse IRQ */
 	IO_RegisterReadHandler(0x20,read_command,"Master PIC Command");
 	IO_RegisterReadHandler(0x21,read_data,"Master PIC Data");
 	IO_RegisterWriteHandler(0x20,write_command,"Master PIC Command");

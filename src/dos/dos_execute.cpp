@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id */
 
 #include <string.h>
 #include "dosbox.h"
@@ -118,6 +120,7 @@ bool DOS_Terminate(bool tsr) {
 	/* Set the CS:IP stored in int 0x22 back on the stack */
 	mem_writew(SegPhys(ss)+reg_sp+0,RealOff(old22));
 	mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(old22));
+	mem_writew(SegPhys(ss)+reg_sp+4,0x200); //stack isn't preserved
 	// Free memory owned by process
 	if (!tsr) DOS_FreeProcessMemory(mempsp);
 	return true;
@@ -185,8 +188,11 @@ bool DOS_ChildPSP(Bit16u segment, Bit16u size)
 	psp.MakeNew(size);
 	DOS_PSP psp_parent(psp.GetParent());
 	psp.CopyFileTable(&psp_parent,true);
+	psp.SetEnvironment(psp_parent.GetEnvironment());
+	psp.SetSize(size);
 	return true;
 };
+
 static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
 	
 	/* Fix the PSP for psp and environment MCB's */
@@ -251,7 +257,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	/* Convert the header to correct endian, i hope this works */
 	HostPt endian=(HostPt)&head;
 	for (i=0;i<sizeof(EXE_Header)/2;i++) {
-		*((Bit16u *)endian)=readw(endian);
+		*((Bit16u *)endian)=host_readw(endian);
 		endian+=2;
 	}
 	if (len<sizeof(EXE_Header)) iscom=true;	
@@ -321,7 +327,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		pos=head.reloctable;DOS_SeekFile(fhandle,&pos,0);
 		for (i=0;i<head.relocations;i++) {
 			readsize=4;DOS_ReadFile(fhandle,(Bit8u *)&relocpt,&readsize);
-			relocpt=readd((Bit8u *)&relocpt);		//Endianize
+			relocpt=host_readd((HostPt)&relocpt);		//Endianize
 			PhysPt address=PhysMake(RealSeg(relocpt)+loadseg,RealOff(relocpt));
 			mem_writew(address,mem_readw(address)+relocate);
 		}
@@ -371,7 +377,8 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		/* Switch the psp's and set new DTA */
 		dos.psp=pspseg;
 		DOS_PSP newpsp(dos.psp);
-		dos.dta=newpsp.GetDTA();
+		newpsp.SetDTA(dos.dta); /* Original: change this and line below. This way seems better(zone66 and unpack) */
+		//dos.dta=newpsp.GetDTA();
 		/* save vectors */
 		newpsp.SaveVectors();
 		/* copy fcbs */

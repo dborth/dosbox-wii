@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: cdrom_ioctl_win32.cpp,v 1.10 2004/01/10 14:03:34 qbix79 Exp $ */
+
 #if defined (WIN32)
 
 // *****************************************************************
@@ -23,9 +25,15 @@
 // *****************************************************************
 
 #include <windows.h>
-#include <winioctl.h>			// Ioctl stuff
 #include <io.h>
-#include "ntddcdrm.h"			// Ioctl stuff
+
+#if defined (_MSC_VER)
+#include <ntddcdrm.h>			// Ioctl stuff
+#include <winioctl.h>			// Ioctl stuff
+#else 
+#include "ddk/ntddcdrm.h"		// Ioctl stuff
+#endif
+
 #include "cdrom.h"
 
 CDROM_Interface_Ioctl::CDROM_Interface_Ioctl()
@@ -75,7 +83,7 @@ bool CDROM_Interface_Ioctl::GetAudioTrackInfo(int track, TMSF& start, unsigned c
 //	Close();
 	if (!bStat) return false;
 	
-	attr		= (toc.TrackData[track-1].Adr << 4) | toc.TrackData[track].Control;
+	attr		= (toc.TrackData[track-1].Control << 4) & 0xEF;
 	start.min	= toc.TrackData[track-1].Address[1];
 	start.sec	= toc.TrackData[track-1].Address[2];
 	start.fr	= toc.TrackData[track-1].Address[3];
@@ -97,7 +105,7 @@ bool CDROM_Interface_Ioctl::GetAudioSub(unsigned char& attr, unsigned char& trac
 //	Close();
 	if (!bStat) return false;
 
-	attr		= (sub.CurrentPosition.ADR << 4) | sub.CurrentPosition.Control;
+	attr		= (sub.CurrentPosition.Control << 4) & 0xEF;
 	track		= sub.CurrentPosition.TrackNumber;
 	index		= sub.CurrentPosition.IndexNumber;
 	relPos.min	= sub.CurrentPosition.TrackRelativeAddress[1];

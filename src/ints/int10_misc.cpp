@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -93,6 +93,8 @@ void INT10_GetFuncStateInformation(PhysPt save) {
 	switch (CurMode->type) {
 	case M_TEXT16:
 		col_count=16;break;
+	case M_TEXT2:
+		col_count=2;break;	//		??
 	case M_CGA2:
 		col_count=2;break;
 	case M_CGA4:

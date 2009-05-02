@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: fpu.cpp,v 1.17 2004/01/19 18:54:15 qbix79 Exp $ */
 
 #include "dosbox.h"
 #if C_FPU
@@ -258,6 +260,13 @@ void FPU_ESC1_Normal(Bitu rm) {
 	case 0x01: /* FXCH STi */
 			FPU_FXCH(TOP,ST(sub));
 		break;
+	case 0x02: /* FNOP */
+			FPU_FNOP();
+		break;
+	case 0x03: /* FSTP STi */
+			FPU_FST(TOP,ST(sub));
+			FPU_FPOP();
+		break;   
 	case 0x04:
 		switch(sub){
 		case 0x00:       /* FCHS */
@@ -375,7 +384,7 @@ void FPU_ESC1_Normal(Bitu rm) {
 void FPU_ESC2_EA(Bitu rm,PhysPt addr) {
 	/* 32 bits integer operants */
 	Bit32s blah = mem_readd(addr);
-	fpu.regs[8].d = static_cast<double>(blah);
+	fpu.regs[8].d = static_cast<Real64>(blah);
 	EATREE(rm);
 }
 
@@ -453,8 +462,7 @@ void FPU_ESC3_Normal(Bitu rm) {
 
 
 void FPU_ESC4_EA(Bitu rm,PhysPt addr) {
-	/* REGULAR TREE WITH 64 BITS REALS ? double ? */
-//	E_Exit("how to load a double in esc 4 ea");
+	/* REGULAR TREE WITH 64 BITS REALS: double  */
 	fpu.regs[8].l.lower=mem_readd(addr);
 	fpu.regs[8].l.upper=mem_readd(addr+4);
 	EATREE(rm);
@@ -478,16 +486,16 @@ void FPU_ESC4_Normal(Bitu rm) {
 		FPU_FCOM(TOP,ST(sub));
 		FPU_FPOP();
 		break;
-	case 0x04:  /* FSUBRP STi,ST*/
+	case 0x04:  /* FSUBR STi,ST*/
 		FPU_FSUBR(ST(sub),TOP);
 		break;
-	case 0x05:  /* FSUBP  STi,ST*/
+	case 0x05:  /* FSUB  STi,ST*/
 		FPU_FSUB(ST(sub),TOP);
 		break;
-	case 0x06:	/* FDIVRP STi,ST*/
+	case 0x06:  /* FDIVR STi,ST*/
 		FPU_FDIVR(ST(sub),TOP);
 		break;
-	case 0x07:  /* FDIVP STi,ST*/
+	case 0x07:  /* FDIV STi,ST*/
 		FPU_FDIV(ST(sub),TOP);
 		break;
 	default:
@@ -564,7 +572,7 @@ void FPU_ESC5_Normal(Bitu rm) {
 void FPU_ESC6_EA(Bitu rm,PhysPt addr) {
 	/* 16 bit (word integer) operants */
 	Bit16s blah = mem_readw(addr);
-	fpu.regs[8].d = static_cast<double>(blah);
+	fpu.regs[8].d = static_cast<Real64>(blah);
 	EATREE(rm);
 }
 
@@ -620,7 +628,7 @@ void FPU_ESC7_EA(Bitu rm,PhysPt addr) {
 	case 0x00:  /* FILD Bit16s */
 		{
 				Bit16s blah = mem_readw(addr);
-				FPU_PUSH( static_cast<double>(blah));
+				FPU_PUSH( static_cast<Real64>(blah));
 		}
 		break;
 	case 0x01:  /* FISTTP Bit16s */
@@ -634,18 +642,25 @@ void FPU_ESC7_EA(Bitu rm,PhysPt addr) {
 		mem_writew(addr,static_cast<Bit16s>(FROUND(fpu.regs[TOP].d)));	
 		FPU_FPOP();
 		break;
-	case 0x05:  /* FILD Bit32s */
+	case 0x05:  /* FILD Bit64s */
 		{
-				Bit32s blah = mem_readd(addr);
-				FPU_PUSH( static_cast<double>(blah));
+			FPU_Reg blah;
+			blah.l.lower = mem_readd(addr);
+			blah.l.upper = mem_readd(addr+4);
+			FPU_PUSH(static_cast<Real64>(blah.ll));
 		}
 		break;
 	case 0x06:	/* FBSTP packed BCD */
 		FPU_FBST(addr);
 		FPU_FPOP();
 		break;
-	case 0x07:  /* FISTP Bit32s */
-		mem_writed(addr,static_cast<Bit32s>(FROUND(fpu.regs[TOP].d)));	
+	case 0x07:  /* FISTP Bit64s */
+		{
+			FPU_Reg blah;
+			blah.ll = static_cast<Bit64s>(FROUND(fpu.regs[TOP].d));
+			mem_writed(addr,blah.l.lower);
+			mem_writed(addr+4,blah.l.upper);
+		}
 		FPU_FPOP();
 		break;
 	case 0x04:   /* FBLD packed BCD */
@@ -660,6 +675,14 @@ void FPU_ESC7_Normal(Bitu rm) {
 	Bitu group=(rm >> 3) & 7;
 	Bitu sub=(rm & 7);
 	switch (group){
+	case 0x01: /* FXCH STi*/
+			FPU_FXCH(TOP,ST(sub));
+		break;
+	case 0x02:  /* FSTP STi*/
+	case 0x03:  /* FSTP STi*/
+			FPU_FST(TOP,ST(sub));
+			FPU_FPOP();
+		break;
 	case 0x04:
 		switch(sub){
 			case 0x00:     /* FNSTSW AX*/

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#include "../hardware/vga.h"
+#include "vga.h"
 
 #define S3_LFB_BASE		0xC0000000
 
@@ -104,6 +104,7 @@ struct VideoModeBlock {
 
 	Bitu	htotal,vtotal;
 	Bitu	hdispend,vdispend;
+	Bitu	rate;
 	Bitu	special;
 	
 };
@@ -144,7 +145,8 @@ void INT10_GetFuncStateInformation(PhysPt save);
 
 void INT10_SetCursorShape(Bit8u first,Bit8u last);
 void INT10_SetCursorPos(Bit8u row,Bit8u col,Bit8u page);
-void INT10_TeletypeOutput(Bit8u chr,Bit8u attr,bool showattr);
+void INT10_TeletypeOutput(Bit8u chr,Bit8u attr);
+void INT10_TeletypeOutputAttr(Bit8u chr,Bit8u attr,bool useattr);
 void INT10_ReadCharAttr(Bit16u * result,Bit8u page);
 void INT10_WriteChar(Bit8u chr,Bit8u attr,Bit8u page,Bit16u count,bool showattr);
 void INT10_WriteString(Bit8u row,Bit8u col,Bit8u flag,Bit8u attr,PhysPt string,Bit16u count,Bit8u page);
@@ -181,7 +183,7 @@ Bit8u VESA_GetSVGAInformation(Bit16u seg,Bit16u off);
 Bit8u VESA_GetSVGAModeInformation(Bit16u mode,Bit16u seg,Bit16u off);
 Bit8u VESA_SetSVGAMode(Bit16u mode);
 Bit8u VESA_GetSVGAMode(Bit16u & mode);
-Bit8u VESA_SetCPUWindow(Bit8u window,Bit16u address);
+Bit8u VESA_SetCPUWindow(Bit8u window,Bit8u address);
 Bit8u VESA_GetCPUWindow(Bit8u window,Bit16u & address);
 Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u & bytes,Bit16u & pixels,Bit16u & lines);
 Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y);

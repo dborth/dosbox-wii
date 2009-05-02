@@ -1,5 +1,12 @@
 switch (inst.code.load) {
 /* General loading */
+	case L_POPwRM:
+		inst.op1.w = Pop_16();
+		goto case_L_MODRM;
+	case L_POPdRM:
+		inst.op1.d = Pop_32();
+		goto case_L_MODRM;
+case_L_MODRM:
 	case L_MODRM:
 		inst.rm=Fetchb();
 		inst.rm_index=(inst.rm >> 3) & 7;
@@ -54,9 +61,12 @@ l_M_Ewx:
 			if (inst.rm<0xc0) inst.op1.ds=(Bit16s)LoadMw(inst.rm_eaa);
 			else inst.op1.ds=(Bit16s)reg_16(inst.rm_eai);
 			break;
+		case M_EwIb:
+			inst.op2.d=Fetchb();
+			goto l_M_Ew;
 		case M_EwIbx:
 			inst.op2.ds=Fetchbs();
-			goto l_M_Ew;			
+			goto l_M_Ew;		
 		case M_EwIw:
 			inst.op2.d=Fetchw();
 			goto l_M_Ew;
@@ -65,6 +75,11 @@ l_M_Ewx:
 			goto l_M_EwGw;
 		case M_EwGwIb:
 			inst.imm.d=Fetchb();
+			goto l_M_EwGw;
+		case M_EwGwt:
+			inst.op2.d=reg_16(inst.rm_index);
+			inst.rm_eaa+=((Bit16s)inst.op2.d >> 4) * 2;
+			goto l_M_Ew;
 l_M_EwGw:			
 		case M_EwGw:
 			inst.op2.d=reg_16(inst.rm_index);
@@ -89,6 +104,9 @@ l_M_Ew:
 			if (inst.rm<0xc0) inst.op1.d=(Bit32s)LoadMd(inst.rm_eaa);
 			else inst.op1.d=(Bit32s)reg_32(inst.rm_eai);
 			break;
+		case M_EdIb:
+			inst.op2.d=Fetchb();
+			goto l_M_Ed;
 		case M_EdIbx:
 			inst.op2.ds=Fetchbs();
 			goto l_M_Ed;
@@ -98,8 +116,13 @@ l_M_Ew:
 		case M_EdGdCL:
 			inst.imm.d=reg_cl;
 			goto l_M_EdGd;
+		case M_EdGdt:
+			inst.op2.d=reg_32(inst.rm_index);
+			inst.rm_eaa+=((Bit32s)inst.op2.d >> 5) * 4;
+			goto l_M_Ed;
 		case M_EdGdIb:
 			inst.imm.d=Fetchb();
+			goto l_M_EdGd;
 l_M_EdGd:
 		case M_EdGd:
 			inst.op2.d=reg_32(inst.rm_index);
@@ -224,8 +247,7 @@ l_M_Ed:
 		inst.op1.d=reg_32(inst.code.extra);
 		break;
 	case L_FLG:
-		FillFlags();
-		inst.op1.d = flags.word;
+		inst.op1.d = FillFlags();
 		break;
 	case L_SEG:
 		inst.op1.d=SegValue((SegNames)inst.code.extra);
@@ -260,7 +282,7 @@ l_M_Ed:
 		inst.repz=true;
 		goto restartopcode;
 	case L_PREOP:
-		inst.entry^=0x200;
+		inst.entry=inst.start_entry ^ 0x200;
 		goto restartopcode;
 	case L_PREADD:
 		inst.prefix^=PREFIX_ADDR;
@@ -273,49 +295,41 @@ l_M_Ed:
 		inst.op1.d=4;
 		break;
 	case D_IRETw:
-		flags.type=t_UNKNOWN;
-		if (!CPU_IRET(false)) return CBRET_NONE;
+		LEAVECORE;
+		CPU_IRET(false);
 		if (GETFLAG(IF) && PIC_IRQCheck) {
 			return CBRET_NONE;
 		}
-		LoadIP();
-		goto nextopcode;
+		goto restart_core;
 	case D_IRETd:
-		flags.type=t_UNKNOWN;
-		if (!CPU_IRET(true)) return CBRET_NONE;
+		LEAVECORE;
+		CPU_IRET(true);
 		if (GETFLAG(IF) && PIC_IRQCheck) {
 			return CBRET_NONE;
 		}
-		LoadIP();
-		goto nextopcode;
+		goto restart_core;
 	case D_RETFwIw:
-		if (!CPU_RET(false,Fetchw())) {
-			FillFlags();
-			return CBRET_NONE;
+		{
+			Bitu words=Fetchw();
+			LEAVECORE;		
+			CPU_RET(false,words);
+			goto restart_core;
 		}
-		LoadIP();
-		goto nextopcode;
 	case D_RETFw:
-		if (!CPU_RET(false,0)) {
-			FillFlags();
-			return CBRET_NONE;
-		}
-		LoadIP();
-		goto nextopcode;
+		LEAVECORE;		
+		CPU_RET(false,0);
+		goto restart_core;
 	case D_RETFdIw:
-		if (!CPU_RET(true,Fetchw())) {
-			FillFlags();
-			return CBRET_NONE;
+		{
+			Bitu words=Fetchw();
+			LEAVECORE;		
+			CPU_RET(true,words);
+			goto restart_core;
 		}
-		LoadIP();
-		goto nextopcode;
 	case D_RETFd:
-		if (!CPU_RET(true,0)) {
-			FillFlags();
-			return CBRET_NONE;
-		}
-		LoadIP();
-		goto nextopcode;
+		LEAVECORE;		
+		CPU_RET(true,0);
+		goto restart_core;
 /* Direct operations */
 	case L_STRING:
 		#include "string.h"
@@ -342,16 +356,37 @@ l_M_Ed:
 		reg_edi=Pop_32();reg_esi=Pop_32();reg_ebp=Pop_32();Pop_32();//Don't save ESP
 		reg_ebx=Pop_32();reg_edx=Pop_32();reg_ecx=Pop_32();reg_eax=Pop_32();
 		goto nextopcode;
+	case D_POPSEGw:
+		if (CPU_SetSegGeneral((SegNames)inst.code.extra,Pop_16())) {
+			LEAVECORE;
+			reg_eip-=(IPPoint-inst.opcode_start);reg_esp-=2;
+			CPU_StartException();goto restart_core;
+		}
+		goto nextopcode;
+	case D_POPSEGd:
+		if (CPU_SetSegGeneral((SegNames)inst.code.extra,Pop_32())) {
+			LEAVECORE;
+			reg_eip-=(IPPoint-inst.opcode_start);reg_esp-=4;
+			CPU_StartException();goto restart_core;
+		}
+		goto nextopcode;
 	case D_SETALC:
 		reg_al = get_CF() ? 0xFF : 0;
 		goto nextopcode;
-	case D_XLATw:
-		if (inst.prefix & PREFIX_SEG) reg_al=LoadMb(inst.seg.base+reg_bx+reg_al);
-		else reg_al=LoadMb(SegBase(ds)+reg_bx+reg_al);
-		goto nextopcode;
-	case D_XLATd:
-		if (inst.prefix & PREFIX_SEG) reg_al=LoadMb(inst.seg.base+reg_ebx+reg_al);
-		else reg_al=LoadMb(SegBase(ds)+reg_ebx+reg_al);
+	case D_XLAT:
+		if (inst.prefix & PREFIX_SEG) {
+			if (inst.prefix & PREFIX_ADDR) {
+				reg_al=LoadMb(inst.seg.base+(Bit32u)(reg_ebx+reg_al));
+			} else {
+				reg_al=LoadMb(inst.seg.base+(Bit16u)(reg_bx+reg_al));
+			}
+		} else {
+			if (inst.prefix & PREFIX_ADDR) {
+				reg_al=LoadMb(SegBase(ds)+(Bit32u)(reg_ebx+reg_al));
+			} else {
+				reg_al=LoadMb(SegBase(ds)+(Bit16u)(reg_bx+reg_al));
+			}
+		}
 		goto nextopcode;
 	case D_CBW:
 		reg_ax=(Bit8s)reg_al;
@@ -378,25 +413,22 @@ l_M_Ed:
 		}
 		goto nextopcode;
 	case D_STC:
-		SETFLAGBIT(CF,true);
-		if (flags.type!=t_CF) flags.prev_type=flags.type;
-		flags.type=t_CF;
+		FillFlags();SETFLAGBIT(CF,true);
 		goto nextopcode;
 	case D_CLC:
-		SETFLAGBIT(CF,false);
-		if (flags.type!=t_CF) flags.prev_type=flags.type;
-		flags.type=t_CF;
+		FillFlags();SETFLAGBIT(CF,false);
 		goto nextopcode;
 	case D_CMC:
-		SETFLAGBIT(CF,!get_CF());
-		if (flags.type!=t_CF) flags.prev_type=flags.type;
-		flags.type=t_CF;
+		FillFlags();
+		SETFLAGBIT(CF,!(reg_flags & FLAG_CF));
 		goto nextopcode;
 	case D_CLD:
 		SETFLAGBIT(DF,false);
+		cpu.direction=1;
 		goto nextopcode;
 	case D_STD:
 		SETFLAGBIT(DF,true);
+		cpu.direction=-1;
 		goto nextopcode;
 	case D_WAIT:
 	case D_NOP:
@@ -492,8 +524,11 @@ l_M_Ed:
 		goto nextopcode;
 	case D_HLT:
 		LEAVECORE;
-		CPU_HLT();
+		CPU_HLT(IPPoint-inst.opcode_start);
 		return CBRET_NONE;
+	case D_CLTS:
+		//TODO Really clear it sometime
+		goto nextopcode;
 	default:
 		LOG(LOG_CPU,LOG_ERROR)("LOAD:Unhandled code %d opcode %X",inst.code.load,inst.entry);
 		break;

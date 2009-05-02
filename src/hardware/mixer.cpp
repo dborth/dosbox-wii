@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -257,10 +257,10 @@ static void MIXER_WaveEvent(void) {
 		/* Write last piece of audio in buffer */
 		fwrite(mixer.wave.buf,1,mixer.wave.used,mixer.wave.handle);
 		/* Fill in the header with useful information */
-		writed(&wavheader[4],mixer.wave.length+sizeof(wavheader)-8);
-		writed(&wavheader[0x18],mixer.freq);
-		writed(&wavheader[0x1C],mixer.freq*4);
-		writed(&wavheader[0x28],mixer.wave.length);
+		host_writed(&wavheader[4],mixer.wave.length+sizeof(wavheader)-8);
+		host_writed(&wavheader[0x18],mixer.freq);
+		host_writed(&wavheader[0x1C],mixer.freq*4);
+		host_writed(&wavheader[0x28],mixer.wave.length);
 		
 		fseek(mixer.wave.handle,0,0);
 		fwrite(wavheader,1,sizeof(wavheader),mixer.wave.handle);

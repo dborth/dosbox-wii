@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,14 +28,21 @@
 
 VGA_Type vga;
 
+Bit32u CGA_2_Table[16];
 Bit32u CGA_4_Table[256];
+Bit32u CGA_16_Table[256];
+Bit32u TXT_Font_Table[16];
+Bit32u TXT_FG_Table[16];
+Bit32u TXT_BG_Table[16];
 Bit32u ExpandTable[256];
 Bit32u Expand16Table[4][16];
-Bit32u Expand16BigTable[0x10000];
 Bit32u FillTable[16];
+Bit32u ColorTable[16];
+
 
 
 void VGA_SetMode(VGAModes mode) {
+	if (vga.mode == mode) return;
 	vga.mode=mode;
 	VGA_SetupHandlers();
 	VGA_StartResize();
@@ -99,19 +106,39 @@ void VGA_Init(Section* sec) {
 		CGA_4_Table[i]=((i>>0)&3) | (((i>>2)&3) << 8)| (((i>>4)&3) <<16) | (((i>>6)&3) << 24);
 #else
 		CGA_4_Table[i]=((i>>6)&3) | (((i>>4)&3) << 8)| (((i>>2)&3) <<16) | (((i>>0)&3) << 24);
+
+
 #endif
 	}
 	for (i=0;i<16;i++) {
+		TXT_FG_Table[i]=i | (i << 8)| (i <<16) | (i << 24);
+		TXT_BG_Table[i]=i | (i << 8)| (i <<16) | (i << 24);
+
 #ifdef WORDS_BIGENDIAN
-		FillTable[i]=	((i & 1) ? 0xff000000 : 0) |
-						((i & 2) ? 0x00ff0000 : 0) |
-						((i & 4) ? 0x0000ff00 : 0) |
-						((i & 8) ? 0x000000ff : 0) ;
+		CGA_2_Table[i]=((i>>0)&1) | (((i>>1)&1) << 8)| (((i>>1)&1) <<16) | (((i>>3)&1) << 24);
+		FillTable[i]=
+			((i & 1) ? 0xff000000 : 0) |
+			((i & 2) ? 0x00ff0000 : 0) |
+			((i & 4) ? 0x0000ff00 : 0) |
+			((i & 8) ? 0x000000ff : 0) ;
+		TXT_Font_Table[i]=
+			((i & 1) ? 0x000000ff : 0) |
+			((i & 2) ? 0x0000ff00 : 0) |
+			((i & 4) ? 0x00ff0000 : 0) |
+			((i & 8) ? 0xff000000 : 0) ;
 #else 
-		FillTable[i]=	((i & 1) ? 0x000000ff : 0) |
-						((i & 2) ? 0x0000ff00 : 0) |
-						((i & 4) ? 0x00ff0000 : 0) |
-						((i & 8) ? 0xff000000 : 0) ;
+		CGA_2_Table[i]=((i>>3)&1) | (((i>>2)&1) << 8)| (((i>>1)&1) <<16) | (((i>>0)&1) << 24);
+		FillTable[i]=
+			((i & 1) ? 0x000000ff : 0) |
+			((i & 2) ? 0x0000ff00 : 0) |
+			((i & 4) ? 0x00ff0000 : 0) |
+			((i & 8) ? 0xff000000 : 0) ;
+		TXT_Font_Table[i]=	
+			((i & 1) ? 0xff000000 : 0) |
+			((i & 2) ? 0x00ff0000 : 0) |
+			((i & 4) ? 0x0000ff00 : 0) |
+			((i & 8) ? 0x000000ff : 0) ;
+
 #endif
 	}
 	for (j=0;j<4;j++) {
@@ -130,29 +157,6 @@ void VGA_Init(Section* sec) {
 				((i & 8) ? 1 << j : 0);
 #endif
 		}
-	}
-	for (i=0;i<0x10000;i++) {
-		Bit32u val=0;
-		if (i & 0x1) val|=0x1 << 24;
-		if (i & 0x2) val|=0x1 << 16;
-		if (i & 0x4) val|=0x1 << 8;
-		if (i & 0x8) val|=0x1 << 0;
-
-		if (i & 0x10) val|=0x4 << 24;
-		if (i & 0x20) val|=0x4 << 16;
-		if (i & 0x40) val|=0x4 << 8;
-		if (i & 0x80) val|=0x4 << 0;
-
-		if (i & 0x100) val|=0x2 << 24;
-		if (i & 0x200) val|=0x2 << 16;
-		if (i & 0x400) val|=0x2 << 8;
-		if (i & 0x800) val|=0x2 << 0;
-
-		if (i & 0x1000) val|=0x8 << 24;
-		if (i & 0x2000) val|=0x8 << 16;
-		if (i & 0x4000) val|=0x8 << 8;
-		if (i & 0x8000) val|=0x8 << 0;
-		Expand16BigTable[i]=val;
 	}
 }
 

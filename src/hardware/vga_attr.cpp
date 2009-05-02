@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 #include "vga.h"
 
 #define attr(blah) vga.attr.blah
-
 
 void VGA_ATTR_SetPalette(Bit8u index,Bit8u val) {
 	vga.attr.palette[index]=val;
@@ -57,12 +56,14 @@ void write_p3c0(Bit32u port,Bit8u val) {
 			break;
 		case 0x10: /* Mode Control Register */
 			if ((attr(mode_control) ^ val) & 0x80) {
-				attr(mode_control)=val;
+				attr(mode_control)^=0x80;
 				for (Bitu i=0;i<0x10;i++) {
 					VGA_ATTR_SetPalette(i,vga.attr.palette[i]);
 				}
 			}
-			attr(mode_control)=val;
+			if ((attr(mode_control) ^ val) & 0x08) {
+				VGA_SetBlinking(val & 0x8);
+			}
 			/*
 				Special hacks for games programming registers themselves,
 				Doesn't work if they program EGA16 themselves, 
@@ -73,6 +74,7 @@ void write_p3c0(Bit32u port,Bit8u val) {
 			} else {
 				if (vga.mode==M_VGA) VGA_SetMode(M_EGA16);
 			}
+			attr(mode_control)=val;
 			//TODO Monochrome mode
 			//TODO 9 bit characters
 			//TODO line wrapping split screen shit see bit 5
@@ -114,6 +116,7 @@ void write_p3c0(Bit32u port,Bit8u val) {
 		case 0x13:	/* Horizontal PEL Panning Register */
 			attr(horizontal_pel_panning)=val & 0xF;
 			switch (vga.mode) {
+			case M_TEXT2:
 			case M_TEXT16:
 				if (val==0x7) vga.config.pel_panning=7;
 				if (val>0x7) vga.config.pel_panning=0;

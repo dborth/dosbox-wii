@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_files.cpp,v 1.47 2003/10/10 13:50:34 finsterr Exp $ */
+/* $Id: dos_files.cpp,v 1.52 2004/02/02 19:20:38 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -53,6 +53,11 @@ void DOS_SetDefaultDrive(Bit8u drive) {
 }
 
 bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
+	if(strlen(name) == 0) {
+		DOS_SetError(DOSERR_FILE_NOT_FOUND);
+		return false;
+	}
+   
 	char tempdir[DOS_PATHLENGTH];
 	char upname[DOS_PATHLENGTH];
 	Bitu r,w;
@@ -81,7 +86,7 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 		case '\\':	case '$':	case '#':	case '@':	case '(':	case ')':
 		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
 		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
-		case '\'':	case '+':
+		case '\'':	case '+':	case '^':
 			upname[w++]=c;
 			break;
 		default:
@@ -359,7 +364,15 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	/* First check for devices */
 	if (flags>2) LOG(LOG_FILES,LOG_ERROR)("Special file open command %X file %s",flags,name);
 	else LOG(LOG_FILES,LOG_NORMAL)("file open command %X file %s",flags,name);
-	
+
+	Bit16u attr;
+	if(DOS_GetFileAttr(name,&attr)){ //DON'T ALLOW directories to be openened
+		if((attr & DOS_ATTR_DIRECTORY) || (attr & DOS_ATTR_VOLUME)){
+			DOS_SetError(DOSERR_ACCESS_DENIED);
+			return false;
+		}
+	}
+      
 	DOS_PSP psp(dos.psp);
 	Bit8u handle=DOS_FindDevice((char *)name);
 	bool device=false;char fullname[DOS_PATHLENGTH];Bit8u drive;Bit8u i;
@@ -445,6 +458,21 @@ bool DOS_GetFileAttr(char * name,Bit16u * attr) {
 		DOS_SetError(DOSERR_FILE_NOT_FOUND);
 		return false;
 	}
+}
+
+bool DOS_SetFileAttr(char * name,Bit16u attr) 
+// this function does not change the file attributs
+// it just does some tests if file is available 
+// returns false when using on cdrom (stonekeep)
+{
+	Bit16u attrTemp;
+	char fullname[DOS_PATHLENGTH];Bit8u drive;
+	if (!DOS_MakeName(name,fullname,&drive)) return false;	
+	if (strcmp(Drives[drive]->GetInfo(),"CDRom.")==0) {
+		DOS_SetError(DOSERR_ACCESS_DENIED);
+		return false;
+	}
+	return Drives[drive]->GetFileAttr(fullname,&attrTemp);
 }
 
 bool DOS_Canonicalize(char * name,char * big) {

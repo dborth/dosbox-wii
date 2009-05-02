@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "shell_inc.h"
+#include "shell.h"
 
 
 BatchFile::BatchFile(DOS_Shell * host,char * name, char * cmd_line) {
@@ -89,7 +89,7 @@ emptyline:
 				if (!first) continue; *first++=0;
 				std::string temp;
 				if (shell->GetEnvStr(cmd_read,temp)) {
-					char * equals=strchr(temp.c_str(),'=');
+					const char * equals=strchr(temp.c_str(),'=');
 					if (!equals) continue;
 					equals++;
 					strcpy(cmd_write,equals);
@@ -125,7 +125,8 @@ again:
 	} while (c!='\n' && n);
 	*cmd_write++=0;
 	if (cmd[0]==':') {
-		if (strcasecmp(cmd+1,where)==0) return true;
+		char *nospace = trim(cmd+1);   
+		if (strcasecmp(nospace,where)==0) return true;
 	}
 	if (!n) {
 		delete this;

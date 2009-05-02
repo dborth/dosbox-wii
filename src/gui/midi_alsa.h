@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,16 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: midi_alsa.h,v 1.7 2004/01/26 15:10:16 qbix79 Exp $ */
+
+#define ALSA_PCM_OLD_HW_PARAMS_API
+#define ALSA_PCM_OLD_SW_PARAMS_API
 #include <alsa/asoundlib.h>
 #include <ctype.h>
 
 #define ADDR_DELIM	".:"
 
-#if SND_LIB_MINOR >= 6
+#if ((SND_LIB_MINOR >= 6) && (SND_LIB_MAJOR == 0)) || (SND_LIB_MAJOR >= 1)
 #define snd_seq_flush_output(x) snd_seq_drain_output(x)
 #define snd_seq_set_client_group(x,name)	/*nop */
 #define my_snd_seq_open(seqp) snd_seq_open(seqp, "hw", SND_SEQ_OPEN_OUTPUT, 0)
@@ -102,6 +106,10 @@ public:
 			break;
 		case 0xC0:
 			snd_seq_ev_set_pgmchange(&ev, chanID, midiCmd[1]);
+			send_event(0);
+			break;
+		case 0xD0:
+			snd_seq_ev_set_chanpress(&ev, chanID, midiCmd[1]);
 			send_event(0);
 			break;
 		case 0xE0:{

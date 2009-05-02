@@ -2,7 +2,7 @@ enum {
 	L_N=0,
 	L_SKIP,
 	/* Grouped ones using MOD/RM */
-	L_MODRM,
+	L_MODRM,L_POPwRM,L_POPdRM,
 	
 	L_Ib,L_Iw,L_Id,
 	L_Ibx,L_Iwx,L_Idx,				//Sign extend
@@ -14,8 +14,6 @@ enum {
 	L_POPw,L_POPd,
 	L_POPfw,L_POPfd,
 	L_SEG,
-
-
 
 	L_FLG,L_INTO,
 
@@ -29,22 +27,23 @@ enum {
 	D_IRETw,D_IRETd,
 	D_PUSHAw,D_PUSHAd,
 	D_POPAw,D_POPAd,
+	D_POPSEGw,D_POPSEGd,
 	D_DAA,D_DAS,
 	D_AAA,D_AAS,
 	D_CBW,D_CWDE,
 	D_CWD,D_CDQ,
 	D_SETALC,
-	D_XLATw,D_XLATd,
+	D_XLAT,
 	D_CLI,D_STI,D_STC,D_CLC,D_CMC,D_CLD,D_STD,
 	D_NOP,D_WAIT,
 	D_ENTERw,D_ENTERd,
 	D_LEAVEw,D_LEAVEd,
-	L_ERROR,
-
+	
 	D_RETFw,D_RETFd,
 	D_RETFwIw,D_RETFdIw,
 	D_CPUID,
-	D_HLT,
+	D_HLT,D_CLTS,
+	L_ERROR,
 };
 
 
@@ -82,7 +81,8 @@ enum {
 
 	O_GRP6w,O_GRP6d,
 	O_GRP7w,O_GRP7d,
-	O_M_Cd_Rd,O_M_Rd_Cd,
+	O_M_CRx_Rd,O_M_Rd_CRx,
+	O_M_DRx_Rd,O_M_Rd_DRx,
 	O_LAR,O_LSL,
 	O_ARPL,
 	
@@ -106,7 +106,6 @@ enum {
 	
 	S_REGb,S_REGw,S_REGd,
 	S_PUSHw,S_PUSHd,
-	S_SEGI,
 	S_SEGm,
 	S_SEGGw,S_SEGGd,
 
@@ -131,10 +130,10 @@ enum {
 enum {
 	M_None=0,
 	M_Ebx,M_Eb,M_Gb,M_EbGb,M_GbEb,
-	M_Ewx,M_Ew,M_Gw,M_EwGw,M_GwEw,M_EwxGwx,
-	M_Edx,M_Ed,M_Gd,M_EdGd,M_GdEd,M_EdxGdx,
+	M_Ewx,M_Ew,M_Gw,M_EwGw,M_GwEw,M_EwxGwx,M_EwGwt,
+	M_Edx,M_Ed,M_Gd,M_EdGd,M_GdEd,M_EdxGdx,M_EdGdt,
 	
-	M_EbIb,
+	M_EbIb,M_EwIb,M_EdIb,
 	M_EwIw,M_EwIbx,M_EwxIbx,M_EwxIwx,M_EwGwIb,M_EwGwCL,
 	M_EdId,M_EdIbx,M_EdGdIb,M_EdGdCL,
 	
@@ -156,7 +155,7 @@ struct OpCode {
 
 struct FullData {
 	Bitu entry;
-	EAPoint start;
+	EAPoint opcode_start;
 	Bitu rm;
 	EAPoint rm_eaa;
 	Bitu rm_off;
