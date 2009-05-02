@@ -37,28 +37,36 @@ struct _LogGroup {
 	bool enabled;
 };
 
-namespace {
-	_LogGroup loggrp[LOG_MAX]={"",true,0};
-
-	FILE* debuglog;
-};
+static _LogGroup loggrp[LOG_MAX]={{"",true},{0,false}};
+static FILE* debuglog;
 
 extern int old_cursor_state;
-void DEBUG_ShowMsg(Bit32u entry, char * format,...) {
-	
-	if (!(entry & LOG_ERROR) && entry && !loggrp[entry].enabled) return;
 
-	char buf[1024];
-	strcpy(buf,loggrp[entry&127].front);
+
+
+void DEBUG_ShowMsg(char * format,...) {
+	
+	char buf[512];
 	va_list msg;
 	va_start(msg,format);
-	vsprintf(&buf[strlen(buf)],format,msg);
+	vsprintf(buf,format,msg);
 	va_end(msg);
 	wprintw(dbg.win_out,"%10d: %s\n",cycle_count,buf);
 	wrefresh(dbg.win_out);
     if(debuglog) fprintf(debuglog,"%10d: %s\n",cycle_count,buf);
 }
 
+void LOG::operator() (char* format, ...){
+	char buf[512];
+	va_list msg;
+	va_start(msg,format);
+	vsprintf(buf,format,msg);
+	va_end(msg);
+
+	if (d_type>=LOG_MAX) return;
+	if ((d_severity!=LOG_ERROR) && (!loggrp[d_type].enabled)) return;
+	DEBUG_ShowMsg("%s:%s",loggrp[d_type].front,buf);
+}
 
 
 static void Draw_RegisterLayout(void) {
@@ -148,7 +156,8 @@ static void LOG_Init(Section * sec) {
 	char buf[1024];
 	for (Bitu i=1;i<LOG_MAX;i++) {
 		strcpy(buf,loggrp[i].front);
-		buf[strlen(buf)-1]=0;
+		buf[strlen(buf)]=0;
+		lowcase(buf);
 		loggrp[i].enabled=sect->Get_bool(buf);
 	}
 }
@@ -156,30 +165,34 @@ static void LOG_Init(Section * sec) {
 
 void LOG_StartUp(void) {
 	/* Setup logging groups */
-	loggrp[LOG_VGA].front="VGA:";
-	loggrp[LOG_VGAGFX].front="VGAGFX:";
-	loggrp[LOG_VGAMISC].front="VGAMISC:";
-	loggrp[LOG_INT10].front="INT10:";
-	loggrp[LOG_SB].front="SBLASTER:";
-	loggrp[LOG_DMA].front="DMA:";
+	loggrp[LOG_ALL].front="ALL";
+	loggrp[LOG_VGA].front="VGA";
+	loggrp[LOG_VGAGFX].front="VGAGFX";
+	loggrp[LOG_VGAMISC].front="VGAMISC";
+	loggrp[LOG_INT10].front="INT10";
+	loggrp[LOG_SB].front="SBLASTER";
+	loggrp[LOG_DMA].front="DMA";
 	
-	loggrp[LOG_FPU].front="FPU:";
-	loggrp[LOG_CPU].front="CPU:";
+	loggrp[LOG_FPU].front="FPU";
+	loggrp[LOG_CPU].front="CPU";
+	loggrp[LOG_PAGING].front="PAGING";
 
-	loggrp[LOG_FCB].front="FCB:";
-	loggrp[LOG_FILES].front="FILES:";
-	loggrp[LOG_IOCTL].front="IOCTL:";
+	loggrp[LOG_FCB].front="FCB";
+	loggrp[LOG_FILES].front="FILES";
+	loggrp[LOG_IOCTL].front="IOCTL";
 	loggrp[LOG_EXEC].front="EXEC";
-	loggrp[LOG_DOSMISC].front="DOSMISC:";
+	loggrp[LOG_DOSMISC].front="DOSMISC";
 
-	loggrp[LOG_PIT].front="PIT:";
-	loggrp[LOG_KEYBOARD].front="KEYBOARD:";
-	loggrp[LOG_PIC].front="PIC:";
+	loggrp[LOG_PIT].front="PIT";
+	loggrp[LOG_KEYBOARD].front="KEYBOARD";
+	loggrp[LOG_PIC].front="PIC";
 
-	loggrp[LOG_MOUSE].front="MOUSE:";
-	loggrp[LOG_BIOS].front="BIOS:";
-	loggrp[LOG_GUI].front="GUI:";
-	loggrp[LOG_MISC].front="MISC:";
+	loggrp[LOG_MOUSE].front="MOUSE";
+	loggrp[LOG_BIOS].front="BIOS";
+	loggrp[LOG_GUI].front="GUI";
+	loggrp[LOG_MISC].front="MISC";
+
+	loggrp[LOG_IO].front="IO";
 	
 	/* Register the log section */
 	Section_prop * sect=control->AddSection_prop("log",LOG_Init);
@@ -187,7 +200,6 @@ void LOG_StartUp(void) {
 	char buf[1024];
 	for (Bitu i=1;i<LOG_MAX;i++) {
 		strcpy(buf,loggrp[i].front);
-		buf[strlen(buf)-1]=0;
 		lowcase(buf);
 		sect->Add_bool(buf,true);
 	}

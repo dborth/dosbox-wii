@@ -1,5 +1,5 @@
 dnl Init.
-AC_INIT(dosbox,0.58)
+AC_INIT(dosbox,0.60)
 AC_PREREQ(2.50)
 AC_CONFIG_SRCDIR(README)
 
@@ -36,9 +36,19 @@ AC_C_INLINE
 AC_TYPE_SIZE_T
 AC_STRUCT_TM
 
+
+AC_MSG_CHECKING(if environ can be included)
+AC_TRY_LINK([#include <unistd.h>
+#include <stdlib.h>],[*environ;],
+[AC_MSG_RESULT(yes);AC_DEFINE(ENVIRON_INCLUDED,1,[environ can be included])],AC_MSG_RESULT(no))
+AC_MSG_CHECKING(if environ can be linked)
+AC_TRY_LINK([extern char ** environ;],[*environ;],
+[AC_MSG_RESULT(yes);AC_DEFINE(ENVIRON_LINKED,1,[environ can be linked])],AC_MSG_RESULT(no))
+
 dnl Checks for libraries.
 
 #Check if the compiler support attributes
+AH_TEMPLATE([C_HAS_ATTRIBUTE],[Determines if the compilers supports attributes for structures.])
 AC_MSG_CHECKING(if compiler allows __attribute__)
 AC_TRY_COMPILE([], [typedef struct { } __attribute__ ((packed)) junk;], 
     [ AC_MSG_RESULT(yes);AC_DEFINE(C_HAS_ATTRIBUTE)],AC_MSG_RESULT(no))
@@ -50,29 +60,66 @@ AC_C_BIGENDIAN
 
 #Features to enable/disable
 AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
-AC_ARG_ENABLE(debug,[  --enable-debug          Enable debug mode],[
+AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
+AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
    AC_CHECK_HEADER(curses.h,have_curses_h=yes,)
    AC_CHECK_LIB(curses, initscr, have_curses_lib=yes, , )
+   AC_CHECK_LIB(pdcurses, initscr, have_pdcurses_lib=yes, , )
 
    if test x$have_curses_lib = xyes -a x$have_curses_h = xyes ; then
-    LIBS="$LIBS -lcurses"
+     LIBS="$LIBS -lcurses"
      AC_DEFINE(C_DEBUG,1)
+     if test x$enable_debug = xheavy ; then 
+       AC_DEFINE(C_HEAVY_DEBUG,1)
+     fi
+   elif test x$have_pdcurses_lib = xyes -a x$have_curses_h = xyes ; then
+     LIBS="$LIBS -lpdcurses"
+     AC_DEFINE(C_DEBUG,1)
+     if test x$enable_debug = xheavy ; then 
+       AC_DEFINE(C_HEAVY_DEBUG,1)
+     fi
    else 
-     AC_MSG_WARN([Can't enable debug mode without libcurses])
+     AC_MSG_WARN([Can't find curses, debug mode disabled])
    fi
 ],)
 
-AH_TEMPLATE(C_SSHOT,[Define to 1 to enable screenshots, requires libpng])
-AC_ARG_ENABLE(shots,[  --enable-shots          Enable screenshot support],[
-  AC_CHECK_HEADER(png.h,have_png_h=yes,)
-  AC_CHECK_LIB(png, png_check_sig, have_png_lib=yes, ,-lz)
-  if test x$have_png_lib = xyes -a x$have_png_h = xyes ; then
-    LIBS="$LIBS -lpng -lz"
-    AC_DEFINE(C_SSHOT,1)
-   else
-    AC_MSG_WARN([Can't enable screenshots without libpng])
+AH_TEMPLATE(C_CORE_INLINE,[Define to 1 to use inlined memory functions in cpu core])
+AC_ARG_ENABLE(core-inline,AC_HELP_STRING([--enable-core-inline],[Enable inlined memory handling in CPU Core]),[
+  if test x$enable_core_inline = xyes ; then 
+    AC_MSG_RESULT([enabling inlined memory handling in CPU Core]),
+    AC_DEFINE(C_CORE_INLINE,1)
   fi
 ],)
+
+AH_TEMPLATE(C_FPU,[Define to 1 to enable floating point emulation])
+AC_ARG_ENABLE(fpu,AC_HELP_STRING([--disable-fpu],[Disable FPU support]),[
+  if test x$enable_fpu = xno ; then 
+    AC_MSG_RESULT([disabling FPU supportd])
+  else 
+    AC_DEFINE(C_FPU,1)
+  fi 
+],AC_DEFINE(C_FPU,1))
+
+AH_TEMPLATE(C_SSHOT,[Define to 1 to enable screenshots, requires libpng])
+AC_CHECK_HEADER(png.h,have_png_h=yes,)
+AC_CHECK_LIB(png, png_check_sig, have_png_lib=yes, ,-lz)
+if test x$have_png_lib = xyes -a x$have_png_h = xyes ; then
+  LIBS="$LIBS -lpng -lz"
+  AC_DEFINE(C_SSHOT,1)
+else
+  AC_MSG_WARN([Can't find libpng, screenshot support disabled])
+fi
+
+AH_TEMPLATE(C_MODEM,[Define to 1 to enable internal modem support, requires SDL_net])
+AC_CHECK_HEADER(SDL/SDL_net.h,have_sdl_net_h=yes,)
+AC_CHECK_LIB(SDL_net, SDLNet_Init, have_sdl_net_lib=yes, , )
+if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
+  LIBS="$LIBS -lSDL_net"
+   AC_DEFINE(C_MODEM,1)
+else 
+   AC_MSG_WARN([Can't find SDL_net, internal modem disabled])
+fi
+
 
 dnl Some host detection and actions for them
 case "$target" in
@@ -95,6 +142,8 @@ Makefile
 src/Makefile
 src/cpu/Makefile
 src/cpu/core_16/Makefile
+src/cpu/core_full/Makefile
+src/cpu/core_normal/Makefile
 src/debug/Makefile
 src/dos/Makefile
 src/fpu/Makefile

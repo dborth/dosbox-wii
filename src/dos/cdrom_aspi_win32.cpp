@@ -92,13 +92,13 @@ BYTE CDROM_Interface_Aspi::GetHostAdapter(char* hardwareID)
 				if (sd.SRB_Status == SS_COMP) {
 					if (sd.SRB_DeviceType == DTYPE_CDROM) {						
 						if ((target==j) && (lun==k)) {
-							LOG(LOG_MISC,"SCSI: Getting Hardware vendor.");								
+							LOG(LOG_MISC,LOG_NORMAL)("SCSI: Getting Hardware vendor.");								
 							// "Hardware ID = vendor" match ?
 							char vendor[64];
 							if (GetVendor(i,target,lun,vendor)) {
-								LOG(LOG_MISC,"SCSI: Vendor : %s",vendor);	
+								LOG(LOG_MISC,LOG_NORMAL)("SCSI: Vendor : %s",vendor);	
 								if (strstr(strupr(hardwareID),strupr(vendor))) {
-									LOG(LOG_MISC,"SCSI: Host Adapter found: %d",i);								
+									LOG(LOG_MISC,LOG_NORMAL)("SCSI: Host Adapter found: %d",i);								
 									return i;								
 								}
 							};
@@ -108,7 +108,7 @@ BYTE CDROM_Interface_Aspi::GetHostAdapter(char* hardwareID)
 			}
 		}
 	}
-	LOG(LOG_ERROR,"SCSI: Host Adapter not found: %d",i);									
+	LOG(LOG_MISC,LOG_ERROR)("SCSI: Host Adapter not found: %d",i);									
 	return 0;
 };
 
@@ -131,16 +131,16 @@ bool CDROM_Interface_Aspi::ScanRegistryFindKey(HKEY& hKeyBase)
 			newKeyResult = RegOpenKeyEx (hKeyBase,subKey,0,KEY_READ,&hNewKey);
 			if (newKeyResult==ERROR_SUCCESS) {
 				if (GetRegistryValue(hNewKey,"CurrentDriveLetterAssignment",buffer,256)) {
-					LOG(LOG_MISC,"SCSI: Drive Letter found: %s",buffer);					
+					LOG(LOG_MISC,LOG_NORMAL)("SCSI: Drive Letter found: %s",buffer);					
 					// aha, something suspicious...
 					if (buffer[0]==letter) {
 						char hardwareID[256];
 						// found it... lets see if we can get the scsi values				
 						bool v1 = GetRegistryValue(hNewKey,"SCSILUN",buffer,256);
-						LOG(LOG_MISC,"SCSI: SCSILUN found: %s",buffer);					
+						LOG(LOG_MISC,LOG_NORMAL)("SCSI: SCSILUN found: %s",buffer);					
 						lun		= buffer[0]-'0';
 						bool v2 = GetRegistryValue(hNewKey,"SCSITargetID",buffer,256);
-						LOG(LOG_MISC,"SCSI: SCSITargetID found: %s",buffer);					
+						LOG(LOG_MISC,LOG_NORMAL)("SCSI: SCSITargetID found: %s",buffer);					
 						target  = buffer[0]-'0';
 						bool v3 = GetRegistryValue(hNewKey,"HardwareID",hardwareID,256);
 						RegCloseKey(hNewKey);
@@ -667,7 +667,7 @@ bool CDROM_Interface_Aspi::GetMediaTrayStatus(bool& mediaPresent, bool& mediaCha
 	return true;
 };
 
-bool CDROM_Interface_Aspi::ReadSectors(void* buffer, bool raw, unsigned long sector, unsigned long num)
+bool CDROM_Interface_Aspi::ReadSectors(PhysPt buffer, bool raw, unsigned long sector, unsigned long num)
 {
 	SRB_ExecSCSICmd s;DWORD dwStatus;
 
@@ -675,12 +675,8 @@ bool CDROM_Interface_Aspi::ReadSectors(void* buffer, bool raw, unsigned long sec
 
 	memset(&s,0,sizeof(s));
 
-	// FIXME : Is there a method to get cooked sectors with aspi ???
-	//         all combination i tried were failing.
-	//         so we have to allocate extra mem and copy data to buffer if in cooked mode
-	char*		inPtr = (char*)buffer;
-	if (!raw)	inPtr = new char[num*2352];
-	if (!inPtr) return false;
+	Bitu   buflen	= raw?2352*num:2048*num;
+	Bit8u* bufdata	= new Bit8u[buflen];
 
 	s.SRB_Cmd        = SC_EXEC_SCSI_CMD;
 	s.SRB_HaId       = haId;
@@ -689,8 +685,8 @@ bool CDROM_Interface_Aspi::ReadSectors(void* buffer, bool raw, unsigned long sec
 	s.SRB_Flags      = SRB_DIR_IN | SRB_EVENT_NOTIFY;
 	s.SRB_SenseLen   = SENSE_LEN;
 
-	s.SRB_BufLen     = 2352*num; //num*(raw?2352:2048);
-	s.SRB_BufPointer = (BYTE FAR*)inPtr;
+	s.SRB_BufLen     = buflen;
+	s.SRB_BufPointer = (BYTE FAR*)bufdata;
 	s.SRB_CDBLen     = 12;
 	s.SRB_PostProc   = (LPVOID)hEvent;
 
@@ -712,24 +708,12 @@ bool CDROM_Interface_Aspi::ReadSectors(void* buffer, bool raw, unsigned long sec
 
 	CloseHandle(hEvent);
 
-	if (s.SRB_Status!=SS_COMP) {
-		if (!raw) delete[] inPtr;
-		return false;
-	}
+	// Copy to PhysPt
+	MEM_BlockWrite(buffer,bufdata,buflen);
 
-	if (!raw) {
-		// copy user data to buffer
-		char* source = inPtr;
-		source+=16; // jump 16 bytes
-		char* outPtr = (char*)buffer;
-		for (unsigned long i=0; i<num; i++) {
-			memcpy(outPtr,source,2048);
-			outPtr+=COOKED_SECTOR_SIZE;
-			source+=RAW_SECTOR_SIZE;
-		};
-		delete[] inPtr;
-	};	
-	return true;
+	delete[] bufdata;
+
+	return (s.SRB_Status==SS_COMP);
 };
 
 #endif

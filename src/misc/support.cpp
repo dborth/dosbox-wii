@@ -16,6 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: support.cpp,v 1.20 2003/10/14 20:39:02 harekiet Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "dosbox.h"
+#include "debug.h"
 #include "support.h"
 #include "video.h"
 
@@ -88,7 +90,7 @@ bool ScanCMDBool(char * cmd,char * check) {
 	while ((scan=strchr(scan,'/'))) {
 		/* found a / now see behind it */
 		scan++;
-		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]==0)) {
+		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]=='/' || scan[c_len]==0)) {
 		/* Found a math now remove it from the string */
 			memmove(scan-1,scan+c_len,strlen(scan+c_len)+1);
 			trim(scan-1);
@@ -155,33 +157,16 @@ char * StripWord(char * cmd) {
 	return trim(cmd+strlen(begin)+1);
 }
 
-void GFX_ShowMsg(char * msg);
-
-void S_Warn(char * format,...) {
-	char buf[1024];
+static char buf[1024];           //greater scope as else it doesn't always gets thrown right (linux/gcc2.95)
+void E_Exit(char * format,...) {
+#if C_DEBUG && C_HEAVY_DEBUG
+ 	DEBUG_HeavyWriteLogInstruction();
+#endif
 	va_list msg;
-	
 	va_start(msg,format);
 	vsprintf(buf,format,msg);
 	va_end(msg);
-#if C_DEBUG
-	DEBUG_ShowMsg(0,buf);
-#else
-	GFX_ShowMsg(buf);
-#endif
-}
+	strcat(buf,"\n");
 
-static char buf[1024];           //greater scope as else it doesn't always gets thrown right (linux/gcc2.95)
-void E_Exit(char * format,...) {
-	if(errorlevel>=1) {
-		va_list msg;
-		va_start(msg,format);
-		vsprintf(buf,format,msg);
-		va_end(msg);
-		
-		strcat(buf,"\n");
-	} else  {
-		strcpy(buf,"an unsupported feature\n");
-	}
 	throw(buf);
 }

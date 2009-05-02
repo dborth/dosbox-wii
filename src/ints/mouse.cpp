@@ -16,6 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: mouse.cpp,v 1.24 2003/09/24 19:35:01 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -181,18 +182,19 @@ void SaveVgaRegisters()
 	for (int i=0; i<9; i++) {
 		IO_Write	(0x3CE,i);
 		gfxReg[i] = IO_Read(0x3CF);
-	};
-	// Set default
-	INT10_SetGfxControllerToDefault();
-};
+	}
+	/* Setup some default values in GFX regs that should work */
+	IO_Write	(0x3CE,3);IO_Write(0x3Cf,0);		//disable rotate and operation
+	IO_Write	(0x3CE,5);IO_Write(0x3Cf,0);		//Force read/write mode 0
+}
 
 void RestoreVgaRegisters()
 {
 	for (int i=0; i<9; i++) {
 		IO_Write(0x3CE,i);
 		IO_Write(0x3CF,gfxReg[i]);
-	};
-};
+	}
+}
 
 void ClipCursorArea(Bit16s& x1, Bit16s& x2, Bit16s& y1, Bit16s& y2, Bit16u& addx1, Bit16u& addx2, Bit16u& addy)
 {
@@ -253,18 +255,18 @@ void DrawCursor() {
 	if (mouse.shown<0) return;
 
 	// Get Clipping ranges
-	VGAMODES * curmode=GetCurrentMode();	
-	if (!curmode) return;
-	
+
 	// In Textmode ?
-	if (curmode->type==TEXT) {
+	if (CurMode->type==M_TEXT16) {
 		DrawCursorText();
 		return;
 	}
 
-	mouse.clipx = curmode->swidth-1;
-	mouse.clipy = curmode->sheight-1;
-
+	mouse.clipx = CurMode->swidth-1;	/* Get from bios ? */
+	mouse.clipy = CurMode->sheight-1;
+	Bit16s xratio = 640 / CurMode->swidth;  /* might be mouse.max_x-.mouse.min_x+1/swidth */
+											/* might even be vidmode == 0x13?2:1 */
+	
 	RestoreCursorBackground();
 
 	SaveVgaRegisters();
@@ -273,7 +275,7 @@ void DrawCursor() {
 	Bit16s x,y;
 	Bit16u addx1,addx2,addy;
 	Bit16u dataPos	= 0;
-	Bit16s x1		= POS_X - mouse.hotx;
+	Bit16s x1		= POS_X / xratio - mouse.hotx;
 	Bit16s y1		= POS_Y - mouse.hoty;
 	Bit16s x2		= x1 + CURSORX - 1;
 	Bit16s y2		= y1 + CURSORY - 1;	
@@ -289,7 +291,7 @@ void DrawCursor() {
 		dataPos += addx2;
 	};
 	mouse.background= true;
-	mouse.backposx	= POS_X - mouse.hotx;
+	mouse.backposx	= POS_X / xratio - mouse.hotx;
 	mouse.backposy	= POS_Y - mouse.hoty;
 
 	// Draw Mousecursor
@@ -389,9 +391,10 @@ static void SetMickeyPixelRate(Bit16s px, Bit16s py)
 	}
 };
 
-void Mouse_SetResolution(Bit16u width, Bit16u height)
-{
-	mouse.shown = -1;		// hide cursor
+static void mouse_reset_hardware(void){
+	mouse.sub_mask=0;
+	mouse.sub_seg=0;
+	mouse.sub_ofs=0;
 };
 
 static void  mouse_reset(void) 
@@ -425,7 +428,7 @@ static void  mouse_reset(void)
 		break;
 	default:
 		mouse.max_y=199;
-		LOG(LOG_MOUSE|LOG_ERROR,"Unhandled videomode %X on reset",mode);
+		LOG(LOG_MOUSE,LOG_ERROR)("Unhandled videomode %X on reset",mode);
 		break;
 	} 
 	mouse.max_x=639;
@@ -433,13 +436,10 @@ static void  mouse_reset(void)
 	mouse.min_y=0;
 	// Dont set max coordinates here. it is done by SetResolution!
 	mouse.x=0;				// civ wont work otherwise
-	mouse.y=mouse.max_y/2;
+	mouse.y=static_cast<float>(mouse.max_y/2);
 	mouse.events=0;
 	mouse.mickey_x=0;
 	mouse.mickey_y=0;
-	mouse.sub_mask=0;
-	mouse.sub_seg=0;
-	mouse.sub_ofs=0;
 
 	mouse.hotx		 = 0;
 	mouse.hoty		 = 0;
@@ -452,14 +452,22 @@ static void  mouse_reset(void)
 	SetMickeyPixelRate(8,16);
 }
 
+void Mouse_NewVideoMode(void)
+{
+	//mouse.shown = -1;	
+	mouse_reset();
+	//Added this for cd-v19
+}
+
 static Bitu INT33_Handler(void) {
 
-//	LOG(0,"MOUSE: %04X",reg_ax);
+//	LOG(LOG_MOUSE,LOG_NORMAL)("MOUSE: %04X",reg_ax);
 	switch (reg_ax) {
 	case 0x00:	/* Reset Driver and Read Status */
+		mouse_reset_hardware(); /* fallthrough */
 	case 0x21:	/* Software Reset */
 		reg_ax=0xffff;
-		reg_bx=MOUSE_BUTTONS;		
+		reg_bx=MOUSE_BUTTONS;
 		mouse_reset();
 		Mouse_AutoLock(true);
 		break;
@@ -471,9 +479,8 @@ static Bitu INT33_Handler(void) {
 		break;
 	case 0x02:	/* Hide Mouse */
 		{
-			VGAMODES * curmode=GetCurrentMode();	
-			if (curmode && curmode->type==GRAPH)	RestoreCursorBackground();
-			else									RestoreCursorBackgroundText();
+			if (CurMode->type!=M_TEXT16)	RestoreCursorBackground();
+			else							RestoreCursorBackgroundText();
 			mouse.shown--;
 		}
 		break;
@@ -483,8 +490,8 @@ static Bitu INT33_Handler(void) {
 		reg_dx=POS_Y;
 		break;
 	case 0x04:	/* Position Mouse */
-		mouse.x=(float)reg_cx;
-		mouse.y=(float)reg_dx;
+		mouse.x = static_cast<float>(((reg_cx > mouse.max_x) ? mouse.max_x : reg_cx));
+		mouse.y = static_cast<float>(((reg_dx > mouse.max_y) ? mouse.max_y : reg_dx));
 		DrawCursor();
 		break;
 	case 0x05:	/* Return Button Press Data */
@@ -510,25 +517,27 @@ static Bitu INT33_Handler(void) {
 			break;
 		}
 	case 0x07:	/* Define horizontal cursor range */
-		{
+		{	//lemmings set 1-640 and wants that. iron seeds set 0-640 but doesn't like 640
 			Bits max,min;
 			if ((Bit16s)reg_cx<(Bit16s)reg_dx) { min=(Bit16s)reg_cx;max=(Bit16s)reg_dx;}
 			else { min=(Bit16s)reg_dx;max=(Bit16s)reg_cx;}
-			if (!(max & 1)) max--;
+			//if(max - min + 1 > 640) max = min + 640 - 1;
 			mouse.min_x=min;
 			mouse.max_x=max;
-			LOG(LOG_MOUSE,"Define Hortizontal range min:%d max:%d",min,max);
+			LOG(LOG_MOUSE,LOG_NORMAL)("Define Hortizontal range min:%d max:%d",min,max);
 		}
 		break;
 	case 0x08:	/* Define vertical cursor range */
-		{
+		{	// not sure what to take instead of the CurMode (see case 0x07 as well)
+			// especially the cases where sheight= 400 and we set it with the mouse_reset to 200
+			//disabled it at the moment. Seems to break syndicate who want 400 in mode 13
 			Bits max,min;
 			if ((Bit16s)reg_cx<(Bit16s)reg_dx) { min=(Bit16s)reg_cx;max=(Bit16s)reg_dx;}
 			else { min=(Bit16s)reg_dx;max=(Bit16s)reg_cx;}
-			if (!(max & 1)) max--;
+		//	if(static_cast<Bitu>(max - min + 1) > CurMode->sheight) max = min + CurMode->sheight - 1;
 			mouse.min_y=min;
 			mouse.max_y=max;
-			LOG(LOG_MOUSE,"Define Vertical range min:%d max:%d",min,max);
+			LOG(LOG_MOUSE,LOG_NORMAL)("Define Vertical range min:%d max:%d",min,max);
 		}
 		break;
 	case 0x09:	/* Define GFX Cursor */
@@ -595,7 +604,7 @@ static Bitu INT33_Handler(void) {
 		reg_cl=0;		/* Hmm ps2 irq dunno */
 		break;
 	default:
-		LOG(LOG_ERROR|LOG_MOUSE,"Mouse Function %2X",reg_ax);
+		LOG(LOG_MOUSE,LOG_ERROR)("Mouse Function %2X",reg_ax);
 	}
 	return CBRET_NONE;
 }
@@ -630,6 +639,7 @@ static Bitu INT74_Handler(void) {
 		}
 	}
 	IO_Write(0xa0,0x20);
+	IO_Write(0x20,0x20);
 	/* Check for more Events if so reactivate IRQ */
 	if (mouse.events) {
 		PIC_ActivateIRQ(12);
@@ -652,11 +662,11 @@ void CreateMouseCallback(void)
 	// Create a mouse vector with weird address 
 	// for strange mouse detection routines in Sim City & Wasteland
 	Bit16u ofs = call_int33<<4;
-	real_writeb((Bit16u)CB_SEG,ofs+0,(Bit8u)0x90);	//NOP
-	real_writeb((Bit16u)CB_SEG,ofs+1,(Bit8u)0xFE);	//GRP 4
-	real_writeb((Bit16u)CB_SEG,ofs+2,(Bit8u)0x38);	//Extra Callback instruction
-	real_writew((Bit16u)CB_SEG,ofs+3,call_int33);	//The immediate word
-	real_writeb((Bit16u)CB_SEG,ofs+5,(Bit8u)0xCF);	//An IRET Instruction
+	phys_writeb(CB_BASE+ofs+0,(Bit8u)0x90);	//NOP
+	phys_writeb(CB_BASE+ofs+1,(Bit8u)0xFE);	//GRP 4
+	phys_writeb(CB_BASE+ofs+2,(Bit8u)0x38);	//Extra Callback instruction
+	phys_writew(CB_BASE+ofs+3,call_int33);	//The immediate word
+	phys_writeb(CB_BASE+ofs+5,(Bit8u)0xCF);	//An IRET Instruction
 	// Write weird vector
 	WriteMouseIntVector();
 };
@@ -671,6 +681,7 @@ void MOUSE_Init(Section* sec) {
 	real_writed(0,(0x74<<2),CALLBACK_RealPointer(call_int74));
 
 	memset(&mouse,0,sizeof(mouse));
+	mouse_reset_hardware();
 	mouse_reset();
 }
 

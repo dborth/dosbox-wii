@@ -29,19 +29,44 @@ struct Flag_Info {
 	} var1,var2,result;
 	Bitu type;
 	Bitu prev_type;
-	bool cf,sf,pf,af,zf,of,df,tf,intf;
-	bool nt;
-	Bit8u io;
-	bool oldcf;
+	Bitu oldcf;
+	Bitu word;
 };
+
+
+#define FLAG_CF		0x00000001
+#define FLAG_PF		0x00000004
+#define FLAG_AF		0x00000010
+#define FLAG_ZF		0x00000040
+#define FLAG_SF		0x00000080
+#define FLAG_TF		0x00000100
+#define FLAG_IF		0x00000200
+#define FLAG_DF		0x00000400
+#define FLAG_OF		0x00000800
+
+#define FLAG_MASK	(FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF | FLAG_OF)
+
+#define FLAG_IOPL	0x00003000
+#define FLAG_NT		0x00004000
+#define FLAG_VM		0x00020000
+
+
+#define SETFLAGBIT(TYPE,TEST) if (TEST) flags.word|=FLAG_ ## TYPE; else flags.word&=~FLAG_ ## TYPE
+
+#define GETFLAG(TYPE) (flags.word & FLAG_ ## TYPE)
+#define GETFLAGBOOL(TYPE) ((flags.word & FLAG_ ## TYPE) ? true : false )
 
 struct Segment {
 	Bit16u val;
 	PhysPt phys;							/* The phyiscal address start in emulated machine */
 };
 
+enum SegNames { es=0,cs,ss,ds,fs,gs};
 
-enum SegNames { cs=0,ds,es,fs,gs,ss};
+struct Segments {
+	Bitu val[8];
+	PhysPt phys[8];
+};
 
 union GenReg32 {
 	Bit32u dword[1];
@@ -69,7 +94,7 @@ struct CPU_Regs {
 	 GenReg32 regs[8],ip;
 };
 
-extern Segment Segs[6];
+extern Segments Segs;
 extern Flag_Info flags;
 extern CPU_Regs cpu_regs;
 
@@ -78,11 +103,11 @@ extern CPU_Regs cpu_regs;
 //#define SegValue(index) Segs[index].val
 
 INLINE PhysPt SegPhys(SegNames index) {
-	return Segs[index].phys;
+	return Segs.phys[index];
 }
 
 INLINE Bit16u SegValue(SegNames index) {
-	return Segs[index].val;
+	return Segs.val[index];
 }
 
 	
@@ -92,15 +117,21 @@ INLINE RealPt RealMakeSeg(SegNames index,Bit16u off) {
 
 
 INLINE void SegSet16(Bitu index,Bit16u val) {
-	Segs[index].val=val;
-	Segs[index].phys=val << 4;
+	Segs.val[index]=val;
+	Segs.phys[index]=val << 4;
 }
 
 
-enum REG_NUM {
-	REG_NUM_AX, REG_NUM_CX, REG_NUM_DX, REG_NUM_BX,
-	REG_NUM_SP, REG_NUM_BP, REG_NUM_SI, REG_NUM_DI
+enum {
+	REGI_AX, REGI_CX, REGI_DX, REGI_BX,
+	REGI_SP, REGI_BP, REGI_SI, REGI_DI
 };
+
+enum {
+	REGI_AL, REGI_CL, REGI_DL, REGI_BL,
+	REGI_AH, REGI_CH, REGI_DH, REGI_BH,
+};
+
 
 //macros to convert a 3-bit register index to the correct register
 #define reg_8l(reg) (cpu_regs.regs[(reg)].byte[BL_INDEX])
@@ -110,37 +141,37 @@ enum REG_NUM {
 #define reg_32(reg) (cpu_regs.regs[(reg)].dword[DW_INDEX])
 
 
-#define reg_al cpu_regs.regs[REG_NUM_AX].byte[BL_INDEX]
-#define reg_ah cpu_regs.regs[REG_NUM_AX].byte[BH_INDEX]
-#define reg_ax cpu_regs.regs[REG_NUM_AX].word[W_INDEX]
-#define reg_eax cpu_regs.regs[REG_NUM_AX].dword[DW_INDEX]
+#define reg_al cpu_regs.regs[REGI_AX].byte[BL_INDEX]
+#define reg_ah cpu_regs.regs[REGI_AX].byte[BH_INDEX]
+#define reg_ax cpu_regs.regs[REGI_AX].word[W_INDEX]
+#define reg_eax cpu_regs.regs[REGI_AX].dword[DW_INDEX]
 
-#define reg_bl cpu_regs.regs[REG_NUM_BX].byte[BL_INDEX]
-#define reg_bh cpu_regs.regs[REG_NUM_BX].byte[BH_INDEX]
-#define reg_bx cpu_regs.regs[REG_NUM_BX].word[W_INDEX]
-#define reg_ebx cpu_regs.regs[REG_NUM_BX].dword[DW_INDEX]
+#define reg_bl cpu_regs.regs[REGI_BX].byte[BL_INDEX]
+#define reg_bh cpu_regs.regs[REGI_BX].byte[BH_INDEX]
+#define reg_bx cpu_regs.regs[REGI_BX].word[W_INDEX]
+#define reg_ebx cpu_regs.regs[REGI_BX].dword[DW_INDEX]
 
-#define reg_cl cpu_regs.regs[REG_NUM_CX].byte[BL_INDEX]
-#define reg_ch cpu_regs.regs[REG_NUM_CX].byte[BH_INDEX]
-#define reg_cx cpu_regs.regs[REG_NUM_CX].word[W_INDEX]
-#define reg_ecx cpu_regs.regs[REG_NUM_CX].dword[DW_INDEX]
+#define reg_cl cpu_regs.regs[REGI_CX].byte[BL_INDEX]
+#define reg_ch cpu_regs.regs[REGI_CX].byte[BH_INDEX]
+#define reg_cx cpu_regs.regs[REGI_CX].word[W_INDEX]
+#define reg_ecx cpu_regs.regs[REGI_CX].dword[DW_INDEX]
 
-#define reg_dl cpu_regs.regs[REG_NUM_DX].byte[BL_INDEX]
-#define reg_dh cpu_regs.regs[REG_NUM_DX].byte[BH_INDEX]
-#define reg_dx cpu_regs.regs[REG_NUM_DX].word[W_INDEX]
-#define reg_edx cpu_regs.regs[REG_NUM_DX].dword[DW_INDEX]
+#define reg_dl cpu_regs.regs[REGI_DX].byte[BL_INDEX]
+#define reg_dh cpu_regs.regs[REGI_DX].byte[BH_INDEX]
+#define reg_dx cpu_regs.regs[REGI_DX].word[W_INDEX]
+#define reg_edx cpu_regs.regs[REGI_DX].dword[DW_INDEX]
 
-#define reg_si cpu_regs.regs[REG_NUM_SI].word[W_INDEX]
-#define reg_esi cpu_regs.regs[REG_NUM_SI].dword[DW_INDEX]
+#define reg_si cpu_regs.regs[REGI_SI].word[W_INDEX]
+#define reg_esi cpu_regs.regs[REGI_SI].dword[DW_INDEX]
 
-#define reg_di cpu_regs.regs[REG_NUM_DI].word[W_INDEX]
-#define reg_edi cpu_regs.regs[REG_NUM_DI].dword[DW_INDEX]
+#define reg_di cpu_regs.regs[REGI_DI].word[W_INDEX]
+#define reg_edi cpu_regs.regs[REGI_DI].dword[DW_INDEX]
 
-#define reg_sp cpu_regs.regs[REG_NUM_SP].word[W_INDEX]
-#define reg_esp cpu_regs.regs[REG_NUM_SP].dword[DW_INDEX]
+#define reg_sp cpu_regs.regs[REGI_SP].word[W_INDEX]
+#define reg_esp cpu_regs.regs[REGI_SP].dword[DW_INDEX]
 
-#define reg_bp cpu_regs.regs[REG_NUM_BP].word[W_INDEX]
-#define reg_ebp cpu_regs.regs[REG_NUM_BP].dword[DW_INDEX]
+#define reg_bp cpu_regs.regs[REGI_BP].word[W_INDEX]
+#define reg_ebp cpu_regs.regs[REGI_BP].dword[DW_INDEX]
 
 #define reg_ip cpu_regs.ip.word[W_INDEX]
 #define reg_eip cpu_regs.ip.dword[DW_INDEX]

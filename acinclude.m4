@@ -303,9 +303,6 @@ AC_SUBST(ALSA_CFLAGS)
 AC_SUBST(ALSA_LIBS)
 ])
 
-
-
-
 AH_TOP([
 /*
  *  Copyright (C) 2002-2003  The DOSBox Team
@@ -326,8 +323,6 @@ AH_TOP([
  */
 ])
 
-AH_TEMPLATE([C_HAS_ATTRIBUTE],[Determines if the compilers supports attributes for structures.])
-
 AH_BOTTOM([#define INLINE inline])
 
 AH_BOTTOM([#if C_HAS_ATTRIBUTE
@@ -335,19 +330,5 @@ AH_BOTTOM([#if C_HAS_ATTRIBUTE
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #endif])
-
-AH_BOTTOM([
-/* Enable some heavy debugging options */
-#define C_HEAVY_DEBUG 0
-
-/* Enable some big compile-time increasing inlines */
-#define C_EXTRAINLINE 0
-
-/* Enable the FPU module, still only for beta testing */
-#define C_FPU 0
-
-/* Maximum memory address range in megabytes */
-#define C_MEM_MAX_SIZE 12
-])
 
 

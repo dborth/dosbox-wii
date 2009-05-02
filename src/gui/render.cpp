@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: render.cpp,v 1.19 2003/10/15 08:20:50 harekiet Exp $ */
+
 #include <sys/types.h>
 #include <dirent.h>
 
@@ -36,8 +38,8 @@ struct PalData {
 		Bit8u blue;
 		Bit8u unused;
 	} rgb[256];
-	Bitu first;
-	Bitu last;
+	volatile Bitu first;
+	volatile Bitu last;
 	union {
 		Bit32u bpp32[256];
 		Bit16u bpp16[256];
@@ -80,7 +82,6 @@ static struct {
 		const char * dir;
 	} shot;
 #endif
-	bool keep_small;
 	bool screenshot;
 	bool active;
 } render;
@@ -252,12 +253,18 @@ void RENDER_DoUpdate(void) {
 
 static void RENDER_DrawScreen(void * data) {
 	switch (render.op.type) {
+#if (C_SSHOT)
 doagain:
+#endif
 	case OP_None:
 		render.op.dest=render.op.pixels=data;
 		render.src.draw_handler(render.op.part_handler);
 		break;
-	case OP_Scale2x:
+	case OP_Blit:
+		render.op.dest=render.op.pixels=data;
+		render.src.draw_handler(render.op.part_handler);
+		break;
+	case OP_AdvMame2x:
 		render.op.dest=render.op.pixels=data;
 		render.src.draw_handler(render.op.part_handler);
 		break;
@@ -287,6 +294,17 @@ static void RENDER_Resize(Bitu * width,Bitu * height) {
 		else *width=(Bitu)(*height*render.src.ratio);
 	}
 }
+
+static void Render_Blit_CallBack(Bitu width,Bitu height,Bitu bpp,Bitu pitch,Bitu flags) {
+	render.op.width=width;
+	render.op.height=height;
+	render.op.bpp=bpp;
+	render.op.pitch=pitch;
+	render.op.type=OP_Blit;
+	render.op.part_handler=GFX_Render_Blit;
+	RENDER_ResetPal();
+}
+
 
 void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu pitch,float ratio,Bitu flags,RENDER_Draw_Handler draw_handler) {
 	if ((!width) || (!height) || (!pitch)) { 
@@ -319,27 +337,32 @@ normalop:
 			flags=0;
 			break;
 		case DoubleBoth:
-			if (render.keep_small) {
-				render.src.flags=0;
-				flags=0;
-			} else {
-				width*=2;height*=2;
-				flags=GFX_SHADOW;
-			}
+			render.src.flags=0;
+			flags=0;
 			break;
 		}
 		mode_callback=Render_Normal_CallBack;
 		break;
-	case OP_Scale2x:
+	case OP_Normal2x:
 		switch (render.src.flags) {
 		case DoubleBoth:
-			if (render.keep_small) goto normalop;
+			width*=2;height*=2;
+            flags=GFX_SHADOW;
+			mode_callback=Render_Normal_CallBack;
+			break;
+		default:
+			goto normalop;
+		}		
+		break;
+	case OP_AdvMame2x:
+		switch (render.src.flags) {
+		case DoubleBoth:
 			mode_callback=Render_Scale2x_CallBack;
 			width*=2;height*=2;
-#if defined (SCALE2X_NORMAL)
+#if defined (SCALE2X_MMX)
 			flags=GFX_SHADOW;
-#elif defined (SCALE2X_MMX)
-			flags=GFX_FIXED_BPP;
+#else
+			flags=GFX_SHADOW;
 #endif
 			break;
 		default:
@@ -355,27 +378,28 @@ normalop:
 	GFX_Start();
 }
 
+extern void GFX_SetTitle(Bits cycles, Bits frameskip);
 static void IncreaseFrameSkip(void) {
 	if (render.frameskip.max<10) render.frameskip.max++;
 	LOG_MSG("Frame Skip at %d",render.frameskip.max);
+	GFX_SetTitle(-1,render.frameskip.max);
 }
 
 static void DecreaseFrameSkip(void) {
 	if (render.frameskip.max>0) render.frameskip.max--;
 	LOG_MSG("Frame Skip at %d",render.frameskip.max);
+	GFX_SetTitle(-1,render.frameskip.max);
 }
 
 void RENDER_Init(Section * sec) {
-	MSG_Add("RENDER_CONFIGFILE_HELP","Available scalers: scale2x, none\n");
 	Section_prop * section=static_cast<Section_prop *>(sec);
 
 	render.pal.first=256;
 	render.pal.last=0;
-	render.keep_small=section->Get_bool("keepsmall");
 	render.frameskip.max=section->Get_int("frameskip");
 	render.frameskip.count=0;
 #if (C_SSHOT)
-	render.shot.dir=section->Get_string("snapshots");
+	render.shot.dir=section->Get_string("snapdir");
 	KEYBOARD_AddEvent(KBD_f5,KBD_MOD_CTRL,EnableScreenShot);
 #endif
 	const char * scaler;std::string cline;
@@ -385,12 +409,14 @@ void RENDER_Init(Section * sec) {
 		scaler=section->Get_string("scaler");
 	}
 	if (!strcasecmp(scaler,"none")) render.op.want_type=OP_None;
-	else if (!strcasecmp(scaler,"scale2x")) render.op.want_type=OP_Scale2x;
+	else if (!strcasecmp(scaler,"normal2x")) render.op.want_type=OP_Normal2x;
+	else if (!strcasecmp(scaler,"advmame2x")) render.op.want_type=OP_AdvMame2x;
 	else {
 		render.op.want_type=OP_None;
 		LOG_MSG("Illegal scaler type %s,falling back to none.",scaler);
 	}
 	KEYBOARD_AddEvent(KBD_f7,KBD_MOD_CTRL,DecreaseFrameSkip);
 	KEYBOARD_AddEvent(KBD_f8,KBD_MOD_CTRL,IncreaseFrameSkip);
+	GFX_SetTitle(-1,render.frameskip.max);
 }
 

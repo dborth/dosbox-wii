@@ -16,16 +16,14 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: dos_ioctl.cpp,v 1.16 2003/10/14 08:38:35 qbix79 Exp $ */
+
 #include <string.h>
 #include "dosbox.h"
 #include "callback.h"
 #include "mem.h"
-#include "cpu.h"
+#include "regs.h"
 #include "dos_inc.h"
-
-#define MAX_DEVICE 20
-static DOS_File * dos_devices[MAX_DEVICE];
-
 
 bool DOS_IOCTL(void) {
 	Bitu handle;Bit8u drive;
@@ -44,8 +42,26 @@ bool DOS_IOCTL(void) {
 	case 0x00:		/* Get Device Information */
 		reg_dx=Files[handle]->GetInformation();
 		return true;
+    case 0x06:      /* Get Input Status */
+		if (Files[handle]->GetInformation() & 0x8000) {		//Check for device
+			reg_al=(Files[handle]->GetInformation() & 0x40) ? 0x0 : 0xff;
+		} else { // FILE
+			Bit32u oldlocation=0;
+			Files[handle]->Seek(&oldlocation, DOS_SEEK_CUR);
+			Bit32u endlocation=0;
+			Files[handle]->Seek(&endlocation, DOS_SEEK_END);
+			if(oldlocation < endlocation){//Still data available
+				reg_al=0xff;
+			} else
+			{
+				reg_al=0x0; //EOF or beyond
+			}
+			Files[handle]->Seek(&oldlocation, DOS_SEEK_SET); //restore filelocation
+			LOG(LOG_IOCTL,LOG_NORMAL)("06:Used Get Input Status on regualar file with handle %d",handle);
+		}
+		return true;
 	case 0x07:		/* Get Output Status */
-		LOG(LOG_IOCTL,"DOS:IOCTL:07:Fakes output status is ready for handle %d",handle);
+		LOG(LOG_IOCTL,LOG_NORMAL)("07:Fakes output status is ready for handle %d",handle);
 		reg_al=0xff;
 		return true;
 	case 0x08:		/* Check if block device removable */
@@ -53,6 +69,17 @@ bool DOS_IOCTL(void) {
 		if (Drives[drive]) {
 			if (drive<2) reg_ax=0;	/* Drive a,b are removable if mounted */
 			else reg_ax=1;
+			return true;
+		} else {
+			DOS_SetError(DOSERR_INVALID_DRIVE);
+			return false;
+		}
+	case 0x09:		/* Check if block device remote */
+		drive=reg_bl;if (!drive) drive=dos.current_drive;else drive--;
+		if (Drives[drive]) {
+			reg_dx=0;
+			//TODO Cdrom drives are remote
+			//TODO Set bit 9 on drives that don't support direct I/O
 			return true;
 		} else {
 			DOS_SetError(DOSERR_INVALID_DRIVE);
@@ -71,7 +98,7 @@ bool DOS_IOCTL(void) {
 				mem_writeb(ptr+6,0x00);					// media type (00=other type)
 				break;
 			default	:	
-				LOG(LOG_IOCTL|LOG_ERROR,"DOS:IOCTL Call 0D:%2X Drive %2X unhandled",reg_cl,drive);
+				LOG(LOG_IOCTL,LOG_ERROR)("DOS:IOCTL Call 0D:%2X Drive %2X unhandled",reg_cl,drive);
 				return false;
 			}
 			return true;
@@ -86,15 +113,8 @@ bool DOS_IOCTL(void) {
 			return false;
 		}
 		break;
-    case 0x06:      /* Get Input Status */
-        if(reg_bx==0x00) { /* might work for other handles, but tested it only for STDIN */
-            if(Files[handle]->GetInformation() & 0x40) reg_al=0x00; else
-            reg_al=0xFF;
-            return true;
-            break;
-        }
 	default:
-		LOG(LOG_DOSMISC|LOG_ERROR,"DOS:IOCTL Call %2X unhandled",reg_al);
+		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:IOCTL Call %2X unhandled",reg_al);
 		return false;
 	};
 	return false;

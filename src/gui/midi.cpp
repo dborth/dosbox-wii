@@ -86,6 +86,12 @@ MidiHandler Midi_none;
 
 #endif
 
+#if defined (HAVE_ALSA)
+
+#include "midi_alsa.h"
+
+#endif
+
 static struct {
 	Bitu status;
 	Bitu cmd_len;
@@ -112,7 +118,7 @@ void MIDI_RawOutByte(Bit8u data) {
 			/* Play a sysex message */
 			midi.sysex.buf[midi.sysex.used++]=0xf7;
 			midi.handler->PlaySysex(midi.sysex.buf,midi.sysex.used);
-			LOG(0,"Sysex message size %d",midi.sysex.used);
+			LOG(LOG_ALL,LOG_NORMAL)("Sysex message size %d",midi.sysex.used);
 			midi.sysex.active=false;
 			if (data==0xf7) return;
 		}
@@ -142,7 +148,6 @@ bool MIDI_Available(void)  {
 
 void MIDI_Init(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
-	MSG_Add("MIDI_CONFIGFILE_HELP","Set midi output device,alsa,oss,win32,coreaudio,none\n");
 	const char * dev=section->Get_string("device");
 	const char * conf=section->Get_string("config");
 	/* If device = "default" go for first handler that works */

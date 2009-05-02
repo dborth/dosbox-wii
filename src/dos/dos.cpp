@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: dos.cpp,v 1.57 2003/10/14 23:33:33 harekiet Exp $ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +30,6 @@
 #include "regs.h"
 #include "dos_inc.h"
 #include "setup.h"
-#include "cpu.h"
 
 DOS_Block dos;
 DOS_InfoBlock dos_infoblock;
@@ -43,6 +44,10 @@ void DOS_SetError(Bit16u code) {
 
 #define DOSNAMEBUF 256
 static Bitu DOS_21Handler(void) {
+
+	DOS_PSP psp(dos.psp);
+	psp.SetStack(RealMake(SegValue(ss),reg_sp));
+
 	char name1[DOSNAMEBUF+1];
 	char name2[DOSNAMEBUF+1];
 	switch (reg_ah) {
@@ -172,7 +177,7 @@ static Bitu DOS_21Handler(void) {
 		}else{
 			reg_al=0xff;
 		}
-		LOG(LOG_FCB,"DOS:0x0f FCB-fileopen used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x0f FCB-fileopen used, result:al=%d",reg_al);
 		break;
 	case 0x10:		/* Close File using FCB */
 		if(DOS_FCBClose(SegValue(ds),reg_dx)){
@@ -180,7 +185,7 @@ static Bitu DOS_21Handler(void) {
 		}else{
 			reg_al=0xff;
 		}
-		LOG(LOG_FCB,"DOS:0x10 FCB-fileclose used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x10 FCB-fileclose used, result:al=%d",reg_al);
 		break;
 	case 0x11:		/* Find First Matching File using FCB */
 		if(DOS_FCBFindFirst(SegValue(ds),reg_dx)){
@@ -188,7 +193,7 @@ static Bitu DOS_21Handler(void) {
 		}else{
 			reg_al=0xff;
 		}
-		LOG(LOG_FCB,"DOS:0x11 FCB-FindFirst used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x11 FCB-FindFirst used, result:al=%d",reg_al);
 		break;
 	case 0x12:		/* Find Next Matching File using FCB */
 		if(DOS_FCBFindNext(SegValue(ds),reg_dx)){
@@ -196,7 +201,7 @@ static Bitu DOS_21Handler(void) {
 		}else{
 			reg_al=0xff;
 		}
-		LOG(LOG_FCB,"DOS:0x12 FCB-FindNext used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x12 FCB-FindNext used, result:al=%d",reg_al);
 		break;
 	case 0x13:		/* Delete File using FCB */
 		if (DOS_FCBDeleteFile(SegValue(ds),reg_dx)) reg_al = 0x00;
@@ -204,16 +209,16 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x14:		/* Sequential read from FCB */
 		reg_al = DOS_FCBRead(SegValue(ds),reg_dx,0);
-		LOG(LOG_FCB,"DOS:0x14 FCB-Read used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x14 FCB-Read used, result:al=%d",reg_al);
 		break;
 	case 0x15:		/* Sequential write to FCB */
 		reg_al=DOS_FCBWrite(SegValue(ds),reg_dx,0);
-		LOG(LOG_FCB,"DOS:0x15 FCB-Write used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x15 FCB-Write used, result:al=%d",reg_al);
 		break;
 	case 0x16:		/* Create or truncate file using FCB */
 		if (DOS_FCBCreate(SegValue(ds),reg_dx)) reg_al = 0x00;
 		else reg_al = 0xFF;
-		LOG(LOG_FCB,"DOS:0x16 FCB-Create used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x16 FCB-Create used, result:al=%d",reg_al);
 		break;
 	case 0x17:		/* Rename file using FCB */		
 		if (DOS_FCBRenameFile(SegValue(ds),reg_dx)) reg_al = 0x00;
@@ -227,11 +232,11 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x21:		/* Read random record from FCB */
 		reg_al = DOS_FCBRandomRead(SegValue(ds),reg_dx,1,true);
-		LOG(LOG_FCB,"DOS:0x21 FCB-Random read used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x21 FCB-Random read used, result:al=%d",reg_al);
 		break;
 	case 0x22:		/* Write random record to FCB */
 		reg_al=DOS_FCBRandomWrite(SegValue(ds),reg_dx,1,true);
-		LOG(LOG_FCB,"DOS:0x22 FCB-Random write used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x22 FCB-Random write used, result:al=%d",reg_al);
 		break;
 	case 0x23:		/* Get file size for FCB */
 		if (DOS_FCBGetFileSize(SegValue(ds),reg_dx,reg_cx)) reg_al = 0x00;
@@ -242,11 +247,11 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x27:		/* Random block read from FCB */
 		reg_al = DOS_FCBRandomRead(SegValue(ds),reg_dx,reg_cx,false);
-		LOG(LOG_FCB,"DOS:0x27 FCB-Random(block) read used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x27 FCB-Random(block) read used, result:al=%d",reg_al);
 		break;
 	case 0x28:		/* Random Block write to FCB */
 		reg_al=DOS_FCBRandomWrite(SegValue(ds),reg_dx,reg_cx,false);
-		LOG(LOG_FCB,"DOS:0x28 FCB-Random(block) write used, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x28 FCB-Random(block) write used, result:al=%d",reg_al);
 		break;
 	case 0x29:		/* Parse filename into FCB */
         {   Bit8u difference;
@@ -255,7 +260,7 @@ static Bitu DOS_21Handler(void) {
             reg_al=FCB_Parsename(SegValue(es),reg_di,reg_al ,string, &difference);
             reg_si+=difference;
         }
-		LOG(LOG_FCB,"DOS:29:FCB Parse Filename, result:al=%d",reg_al);
+		LOG(LOG_FCB,LOG_NORMAL)("DOS:29:FCB Parse Filename, result:al=%d",reg_al);
         break;
 	case 0x19:		/* Get current default drive */
 		reg_al=DOS_GetDefaultDrive();
@@ -296,16 +301,18 @@ static Bitu DOS_21Handler(void) {
 	case 0x2c:		/* Get System Time */
 //TODO Get time through bios calls date is fixed
 		{
-			Bit32u ticks=mem_readd(BIOS_TIMER);
-			Bit32u seconds=(ticks*10)/182;
+/*	Calculate how many miliseconds have passed */
+			Bitu ticks=5*mem_readd(BIOS_TIMER);
+			ticks = ((ticks / 59659u) << 16) + ((ticks % 59659u) << 16) / 59659u;
+			Bitu seconds=(ticks/100);
 			reg_ch=(Bit8u)(seconds/3600);
 			reg_cl=(Bit8u)((seconds % 3600)/60);
 			reg_dh=(Bit8u)(seconds % 60);
-			reg_dl=(Bit8u)(((ticks * 10) % 182)*100)/182;
+			reg_dl=(Bit8u)(ticks % 100);
 		}
 		break;
 	case 0x2d:		/* Set System Time */
-		LOG(LOG_ERROR,"DOS:Set System Time not supported");
+		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Set System Time not supported");
 		reg_al=0;	/* Noone is changing system time */
 		break;
 	case 0x2e:		/* Set Verify flag */
@@ -322,16 +329,12 @@ static Bitu DOS_21Handler(void) {
 		reg_ah=dos.version.minor;
 		break;
 	case 0x31:		/* Terminate and stay resident */
-//TODO First get normal files executing
+		//TODO First get normal files executing
+		// Important: This service does not set the carry flag!
 		DOS_ResizeMemory(dos.psp,&reg_dx);
-		if (DOS_Terminate(true)) {
-			dos.return_code=reg_al;
-			dos.return_mode=RETURN_TSR;
-			CALLBACK_SCF(false);
-		} else {            
-			reg_ax=dos.errorcode;
-			CALLBACK_SCF(true);
-		}
+		DOS_Terminate(true);
+		dos.return_code=reg_al;
+		dos.return_mode=RETURN_TSR;
 		break;
 	case 0x33:		/* Extended Break Checking */
 		switch (reg_al) {
@@ -383,7 +386,7 @@ static Bitu DOS_21Handler(void) {
 		case 3:
 			 reg_al=0;break;
 		};
-		LOG(LOG_ERROR|LOG_MISC,"DOS:0x37:Call for not supported switchchar");
+		LOG(LOG_MISC,LOG_ERROR)("DOS:0x37:Call for not supported switchchar");
 		break;
 	case 0x38:					/* Set Country Code */	
 		if (reg_al==0) {		/* Get country specidic information */
@@ -403,7 +406,7 @@ static Bitu DOS_21Handler(void) {
 			CALLBACK_SCF(false);
 			break;
 		} else {				/* Set country code */
-			LOG(LOG_ERROR|LOG_MISC,"DOS:Setting country code not supported");
+			LOG(LOG_MISC,LOG_ERROR)("DOS:Setting country code not supported");
 		}
 		CALLBACK_SCF(true);
 		break;
@@ -523,11 +526,13 @@ static Bitu DOS_21Handler(void) {
 			}
 			break;
 		case 0x01:				/* Set */
-			LOG(LOG_ERROR|LOG_MISC,"DOS:Set File Attributes for %s not supported",name1);
+			LOG(LOG_MISC,LOG_ERROR)("DOS:Set File Attributes for %s not supported",name1);
 			CALLBACK_SCF(false);
 			break;
 		default:
-			E_Exit("DOS:0x43:Illegal subfunction %2X",reg_al);
+			LOG(LOG_MISC,LOG_ERROR)("DOS:0x43:Illegal subfunction %2X",reg_al);
+			CALLBACK_SCF(false);
+			break;
 		}
 		break;
 	case 0x44:					/* IOCTL Functions */
@@ -600,7 +605,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x4b:					/* EXEC Load and/or execute program */
 		{ 
 			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
-			LOG(LOG_ERROR|LOG_MISC,"Execute %s %d",name1,reg_al);
+			LOG(LOG_EXEC,LOG_ERROR)("Execute %s %d",name1,reg_al);
 			if (!DOS_Execute(name1,SegPhys(es)+reg_bx,reg_al)) {
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
@@ -654,7 +659,7 @@ static Bitu DOS_21Handler(void) {
 		RealPt addr=dos_infoblock.GetPointer();
 		SegSet16(es,RealSeg(addr));
 		reg_bx=RealOff(addr);
-		LOG(LOG_MISC,"Call is made for list of lists - let's hope for the best");
+		LOG(LOG_DOSMISC,LOG_NORMAL)("Call is made for list of lists - let's hope for the best");
 		break; }
 //TODO Think hard how shit this is gonna be
 //And will any game ever use this :)
@@ -665,7 +670,7 @@ static Bitu DOS_21Handler(void) {
         reg_al=dos.verify?1:0;
 		break;
 	case 0x55:					/* Create Child PSP*/
-		DOS_NewPSP(reg_dx,reg_si);
+		DOS_ChildPSP(reg_dx,reg_si);
 		dos.psp = reg_dx;
 		break;
 	case 0x56:					/* RENAME Rename file */
@@ -684,11 +689,12 @@ static Bitu DOS_21Handler(void) {
 				CALLBACK_SCF(false);
 			} else {
 				CALLBACK_SCF(true);
-			};
+			}
+		} else if (reg_al==0x01) {
+			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:57:Set File Date Time Faked");
+			CALLBACK_SCF(false);		
 		} else {
-			reg_cx=0;
-			reg_dx=0;
-			LOG(LOG_ERROR|LOG_MISC,"DOS:57:Setting File Date is faked",reg_ah);
+			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:57:Unsupported subtion %X",reg_al);
 		}
 		break;
 	case 0x58:					/* Get/Set Memory allocation strategy */
@@ -708,7 +714,7 @@ static Bitu DOS_21Handler(void) {
 			CALLBACK_SCF(true);
 			break;
 		default:
-			LOG(LOG_ERROR|LOG_MISC,"DOS:58:Not Supported Set//Get memory allocation call %X",reg_al);
+			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:58:Not Supported Set//Get memory allocation call %X",reg_al);
 		}
 		break;
 	case 0x59:					/* Get Extended error information */
@@ -769,7 +775,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x65:					/* Get extented country information and a lot of other useless shit*/
 		/* Todo maybe fully support this for now we set it standard for USA */
 		{
-			LOG(LOG_ERROR|LOG_MISC,"DOS:65:Extended country information call");
+			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:65:Extended country information call");
 			PhysPt data=SegPhys(es)+reg_di;
 			switch (reg_al) {
 			case 1:
@@ -798,12 +804,12 @@ static Bitu DOS_21Handler(void) {
 		}
 	case 0x66:					/* Get/Set global code page table  */
 		if (reg_al==1) {
-			LOG(LOG_ERROR|LOG_MISC,"Getting global code page table");
+			LOG(LOG_DOSMISC,LOG_ERROR)("Getting global code page table");
 			reg_bx=reg_dx=437;
 			CALLBACK_SCF(false);
 			break;
 		}
-		LOG(LOG_DOSMISC,"DOS:Setting code page table is not supported");
+		LOG(LOG_DOSMISC,LOG_NORMAL)("DOS:Setting code page table is not supported");
 		break;
 	case 0x67:					/* Set handle count */
 		/* Weird call to increase amount of file handles needs to allocate memory if >20 */
@@ -817,23 +823,29 @@ static Bitu DOS_21Handler(void) {
 		{
 			switch(reg_al)		{
 			case 0x00:				/* Get */
-				LOG(LOG_ERROR|LOG_MISC,"DOS:Get Disk serial number");
+				LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Get Disk serial number");
 				CALLBACK_SCF(true);
 				break;
 			case 0x01:
-				LOG(LOG_ERROR|LOG_MISC,"DOS:Set Disk serial number");
+				LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Set Disk serial number");
 			default:
 				E_Exit("DOS:Illegal Get Serial Number call %2X",reg_al);
 			}	
 			break;
 		} 
 	case 0x6c:					/* Extended Open/Create */
-		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+		MEM_StrCopy(SegPhys(ds)+reg_si,name1,DOSNAMEBUF);
+		if (DOS_OpenFileExtended(name1,reg_bx,reg_cx,reg_dx,&reg_ax,&reg_cx)) {
+			CALLBACK_SCF(false);
+		} else {
+			reg_ax=dos.errorcode;
+			CALLBACK_SCF(true);
+		}
 		break;
 	case 0x71:					/* Unknown probably 4dos detection */
 		reg_ax=0x7100;
 		CALLBACK_SCF(true);
-		LOG(LOG_DOSMISC,"DOS:Windows long file name support call %2X",reg_al);
+		LOG(LOG_DOSMISC,LOG_NORMAL)("DOS:Windows long file name support call %2X",reg_al);
 		break;
     case 0x68:                  /* FFLUSH Commit file */
     case 0x63:					/* Weirdo double byte stuff (fails but say it succeeded) available only in MSDOS 2.25  */
@@ -854,7 +866,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x5e:					/* More Network Functions */
 	case 0x5f:					/* And Even More Network Functions */
     default:
-        LOG(LOG_ERROR|LOG_MISC,"DOS:Unhandled call %02X al=%02X. Set al to default of 0",reg_ah,reg_al);
+        LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Unhandled call %02X al=%02X. Set al to default of 0",reg_ah,reg_al);
         reg_al=0x00; /* default value */
 		break;
 	};
@@ -879,27 +891,26 @@ static Bitu DOS_27Handler(void)
 	return CBRET_NONE;
 }
 static Bitu DOS_25Handler(void) {
-	flags.type=t_UNKNOWN;
+	flags.type=0;
 	if(Drives[reg_al]==0){
 		reg_ax=0x8002;
-		flags.cf=true;
+		SETFLAGBIT(CF,true);
 	}else{
-		flags.cf=false;
+		SETFLAGBIT(CF,false);
 		reg_ax=0;
 		if((reg_cx != 1) ||(reg_dx != 1))
-			LOG(LOG_DOSMISC,"int 25 called but not as diskdetection");
+			LOG(LOG_DOSMISC,LOG_NORMAL)("int 25 called but not as diskdetection");
 	}
     return CBRET_NONE;
 }
 static Bitu DOS_26Handler(void) {
-	LOG(LOG_DOSMISC,"int 26 called: hope for the best!");
-	flags.type=t_UNKNOWN;
+	LOG(LOG_DOSMISC,LOG_NORMAL)("int 26 called: hope for the best!");
+	flags.type=0;
 	if(Drives[reg_al]==0){
-
 		reg_ax=0x8002;
-		flags.cf=true;
+		SETFLAGBIT(CF,true);
 	}else{
-		flags.cf=false;
+		SETFLAGBIT(CF,false);
 		reg_ax=0;
 	}
     return CBRET_NONE;
@@ -909,12 +920,12 @@ static Bitu DOS_28Handler(void) {
 }
 
 static Bitu DOS_29Handler(void) {
-    LOG(LOG_ERROR|LOG_MISC,"int 29 called");
+    LOG(LOG_DOSMISC,LOG_ERROR)("int 29 called");
     return CBRET_NONE;
 }
 
 static Bitu DOS_CaseMapFunc(void) {
-    //LOG(LOG_ERROR|LOG_MISC,"Case map routine called : %c",reg_al);
+    //LOG(LOG_DOSMISC,LOG_ERROR)("Case map routine called : %c",reg_al);
     return CBRET_NONE;
 };
 
@@ -925,7 +936,6 @@ void DOS_ShutDown(Section* sec)
 
 
 void DOS_Init(Section* sec) {
-    MSG_Add("DOS_CONFIGFILE_HELP","Setting a memory size to 0 will disable it.\n");
 	call_20=CALLBACK_Allocate();
 	CALLBACK_Setup(call_20,DOS_20Handler,CB_IRET);
 	RealSetVec(0x20,CALLBACK_RealPointer(call_20));

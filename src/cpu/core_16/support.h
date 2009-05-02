@@ -16,36 +16,60 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-EAPoint IPPoint;
 
-#define SUBIP(a)	IPPoint-=a
-#define SETIP(a)	IPPoint=SegBase(cs)+a
-#define GETIP		(Bit16u)(IPPoint-SegBase(cs)) 
+#define SUBIP(a)	core_16.ip_lookup-=a
+#define SETIP(a)	core_16.ip_lookup=SegBase(cs)+a
+#define GETIP		(Bit16u)(core_16.ip_lookup-SegBase(cs)) 
 #define SAVEIP		reg_ip=GETIP
-#define LOADIP		IPPoint=SegBase(cs)+reg_ip
+#define LOADIP		core_16.ip_lookup=SegBase(cs)+reg_ip
+
+#define LEAVECORE						\
+	SAVEIP;								\
+	FillFlags();
 
 static INLINE void ADDIP(Bit16u add) {
-	IPPoint=SegBase(cs)+((Bit16u)(((Bit16u)(IPPoint-SegBase(cs)))+(Bit16u)add));
+	core_16.ip_lookup=SegBase(cs)+((Bit16u)(((Bit16u)(core_16.ip_lookup-SegBase(cs)))+(Bit16u)add));
 }
 
 static INLINE void ADDIPFAST(Bit16s blah) {
-	IPPoint+=blah;
+	core_16.ip_lookup+=blah;
 }
 
+#define CheckTF()											\
+	if (GETFLAG(TF)) {										\
+		cpudecoder=CPU_Real_16_Slow_Decode_Trap;			\
+		goto decode_end;									\
+	}
+
+
+#define EXCEPTION(blah)											\
+	{															\
+		Bit8u new_num=blah;										\
+		core_16.ip_lookup=core_16.ip_start;						\
+		LEAVECORE;												\
+		if (Interrupt(new_num)) {								\
+			if (GETFLAG(TF)) {									\
+				cpudecoder=CPU_Real_16_Slow_Decode_Trap;		\
+				return CBRET_NONE;								\
+			}													\
+			goto decode_start;									\
+		} else return CBRET_NONE;								\
+	}
+
 static INLINE Bit8u Fetchb() {
-	Bit8u temp=LoadMb(IPPoint);
-	IPPoint+=1;
+	Bit8u temp=LoadMb(core_16.ip_lookup);
+	core_16.ip_lookup+=1;
 	return temp;
 }
 
 static INLINE Bit16u Fetchw() {
-	Bit16u temp=LoadMw(IPPoint);
-	IPPoint+=2;
+	Bit16u temp=LoadMw(core_16.ip_lookup);
+	core_16.ip_lookup+=2;
 	return temp;
 }
 static INLINE Bit32u Fetchd() {
-	Bit32u temp=LoadMd(IPPoint);
-	IPPoint+=4;
+	Bit32u temp=LoadMd(core_16.ip_lookup);
+	core_16.ip_lookup+=4;
 	return temp;
 }
 
@@ -82,15 +106,42 @@ static INLINE Bit32u Pop_32() {
 	return temp;
 };
 
+#define JumpSIb(blah) 										\
+	if (blah) {												\
+		ADDIPFAST(Fetchbs());								\
+	} else {												\
+		ADDIPFAST(1);										\
+	}					
+
+#define JumpSIw(blah) 										\
+	if (blah) {												\
+		ADDIPFAST(Fetchws());								\
+	} else {												\
+		ADDIPFAST(2);										\
+	}						
+
+#define SETcc(cc)											\
+	{														\
+		GetRM;												\
+		if (rm >= 0xc0 ) {GetEArb;*earb=(cc) ? 1 : 0;}		\
+		else {GetEAa;SaveMb(eaa,(cc) ? 1 : 0);}				\
+	}
+
+#define NOTDONE												\
+	SUBIP(1);E_Exit("CPU:Opcode %2X Unhandled",Fetchb()); 
+
+#define NOTDONE66											\
+	SUBIP(1);E_Exit("CPU:Opcode 66:%2X Unhandled",Fetchb()); 
+
+
 #define stringDI											\
-	EAPoint to;												\
+	PhysPt to;												\
 	to=SegBase(es)+reg_di							
 
 #define stringSI											\
-	EAPoint from;											\
-	if (prefix.mark & PREFIX_SEG) {										\
-		from=(prefix.segbase+reg_si);						\
-		PrefixReset;										\
+	PhysPt from;											\
+	if (core_16.prefixes & PREFIX_SEG) {					\
+		from=(core_16.segbase+reg_si);						\
 	} else {												\
 		from=SegBase(ds)+reg_si;							\
 	}
@@ -99,60 +150,47 @@ static INLINE Bit32u Pop_32() {
 #include "table_ea.h"
 #include "../modrm.h"
 
-
-static Bit8s table_df_8[2]={1,-1};
-static Bit16s table_df_16[2]={2,-2};
-static Bit32s table_df_32[2]={4,-4};
-
-
 static void Repeat_Normal(bool testz,bool prefix_66) {
 	
 	PhysPt base_si,base_di;
 
 	Bit16s direct;
-	if (flags.df) direct=-1;
+	if (GETFLAG(DF)) direct=-1;
 	else direct=1;
 	base_di=SegBase(es);
-	if (prefix.mark & PREFIX_ADDR) E_Exit("Unhandled 0x67 prefixed string op");
+	if (core_16.prefixes & PREFIX_ADDR) E_Exit("Unhandled 0x67 prefixed string op");
 rep_again:	
-	if (prefix.mark & PREFIX_SEG) {
-		base_si=(prefix.segbase);
+	if (core_16.prefixes & PREFIX_SEG) {
+		base_si=(core_16.segbase);
 	} else {
 		base_si=SegBase(ds);
 	}
 	switch (Fetchb()) {
 	case 0x26:			/* ES Prefix */
-		prefix.segbase=SegBase(es);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(es);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x2e:			/* CS Prefix */
-		prefix.segbase=SegBase(cs);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(cs);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x36:			/* SS Prefix */
-		prefix.segbase=SegBase(ss);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(ss);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x3e:			/* DS Prefix */
-		prefix.segbase=SegBase(ds);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(ds);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x64:			/* FS Prefix */
-		prefix.segbase=SegBase(fs);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(fs);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x65:			/* GS Prefix */
-		prefix.segbase=SegBase(gs);
-		prefix.mark|=PREFIX_SEG;
-		prefix.count++;
+		core_16.segbase=SegBase(gs);
+		core_16.prefixes|=PREFIX_SEG;
 		goto rep_again;
 	case 0x66:			/* Size Prefix */
-		prefix.count++;
 		prefix_66=!prefix_66;
 		goto rep_again;
 	case 0x6c:			/* REP INSB */
@@ -352,58 +390,12 @@ rep_again:
 		}
 		break;
 	default:
-		IPPoint--;
-		LOG(LOG_CPU|LOG_ERROR,"Unhandled REP Prefix %X",Fetchb());
+		core_16.ip_lookup--;
+		LOG(LOG_CPU,LOG_ERROR)("Unhandled REP Prefix %X",Fetchb());
 		goto normalexit;
 	}
 	/* If we end up here it's because the CPU_Cycles counter is 0, so restart instruction */
-	IPPoint-=(prefix.count+2);		/* Rep instruction and whatever string instruction */
-normalexit:
-	PrefixReset;
+	core_16.ip_lookup=core_16.ip_start;
+normalexit:;
 }
 
-//flags.io and nt shouldn't be compiled for 386 
-#ifdef CPU_386
-#define Save_Flagsw(FLAGW)											\
-{																	\
-	flags.type=t_UNKNOWN;											\
-	flags.cf	=(FLAGW & 0x001)>0;flags.pf	=(FLAGW & 0x004)>0;		\
-	flags.af	=(FLAGW & 0x010)>0;flags.zf	=(FLAGW & 0x040)>0;		\
-	flags.sf	=(FLAGW & 0x080)>0;flags.tf	=(FLAGW & 0x100)>0;		\
-	flags.intf	=(FLAGW & 0x200)>0;									\
-	flags.df	=(FLAGW & 0x400)>0;flags.of	=(FLAGW & 0x800)>0;		\
-	flags.io	=(FLAGW >> 12) & 0x03;								\
-	flags.nt	=(FLAGW & 0x4000)>0;								\
-	if (flags.intf && PIC_IRQCheck) {								\
-		SAVEIP;														\
-		PIC_runIRQs();												\
-		LOADIP;														\
-	}																\
-	if (flags.tf) {													\
-		cpudecoder=&CPU_Real_16_Slow_Decode_Trap;					\
-		goto decode_end;											\
-	}																\
-}
-
-#else 
-
-#define Save_Flagsw(FLAGW)											\
-{																	\
-	flags.type=t_UNKNOWN;											\
-	flags.cf	=(FLAGW & 0x001)>0;flags.pf	=(FLAGW & 0x004)>0;		\
-	flags.af	=(FLAGW & 0x010)>0;flags.zf	=(FLAGW & 0x040)>0;		\
-	flags.sf	=(FLAGW & 0x080)>0;flags.tf	=(FLAGW & 0x100)>0;		\
-	flags.intf	=(FLAGW & 0x200)>0;									\
-	flags.df	=(FLAGW & 0x400)>0;flags.of	=(FLAGW & 0x800)>0;		\
-	if (flags.intf && PIC_IRQCheck) {								\
-		SAVEIP;														\
-		PIC_runIRQs();												\
-		LOADIP;														\
-	}																\
-	if (flags.tf) {													\
-		cpudecoder=&CPU_Real_16_Slow_Decode_Trap;					\
-		goto decode_end;											\
-	}																\
-}
-
-#endif

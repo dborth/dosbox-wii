@@ -16,11 +16,13 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#include <list>
 
 #include "dosbox.h"
 #include "inout.h"
 #include "cpu.h"
 #include "pic.h"
+#include "timer.h"
 
 #define PIC_QUEUESIZE 128
 
@@ -28,30 +30,35 @@ struct IRQ_Block {
 	bool masked;
 	bool active;
 	bool inservice;
-	Bit8u vector;
+	Bitu vector;
 	char * name;
 	PIC_EOIHandler * handler;
 };
 
-Bitu PIC_Ticks=0;
+struct PIC_Controller {
+	Bitu icw_words;
+	Bitu icw_index;
+	Bitu masked;
+	Bitu active;
+	Bitu inservice;
 
+	bool auto_eoi;
+	bool request_issr;
+	Bit8u vector_base;
+};
+
+Bitu PIC_Ticks=0;
 Bitu PIC_IRQCheck;
 Bitu PIC_IRQActive;
 
+
 static IRQ_Block irqs[16];
-static Bit8u pic0_icws=0;
-static Bit8u pic1_icws=0;
-static Bit8u pic0_icw_state=0;
-static Bit8u pic1_icw_state=0;
-static bool pic0_request_iisr=0;
-static bool pic1_request_iisr=0;
+static PIC_Controller pics[2];
+
 
 enum QUEUE_TYPE { 
 	IRQ,EVENT
 };
-
-
-
 
 struct PICEntry {
 	QUEUE_TYPE type;
@@ -61,235 +68,120 @@ struct PICEntry {
 	PICEntry * next;
 };
 
-
 static struct {
 	PICEntry entries[PIC_QUEUESIZE];
 	PICEntry * free_entry;
 	PICEntry * next_entry;
 } pic;
 
-static void write_p20(Bit32u port,Bit8u val) {
+static void write_command(Bit32u port,Bit8u val) {
+	PIC_Controller * pic=&pics[port==0x20 ? 0 : 1];
+	Bitu irq_base=port==0x20 ? 0 : 8;
 	switch (val) {
 	case 0x0A: /* select read interrupt request register */
-		pic0_request_iisr=false;
+		pic->request_issr=false;
 		break;
 	case 0x0B: /* select read interrupt in-service register */
-		pic0_request_iisr=true;
+		pic->request_issr=true;
 		break;
 	case 0x10:				/* ICW1 */
-		pic0_icws=2;
-		pic0_icw_state=1;
+		pic->icw_index=1;
+		pic->icw_words=2;
 		break;
 	case 0x11:				/* ICW1 + need for ICW4 */
-		pic0_icws=3;
-		pic0_icw_state=1;
+		pic->icw_index=1;
+		pic->icw_words=3;
 		break;
-	case 0x20: /* end of interrupt command */
-	case 0x21: /* end of interrupt command */
-	case 0x22: /* end of interrupt command */
-	case 0x23: /* end of interrupt command */
-	case 0x24: /* end of interrupt command */
-	case 0x25: /* end of interrupt command */
-	case 0x26: /* end of interrupt command */
-	case 0x27: /* end of interrupt command */
-		/* clear highest current in service bit */
-		if (PIC_IRQActive<8) {
+	case 0x20:case 0x21:case 0x22:case 0x23:case 0x24:case 0x25:case 0x26:case 0x27:
+		if (PIC_IRQActive<(irq_base+8)) {
 			irqs[PIC_IRQActive].inservice=false;
 			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
 			PIC_IRQActive=PIC_NOIRQ;
-		}
+		}//TODO Warnings?
 		break;
-	case 0x60: /* specific EOI 0 */
-	case 0x61: /* specific EOI 1 */
-	case 0x62: /* specific EOI 2 */
-	case 0x63: /* specific EOI 3 */
-	case 0x64: /* specific EOI 4 */
-	case 0x65: /* specific EOI 5 */
-	case 0x66: /* specific EOI 6 */
-	case 0x67: /* specific EOI 7 */
-		if (PIC_IRQActive==(val-0x60U)) {
+	case 0x60:case 0x61:case 0x62:case 0x63:case 0x64:case 0x65:case 0x66:case 0x67:
+		/* Spefific EOI 0-7 */
+		if (PIC_IRQActive==(irq_base+val-0x60U)) {
 			irqs[PIC_IRQActive].inservice=false;
 			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
 			PIC_IRQActive=PIC_NOIRQ;
-		}
+		}//TODO Warnings?
 		break;
-	// IRQ lowest priority commands
-	case 0xC0: // 0 7 6 5 4 3 2 1
-	case 0xC1: // 1 0 7 6 5 4 3 2
-	case 0xC2: // 2 1 0 7 6 5 4 3
-	case 0xC3: // 3 2 1 0 7 6 5 4
-	case 0xC4: // 4 3 2 1 0 7 6 5
-	case 0xC5: // 5 4 3 2 1 0 7 6
-	case 0xC6: // 6 5 4 3 2 1 0 7
-	case 0xC7: // 7 6 5 4 3 2 1 0
-	// ignore for now TODO
+	case 0xC0:case 0xC1:case 0xC2:case 0xC3:case 0xC4:case 0xC5:case 0xC6:case 0xC7:
+		/* Priority order, no need for it */
 	break;
 	default:
-		E_Exit("PIC0:Unhandled command %02X",val);
+		E_Exit("PIC:Unhandled command %02X",val);
 	}
 }
 
-//Pic 0 Interrupt mask
-static void write_p21(Bit32u port,Bit8u val) {
-	Bit8u i;
-	switch(pic0_icw_state) {
+static void write_data(Bit32u port,Bit8u val) {
+	PIC_Controller * pic=&pics[port==0x21 ? 0 : 1];
+	Bitu irq_base=(port==0x21) ? 0 : 8;
+	Bitu i;
+	switch(pic->icw_index) {
 	case 0:                        /* mask register */
 		for (i=0;i<=7;i++) {
-			irqs[i].masked=(val&(1<<i))>0;
-			if (irqs[i].active && !irqs[i].masked) PIC_IRQCheck|=(1 << 1);
-			else PIC_IRQCheck&=~(1 << i);
+			irqs[i+irq_base].masked=(val&(1<<i))>0;
+			if (irqs[i+irq_base].active && !irqs[i+irq_base].masked) PIC_IRQCheck|=(1 << (i+irq_base));
+			else PIC_IRQCheck&=~(1 << (i+irq_base));
 		};
 		break;
 	case 1:                        /* icw2          */
-		LOG(LOG_PIC,"PIC0:Base vector %X",val);
+		LOG(LOG_PIC,LOG_NORMAL)("%d:Base vector %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
 		for (i=0;i<=7;i++) {
-			irqs[i].vector=(val&0xf8)+i;
+			irqs[i+irq_base].vector=(val&0xf8)+i;
 		};
-	default:                       /* icw2, 3, and 4*/
-		if(pic0_icw_state++ >= pic0_icws) pic0_icw_state=0; 	
+		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
+		break;
+	case 2:							/* icw 3 */
+		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 3 %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
+		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
+		break;
+	case 3:							/* icw 4 */
+		/*
+			0	    1 8086/8080  0 mcs-8085 mode
+			1	    1 Auto EOI   1 Normal EOI
+			2-3	   0x Non buffer Mode 
+				   10 Buffer Mode Slave 
+				   11 Buffer mode Master	
+			4		Special/Not Special nested mode 
+		*/
+		pic->auto_eoi=(val & 0x2)>0;
+		
+		LOG(LOG_PIC,LOG_NORMAL)("%d:ICW 4 %X",static_cast<Bitu>(port==0x21 ? 0 : 1),static_cast<Bitu>(val));
+		if(pic->icw_index++ >= pic->icw_words) pic->icw_index=0;
+		break;
+	default:                       /* icw 3, and 4*/
+		LOG(LOG_PIC,LOG_NORMAL)("ICW HUH? %X",val);
 	}
 }
 
-static Bit8u read_p20(Bit32u port) {
-	Bit8u ret=0;
-	Bit32u i;
-	Bit8u b=1;
-	if (pic0_request_iisr) {
-		for (i=0;i<=7;i++) {
+
+static Bit8u read_command(Bit32u port) {
+	PIC_Controller * pic=&pics[port==0x20 ? 0 : 1];
+	Bitu irq_base=(port==0x20) ? 0 : 8;
+	Bitu i;Bit8u ret=0;Bit8u b=1;
+	if (pic->request_issr) {
+		for (i=irq_base;i<irq_base+8;i++) {
 			if (irqs[i].inservice) ret|=b;
 			b <<= 1;
 		}
 	} else {
-		for (i=0;i<=7;i++) {
+		for (i=irq_base;i<irq_base+8;i++) {
 			if (irqs[i].active)	ret|=b;
 			b <<= 1;
 		}
-	};
+	}
 	return ret;
 }
 
-static Bit8u read_p21(Bit32u port) {
-	Bit8u ret=0;
-	Bit32u i;
-	Bit8u b=1;
-	for (i=0;i<=7;i++) {
+static Bit8u read_data(Bit32u port) {
+	PIC_Controller * pic=&pics[port==0x21 ? 0 : 1];
+	Bitu irq_base=(port==0x21) ? 0 : 8;
+	Bitu i;Bit8u ret=0;Bit8u b=1;
+	for (i=irq_base;i<=irq_base+7;i++) {
 		if (irqs[i].masked)	ret|=b;
-		b <<= 1;
-	}
-	return ret;
-}
-
-static void write_pa0(Bit32u port,Bit8u val) {
-	Bit32u i;
-	switch (val) {
-	case 0x0A: /* select read interrupt request register */
-		pic1_request_iisr=false;
-		break;
-	case 0x0B: /* select read interrupt in-service register */
-		pic1_request_iisr=true;
-		break;
-	case 0x10:				/* ICW1 */
-		/* Clear everything set full mask and clear all inservice */
-		for (i=0;i<=7;i++) {
-			irqs[i].masked=true;
-			irqs[i].active=false;
-			irqs[i].inservice=false;
-		}
-		pic1_icws=2;
-		pic1_icw_state=1;
-		break;
-	case 0x11:				/* ICW1 + need for ICW4 */
-		pic1_icws=3;
-		pic1_icw_state=1;
-		break;
-	case 0x20: /* end of interrupt command */
-	case 0x21: /* end of interrupt command */
-	case 0x22: /* end of interrupt command */
-	case 0x23: /* end of interrupt command */
-	case 0x24: /* end of interrupt command */
-	case 0x25: /* end of interrupt command */
-	case 0x26: /* end of interrupt command */
-	case 0x27: /* end of interrupt command */
-          /* clear highest current in service bit */
-		if (PIC_IRQActive>7 && PIC_IRQActive <16) {
-			irqs[PIC_IRQActive].inservice=false;
-			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
-			PIC_IRQActive=PIC_NOIRQ;
-		}
-		break;
-	case 0x60: /* specific EOI 0 */
-	case 0x61: /* specific EOI 1 */
-	case 0x62: /* specific EOI 2 */
-	case 0x63: /* specific EOI 3 */
-	case 0x64: /* specific EOI 4 */
-	case 0x65: /* specific EOI 5 */
-	case 0x66: /* specific EOI 6 */
-	case 0x67: /* specific EOI 7 */
-		if (PIC_IRQActive==(8+val-0x60U)) {
-			irqs[PIC_IRQActive].inservice=false;
-			if (irqs[PIC_IRQActive].handler!=0) irqs[PIC_IRQActive].handler();
-			PIC_IRQActive=PIC_NOIRQ;
-		};
-		break;
-	// IRQ lowest priority commands
-	case 0xC0: // 0 7 6 5 4 3 2 1
-	case 0xC1: // 1 0 7 6 5 4 3 2
-	case 0xC2: // 2 1 0 7 6 5 4 3
-	case 0xC3: // 3 2 1 0 7 6 5 4
-	case 0xC4: // 4 3 2 1 0 7 6 5
-	case 0xC5: // 5 4 3 2 1 0 7 6
-	case 0xC6: // 6 5 4 3 2 1 0 7
-	case 0xC7: // 7 6 5 4 3 2 1 0
-	//TODO Maybe does it even matter?
-	break;
-	default:
-		E_Exit("Unhandled command %04X sent to port A0",val);
-	}
-}
-
-
-static void write_pa1(Bit32u port,Bit8u val) {
-	Bit8u i;
-	switch(pic1_icw_state) {
-	case 0:                        /* mask register */
-		for (i=0;i<=7;i++) {
-			irqs[i+8].masked=(val&1 <<i)>0;
-		};
-		break;
-     case 1:                        /* icw2          */
-		for (i=0;i<=7;i++) {
-			irqs[i+8].vector=(val&0xf8)+i;
-		};
-     default:                       /* icw2, 3, and 4*/
-       if(pic1_icw_state++ >= pic1_icws) pic1_icw_state=0; 
-	}
-}
-
-static Bit8u read_pa0(Bit32u port) {
-	Bit8u ret=0;
-	Bit32u i;
-	Bit8u b=1;
-	if (pic1_request_iisr) {
-		for (i=0;i<=7;i++) {
-			if (irqs[i+8].inservice) ret|=b;
-			b <<= 1;
-		}
-	} else {
-		for (i=0;i<=7;i++) {
-			if (irqs[i+8].active) ret|=b;
-			b <<= 1;
-		}
-	}
-	return ret;
-}
-
-
-static Bit8u read_pa1(Bit32u port) {
-	Bit8u ret=0;
-	Bit32u i;
-	Bit8u b=1;
-	for (i=0;i<=7;i++) {
-		if (irqs[i+8].masked) ret|=b;
 		b <<= 1;
 	}
 	return ret;
@@ -328,17 +220,19 @@ void PIC_DeActivateIRQ(Bit32u irq) {
 
 void PIC_runIRQs(void) {
 	Bitu i;
-	if (!flags.intf) return;
+	if (!GETFLAG(IF)) return;
 	if (PIC_IRQActive!=PIC_NOIRQ) return;
 	if (!PIC_IRQCheck) return;
 	for (i=0;i<=15;i++) {
 		if (i!=2) {
 			if (!irqs[i].masked && irqs[i].active) {
-				irqs[i].inservice=true;
 				irqs[i].active=false;
 				PIC_IRQCheck&=~(1 << i);
 				Interrupt(irqs[i].vector);
-				PIC_IRQActive=i;
+				if (!pics[0].auto_eoi) {
+					PIC_IRQActive=i;
+					irqs[i].inservice=true;
+				}
 				return;
 			}
 		}
@@ -350,34 +244,35 @@ static void AddEntry(PICEntry * entry) {
 	if (!find_entry) {
 		entry->next=0;
 		pic.next_entry=entry;
-		return;
-	}
-	if (find_entry->index>entry->index) {
+	} else if (find_entry->index>entry->index) {
 		pic.next_entry=entry;
 		entry->next=find_entry;
-		return;
-	}
-	while (find_entry) {
+	} else while (find_entry) {
 		if (find_entry->next) {
 			/* See if the next index comes later than this one */
-			if (find_entry->next->index>entry->index) {
+			if (find_entry->next->index > entry->index) {
 				entry->next=find_entry->next;
 				find_entry->next=entry;
-				return;
+				break;
 			} else {
 				find_entry=find_entry->next;
 			}
 		} else {
 			entry->next=find_entry->next;
 			find_entry->next=entry;
-			return;
+			break;
 		}
+	}
+	Bits cycles=PIC_MakeCycles(pic.next_entry->index-PIC_Index());
+	if (cycles<CPU_Cycles) {
+		CPU_CycleLeft+=CPU_Cycles;
+		CPU_Cycles=0;
 	}
 }
 
 void PIC_AddEvent(PIC_EventHandler handler,Bitu delay) {
 	if (!pic.free_entry) {
-		LOG(LOG_ERROR|LOG_PIC,"Event queue full");
+		LOG(LOG_PIC,LOG_ERROR)("Event queue full");
 		return;
 	}
 	PICEntry * entry=pic.free_entry;
@@ -392,7 +287,7 @@ void PIC_AddEvent(PIC_EventHandler handler,Bitu delay) {
 void PIC_AddIRQ(Bitu irq,Bitu delay) {
 	if (irq>15) E_Exit("PIC:Illegal IRQ");
 	if (!pic.free_entry) {
-		LOG(LOG_ERROR|LOG_PIC,"Event queue full");
+		LOG(LOG_PIC,LOG_ERROR)("Event queue full");
 		return;
 	}
 	PICEntry * entry=pic.free_entry;
@@ -434,53 +329,101 @@ void PIC_RemoveEvents(PIC_EventHandler handler) {
 	}
 }
 
-Bitu PIC_RunQueue(void) {
-	Bitu ret;
+bool PIC_RunQueue(void) {
 	/* Check to see if a new milisecond needs to be started */
-	if (CPU_Cycles>0) {
-		CPU_CycleLeft+=CPU_Cycles;
-		CPU_Cycles=0;
+	CPU_CycleLeft+=CPU_Cycles;
+	CPU_Cycles=0;
+	if (CPU_CycleLeft<=0) {
+		return false;
 	}
-	while (CPU_CycleLeft>0) {
-		/* Check the queue for an entry */
-		Bitu index=PIC_Index();
-		while (pic.next_entry && pic.next_entry->index<=index) {
-			PICEntry * entry=pic.next_entry;
-			pic.next_entry=entry->next;
-			switch (entry->type) {
-			case EVENT:
-				(entry->event)();
-				break;
-			case IRQ:
-				PIC_ActivateIRQ(entry->irq);
-				break;
-			}
-			/* Put the entry in the free list */
-			entry->next=pic.free_entry;
-			pic.free_entry=entry;
+	/* Check the queue for an entry */
+	Bitu index=PIC_Index();
+	while (pic.next_entry && pic.next_entry->index<=index) {
+		PICEntry * entry=pic.next_entry;
+		pic.next_entry=entry->next;
+		switch (entry->type) {
+		case EVENT:
+			(entry->event)();
+			break;
+		case IRQ:
+			PIC_ActivateIRQ(entry->irq);
+			break;
 		}
-		/* Check when to set the new cycle end */
-		if (pic.next_entry) {
-			Bits cycles=PIC_MakeCycles(pic.next_entry->index-index);
-			if (!cycles) cycles=1;
-			if (cycles<CPU_CycleLeft) {
-				CPU_Cycles=cycles;
-			} else {
-				CPU_Cycles=CPU_CycleLeft;
-			}
-		} else CPU_Cycles=CPU_CycleLeft;
-		if 	(PIC_IRQCheck)	PIC_runIRQs();
-		/* Run the actual cpu core */
-		CPU_CycleLeft-=CPU_Cycles;
-		ret=(*cpudecoder)();
-		if (CPU_Cycles>0) {
-			CPU_CycleLeft+=CPU_Cycles;
-			CPU_Cycles=0;
-		}
-		if (ret) return ret;	
+		/* Put the entry in the free list */
+		entry->next=pic.free_entry;
+		pic.free_entry=entry;
 	}
-	/* Prepare everything for next round */
+	/* Check when to set the new cycle end */
+	if (pic.next_entry) {
+		Bits cycles=PIC_MakeCycles(pic.next_entry->index-index);
+		if (!cycles) cycles=1;
+		if (cycles<CPU_CycleLeft) {
+			CPU_Cycles=cycles;
+		} else {
+			CPU_Cycles=CPU_CycleLeft;
+		}
+	} else CPU_Cycles=CPU_CycleLeft;
+	CPU_CycleLeft-=CPU_Cycles;
+	if 	(PIC_IRQCheck)	PIC_runIRQs();
+	return true;
+}
+
+/* The TIMER Part */
+
+enum { T_TICK,T_MICRO,T_DELAY};
+
+struct Timer {
+	Bitu type;
+	union {
+		struct {
+			TIMER_TickHandler handler;
+		} tick;
+		struct{
+			Bits left;
+			Bits total;
+			TIMER_MicroHandler handler;
+		} micro;
+	};
+};
+
+static Timer * first_timer=0;
+static std::list<Timer *> Timers;
+
+TIMER_Block * TIMER_RegisterTickHandler(TIMER_TickHandler handler) {
+	Timer *	new_timer=new(Timer);
+	new_timer->type=T_TICK;
+	new_timer->tick.handler=handler;
+	Timers.push_front(new_timer);
+	return (TIMER_Block *)new_timer;
+}
+
+TIMER_Block * TIMER_RegisterMicroHandler(TIMER_MicroHandler handler,Bitu micro) {
+	Timer *	new_timer=new(Timer);
+	new_timer->type=T_MICRO;
+	new_timer->micro.handler=handler;
+	Timers.push_front(new_timer);
+	TIMER_SetNewMicro(new_timer,micro);
+	return (TIMER_Block *)new_timer;
+}
+
+void TIMER_SetNewMicro(TIMER_Block * block,Bitu micro) {	
+	Timer *	timer=(Timer *)block;	
+	if (timer->type!=T_MICRO) E_Exit("TIMER:Illegal handler type");
+	timer->micro.total=micro;
+	Bitu index=PIC_Index();
+	while ((1000-index)>micro) {
+		PIC_AddEvent(timer->micro.handler,micro);
+		micro+=micro;
+		index+=micro;
+	}
+	timer->micro.left=timer->micro.total-(1000-index);
+}
+
+void TIMER_AddTick(void) {
+	/* Setup new amount of cycles for PIC */
+	
 	CPU_CycleLeft=CPU_CycleMax;
+	CPU_Cycles=0;
 	PIC_Ticks++;
 	/* Go through the list of scheduled irq's and lower their index with 1000 */
 	PICEntry * entry=pic.next_entry;
@@ -489,8 +432,31 @@ Bitu PIC_RunQueue(void) {
 		else entry->index=0;
 		entry=entry->next;
 	}
-	return 0;
+	Bits index;
+	/* Check if there are timer handlers that need to be called */
+	std::list<Timer *>::iterator i;
+	for(i=Timers.begin(); i != Timers.end(); ++i) {
+		Timer * timers=(*i);
+		switch (timers->type) {
+		case T_TICK:
+			timers->tick.handler(1);
+			break;
+		case T_MICRO:
+			index=1000;
+			while (index>=timers->micro.left) {
+				PIC_AddEvent(timers->micro.handler,timers->micro.left);
+				index-=timers->micro.left;
+				timers->micro.left=timers->micro.total;
+			}
+			timers->micro.left-=index;
+			break;
+		default:
+			E_Exit("TIMER:Illegal handler type");
+		}
+	}
 }
+
+
 
 void PIC_Init(Section* sec) {
 	/* Setup pic0 and pic1 with initial values like DOS has normally */
@@ -498,6 +464,16 @@ void PIC_Init(Section* sec) {
 	PIC_IRQActive=PIC_NOIRQ;
 	PIC_Ticks=0;
 	Bitu i;
+	for (i=0;i<2;i++) {
+		pics[i].masked=0xff;
+		pics[i].active=0;
+		pics[i].inservice=0;
+		pics[i].auto_eoi=false;
+		pics[i].auto_eoi=false;
+		pics[i].request_issr=false;
+		pics[i].icw_index=0;
+		pics[i].icw_words=0;
+	}
 	for (i=0;i<=7;i++) {
 		irqs[i].active=false;
 		irqs[i].masked=true;
@@ -510,15 +486,16 @@ void PIC_Init(Section* sec) {
 	}
 	irqs[0].masked=false;					/* Enable system timer */
 	irqs[1].masked=false;					/* Enable Keyboard IRQ */
+	irqs[8].masked=false;					/* Enable RTC IRQ */
 	irqs[12].masked=false;					/* Enable Mouse IRQ */
-	IO_RegisterReadHandler(0x20,read_p20,"Master PIC Command");
-	IO_RegisterReadHandler(0x21,read_p21,"Master PIC Data");
-	IO_RegisterWriteHandler(0x20,write_p20,"Master PIC Command");
-	IO_RegisterWriteHandler(0x21,write_p21,"Master PIC Data");
-	IO_RegisterReadHandler(0xa0,read_pa0,"Slave PIC Command");
-	IO_RegisterReadHandler(0xa1,read_pa1,"Slave PIC Data");
-	IO_RegisterWriteHandler(0xa0,write_pa0,"Slave PIC Command");
-	IO_RegisterWriteHandler(0xa1,write_pa1,"Slave PIC Data");
+	IO_RegisterReadHandler(0x20,read_command,"Master PIC Command");
+	IO_RegisterReadHandler(0x21,read_data,"Master PIC Data");
+	IO_RegisterWriteHandler(0x20,write_command,"Master PIC Command");
+	IO_RegisterWriteHandler(0x21,write_data,"Master PIC Data");
+	IO_RegisterReadHandler(0xa0,read_command,"Slave PIC Command");
+	IO_RegisterReadHandler(0xa1,read_data,"Slave PIC Data");
+	IO_RegisterWriteHandler(0xa0,write_command,"Slave PIC Command");
+	IO_RegisterWriteHandler(0xa1,write_data,"Slave PIC Data");
 	/* Initialize the pic queue */
 	for (i=0;i<PIC_QUEUESIZE-1;i++) {
 		pic.entries[i].next=&pic.entries[i+1];

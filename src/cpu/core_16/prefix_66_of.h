@@ -17,8 +17,55 @@
  */
 
 switch (Fetchb()) {
+	case 0x01:		/* Group 7 Ed */
+		{
+			GetRM;Bitu which=(rm>>3)&7;
+			if (rm < 0xc0)	{ //First ones all use EA
+				GetEAa;Bitu limit,base;
+				switch (which) {
+				case 0x00:								/* SGDT */
+					CPU_SGDT(limit,base);
+					SaveMw(eaa,limit);
+					SaveMd(eaa+2,base);
+					break;
+				case 0x01:								/* SIDT */
+					CPU_SIDT(limit,base);
+					SaveMw(eaa,limit);
+					SaveMd(eaa+2,base);
+					break;
+				case 0x02:								/* LGDT */
+					CPU_LGDT(LoadMw(eaa),LoadMd(eaa+2));
+					break;
+				case 0x03:								/* LIDT */
+					CPU_LIDT(LoadMw(eaa),LoadMd(eaa+2));
+					break;
+				case 0x04:								/* SMSW */
+					CPU_SMSW(limit);
+					SaveMw(eaa,limit);
+					break;
+				case 0x06:								/* LMSW */
+					limit=LoadMw(eaa);
+					if (!CPU_LMSW(limit)) goto decode_end;
+					break;
+				}
+			} else {
+				GetEArw;Bitu limit;
+				switch (which) {
+				case 0x04:								/* SMSW */
+					CPU_SMSW(limit);
+					*earw=limit;
+					break;
+				case 0x06:								/* LMSW */
+					if (!CPU_LMSW(*earw)) goto decode_end;
+					break;
+				default:
+					LOG(LOG_CPU,LOG_ERROR)("Illegal group 7 RM subfunction %d",which);
+					break;
+				}
 
-
+			}
+		}
+		break;
 	case 0xa4:												/* SHLD Ed,Gd,Ib */
 		{
 			GetRMrd;
@@ -41,26 +88,19 @@ switch (Fetchb()) {
 			break;
 		}
 
-	case 0xb6:											/* MOVZX Gd,Eb */
+	case 0xb6:												/* MOVZX Gd,Eb */
 		{
 			GetRMrd;															
 			if (rm >= 0xc0 ) {GetEArb;*rmrd=*earb;}
 			else {GetEAa;*rmrd=LoadMb(eaa);}
 			break;
 		}
-	case 0xaf:											/* IMUL Gd,Ed */
+	case 0xaf:												/* IMUL Gd,Ed */
 		{
-			GetRMrd;
-			Bit64s res;
-			if (rm >= 0xc0 ) {GetEArd;res=((Bit64s)((Bit32s)*rmrd) * (Bit64s)((Bit32s)*eards));}
-			else {GetEAa;res=((Bit64s)((Bit32s)*rmrd) * (Bit64s)LoadMds(eaa));}
-			*rmrd=(Bit32s)(res);
-			flags.type=t_MUL;
-			if ((res>-((Bit64s)(2147483647)+1)) && (res<(Bit64s)2147483647)) {flags.cf=false;flags.of=false;}
-			else {flags.cf=true;flags.of=true;}
+			RMGdEdOp3(DIMULD,*rmrd);
 			break;
 		};
-	case 0xb7:											/* MOVXZ Gd,Ew */
+	case 0xb7:												/* MOVXZ Gd,Ew */
 		{
 			GetRMrd;
 			if (rm >= 0xc0 ) {GetEArw;*rmrd=*earw;}
@@ -73,7 +113,7 @@ switch (Fetchb()) {
 			if (rm >= 0xc0 ) {
 				GetEArd;
 				Bit32u mask=1 << (Fetchb() & 31);
-				flags.cf=(*eard & mask)>0;
+				SETFLAGBIT(CF,(*eard & mask));
 				switch (rm & 0x38) {
 				case 0x20:									/* BT */
 					break;
@@ -84,7 +124,7 @@ switch (Fetchb()) {
 					*eard&=~mask;
 					break;
 				case 0x38:									/* BTC */
-					if (flags.cf) *eard&=~mask;
+					if (GETFLAG(CF)) *eard&=~mask;
 					else *eard|=mask;
 					break;
 				default:
@@ -93,7 +133,7 @@ switch (Fetchb()) {
 			} else {
 				GetEAa;Bit32u old=LoadMd(eaa);
 				Bit32u mask=1 << (Fetchb() & 31);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 				switch (rm & 0x38) {
 				case 0x20:									/* BT */
 					break;
@@ -104,7 +144,7 @@ switch (Fetchb()) {
 					SaveMd(eaa,old & ~mask);
 					break;
 				case 0x38:									/* BTC */
-					if (flags.cf) old&=~mask;
+					if (GETFLAG(CF)) old&=~mask;
 					else old|=mask;
 					SaveMd(eaa,old);
 					break;
@@ -122,11 +162,11 @@ switch (Fetchb()) {
 			Bit32u mask=1 << (*rmrd & 31);
 			if (rm >= 0xc0 ) {
 				GetEArd;
-				flags.cf=(*eard & mask)>0;
+				SETFLAGBIT(CF,(*eard & mask));
 				*eard^=mask;
 			} else {
 				GetEAa;Bit32u old=LoadMd(eaa);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 				SaveMd(eaa,old ^ mask);
 			}
 			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
@@ -139,11 +179,11 @@ switch (Fetchb()) {
 			if (rm >= 0xc0) { GetEArd; value=*eard; } 
 			else			{ GetEAa; value=LoadMd(eaa); }
 			if (value==0) {
-				flags.zf = true;
+				SETFLAGBIT(ZF,true);
 			} else {
 				result = 0;
 				while ((value & 0x01)==0) { result++; value>>=1; }
-				flags.zf = false;
+				SETFLAGBIT(ZF,false);
 				*rmrd = result;
 			}
 			flags.type=t_UNKNOWN;
@@ -156,11 +196,11 @@ switch (Fetchb()) {
 			if (rm >= 0xc0) { GetEArd; value=*eard; } 
 			else			{ GetEAa; value=LoadMd(eaa); }
 			if (value==0) {
-				flags.zf = true;
+				SETFLAGBIT(ZF,true);
 			} else {
 				result = 35;	// Operandsize-1
 				while ((value & 0x80000000)==0) { result--; value<<=1; }
-				flags.zf = false;
+				SETFLAGBIT(ZF,false);
 				*rmrd = result;
 			}
 			flags.type=t_UNKNOWN;
@@ -169,14 +209,14 @@ switch (Fetchb()) {
 	case 0xbe:												/* MOVSX Gd,Eb */
 		{
 			GetRMrd;															
-			if (rm >= 0xc0 ) {GetEArb;*rmrd=*earbs;}
+			if (rm >= 0xc0 ) {GetEArb;*rmrd=*(Bit8s *)earb;}
 			else {GetEAa;*rmrd=LoadMbs(eaa);}
 			break;
 		}
 	case 0xbf:												/* MOVSX Gd,Ew */
 		{
 			GetRMrd;															
-			if (rm >= 0xc0 ) {GetEArw;*rmrd=*earws;}
+			if (rm >= 0xc0 ) {GetEArw;*rmrd=*(Bit16s *)earw;}
 			else {GetEAa;*rmrd=LoadMws(eaa);}
 			break;
 		}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: timer.cpp,v 1.19 2003/10/14 08:38:36 qbix79 Exp $ */
 
-
-
-#include <list>
 #include "dosbox.h"
 #include "inout.h"
 #include "pic.h"
@@ -28,8 +26,6 @@
 #include "dosbox.h"
 #include "mixer.h"
 #include "timer.h"
-
-
 
 struct PIT_Block {
 	Bit8u mode;								/* Current Counter Mode */
@@ -84,7 +80,7 @@ static void counter_latch(Bitu counter) {
 		else p->read_latch=(Bit16u)(p->cntr-(((double)micro/(double)p->micro)*(double)p->cntr));
 		break;
 	default:
-		LOG(LOG_ERROR|LOG_PIT,"Illegal Mode %d for reading counter %d",p->mode,counter);
+		LOG(LOG_PIT,LOG_ERROR)("Illegal Mode %d for reading counter %d",p->mode,counter);
 		micro%=p->micro;
 		p->read_latch=(Bit16u)(p->cntr-(((double)micro/(double)p->micro)*(double)p->cntr));
 		break;
@@ -115,19 +111,19 @@ static void write_latch(Bit32u port,Bit8u val) {
 		if (p->write_latch == 0) p->cntr = 0x10000;
 		else p->cntr = p->write_latch;
 		p->start=PIC_MicroCount();
-		p->micro=1000000/((float)PIT_TICK_RATE/(float)p->cntr);
+		p->micro=(Bits)(1000000/((float)PIT_TICK_RATE/(float)p->cntr));
 		switch (counter) {
 		case 0x00:			/* Timer hooked to IRQ 0 */
 			PIC_RemoveEvents(PIT0_Event);
 			PIC_AddEvent(PIT0_Event,p->micro);
-			LOG(LOG_PIT,"PIT 0 Timer at %.3g Hz mode %d",PIT_TICK_RATE/(double)p->cntr,p->mode);
+			LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer at %.3g Hz mode %d",PIT_TICK_RATE/(double)p->cntr,(Bit32u)p->mode);
 			break;
 		case 0x02:			/* Timer hooked to PC-Speaker */
 //			LOG(LOG_PIT,"PIT 2 Timer at %.3g Hz mode %d",PIT_TICK_RATE/(double)p->cntr,p->mode);
 			PCSPEAKER_SetCounter(p->cntr,p->mode);
 			break;
 		default:
-			LOG(LOG_ERROR|LOG_PIT,"PIT:Illegal timer selected for writing");
+			LOG(LOG_PIT,LOG_ERROR)("PIT:Illegal timer selected for writing");
 		}
     }
 }
@@ -149,12 +145,12 @@ static Bit8u read_latch(Bit32u port) {
         else
       pit[counter].read_state = 0;
       break;
-    case 1: /* read MSB */
-      ret = (pit[counter].read_latch >> 8) & 0xff;
+    case 1: /* read LSB */
+      ret = (pit[counter].read_latch & 0xff);
       pit[counter].read_latch = -1;
       break;
-    case 2: /* read LSB */
-      ret = (pit[counter].read_latch & 0xff);
+    case 2: /* read MSB */
+      ret = (pit[counter].read_latch >> 8) & 0xff;
       pit[counter].read_latch = -1;
       break;
 	 default:
@@ -164,10 +160,6 @@ static Bit8u read_latch(Bit32u port) {
   }
   return ret;
 }
-
-
-
-
 
 static void write_p43(Bit32u port,Bit8u val) {
 	Bitu latch=(val >> 6) & 0x03;
@@ -190,87 +182,13 @@ static void write_p43(Bit32u port,Bit8u val) {
 			if (val & 0x02) counter_latch(0);
 			if (val & 0x04) counter_latch(1);
 			if (val & 0x08) counter_latch(2);
-		} else E_Exit("PIT:Latch Timer Status %X",val);
+		} else if ((val & 0x10)==0) {	/* Latch status words */
+			LOG(LOG_PIT,LOG_ERROR)("Unsupported Latch status word call");
+		} else LOG(LOG_PIT,LOG_ERROR)("Unhandled command:%X",val);
 		break;
 	}
 }
 
-/* The TIMER Part */
-
-enum { T_TICK,T_MICRO,T_DELAY};
-
-struct Timer {
-	Bitu type;
-	union {
-		struct {
-			TIMER_TickHandler handler;
-		} tick;
-		struct{
-			Bits left;
-			Bits total;
-			TIMER_MicroHandler handler;
-		} micro;
-	};
-};
-
-static Timer * first_timer=0;
-static std::list<Timer *> Timers;
-
-TIMER_Block * TIMER_RegisterTickHandler(TIMER_TickHandler handler) {
-	Timer *	new_timer=new(Timer);
-	new_timer->type=T_TICK;
-	new_timer->tick.handler=handler;
-	Timers.push_front(new_timer);
-	return (TIMER_Block *)new_timer;
-}
-
-TIMER_Block * TIMER_RegisterMicroHandler(TIMER_MicroHandler handler,Bitu micro) {
-	Timer *	new_timer=new(Timer);
-	new_timer->type=T_MICRO;
-	new_timer->micro.handler=handler;
-	Timers.push_front(new_timer);
-	TIMER_SetNewMicro(new_timer,micro);
-	return (TIMER_Block *)new_timer;
-}
-
-void TIMER_SetNewMicro(TIMER_Block * block,Bitu micro) {	
-	Timer *	timer=(Timer *)block;	
-	if (timer->type!=T_MICRO) E_Exit("TIMER:Illegal handler type");
-	timer->micro.total=micro;
-	Bitu index=PIC_Index();
-	while ((1000-index)>micro) {
-		PIC_AddEvent(timer->micro.handler,micro);
-		micro+=micro;
-		index+=micro;
-	}
-	timer->micro.left=timer->micro.total-(1000-index);
-}
-
-void TIMER_AddTick(void) {
-	Bits index;
-	/* Check if there are timer handlers that need to be called */
-	std::list<Timer *>::iterator i;
-	for(i=Timers.begin(); i != Timers.end(); ++i) {
-		Timer * timers=(*i);
-		switch (timers->type) {
-		case T_TICK:
-			timers->tick.handler(1);
-			break;
-		case T_MICRO:
-			index=1000;
-			while (index>=timers->micro.left) {
-				PIC_AddEvent(timers->micro.handler,timers->micro.left);
-				index-=timers->micro.left;
-				timers->micro.left=timers->micro.total;
-			}
-			timers->micro.left-=index;
-			break;
-		default:
-			E_Exit("TIMER:Illegal handler type");
-		}
-	
-	}
-}
 
 void TIMER_Init(Section* sect) {
 	IO_RegisterWriteHandler(0x40,write_latch,"PIT Timer 0");
@@ -286,9 +204,12 @@ void TIMER_Init(Section* sect) {
 	pit[0].read_latch=-1;
 	pit[0].write_latch=0;
 	pit[0].mode=3;
+	
 
-	pit[0].micro=1000000/((float)PIT_TICK_RATE/(float)pit[0].cntr);
+	pit[0].micro=(Bits)(1000000/((float)PIT_TICK_RATE/(float)pit[0].cntr));
 	pit[2].micro=100;
+	pit[2].read_latch=-1;	/* MadTv1 */
+
 	PIC_AddEvent(PIT0_Event,pit[0].micro);
 }
 
