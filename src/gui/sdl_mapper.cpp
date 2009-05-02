@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_mapper.cpp,v 1.39 2007/07/17 13:50:27 c2woody Exp $ */
+/* $Id: sdl_mapper.cpp,v 1.44 2007/08/17 18:49:56 qbix79 Exp $ */
 
 #include <vector>
 #include <list>
@@ -597,22 +597,21 @@ bool autofire = false;
 
 class CStickBindGroup : public  CBindGroup {
 public:
-	CStickBindGroup(Bitu _stick,bool _dummy=false) : CBindGroup (){
-		stick=_stick;
-		sprintf(configname,"stick_%d",stick);
-		is_dummy=_dummy;
-		if (_dummy) {
-			sdl_joystick=NULL;
-			axes=0;	buttons=0;	hats=0;
-			button_wrap=0;
-			button_cap=0; axes_cap=0; hats_cap=0;
-			return;
-		}
+	CStickBindGroup(Bitu _stick,Bitu _emustick,bool _dummy=false) : CBindGroup (){
+		stick=_stick;		// the number of the physical device (SDL numbering|)
+		emustick=_emustick;	// the number of the emulated device
+		sprintf(configname,"stick_%d",emustick);
 
-		// initialize emulated joystick state
-		emulated_axes=2;
-		emulated_buttons=2;
-		emulated_hats=0;
+		sdl_joystick=NULL;
+		axes=0;	buttons=0; hats=0;
+		button_wrap=0;
+		button_cap=0; axes_cap=0; hats_cap=0;
+		emulated_buttons=0; emulated_axes=0; emulated_hats=0;
+
+		is_dummy=_dummy;
+		if (_dummy) return;
+
+		// initialize binding lists and position data
 		pos_axis_lists=new CBindList[4];
 		neg_axis_lists=new CBindList[4];
 		button_lists=new CBindList[MAXBUTTON];
@@ -628,18 +627,18 @@ public:
 			old_neg_axis_state[i]=false;
 		}
 
-		//if the first stick is set, we must be the second
-//		emustick=JOYSTICK_IsEnabled(0);
-		emustick=stick;
+		// initialize emulated joystick state
+		emulated_axes=2;
+		emulated_buttons=2;
+		emulated_hats=0;
 		JOYSTICK_Enable(emustick,true);
 
 		sdl_joystick=SDL_JoystickOpen(_stick);
 		if (sdl_joystick==NULL) {
-			axes=0;	buttons=0;	hats=0;
-			button_wrap=0;
-			button_cap=0; axes_cap=0; hats_cap=0;
+			button_wrap=emulated_buttons;
 			return;
 		}
+
 		axes=SDL_JoystickNumAxes(sdl_joystick);
 		buttons=SDL_JoystickNumButtons(sdl_joystick);
 		hats=SDL_JoystickNumHats(sdl_joystick);
@@ -883,7 +882,7 @@ protected:
 
 class C4AxisBindGroup : public  CStickBindGroup {
 public:
-	C4AxisBindGroup(Bitu _stick) : CStickBindGroup (_stick){
+	C4AxisBindGroup(Bitu _stick,Bitu _emustick) : CStickBindGroup (_stick,_emustick){
 		emulated_axes=4;
 		emulated_buttons=4;
 		if (button_wrapping_enabled) button_wrap=emulated_buttons;
@@ -953,7 +952,7 @@ public:
 
 class CFCSBindGroup : public  CStickBindGroup {
 public:
-	CFCSBindGroup(Bitu _stick) : CStickBindGroup (_stick){
+	CFCSBindGroup(Bitu _stick,Bitu _emustick) : CStickBindGroup (_stick,_emustick){
 		emulated_axes=4;
 		emulated_buttons=4;
 		old_hat_position=0;
@@ -1090,7 +1089,7 @@ private:
 
 class CCHBindGroup : public  CStickBindGroup {
 public:
-	CCHBindGroup(Bitu _stick) : CStickBindGroup (_stick){
+	CCHBindGroup(Bitu _stick,Bitu _emustick) : CStickBindGroup (_stick,_emustick){
 		emulated_axes=4;
 		emulated_buttons=6;
 		emulated_hats=1;
@@ -1907,13 +1906,13 @@ static void CreateLayout(void) {
 		}
 	}
 	/* Create some text buttons */
-	new CTextButton(PX(6),00,124,20,"Keyboard Layout");
-	new CTextButton(PX(17),00,124,20,"Joystick Layout");
+	new CTextButton(PX(6),0,124,20,"Keyboard Layout");
+	new CTextButton(PX(17),0,124,20,"Joystick Layout");
 
-	bind_but.action=new CCaptionButton(185,330,0,0);
+	bind_but.action=new CCaptionButton(180,330,0,0);
 
 	bind_but.event_title=new CCaptionButton(0,350,0,0);
-	bind_but.bind_title=new CCaptionButton(00,365,0,0);
+	bind_but.bind_title=new CCaptionButton(0,365,0,0);
 
 	/* Create binding support buttons */
 	
@@ -2096,6 +2095,7 @@ static void MAPPER_SaveBinds(void) {
 		fprintf(savefile,"\n");
 	}
 	fclose(savefile);
+	change_action_text("Mapper file saved.",CLR_WHITE);
 }
 
 static bool MAPPER_LoadBinds(void) {
@@ -2106,6 +2106,7 @@ static bool MAPPER_LoadBinds(void) {
 		CreateStringBind(linein);
 	}
 	fclose(loadfile);
+	LOG_MSG("MAPPER: Loading mapper settings from %s", mapper.filename);
 	return true;
 }
 
@@ -2149,9 +2150,15 @@ static void InitializeJoysticks(void) {
 	if (joytype != JOY_NONE) {
 		mapper.sticks.num=SDL_NumJoysticks();
 		if (joytype==JOY_AUTO) {
-			if (mapper.sticks.num>1) joytype=JOY_2AXIS;
-			else if (mapper.sticks.num) joytype=JOY_4AXIS;
-			else joytype=JOY_NONE;
+			if (mapper.sticks.num>1) {
+				joytype=JOY_2AXIS;
+				LOG_MSG("Two or more joysticks reported, initializing with 2axis");
+			} else if (mapper.sticks.num) {
+				joytype=JOY_4AXIS;
+				LOG_MSG("One joystick reported, initializing with 4axis");
+			} else {
+				joytype=JOY_NONE;
+			}
 		}
 	}
 }
@@ -2173,24 +2180,28 @@ static void CreateBindGroups(void) {
 		case JOY_NONE:
 			break;
 		case JOY_4AXIS:
-			mapper.sticks.stick[mapper.sticks.num_groups++]=new C4AxisBindGroup(joyno);
-			new CStickBindGroup(joyno+1U,true);
+			mapper.sticks.stick[mapper.sticks.num_groups++]=new C4AxisBindGroup(joyno,joyno);
+			new CStickBindGroup(joyno+1U,joyno+1U,true);
+			break;
+		case JOY_4AXIS_2:
+			mapper.sticks.stick[mapper.sticks.num_groups++]=new C4AxisBindGroup(joyno+1U,joyno);
+			new CStickBindGroup(joyno,joyno+1U,true);
 			break;
 		case JOY_FCS:
-			mapper.sticks.stick[mapper.sticks.num_groups++]=new CFCSBindGroup(joyno);
-			new CStickBindGroup(joyno+1U,true);
+			mapper.sticks.stick[mapper.sticks.num_groups++]=new CFCSBindGroup(joyno,joyno);
+			new CStickBindGroup(joyno+1U,joyno+1U,true);
 			break;
 		case JOY_CH:
-			mapper.sticks.stick[mapper.sticks.num_groups++]=new CCHBindGroup(joyno);
-			new CStickBindGroup(joyno+1U,true);
+			mapper.sticks.stick[mapper.sticks.num_groups++]=new CCHBindGroup(joyno,joyno);
+			new CStickBindGroup(joyno+1U,joyno+1U,true);
 			break;
 		case JOY_2AXIS:
 		default:
-			mapper.sticks.stick[mapper.sticks.num_groups++]=new CStickBindGroup(joyno);
+			mapper.sticks.stick[mapper.sticks.num_groups++]=new CStickBindGroup(joyno,joyno);
 			if((joyno+1U) < mapper.sticks.num) {
-				mapper.sticks.stick[mapper.sticks.num_groups++]=new CStickBindGroup(joyno+1U);
+				mapper.sticks.stick[mapper.sticks.num_groups++]=new CStickBindGroup(joyno+1U,joyno+1U);
 			} else {
-				new CStickBindGroup(joyno+1U,true);
+				new CStickBindGroup(joyno+1U,joyno+1U,true);
 			}
 			break;
 		}
@@ -2232,7 +2243,10 @@ void MAPPER_Run(bool pressed) {
 
 	/* Set some palette entries */
 	SDL_SetPalette(mapper.surface, SDL_LOGPAL|SDL_PHYSPAL, map_pal, 0, 5);
-	last_clicked=NULL;
+	if (last_clicked) {
+		last_clicked->SetColor(CLR_WHITE);
+		last_clicked=NULL;
+	}
 	/* Go in the event loop */
 	mapper.exit=false;	
 	mapper.redraw=true;

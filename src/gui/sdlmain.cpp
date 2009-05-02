@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.131 2007/06/12 20:22:08 c2woody Exp $ */
+/* $Id: sdlmain.cpp,v 1.134 2007/08/26 18:03:25 qbix79 Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -948,13 +948,16 @@ static void GUI_StartUp(Section * sec) {
 	sdl.active=false;
 	sdl.updating=false;
 
+#if !defined(MACOSX)
 	/* Set Icon (must be done before any sdl_setvideomode call) */
+	/* But don't set it on OS X, as we use a nicer external icon there. */
 #if WORDS_BIGENDIAN
 	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0xff000000,0x00ff0000,0x0000ff00,0);
 #else
 	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0x000000ff,0x0000ff00,0x00ff0000,0);
 #endif
 	SDL_WM_SetIcon(logos,NULL);
+#endif
 
 	sdl.desktop.fullscreen=section->Get_bool("fullscreen");
 	sdl.wait_on_error=section->Get_bool("waitonerror");
@@ -1347,12 +1350,6 @@ int main(int argc, char* argv[]) {
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
 		control=&myconf;
-		if (control->cmdline->FindExist("-version") || 
-		    control->cmdline->FindExist("--version") ) {
-			printf(VERSION "\n");
-			return 0;
-		}
-	   
 
 		/* Can't disable the console with debugger enabled */
 #if defined(WIN32) && !(C_DEBUG)
@@ -1369,13 +1366,23 @@ int main(int argc, char* argv[]) {
 				fclose(stdin);
 				fclose(stdout);
 				fclose(stderr);
-				freopen("CONIN$","w",stdin);
+				freopen("CONIN$","r",stdin);
 				freopen("CONOUT$","w",stdout);
 				freopen("CONOUT$","w",stderr);
 			}
 			SetConsoleTitle("DOSBox Status Window");
 		}
 #endif  //defined(WIN32) && !(C_DEBUG)
+		if (control->cmdline->FindExist("-version") || 
+		    control->cmdline->FindExist("--version") ) {
+			printf("\nDOSBox version %s, copyright 2002-2007 DOSBox Team.\n\n",VERSION);
+			printf("DOSBox is written by the DOSBox Team (See AUTHORS file))\n");
+			printf("DOSBox comes with ABSOLUTELY NO WARRANTY.  This is free software,\n");
+			printf("and you are welcome to redistribute it under certain conditions;\n");
+			printf("please read the COPYING file thoroughly before doing so.\n\n");
+			return 0;
+		}
+
 #if C_DEBUG
 		DEBUG_SetupConsole();
 #endif
@@ -1393,6 +1400,12 @@ int main(int argc, char* argv[]) {
         setbuf(stderr, NULL);
 #endif
 
+	/* Display Welcometext in the console */
+	LOG_MSG("DOSBox version %s",VERSION);
+	LOG_MSG("Copyright 2002-2007 DOSBox Team, published under GNU GPL.");
+	LOG_MSG("---");
+
+	/* Init SDL */
 	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
 		|SDL_INIT_NOPARACHUTE
 		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
