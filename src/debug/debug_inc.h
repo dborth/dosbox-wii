@@ -22,11 +22,14 @@
 
 #define PAIR_BLACK_BLUE 1
 #define PAIR_BYELLOW_BLACK 2
+#define PAIR_GREEN_BLACK 3
+#define PAIR_BLACK_GREY 4
+#define PAIR_GREY_RED 5
 
 
 void DBGUI_StartUp(void);
 
-struct  DBGBlock  {
+struct DBGBlock {
 	WINDOW * win_main;					/* The Main Window */
 	WINDOW * win_reg;					/* Register Window */
 	WINDOW * win_data;					/* Data Output window */
@@ -40,7 +43,7 @@ struct  DBGBlock  {
 struct DASMLine {
 	Bit32u pc;
 	char dasm[80];
-	PhysOff ea;
+	PhysPt ea;
 	Bit16u easeg;
 	Bit32u eaoff;
 };
@@ -49,4 +52,4 @@ extern DBGBlock dbg;
 
 
 /* Local Debug Stuff */
-Bitu DasmI386(char* buffer, PhysOff pc, Bitu cur_ip, bool bit32);
+Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32);

@@ -20,6 +20,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include "dosbox.h"
 #include "debug.h"
 #include "cpu.h"
@@ -104,7 +105,7 @@ void DOS_Init();
 void RENDER_Init(void);
 
 void CPU_Init();
-void FPU_Init();
+//void FPU_Init();
 void IO_Init(void);
 void DMA_Init(void);
 void MIXER_Init(void);
@@ -188,6 +189,9 @@ void DOSBOX_SetLoop(LoopHandler * handler) {
 	loop=handler;
 }
 
+void DOSBOX_SetNormalLoop() {
+	loop=Normal_Loop;
+}
 
 void DOSBOX_RunMachine(void){
 	Bitu ret;
@@ -207,9 +211,11 @@ static void InitSystems(void) {
 	HARDWARE_Init();
 	TIMER_Init();
 	CPU_Init();
+#if C_FPU
 	FPU_Init();
+#endif
 	MIXER_Init();
-#ifdef C_DEBUG
+#if C_DEBUG
 	DEBUG_Init();
 #endif
 	//Start up individual hardware
@@ -241,10 +247,19 @@ static void InitSystems(void) {
 
 void DOSBOX_Init(int argc, char* argv[]) {
 /* Find the base directory */
-	strcpy(dosbox_basedir,argv[0]);
+	SHELL_AddAutoexec("SET PATH=Z:\\");
+	SHELL_AddAutoexec("SET COMSPEC=Z:\\COMMAND.COM");
+    strcpy(dosbox_basedir,argv[0]);
 	char * last=strrchr(dosbox_basedir,CROSS_FILESPLIT); //if windowsversion fails: 
-	if (!last) E_Exit("Can't find basedir");
+    if (!last){     
+            getcwd(dosbox_basedir,CROSS_LEN);
+            char a[2];
+            a[0]=CROSS_FILESPLIT;
+            a[1]='\0';
+            strcat(dosbox_basedir,a);
+    } else {
 	*++last=0;
+    }
 	/* Parse the command line with a setup function */
 	int argl=1;
 	if (argc>1) {
@@ -291,7 +306,5 @@ void DOSBOX_Init(int argc, char* argv[]) {
 
 
 void DOSBOX_StartUp(void) {
-	SHELL_AddAutoexec("SET PATH=Z:\\");
-	SHELL_AddAutoexec("SET COMSPEC=Z:\\COMMAND.COM");
 	SHELL_Init();
 };

@@ -84,7 +84,7 @@ install_sh = @install_sh@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libfpu.a
-libfpu_a_SOURCES = fpu.cpp fpu_load.h
+libfpu_a_SOURCES = fpu.cpp fpu_flags.cpp fpu_types.h fpu_instructions.h
 subdir = src/fpu
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
@@ -93,7 +93,7 @@ LIBRARIES = $(noinst_LIBRARIES)
 
 libfpu_a_AR = $(AR) cru
 libfpu_a_LIBADD =
-am_libfpu_a_OBJECTS = fpu.$(OBJEXT)
+am_libfpu_a_OBJECTS = fpu.$(OBJEXT) fpu_flags.$(OBJEXT)
 libfpu_a_OBJECTS = $(am_libfpu_a_OBJECTS)
 
 DEFS = @DEFS@
@@ -103,7 +103,7 @@ LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
-@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/fpu.Po
+@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/fpu.Po ./$(DEPDIR)/fpu_flags.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -145,6 +145,7 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fpu.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fpu_flags.Po@am__quote@
 
 distclean-depend:
 	-rm -rf ./$(DEPDIR)

@@ -37,6 +37,8 @@ void write_p3c5(Bit32u port,Bit8u val) {
 		break;
 	case 1:		/* Clocking Mode */
 		seq(clocking_mode)=val;
+		vga.config.pixel_double=(val & 8)>0;
+		VGA_FindSettings();
 		/* TODO Figure this out :)
 			0	If set character clocks are 8 dots wide, else 9.
 			2	If set loads video serializers every other character
@@ -53,6 +55,7 @@ void write_p3c5(Bit32u port,Bit8u val) {
 	case 2:		/* Map Mask */
 		seq(map_mask)=val & 15;
 		vga.config.full_map_mask=FillTable[val & 15];
+		vga.config.full_not_map_mask=~vga.config.full_map_mask;
 		/*
 			0  Enable writes to plane 0 if set
 			1  Enable writes to plane 1 if set

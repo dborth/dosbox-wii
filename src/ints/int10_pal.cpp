@@ -38,7 +38,7 @@ void INT10_SetOverscanBorderColor(Bit8u val) {
 	IO_Write(VGAREG_ACTL_WRITE_DATA,val);
 }
 
-void INT10_SetAllPaletteRegisters(PhysOff data) {
+void INT10_SetAllPaletteRegisters(PhysPt data) {
 	IO_Read(VGAREG_ACTL_RESET);
 	// First the colors
 	for(Bit8u i=0;i<0x10;i++) {
@@ -80,7 +80,7 @@ void INT10_GetOverscanBorderColor(Bit8u * val) {
 	*val=IO_Read(VGAREG_ACTL_READ_DATA);
 }
 
-void INT10_GetAllPaletteRegisters(PhysOff data) {
+void INT10_GetAllPaletteRegisters(PhysPt data) {
 	IO_Read(VGAREG_ACTL_RESET);
 	// First the colors
 	for(Bit8u i=0;i<0x10;i++) {
@@ -107,7 +107,7 @@ void INT10_GetSingleDacRegister(Bit8u index,Bit8u * red,Bit8u * green,Bit8u * bl
 	*blue=IO_Read(VGAREG_DAC_DATA);
 }
 
-void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysOff data) {
+void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysPt data) {
  	IO_Write(VGAREG_DAC_WRITE_ADDRESS,(Bit8u)index);
 	for (;count>0;count--) {
 		IO_Write(VGAREG_DAC_DATA,mem_readb(data++));
@@ -116,7 +116,7 @@ void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysOff data) {
 	}
 }
 
-void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysOff data) {
+void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysPt data) {
  	IO_Write(VGAREG_DAC_WRITE_ADDRESS,(Bit8u)index);
 	for (;count>0;count--) {
 		mem_writeb(data++,IO_Read(VGAREG_DAC_DATA));

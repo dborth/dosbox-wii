@@ -35,7 +35,9 @@ enum {
 	DOS_ATTR_ARCHIVE=	0x20
 };
 
-#pragma pack (1)
+#if defined (_MSC_VER)
+#pragma pack(1)
+#endif
 struct DTA_FindBlock {
 	Bit8u sdrive;								/* The Drive the search is taking place */
 	Bit16u sattr;								/* The attributes that need to be found */
@@ -45,8 +47,13 @@ struct DTA_FindBlock {
 	Bit16u date;
 	Bit32u size;
 	char name[DOS_NAMELENGTH];
-};
-#pragma pack ()
+}
+#if defined (_MSC_VER)
+;
+#pragma pack()
+#else
+__attribute__ ((packed));
+#endif
 
 class DOS_File {
 public:
@@ -82,6 +89,8 @@ public:
 	virtual bool GetFileAttr(char * name,Bit16u * attr)=0;
 	virtual bool Rename(char * oldname,char * newname)=0;
 	virtual bool FreeSpace(Bit16u * bytes,Bit16u * sectors,Bit16u * clusters,Bit16u * free)=0;
+	virtual bool FileExists(const char* name) const=0;
+	virtual bool FileStat(const char* name, struct stat* const stat_block) const=0;
 	char * GetInfo(void);
 	char curdir[DOS_PATHLENGTH];
 	char info[256];
