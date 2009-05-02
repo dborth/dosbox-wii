@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -23,13 +23,13 @@
 #include "dosbox.h"
 
 enum VGAModes {
-	M_TEXT2,M_TEXT16,
-	M_HERC,
-	M_CGA2,M_CGA4,M_CGA16,
-	M_TANDY16,
-	M_EGA2,M_EGA4,M_EGA16,
+	M_CGA2,M_CGA4,
+	M_EGA16,
 	M_VGA,
 	M_LIN8,
+	M_TEXT,
+	M_HERC_GFX,M_HERC_TEXT,
+	M_CGA16,M_TANDY2,M_TANDY4,M_TANDY16,M_TANDY_TEXT,
 	M_ERROR,
 };
 
@@ -60,9 +60,7 @@ typedef struct {
 
 /* Some other screen related variables */
 	Bitu line_compare;
-
 	bool chained;					/* Enable or Disabled Chain 4 Mode */
-	bool blinking;					/* Attribute bit 7 is blinking */
 
 	/* Pixel Scrolling */
 	Bit8u pel_panning;				/* Amount of pixels to skip when starting horizontal line */
@@ -91,10 +89,8 @@ typedef struct {
 
 typedef struct {
 	bool resizing;
-	bool drawing;
 	Bitu width;
 	Bitu height;
-	Bitu pitch;
 	Bitu blocks;
 	Bitu panning;
 	Bitu address;
@@ -102,30 +98,28 @@ typedef struct {
 	Bitu address_line_total;
 	Bitu address_line;
 	Bitu lines_total;
-	Bitu lines_left;
+	Bitu lines_done;
 	Bitu lines_scaled;
 	Bitu split_line;
 	Bitu parts_total;
 	Bitu parts_lines;
 	Bitu parts_left;
 	struct {
-		Bitu vtotal;
-		Bitu vstart;
-		Bitu vend;
-		Bitu htotal;
-		Bitu hstart;
-		Bitu hend;
-		Bitu parts;
-	} micro;
-	Bitu scaleh;
+		float vtotal;
+		float vstart;
+		float vend;
+		float htotal;
+		float hstart;
+		float hend;
+		float parts;
+	} delay;
 	bool double_scan;
-	bool double_scan_active;
-	Bit8u font_height;
+	bool doublewidth,doubleheight;
 	Bit8u font[64*1024];
-	Bitu font1_start;
-	Bitu font2_start;
+	Bit8u * font_tables[2];
 	Bitu blinking;
 	struct {
+		Bitu address;
 		Bit8u sline,eline;
 		Bit8u count,delay;
 		Bit8u enabled;
@@ -133,18 +127,33 @@ typedef struct {
 } VGA_Draw;
 
 typedef struct {
+	Bit8u curmode;
+	Bit16u originx, originy;
+	Bit8u fstackpos, bstackpos;
+	Bit8u forestack[3];
+	Bit8u backstack[3];
+	Bit16u startaddr;
+	Bit8u posx, posy;
+	Bit8u mc[64][64];
+} VGA_HWCURSOR;
+
+typedef struct {
 	Bit8u bank;
 	Bit8u reg_lock1;
 	Bit8u reg_lock2;
 	Bit8u reg_31;
 	Bit8u reg_35;
+	Bit8u reg_40; // 8415/A functionality register
 	Bit8u reg_43;
+	Bit8u reg_45; // Hardware graphics cursor
 	Bit8u reg_58;
 	Bit8u reg_51;
 	Bit8u reg_55;
 	Bit8u ex_hor_overflow;
 	Bit8u ex_ver_overflow;
 	Bit16u la_window;
+	Bit8u misc_control_2;
+	Bit8u ext_mem_ctrl;
 	struct {
 		Bit8u r;
 		Bit8u n;
@@ -154,6 +163,7 @@ typedef struct {
 		Bit8u lock;
 		Bit8u cmd;
 	} pll;
+	VGA_HWCURSOR hgc;
 } VGA_S3;
 
 typedef struct {
@@ -162,18 +172,28 @@ typedef struct {
 } VGA_HERC;
 
 typedef struct {
-	Bit8u mode_control;
-	Bit8u color_select;
-} VGA_CGA;
+	Bit8u index;
+	Bit8u htotal;
+	Bit8u hdend;
+	Bit8u hsyncp;
+	Bit8u hsyncw;
+	Bit8u vtotal;
+	Bit8u vdend;
+	Bit8u vadjust;
+	Bit8u vsyncp;
+	Bit8u vsyncw;
+	Bit8u max_scanline;
+} VGA_OTHER;
 
 typedef struct {
+	Bit8u mode_control;
+	Bit8u color_select;
 	Bit8u mem_bank;
 	Bit8u disp_bank;
 	Bit8u reg_index;
-	Bit8u mode_control1;
+	Bit8u gfx_control;
 	Bit8u palette_mask;
 	Bit8u border_color;
-	Bit8u mode_control2;
 } VGA_TANDY;
 
 typedef struct {
@@ -256,7 +276,6 @@ typedef struct {
 	Bit8u read_index;
 	Bitu first_changed;
 	RGBEntry rgb[0x100];
-	Bit8u attr[16];
 } VGA_Dac;
 
 union VGA_Latch {
@@ -285,8 +304,8 @@ typedef struct {
 	VGA_Latch latch;
 	VGA_S3 s3;
 	VGA_HERC herc;
-	VGA_CGA cga;
 	VGA_TANDY tandy;
+	VGA_OTHER other;
 	VGA_Memory mem;
 } VGA_Type;
 
@@ -294,12 +313,15 @@ typedef struct {
 
 /* Functions for different resolutions */
 void VGA_SetMode(VGAModes mode);
+void VGA_DetermineMode(void);
 void VGA_SetupHandlers(void);
 void VGA_StartResize(void);
-void VGA_SetupDrawing(void);
+void VGA_SetupDrawing(Bitu val);
+void VGA_CheckScanLength(void);
 
 /* Some DAC/Attribute functions */
 void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal);
+void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue);
 void VGA_ATTR_SetPalette(Bit8u index,Bit8u val);
 
 /* The VGA Subfunction startups */
@@ -310,6 +332,8 @@ void VGA_SetupCRTC(void);
 void VGA_SetupMisc(void);
 void VGA_SetupGFX(void);
 void VGA_SetupSEQ(void);
+void VGA_SetupOther(void);
+void VGA_SetupXGA(void);
 
 /* Some Support Functions */
 void VGA_SetClock(Bitu which,Bitu target);
@@ -317,6 +341,8 @@ void VGA_DACSetEntirePalette(void);
 void VGA_StartRetrace(void);
 void VGA_StartUpdateLFB(void);
 void VGA_SetBlinking(Bitu enabled);
+void VGA_SetCGA2Table(Bit8u val0,Bit8u val1);
+void VGA_SetCGA4Table(Bit8u val0,Bit8u val1,Bit8u val2,Bit8u val3);
 
 extern VGA_Type vga;
 

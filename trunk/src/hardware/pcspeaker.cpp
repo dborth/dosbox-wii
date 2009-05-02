@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -28,202 +28,294 @@
 #define PI 3.14159265358979323846
 #endif
 
-#define SPKR_BUF 4096
-#define SPKR_RATE 22050
+#define SPKR_ENTRIES 1024
 #define SPKR_VOLUME 5000
+//#define SPKR_SHIFT 8
+#define SPKR_SPEED (float)((SPKR_VOLUME*2)/0.070f)
 
-#define SPKR_SHIFT 10
-
-enum SPKR_MODE {
-	MODE_NONE,MODE_WAVE,MODE_DELAY,MODE_ONOFF,MODE_REAL,
+enum SPKR_MODES {
+	SPKR_OFF,SPKR_ON,SPKR_PIT_OFF,SPKR_PIT_ON
 };
 
-/* TODO 
-  Maybe interpolate at the moment we switch between on/off 
-  Keep track of postion of speaker conus in ONOFF mode 
-*/
+struct DelayEntry {
+	float index;
+	float vol;
+};
 
 static struct {
-	Bit16s volume;
-	MIXER_Channel * chan;
-	Bit16u buffer[SPKR_BUF];
-	SPKR_MODE mode;
-	SPKR_MODE pit_mode;
-	struct {
-		Bit16s buf[SPKR_BUF];
-		Bitu used;
-	} real;
-	struct {
-		Bitu index;
-		struct {
-			Bitu max,half;
-		} count,new_count;
-	} wave;
-	struct {
-		Bit16s buf[SPKR_BUF];
-		Bitu pos;
-	} out;
-	struct {
-		Bitu index;
-		Bitu max;
-	} delay;
-	struct {
-		Bitu vol;
-		Bitu rate;
-		Bitu rate_conv;
-		Bitu tick_add;
-	} hw;
-	bool onoff,enabled;
-	Bitu buf_pos;
+	MixerChannel * chan;
+	SPKR_MODES mode;
+	Bitu pit_mode;
+	Bitu rate;
+
+	float pit_last;
+	float pit_new_max,pit_new_half;
+	float pit_max,pit_half;
+	float pit_index;
+	float volwant,volcur;
+	Bitu last_ticks;
+	float last_index;
+	DelayEntry entries[SPKR_ENTRIES];
+	Bitu used;
 } spkr;
 
-static void GenerateSound(Bitu size) {
-	while (spkr.out.pos<size) {
-		Bitu samples=size-spkr.out.pos;
-		Bit16s * stream=&spkr.out.buf[spkr.out.pos];
-		switch (spkr.mode) {
-		case MODE_NONE:
-			memset(stream,0,samples*2);
-			spkr.out.pos+=samples;
-			break;
-		case MODE_WAVE:
-			{
-				for (Bitu i=0;i<samples;i++) {
-					spkr.wave.index+=spkr.hw.tick_add;
-					if (spkr.wave.index>=spkr.wave.count.max) {
-						*stream++=+spkr.volume;					
-						spkr.wave.index-=spkr.wave.count.max;
-						spkr.wave.count.max=spkr.wave.new_count.max;
-						spkr.wave.count.half=spkr.wave.new_count.half;
-					} else if (spkr.wave.index>spkr.wave.count.half) {
-						*stream++=-spkr.volume;					
-					} else {
-						*stream++=+spkr.volume;					
-					}
+static void AddDelayEntry(float index,float vol) {
+	if (spkr.used==SPKR_ENTRIES) {
+		return;
+	}
+	spkr.entries[spkr.used].index=index;
+	spkr.entries[spkr.used].vol=vol;
+	spkr.used++;
+}
+
+
+static void ForwardPIT(float newindex) {
+	float passed=(newindex-spkr.last_index);
+	float delay_base=spkr.last_index;
+	spkr.last_index=newindex;
+	switch (spkr.pit_mode) {
+	case 0:
+		return;
+	case 1:
+		return;
+	case 2:
+		while (passed>0) {
+			/* passed the initial low cycle? */
+			if (spkr.pit_index>=spkr.pit_half) {
+				/* Start a new low cycle */
+				if ((spkr.pit_index+passed)>=spkr.pit_max) {
+					float delay=spkr.pit_max-spkr.pit_index;
+					delay_base+=delay;passed-=delay;
+					spkr.pit_last=-SPKR_VOLUME;
+					if (spkr.mode==SPKR_PIT_ON) AddDelayEntry(delay_base,spkr.pit_last);
+					spkr.pit_index=0;
+				} else {
+					spkr.pit_index+=passed;
+					return;
 				}
-				spkr.out.pos+=samples;
-			}
-			break;
-		case MODE_ONOFF:
-			{
-				Bit16s val=spkr.onoff ? spkr.volume : -spkr.volume;
-				for (Bitu i=0;i<samples;i++) *stream++=val;
-				spkr.out.pos+=samples;
-			}
-			break;
-		case MODE_REAL:
-			{
-				Bitu buf_add=(spkr.real.used<<16)/samples;
-				Bitu buf_pos=0;
-				spkr.real.used=0;spkr.mode=MODE_NONE;
-				for (Bitu i=0;i<samples;i++) {
-					*stream++=spkr.real.buf[buf_pos >> 16];
-					buf_pos+=buf_add;
+			} else {
+				if ((spkr.pit_index+passed)>=spkr.pit_half) {
+					float delay=spkr.pit_half-spkr.pit_index;
+					delay_base+=delay;passed-=delay;
+					spkr.pit_last=SPKR_VOLUME;
+					if (spkr.mode==SPKR_PIT_ON) AddDelayEntry(delay_base,spkr.pit_last);
+					spkr.pit_index=spkr.pit_half;
+				} else {
+					spkr.pit_index+=passed;
+					return;
 				}
-				spkr.out.pos+=samples;
-				break;
 			}
-		case MODE_DELAY:
-			{
-				for (Bitu i=0;i<samples;i++) {
-					spkr.delay.index+=spkr.hw.tick_add;
-					if (spkr.delay.index<=spkr.delay.max) {
-						*stream++=+spkr.volume;
-					} else {
-						*stream++=-spkr.volume;
-					}
-				}
-			}			
-			spkr.out.pos+=samples;
-			break;
 		}
+		break;
+		//END CASE 2
+	case 3:
+		while (passed>0) {
+			/* Determine where in the wave we're located */
+			if (spkr.pit_index>=spkr.pit_half) {
+				if ((spkr.pit_index+passed)>=spkr.pit_max) {
+					float delay=spkr.pit_max-spkr.pit_index;
+					delay_base+=delay;passed-=delay;
+					spkr.pit_last=SPKR_VOLUME;
+					if (spkr.mode==SPKR_PIT_ON) AddDelayEntry(delay_base,spkr.pit_last);
+					spkr.pit_index=0;
+					/* Load the new count */
+					spkr.pit_half=spkr.pit_new_half;
+					spkr.pit_max=spkr.pit_new_max;
+				} else {
+					spkr.pit_index+=passed;
+					return;
+				}
+			} else {
+				if ((spkr.pit_index+passed)>=spkr.pit_half) {
+					float delay=spkr.pit_half-spkr.pit_index;
+					delay_base+=delay;passed-=delay;
+					spkr.pit_last=-SPKR_VOLUME;
+					if (spkr.mode==SPKR_PIT_ON) AddDelayEntry(delay_base,spkr.pit_last);
+					spkr.pit_index=spkr.pit_half;
+				} else {
+					spkr.pit_index+=passed;
+					return;
+				}
+			}
+		}
+		break;
+		//END CASE 3
+	case 4:
+		if (spkr.pit_index<spkr.pit_max) {
+			/* Check if we're gonna pass the end this block */
+			if (spkr.pit_index+passed>=spkr.pit_max) {
+				float delay=spkr.pit_max-spkr.pit_index;
+				delay_base+=delay;passed-=delay;
+				spkr.pit_last=-SPKR_VOLUME;
+				if (spkr.mode==SPKR_PIT_ON) AddDelayEntry(delay_base,spkr.pit_last);				//No new events unless reprogrammed
+				spkr.pit_index=spkr.pit_max;
+			} else spkr.pit_index+=passed;
+		}
+		break;
+		//END CASE 4
 	}
 }
 
 void PCSPEAKER_SetCounter(Bitu cntr,Bitu mode) {
-	Bitu index=PIC_Index();
-	Bitu len=(spkr.hw.rate_conv*index)>>16;
-	if (spkr.mode==MODE_NONE) MIXER_Enable(spkr.chan,true);
+	if (!spkr.last_ticks) {
+		spkr.chan->Enable(true);
+		spkr.last_index=0;
+	}
+	spkr.last_ticks=PIC_Ticks;
+	float newindex=PIC_TickIndex();
+	ForwardPIT(newindex);
 	switch (mode) {
 	case 0:		/* Mode 0 one shot, used with realsound */
-		if (!spkr.enabled) return;
-		if (cntr>72) cntr=72;
-		if (spkr.mode!=MODE_REAL) GenerateSound(len);
-		spkr.pit_mode=MODE_REAL;
-		if (spkr.real.used<SPKR_BUF) spkr.real.buf[spkr.real.used++]=(cntr-36)*600;
+		if (spkr.mode!=SPKR_PIT_ON) return;
+		if (cntr>80) { 
+			cntr=80;
+		}
+		spkr.pit_last=((float)cntr-40)*(SPKR_VOLUME/40.0f);
+		AddDelayEntry(newindex,spkr.pit_last);
+		spkr.pit_index=0;
+		break;
+	case 1:
+		if (spkr.mode!=SPKR_PIT_ON) return;
+		spkr.pit_last=SPKR_VOLUME;
+		AddDelayEntry(newindex,spkr.pit_last);
+		break;
+	case 2:			/* Single cycle low, rest low high generator */
+		spkr.pit_index=0;
+		spkr.pit_last=-SPKR_VOLUME;
+		AddDelayEntry(newindex,spkr.pit_last);
+		spkr.pit_half=(1000.0f/PIT_TICK_RATE)*1;
+		spkr.pit_max=(1000.0f/PIT_TICK_RATE)*cntr;
 		break;
 	case 3:		/* Square wave generator */
-		GenerateSound(len);
-		spkr.pit_mode=MODE_WAVE;
-		spkr.wave.new_count.max=cntr << SPKR_SHIFT;
-		spkr.wave.new_count.half=(cntr/2) << SPKR_SHIFT;
+		if (cntr<=40) {
+			/* Makes DIGGER sound better */
+			spkr.pit_last=0;
+			spkr.pit_mode=0;
+			return;
+		}
+		spkr.pit_new_max=(1000.0f/PIT_TICK_RATE)*cntr;
+		spkr.pit_new_half=spkr.pit_new_max/2;
 		break;
-	case 4:		/* Keep high till end of count */
-		GenerateSound(len);
-		spkr.delay.max=cntr << SPKR_SHIFT;
-		spkr.delay.index=0;
-		spkr.pit_mode=MODE_DELAY;
+	case 4:		/* Software triggered strobe */
+		spkr.pit_last=SPKR_VOLUME;
+		AddDelayEntry(newindex,spkr.pit_last);
+		spkr.pit_index=0;
+		spkr.pit_max=(1000.0f/PIT_TICK_RATE)*cntr;
 		break;
+	default:
+#if C_DEBUG
+		LOG_MSG("Unhandled speaker mode %d",mode);
+#endif
+		return;
 	}
-	if (spkr.enabled) spkr.mode=spkr.pit_mode;
+	spkr.pit_mode=mode;
 }
 
 void PCSPEAKER_SetType(Bitu mode) {
-	Bitu index=PIC_Index();
-	Bitu len=(spkr.hw.rate_conv*index)>>16;
-	GenerateSound(len);
-	if (spkr.mode==MODE_NONE) MIXER_Enable(spkr.chan,true);
+	if (!spkr.last_ticks) {
+		spkr.chan->Enable(true);
+		spkr.last_index=0;
+	}
+	spkr.last_ticks=PIC_Ticks;
+	float newindex=PIC_TickIndex();
+	ForwardPIT(newindex);
 	switch (mode) {
 	case 0:
-		if (spkr.mode==MODE_ONOFF && spkr.onoff) spkr.onoff=false;
-		else spkr.mode=MODE_NONE;
-		spkr.enabled=false;
+    	spkr.mode=SPKR_OFF;
+		AddDelayEntry(newindex,-SPKR_VOLUME);
 		break;
 	case 1:
-		spkr.mode=MODE_ONOFF;
-		spkr.enabled=false;
-		spkr.onoff=false;
+		spkr.mode=SPKR_PIT_OFF;
+		AddDelayEntry(newindex,-SPKR_VOLUME);
 		break;
 	case 2:
-		spkr.enabled=false;
-		spkr.onoff=true;
-		spkr.mode=MODE_ONOFF;
+		spkr.mode=SPKR_ON;
+		AddDelayEntry(newindex,SPKR_VOLUME);
 		break;
 	case 3:
-		spkr.onoff=true;
-		spkr.enabled=true;
-		spkr.mode=spkr.pit_mode;		
+		if (spkr.mode!=SPKR_PIT_ON) {
+			AddDelayEntry(newindex,spkr.pit_last);
+		}
+		spkr.mode=SPKR_PIT_ON;
 		break;
 	};
 }
 
-static void PCSPEAKER_CallBack(Bit8u * stream,Bit32u len) {
-	if (spkr.out.pos<len) GenerateSound(len);
-	memcpy(stream,spkr.out.buf,len*2);
-	memcpy(spkr.out.buf,&spkr.out.buf[len],(spkr.out.pos-len)*2);
-	spkr.out.pos-=len;
-	if (spkr.mode==MODE_NONE) MIXER_Enable(spkr.chan,false);
+static void PCSPEAKER_CallBack(Bitu len) {
+	Bit16s * stream=(Bit16s*)MixTemp;
+	ForwardPIT(1);
+	spkr.last_index=0;
+	Bitu count=len;
+	Bitu pos=0;
+	float sample_base=0;
+	float sample_add=(1.0001f)/len;
+	while (count--) {
+		float index=sample_base;
+		sample_base+=sample_add;
+		float end=sample_base;
+		double value=0;
+		while(index<end) {
+			/* Check if there is an upcoming event */
+			if (spkr.used && spkr.entries[pos].index<=index) {
+				spkr.volwant=spkr.entries[pos].vol;
+				pos++;spkr.used--;
+				continue;
+			}
+			float vol_end;
+			if (spkr.used && spkr.entries[pos].index<end) {
+				vol_end=spkr.entries[pos].index;
+			} else vol_end=end;
+			float vol_len=vol_end-index;
+            /* Check if we have to slide the volume */
+			float vol_diff=spkr.volwant-spkr.volcur;
+			if (vol_diff == 0) {
+				value+=spkr.volcur*vol_len;
+				index+=vol_len;
+			} else {
+				/* Check how long it will take to goto new level */
+				float vol_time=fabs(vol_diff)/SPKR_SPEED;
+				if (vol_time<=vol_len) {
+					/* Volume reaches endpoint in this block, calc until that point */
+					value+=vol_time*spkr.volcur;
+					value+=vol_time*vol_diff/2;
+					index+=vol_time;
+					spkr.volcur=spkr.volwant;
+				} else {
+					/* Volume still not reached in this block */
+					value+=spkr.volcur*vol_len;
+					if (vol_diff<0) {
+						value-=(SPKR_SPEED*vol_len*vol_len)/2;
+						spkr.volcur-=SPKR_SPEED*vol_len;
+					} else {
+						value+=(SPKR_SPEED*vol_len*vol_len)/2;
+						spkr.volcur+=SPKR_SPEED*vol_len;
+					}
+					index+=vol_len;
+				}
+			}
+		}
+		*stream++=(Bit16s)(value/sample_add);
+	}
+	spkr.chan->AddSamples_m16(len,(Bit16s*)MixTemp);
+	if ((spkr.last_ticks+10000)<PIC_Ticks) {
+		spkr.last_ticks=0;
+		spkr.chan->Enable(false);
+	}
 }
 
 void PCSPEAKER_Init(Section* sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	if(!section->Get_bool("pcspeaker")) return;
-	spkr.volume=SPKR_VOLUME;
-	spkr.mode=MODE_NONE;
-	spkr.pit_mode=MODE_WAVE;
-	spkr.real.used=0;
-	spkr.out.pos=0;
-	spkr.onoff=false;
-//	spkr.hw.vol=section->Get_int("volume");
-	spkr.hw.rate=section->Get_int("pcrate");
-	spkr.hw.rate_conv=(spkr.hw.rate<<16)/1000000;
-	spkr.hw.tick_add=(Bitu)((double)PIT_TICK_RATE*(double)(1 << SPKR_SHIFT)/(double)spkr.hw.rate);
-	spkr.wave.index=0;
-	spkr.wave.count.max=spkr.wave.new_count.max=0x10000 << SPKR_SHIFT;
-	spkr.wave.count.half=spkr.wave.new_count.half=(0x10000 << SPKR_SHIFT)/2;
-
+	spkr.mode=SPKR_OFF;
+	spkr.last_ticks=0;
+	spkr.last_index=0;
+	spkr.rate=section->Get_int("pcrate");
+	spkr.pit_max=(1000.0f/PIT_TICK_RATE)*65535;
+	spkr.pit_half=spkr.pit_max/2;
+	spkr.pit_new_max=spkr.pit_max;
+	spkr.pit_new_half=spkr.pit_half;
+	spkr.pit_index=0;
+	spkr.used=0;
 	/* Register the sound channel */
-	spkr.chan=MIXER_AddChannel(&PCSPEAKER_CallBack,spkr.hw.rate,"PC-SPEAKER");
-	MIXER_Enable(spkr.chan,false);
-	MIXER_SetMode(spkr.chan,MIXER_16MONO);
+	spkr.chan=MIXER_AddChannel(&PCSPEAKER_CallBack,spkr.rate,"SPKR");
 }

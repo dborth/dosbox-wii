@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -131,7 +131,7 @@ static int amplitude_lookup[16] = {
 /* global parameters */
 static double sample_rate;
 static SAA1099 saa1099[2];
-static MIXER_Channel * cms_chan;
+static MixerChannel * cms_chan;
 static Bit16s cms_buffer[2][2][CMS_BUFFER_SIZE];
 static Bit16s * cms_buf_point[4] = {
 	cms_buffer[0][0],cms_buffer[0][1],cms_buffer[1][0],cms_buffer[1][1] };
@@ -363,8 +363,8 @@ static void saa1099_write_port_w( int chip, int offset, int data )
 }
 
 
-static void write_cms(Bit32u port,Bit8u val) {
-	if (last_command + 100 < PIC_Ticks) MIXER_Enable(cms_chan,true); 
+static void write_cms(Bitu port,Bitu val,Bitu iolen) {
+	if (last_command + 1000 < PIC_Ticks) cms_chan->Enable(true); 
 	last_command = PIC_Ticks;
 	switch (port) {
 	case 0x0220:
@@ -383,7 +383,6 @@ static void write_cms(Bit32u port,Bit8u val) {
 		break;
 	case 0x223:
 		saa1099[1].selected_reg = val & 0x1f;
-
 		if (saa1099[1].selected_reg == 0x18 || saa1099[1].selected_reg == 0x19) {
 			/* clock the envelope channels */
 			if (saa1099[1].env_clock[0]) saa1099_envelope(1,0);
@@ -391,55 +390,49 @@ static void write_cms(Bit32u port,Bit8u val) {
 		}
 		break;
 	}
-	if (last_command > PIC_Ticks+1000) MIXER_Enable(cms_chan,true); 
 }
 
- static void CMS_CallBack(Bit8u * stream,Bit32u len) {
+ static void CMS_CallBack(Bitu len) {
 	if (len > CMS_BUFFER_SIZE) return;
 
 	saa1099_update(0, &cms_buf_point[0], (int)len);
 	saa1099_update(1, &cms_buf_point[2], (int)len);
 
+	 Bit16s * stream=(Bit16s *) MixTemp;
 	/* Mix chip outputs */
 	for (Bitu l=0;l<len;l++) {
 		register Bits left, right;
 		left = cms_buffer[0][LEFT][l] + cms_buffer[1][LEFT][l];
 		right = cms_buffer[0][RIGHT][l] + cms_buffer[1][RIGHT][l];
 
-		if (left>MAX_AUDIO) *(Bit16s *)stream=MAX_AUDIO;
-		else if (left<MIN_AUDIO) *(Bit16s *)stream=MIN_AUDIO;
-		else *(Bit16s *)stream=(Bit16s)left;
-		stream+=2;
+		if (left>MAX_AUDIO) *stream=MAX_AUDIO;
+		else if (left<MIN_AUDIO) *stream=MIN_AUDIO;
+		else *stream=(Bit16s)left;
+		stream++;
 
-		if (right>MAX_AUDIO) *(Bit16s *)stream=MAX_AUDIO;
-		else if (right<MIN_AUDIO) *(Bit16s *)stream=MIN_AUDIO;
-		else *(Bit16s *)stream=(Bit16s)right;
-		stream+=2;
+		if (right>MAX_AUDIO) *stream=MAX_AUDIO;
+		else if (right<MIN_AUDIO) *stream=MIN_AUDIO;
+		else *stream=(Bit16s)right;
+		stream++;
 	}
-	if (last_command + 1000 < PIC_Ticks) MIXER_Enable(cms_chan,false); 
+	cms_chan->AddSamples_s16(len,(Bit16s *)MixTemp);
+	if (last_command + 10000 < PIC_Ticks) cms_chan->Enable(false);
 }
 
 
-void CMS_Init(Section* sec) {
+ void CMS_Init(Section* sec,Bitu base,Bitu rate) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
-	if(!section->Get_bool("cms")) return;
-	sample_rate=section->Get_int("cmsrate");
+	sample_rate=rate;
 
-	IO_RegisterWriteHandler(0x220,write_cms,"CMS");
-	IO_RegisterWriteHandler(0x221,write_cms,"CMS");
-	IO_RegisterWriteHandler(0x222,write_cms,"CMS");
-	IO_RegisterWriteHandler(0x223,write_cms,"CMS");
+	IO_RegisterWriteHandler(base,write_cms,IO_MB,4);
 	
 /* Register the Mixer CallBack */
 
-	cms_chan=MIXER_AddChannel(CMS_CallBack,CMS_RATE,"CMS");
-	MIXER_SetMode(cms_chan,MIXER_16STEREO);
-	MIXER_Enable(cms_chan,true);
+	cms_chan=MIXER_AddChannel(CMS_CallBack,rate,"CMS");
 	last_command=PIC_Ticks;
 	
 	for (int s=0;s<2;s++) {
 		struct SAA1099 *saa = &saa1099[s];
-
 		memset(saa, 0, sizeof(struct SAA1099));
 	}
 }

@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -17,6 +17,9 @@
  */
 
 /* Local Debug Function */
+
+/* $Id: debug_inc.h,v 1.8 2004/08/28 12:51:35 qbix79 Exp $ */
+
 #include <curses.h>
 #include "mem.h"
 
@@ -34,6 +37,7 @@ struct DBGBlock {
 	WINDOW * win_reg;					/* Register Window */
 	WINDOW * win_data;					/* Data Output window */
 	WINDOW * win_code;					/* Disassembly/Debug point Window */
+	WINDOW * win_var;					/* Variable Window */
 	WINDOW * win_out;					/* Text Output Window */
 	Bit32u active_win;					/* Current active window */
 	Bit32u input_y;

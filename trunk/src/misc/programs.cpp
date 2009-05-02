@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.cpp,v 1.12 2004/01/09 12:34:53 qbix79 Exp $ */
+/* $Id: programs.cpp,v 1.15 2004/09/16 21:47:39 qbix79 Exp $ */
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -65,7 +65,7 @@ static Bitu PROGRAMS_Handler(void) {
 	PROGRAMS_Main * handler=0;			//It will get sneakily itinialized
 	Bitu size=sizeof(PROGRAMS_Main *);
 	/* Read the handler from program code in memory */
-	PhysPt reader=PhysMake(dos.psp,256+sizeof(exe_block));
+	PhysPt reader=PhysMake(dos.psp(),256+sizeof(exe_block));
 	HostPt writer=(HostPt)&handler;
 	for (;size>0;size--) *writer++=mem_readb(reader++);
 	Program * new_program;
@@ -81,13 +81,13 @@ static Bitu PROGRAMS_Handler(void) {
 
 Program::Program() {
 	/* Find the command line and setup the PSP */
-	psp = new DOS_PSP(dos.psp);
+	psp = new DOS_PSP(dos.psp());
 	/* Scan environment for filename */
 	PhysPt envscan=PhysMake(psp->GetEnvironment(),0);
 	while (mem_readb(envscan)) envscan+=mem_strlen(envscan)+1;	
 	envscan+=3;
 	CommandTail tail;
-	MEM_BlockRead(PhysMake(dos.psp,128),&tail,128);
+	MEM_BlockRead(PhysMake(dos.psp(),128),&tail,128);
 	if (tail.count<127) tail.buffer[tail.count]=0;
 	else tail.buffer[126]=0;
 	char filename[256];
@@ -96,11 +96,11 @@ Program::Program() {
 }
 
 void Program::WriteOut(const char * format,...) {
-	char buf[1024];
+	char buf[2048];
 	va_list msg;
 	
 	va_start(msg,format);
-	vsprintf(buf,format,msg);
+	vsnprintf(buf,2047,format,msg);
 	va_end(msg);
 
 	Bit16u size=strlen(buf);

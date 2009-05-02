@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: callback.cpp,v 1.19 2004/01/07 20:23:48 qbix79 Exp $ */
+/* $Id: callback.cpp,v 1.22 2004/08/29 11:22:37 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -67,8 +67,7 @@ void CALLBACK_Idle(void) {
 	reg_eip=oldeip;
 	SegSet16(cs,oldcs);
 	SETFLAGBIT(IF,oldIF);
-	if (CPU_CycleLeft<300) CPU_CycleLeft=1;
-	else CPU_CycleLeft-=300;
+	if (CPU_Cycles>0) CPU_Cycles=0;
 }
 
 static Bitu default_handler(void) {
@@ -204,12 +203,14 @@ void CALLBACK_Init(Section* sec) {
 	/* Setup the Stop Handler */
 	call_stop=CALLBACK_Allocate();
 	CallBack_Handlers[call_stop]=stop_handler;
+	CALLBACK_SetDescription(call_stop,"stop");
 	phys_writeb(CB_BASE+(call_stop<<4)+0,0xFE);
 	phys_writeb(CB_BASE+(call_stop<<4)+1,0x38);
 	phys_writew(CB_BASE+(call_stop<<4)+2,call_stop);
 	/* Setup the idle handler */
 	call_idle=CALLBACK_Allocate();
 	CallBack_Handlers[call_idle]=stop_handler;
+	CALLBACK_SetDescription(call_idle,"idle");
 	for (i=0;i<=11;i++) phys_writeb(CB_BASE+(call_idle<<4)+i,0x90);
 	phys_writeb(CB_BASE+(call_idle<<4)+12,0xFE);
 	phys_writeb(CB_BASE+(call_idle<<4)+13,0x38);
@@ -217,7 +218,7 @@ void CALLBACK_Init(Section* sec) {
 
 	/* Setup all Interrupt to point to the default handler */
 	call_default=CALLBACK_Allocate();
-	CALLBACK_Setup(call_default,&default_handler,CB_IRET);
+	CALLBACK_Setup(call_default,&default_handler,CB_IRET,"default");
 	/* Only setup default handler for first half of interrupt table */
 	for (i=0;i<0x40;i++) {
 		real_writed(0,i*4,CALLBACK_RealPointer(call_default));

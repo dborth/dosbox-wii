@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -22,27 +22,42 @@
 #include "mixer.h"
 #include "dma.h"
 #include "pic.h"
-#include "hardware.h"
 #include "setup.h"
 #include "programs.h"
 #include "math.h"
 #include "regs.h"
 
+//Extra bits of precision over normal gus
+#define WAVE_BITS 2
+#define WAVE_FRACT (9+WAVE_BITS)
+#define WAVE_FRACT_MASK ((1 << WAVE_FRACT)-1)
+#define WAVE_MSWMASK ((1 << (16+WAVE_BITS))-1)
+#define WAVE_LSWMASK (0xffffffff ^ WAVE_MSWMASK)
+
+//Amount of precision the volume has
+#define RAMP_FRACT (10)
+#define RAMP_FRACT_MASK ((1 << RAMP_FRACT)-1)
+
+#define USEVOLTABLE 1
 
 #define GUS_BASE myGUS.portbase
 #define GUS_RATE myGUS.rate
 #define LOG_GUS
 
-static MIXER_Channel * gus_chan;
-
-static Bit16u vol8bit[256];
-static Bit16s vol16bit[4096];
-
+Bit8u adlib_commandreg;
+static MixerChannel * gus_chan;
 static Bit8u irqtable[8] = { 0, 2, 5, 3, 7, 11, 12, 15 };
-
-static Bit8u dmatable[6] = { 3, 1, 5, 5, 6, 7 };
-
+static Bit8u dmatable[8] = { 0, 1, 3, 5, 6, 7, 0, 0 };
 static Bit8u GUSRam[1024*1024]; // 1024K of GUS Ram
+static Bit32s AutoAmp=512;
+#if USEVOLTABLE
+static Bit16u vol16bit[4096];
+#endif
+static Bit32u pantable[16];
+
+static Bitu show_test=0;
+class GUSChannels;
+static void CheckVoiceIrq(void);
 
 struct GFGus {
 	Bit8u gRegSelect;
@@ -55,22 +70,17 @@ struct GFGus {
 	Bit8u TimerControl;
 	Bit8u SampControl;
 	Bit8u mixControl;
-
+	Bit8u ActiveChannels;
 	Bit32u basefreq;
-	Bit16u activechan;
-	Bit32s mupersamp;
-	Bit32s muperchan;
 
-	
-	Bit16u timerReg;
 	struct GusTimer {
-		Bit16u bytetimer;
-		Bit32s countdown;
-		Bit32s setting;
-		bool active;
+		Bit8u value;
+		bool reached;
+		bool raiseirq;
+		bool masked;
+		bool running;
+		float delay;
 	} timers[2];
-
-
 	Bit32u rate;
 	Bit16u portbase;
 	Bit16u dma1;
@@ -80,475 +90,331 @@ struct GFGus {
 	Bit16u irq2;
 
 	char ultradir[512];
-
 	bool irqenabled;
-
+	bool ChangeIRQDMA;
 	// IRQ status register values
-	struct IRQStat {
-		bool MIDITx;
-		bool MIDIRx;
-		bool T1;
-		bool T2;
-		bool Resv;
-		bool WaveTable;
-		bool VolRamp;
-		bool DMATC;
-	} irq;
-
+	Bit8u IRQStatus;
+	Bit32u ActiveMask;
+	Bit8u IRQChan;
+	Bit32u RampIRQ;
+	Bit32u WaveIRQ;
 } myGUS;
 
-#define GUSFIFOSIZE 1024
+Bitu DEBUG_EnableDebugger(void);
 
-static void UseDMA(DmaChannel *useDMA);
-
-struct IRQFifoEntry {
-	Bit8u channum;
-	bool WaveIRQ;
-	bool RampIRQ;
-};
-
-struct IRQFifoDef {
-	IRQFifoEntry entry[GUSFIFOSIZE];
-	Bit16s stackpos;
-} IRQFifo;
-
-
-// Routines to manage IRQ requests coming from the GUS
-static void pushIRQ(Bit8u channum, bool WaveIRQ, bool RampIRQ) {
-	IRQFifo.stackpos++;
-	if(IRQFifo.stackpos < GUSFIFOSIZE) {
-		myGUS.irq.WaveTable = WaveIRQ;
-		myGUS.irq.VolRamp = RampIRQ;
-
-		IRQFifo.entry[IRQFifo.stackpos].channum = channum;
-		IRQFifo.entry[IRQFifo.stackpos].RampIRQ = RampIRQ;
-		IRQFifo.entry[IRQFifo.stackpos].WaveIRQ = WaveIRQ;
-
-
-
-	} else {
-		LOG_GUS("GUS IRQ Fifo full!");
-	}
-}
-
-static void popIRQ(IRQFifoEntry * tmpentry) {
-	if(IRQFifo.stackpos<0) {
-		tmpentry->channum = 0;
-		tmpentry->RampIRQ = false;
-		tmpentry->WaveIRQ = false;
-		return;
-	}
-	memcpy(tmpentry, &IRQFifo.entry[IRQFifo.stackpos], sizeof(IRQFifoEntry));
-	--IRQFifo.stackpos;
-	if(IRQFifo.stackpos >= 0) {
-		myGUS.irq.WaveTable = IRQFifo.entry[IRQFifo.stackpos].WaveIRQ;
-		myGUS.irq.VolRamp = IRQFifo.entry[IRQFifo.stackpos].RampIRQ;
-	} else {
-		myGUS.irq.WaveTable = false;
-		myGUS.irq.VolRamp = false;
-	}
-}
-
+static void GUS_DMA_Callback(DmaChannel * chan,DMAEvent event);
 
 // Returns a single 16-bit sample from the Gravis's RAM
-INLINE Bit16s GetSample(Bit32u Delta, Bit32u CurAddr, bool eightbit) {
+static INLINE Bit32s GetSample(Bit32u Delta, Bit32u CurAddr, bool eightbit) {
 	Bit32u useAddr;
 	Bit32u holdAddr;
-	useAddr = CurAddr >> 9;
-	if(eightbit) {
-		if(Delta >= 1024) {
-			Bit8s tmpsmall = (Bit8s)GUSRam[useAddr];
-			return (Bit16s)(tmpsmall << 7);
+	useAddr = CurAddr >> WAVE_FRACT;
+	if (eightbit) {
+		if (Delta >= (1 << WAVE_FRACT)) {
+			Bit32s tmpsmall = (Bit8s)GUSRam[useAddr];
+			return tmpsmall << 8;
 		} else {
-
 			// Interpolate
-			Bit8s b1 = (Bit8s)GUSRam[useAddr];
-			Bit8s b2 = (Bit8s)GUSRam[useAddr+1];
-			Bit16s w1 = b1 << 7;
-			Bit16s w2 = b2 << 7;
-			Bit16s diff = w2 - w1;
-			return (Bit16s)(w1 + (((Bit32s)diff * (Bit32s)(CurAddr & 0x3fe)) >> 10));
-
+			Bit32s w1 = ((Bit8s)GUSRam[useAddr+0]) << 8;
+			Bit32s w2 = ((Bit8s)GUSRam[useAddr+1]) << 8;
+			Bit32s diff = w2 - w1;
+			return (w1+((diff*(Bit32s)(CurAddr&WAVE_FRACT_MASK ))>>WAVE_FRACT));
 		}
 	} else {
-		
 		// Formula used to convert addresses for use with 16-bit samples
 		holdAddr = useAddr & 0xc0000L;
 		useAddr = useAddr & 0x1ffffL;
 		useAddr = useAddr << 1;
 		useAddr = (holdAddr | useAddr);
 
-		if(Delta >= 1024) {
-			
-			return (Bit16s)((Bit16u)GUSRam[useAddr] | ((Bit16u)GUSRam[useAddr+1] << 8)) >> 2
-		;
-
+		if(Delta >= (1 << WAVE_FRACT)) {
+			return (GUSRam[useAddr+0] | (((Bit8s)GUSRam[useAddr+1]) << 8));
 		} else {
-
 			// Interpolate
-			Bit16s w1 = (Bit16s)((Bit16u)GUSRam[useAddr] | ((Bit16u)GUSRam[useAddr+1] << 8));
-			Bit16s w2 = (Bit16s)((Bit16u)GUSRam[useAddr+2] | ((Bit16u)GUSRam[useAddr+3] << 8));
-			Bit16s diff = w2 - w1;
-			return (Bit16s)(w1 + (((Bit32s)diff * (Bit32s)((CurAddr) & 0x3fe)) >> 10)) >> 2;
-
+			Bit32s w1 = (GUSRam[useAddr+0] | (((Bit8s)GUSRam[useAddr+1]) << 8));
+			Bit32s w2 = (GUSRam[useAddr+2] | (((Bit8s)GUSRam[useAddr+3]) << 8));
+			Bit32s diff = w2 - w1;
+			return (w1+((diff*(Bit32s)(CurAddr&WAVE_FRACT_MASK ))>>WAVE_FRACT));
 		}
 	}
 }
 
 class GUSChannels {
 public:
-	Bit8u voiceCont;
-	Bit16u FreqCont;
-	Bit32u RealDelta;
-	Bit32u StartAddr;
-	Bit32u EndAddr;
-	Bit8s VolRampRate;
-	Bit16s VolRampStart;
-	Bit16s VolRampEnd;
-	Bit8u VolRampStartOrg;
-	Bit8u VolRampEndOrg;
-	Bit32s CurVolume;
-	Bit32u CurAddr;
+	Bit32u WaveStart;
+	Bit32u WaveEnd;
+	Bit32u WaveAddr;
+	Bit32u WaveAdd;
+	Bit8u  WaveCtrl;
+	Bit16u WaveFreq;
+
+	Bit32u RampStart;
+	Bit32u RampEnd;
+	Bit32u RampVol;
+	Bit32u RampAdd;
+	Bit32u RampAddReal;
+
+	Bit8u RampRate;
+	Bit8u RampCtrl;
+
 	Bit8u PanPot;
-	Bit8u VolControl;
 	Bit8u channum;
-
-	bool moving;
-	bool playing;
-	bool ramping;
-	bool dir;
-	bool voldir;
-
-public:
-	bool notifyonce;
-	Bit32s leftvol;
-	Bit32s rightvol;
-	Bit32s nextramp;
+	Bit32u irqmask;
+	Bit32u PanLeft;
+	Bit32u PanRight;
+	Bit32s VolLeft;
+	Bit32s VolRight;
 
 	GUSChannels(Bit8u num) { 
 		channum = num;
-		playing = true; 
-		ramping = false; 
-		moving = false;
-		dir = false;
-		voldir = false;
-		StartAddr = 0;
-		EndAddr = 0;
-		CurAddr = 0;
-		VolRampRate = 0;
-		VolRampStart = 0;
-		VolRampEnd = 0;
-		leftvol = 255;
-		rightvol = 255;
-		nextramp = 0;
-		
+		irqmask = 1 << num;
+		WaveStart = 0;
+		WaveEnd = 0;
+		WaveAddr = 0;
+		WaveAdd = 0;
+		WaveFreq = 0;
+		WaveCtrl = 3;
+		RampRate = 0;
+		RampStart = 0;
+		RampEnd = 0;
+		RampCtrl = 3;
+		RampAdd = 0;
+		RampVol = 0;
+		VolLeft = 0;
+		VolRight = 0;
+		PanLeft = 0;
+		PanRight = 0;
+		PanPot = 0x7;
 	};
-
-	// Voice control register
-	void WriteVoiceCtrl(Bit8u val) {
-		voiceCont = val;
-		if (val & 0x3) moving = false;
-		if ((val & 0x3) == 0) {
-			//playing = true;
-			moving = true;
-		}
-		dir = false;
-		if((val & 0x40) !=0) dir = true;
-
+	void WriteWaveFreq(Bit16u val) {
+		WaveFreq = val;
+		double frameadd = double(val >> 1)/512.0;		//Samples / original gus frame
+		double realadd = (frameadd*(double)myGUS.basefreq/(double)GUS_RATE) * (double)(1 << WAVE_FRACT);
+		WaveAdd = (Bit32u)realadd;
 	}
-	Bit8u ReadVoiceCtrl(void) {
-		Bit8u tmpval = voiceCont & 0xfe;
-		if(!playing) tmpval++;
-		return tmpval;
+	void WriteWaveCtrl(Bit8u val) {
+		Bit32u oldirq=myGUS.WaveIRQ;
+		WaveCtrl = val & 0x7f;
+		if ((val & 0xa0)==0xa0) myGUS.WaveIRQ|=irqmask;
+		else myGUS.WaveIRQ&=~irqmask;
+		if (oldirq != myGUS.WaveIRQ) 
+			CheckVoiceIrq();
 	}
-
-	// Frequency control register
-	void WriteFreqCtrl(Bit16u val) {
-		FreqCont = val;
-		int fc;
-		fc = val;
-		fc = fc >> 1;
-		fc = fc * myGUS.basefreq;
-		fc = fc - (myGUS.basefreq >> 1);
-		fc = fc / 512;
-		float simple;
-
-		simple = ((float)fc / (float)GUS_RATE) * 512;
-		RealDelta = (Bit32u)simple;
+	INLINE Bit8u ReadWaveCtrl(void) {
+		Bit8u ret=WaveCtrl;
+		if (myGUS.WaveIRQ & irqmask) ret|=0x80;
+		return ret;
 	}
-	Bit16u ReadFreqCtrl(void) {
-		return FreqCont;
+	void UpdateWaveRamp(void) { 
+		WriteWaveFreq(WaveFreq);
+		WriteRampRate(RampRate);
 	}
-
-	// Used when GUS changes channel numbers during playback
-	void UpdateFreqCtrl() { WriteFreqCtrl(FreqCont); }
-
-	// Pan position register
 	void WritePanPot(Bit8u val) {
-		if(val<8) {
-			leftvol = 255;
-			rightvol = val << 5;
-		} else {
-			rightvol = 255;
-			leftvol = (8-(val-8)) << 5;
-		}
 		PanPot = val;
+		PanLeft = pantable[0x0f-(val & 0xf)];
+		PanRight = pantable[(val & 0xf)];
+		UpdateVolumes();
 	}
 	Bit8u ReadPanPot(void) {
 		return PanPot;
 	}
-
-	// Volume ramping control register
-	void WriteVolControl(Bit8u val) {
-		VolControl = val;
-		if (val & 0x3) ramping = false;
-		if ((val & 0x3) == 0) ramping = true;
-		voldir = false;
-		if((val & 0x40) !=0) voldir = true;
-
+	void WriteRampCtrl(Bit8u val) {
+		Bit32u old=myGUS.RampIRQ;
+		RampCtrl = val & 0x7f;
+		if ((val & 0xa0)==0xa0) myGUS.RampIRQ|=irqmask;
+		else myGUS.RampIRQ&=~irqmask;
+		if (old != myGUS.RampIRQ) CheckVoiceIrq();
 	}
-	Bit8u ReadVolControl(void) {
-		Bit8u tmpval = VolControl & 0xfe;
-		if(!ramping) tmpval++;
-		return tmpval;
+	INLINE Bit8u ReadRampCtrl(void) {
+		Bit8u ret=RampCtrl;
+		if (myGUS.RampIRQ & irqmask) ret|=0x80;
+		return ret;
 	}
-
-
-	// Methods to queue IRQ on ramp or sample end
-	void NotifyEndSamp(void) {
-		if(!notifyonce) {
-			if((voiceCont & 0x20) != 0) {
-				pushIRQ(channum,true,false);
-				notifyonce = true;
-			}
+	void WriteRampRate(Bit8u val) {
+		RampRate = val;
+		double frameadd = (double)(RampRate & 63)/(double)(1 << (3*(val >> 6)));
+		double realadd = (frameadd*(double)myGUS.basefreq/(double)GUS_RATE) * (double)(1 << RAMP_FRACT);
+		RampAdd = (Bit32u)realadd;
+	}
+	void ShowWave(void) {
+		LOG_GUS("Wave %2d Ctrl %02x Current %d Start %d End %d Add %3.3f ",
+			channum, 
+			ReadWaveCtrl(),
+			WaveAddr>>WAVE_FRACT,
+			WaveStart>>WAVE_FRACT, 
+			WaveEnd>>WAVE_FRACT, 
+			(float)WaveAdd/(float)(1 << WAVE_FRACT)
+		);
+	}
+	void ShowRamp(void) {
+		LOG_GUS("Ramp %2d Ctrl %02X Current %d Start %d End %d Add %d",
+			channum, 
+			ReadRampCtrl(),
+			RampVol   >> RAMP_FRACT,
+			RampStart >> RAMP_FRACT, 
+			RampEnd   >> RAMP_FRACT, 
+			RampAdd   >> RAMP_FRACT
+		);
+	}
+	INLINE void WaveUpdate(void) {
+		if (WaveCtrl & 0x3) return;
+		Bit32s WaveLeft;
+		if (WaveCtrl & 0x40) {
+			WaveAddr-=WaveAdd;
+			WaveLeft=WaveStart-WaveAddr;
+		} else {
+			WaveAddr+=WaveAdd;
+			WaveLeft=WaveAddr-WaveEnd;
+		}
+		if (WaveLeft<0) return;
+		/* Generate an IRQ if needed */
+		if (WaveCtrl & 0x20) {
+			myGUS.WaveIRQ|=irqmask;
+		}
+		/* Check for not being in PCM operation */
+		if (RampCtrl & 0x04) return;
+		/* Check for looping */
+		if (WaveCtrl & 0x08) {
+			/* Bi-directional looping */
+			if (WaveCtrl & 0x10) WaveCtrl^=0x40;
+			WaveAddr = (WaveCtrl & 0x40) ? (WaveEnd-WaveLeft) : (WaveStart+WaveLeft);
+		} else {
+			WaveCtrl|=1;	//Stop the channel
+			WaveAddr = (WaveCtrl & 0x40) ? WaveStart : WaveEnd;
 		}
 	}
-	void NotifyEndRamp(void) {
-		if(!notifyonce) {
-			if((VolControl & 0x20) != 0) {
-				pushIRQ(channum,false,true);
-				notifyonce = true;
-			}
+	INLINE void UpdateVolumes(void) {
+		Bit32s templeft=RampVol - PanLeft;
+		templeft&=~(templeft >> 31);
+		Bit32s tempright=RampVol - PanRight;
+		tempright&=~(tempright >> 31);
+#if USEVOLTABLE
+		VolLeft=vol16bit[templeft >> RAMP_FRACT];
+		VolRight=vol16bit[tempright >> RAMP_FRACT];
+#else
+
+#endif
+	}
+	INLINE void RampUpdate(void) {
+		/* Check if ramping enabled */
+		if (RampCtrl & 0x3) return;
+		Bit32s RampLeft;
+		if (RampCtrl & 0x40) {
+			RampVol-=RampAdd;
+			RampLeft=RampStart-RampVol;
+		} else {
+			RampVol+=RampAdd;
+			RampLeft=RampVol-RampEnd;
 		}
+		if (RampLeft<0) {
+			UpdateVolumes();
+			return;
+		}
+		/* Generate an IRQ if needed */
+		if (RampCtrl & 0x20) {
+			myGUS.RampIRQ|=irqmask;
+		}
+		/* Check for looping */
+		if (RampCtrl & 0x08) {
+			/* Bi-directional looping */
+			if (RampCtrl & 0x10) RampCtrl^=0x40;
+			RampVol = (RampCtrl & 0x40) ? (RampEnd-RampLeft) : (RampStart+RampLeft);
+		} else {
+			RampCtrl|=1;	//Stop the channel
+			RampVol = (RampCtrl & 0x40) ? RampStart : RampEnd;
+		}
+		UpdateVolumes();
 	}
-
-	// Debug routine to show current channel position
-	void ShowAddr(void) {
-		LOG_GUS("Chan %d Start %d End %d Current %d", channum, StartAddr>>9, EndAddr>>9, CurAddr>>9);
-	}
-
-
-	// Generate the samples required by the callback routine
-	// It should be noted that unless a channel is stopped, it will
-	// continue to return the sample it is pointing to, regardless
-	// of whether or not the channel is moving or ramping.
-	void generateSamples(Bit16s * stream,Bit32u len) {
+	void generateSamples(Bit32s * stream,Bit32u len) {
 		int i;
-		Bit16s tmpsamp;
+		Bit32s tmpsamp;
 		bool eightbit;
-		eightbit = ((voiceCont & 0x4) == 0);
-	
-		notifyonce = false;
-
+		if (RampCtrl & WaveCtrl & 3) return;
+		eightbit = ((WaveCtrl & 0x4) == 0);
+#if 0
+		if (!(show_test & 1023)) {
+			ShowWave();
+			ShowRamp();
+		}
+#endif
 		for(i=0;i<(int)len;i++) {
 			// Get sample
-			tmpsamp = GetSample(RealDelta, CurAddr, eightbit);
-		
-			// Clip and convert log scale to PCM scale
-			if(CurVolume>4095) CurVolume = 4095;
-			if(CurVolume<0) CurVolume = 0;
-			tmpsamp = (tmpsamp * vol16bit[CurVolume]) >> 12;
-
+			tmpsamp = GetSample(WaveAdd, WaveAddr, eightbit);
 			// Output stereo sample
-			stream[i<<1] = (Bit16s)(((Bit32s)tmpsamp * (Bit32s)leftvol)>>8) ;
-			stream[(i<<1)+1] = (Bit16s)(((Bit32s)tmpsamp * rightvol)>>8);
-			
-
-			if(dir) {
-				// Increment backwards
-				if (moving) CurAddr -= RealDelta;
-
-				//Thought 16-bit needed this
-				//if ((!eightbit) && (moving)) CurAddr -= RealDelta;
-				
-				if(CurAddr <= StartAddr) {
-					if((VolControl & 0x4) == 0) {
-						if((voiceCont & 0x8) != 0) {
-							if((voiceCont & 0x10) != 0) {
-								dir = !dir;
-							} else {
-								CurAddr = EndAddr;
-							}
-
-						} else {
-							moving = false;
-						}
-						NotifyEndSamp();
-					} else {
-						NotifyEndSamp();
-
-					}
-					
-				}
-
-			} else {
-
-				// Increment forwards
-				if (moving) CurAddr += RealDelta;
-
-				//Thought 16-bit needed this
-				//if ((!eightbit) && (moving)) CurAddr += RealDelta;
-				if(CurAddr >= EndAddr) {
-					if((VolControl & 0x4) == 0) {
-						if((voiceCont & 0x8) != 0) {
-							if((voiceCont & 0x10) != 0) {
-								dir = !dir;
-							} else {
-								CurAddr = StartAddr;
-							}
-
-						} else {
-							moving = false;
-						}
-						NotifyEndSamp();
-					} else {
-						NotifyEndSamp();
-					}
-				}
-			}
-
-			// Update volume 
-			if(ramping) {
-
-				// Subtract ramp counter by elapsed microseconds
-				nextramp -= myGUS.mupersamp;
-				bool flagged;
-				flagged = false;
-
-				// Ramp volume until nextramp is a positive integer
-				while(nextramp <= 0) {
-					if(voldir) {
-						CurVolume -= (VolRampRate & 0x3f);
-						if (CurVolume <= 0) {
-							CurVolume = 0;
-							flagged = true;
-						}
-
-						if((vol16bit[CurVolume]<=VolRampStart) || (flagged)){
-							if((VolControl & 0x8) != 0) {
-								if((VolControl & 0x10) != 0) {
-									voldir = !voldir;
-								} else {
-									CurVolume = VolRampEndOrg;
-								}
-							} else {
-								ramping = false;
-							}
-							NotifyEndRamp();
-						}
-
-					} else {
-						CurVolume += (VolRampRate & 0x3f);
-						if (CurVolume >= 4095) {
-							CurVolume = 4095;
-							flagged = true;
-						}
-
-						if((vol16bit[CurVolume]>=VolRampEnd) || (flagged)){
-							if((VolControl & 0x8) != 0) {
-								if((VolControl & 0x10) != 0) {
-									voldir = !voldir;
-								} else {
-									CurVolume = VolRampStartOrg;
-								}
-							} else {
-								ramping = false;
-							}
-							NotifyEndRamp();
-						}
-
-					}
-
-
-					switch(VolRampRate >> 6) {
-					case 0:
-						nextramp += myGUS.muperchan; 
-						break;
-					case 1:
-						nextramp += myGUS.muperchan* 8;
-						break;
-					case 2:
-						nextramp += myGUS.muperchan * 64;
-						break;
-					case 3:
-						nextramp += myGUS.muperchan * 512;
-						break;
-					default:
-						nextramp += myGUS.muperchan * 512;
-						break;
-
-					}
-					
-				}
-
-			}
-
-
+			stream[i<<1]+= tmpsamp * VolLeft;
+			stream[(i<<1)+1]+= tmpsamp * VolRight;
+			WaveUpdate();
+			RampUpdate();
 		}
-
-	
 	}
-
-
 };
 
+static GUSChannels *guschan[32];
+static GUSChannels *curchan;
 
-GUSChannels *guschan[33];
-
-GUSChannels *curchan;
-
-
-static void GUSReset(void)
-{
+static void GUSReset(void) {
 	if((myGUS.gRegData & 0x1) == 0x1) {
 		// Reset
-		myGUS.timerReg = 85;
-		memset(&myGUS.irq, 0, sizeof(myGUS.irq));
+		adlib_commandreg = 85;
+		myGUS.IRQStatus = 0;
+		myGUS.timers[0].raiseirq = false;
+		myGUS.timers[1].raiseirq = false;
+		myGUS.timers[0].reached = false;
+		myGUS.timers[1].reached = false;
+		myGUS.timers[0].running = false;
+		myGUS.timers[1].running = false;
+
+		myGUS.timers[0].value = 0xff;
+		myGUS.timers[1].value = 0xff;
+		myGUS.timers[0].delay = 0.080f;
+		myGUS.timers[1].delay = 0.320f;
+		myGUS.ChangeIRQDMA = false;
+		// Stop all channels
+		int i;
+		for(i=0;i<32;i++) {
+			guschan[i]->RampVol=0;
+			guschan[i]->WriteWaveCtrl(0x1);
+			guschan[i]->WriteRampCtrl(0x1);
+			guschan[i]->WritePanPot(0x7);
+		}
+		myGUS.IRQChan = 0;
 	}
-	if((myGUS.gRegData & 0x4) != 0) {
+	if ((myGUS.gRegData & 0x4) != 0) {
 		myGUS.irqenabled = true;
 	} else {
 		myGUS.irqenabled = false;
 	}
+}
 
-	myGUS.timers[0].active = false;
-	myGUS.timers[1].active = false;
-	myGUS.timers[0].bytetimer = 0x0;
-	myGUS.timers[1].bytetimer = 0x0;
-	
-	// Stop all channels
-	int i;
-	for(i=0;i<32;i++) {
-		guschan[i]->WriteVoiceCtrl(0x3);
-
-	}
-	IRQFifo.stackpos = -1;
+static INLINE void GUS_CheckIRQ(void) {
+	if (myGUS.IRQStatus && (myGUS.mixControl & 0x08)) 
+		PIC_ActivateIRQ(myGUS.irq1);
 
 }
 
-
+static void CheckVoiceIrq(void) {
+	myGUS.IRQStatus&=0x9f;
+	Bitu totalmask=(myGUS.RampIRQ|myGUS.WaveIRQ) & myGUS.ActiveMask;
+	if (!totalmask) return;
+	if (myGUS.RampIRQ) myGUS.IRQStatus|=0x40;
+	if (myGUS.WaveIRQ) myGUS.IRQStatus|=0x20;
+	GUS_CheckIRQ();
+	while (1) {
+		Bit32u check=(1 << myGUS.IRQChan);
+		if (totalmask & check) return;
+		myGUS.IRQChan++;
+		if (myGUS.IRQChan>=myGUS.ActiveChannels) myGUS.IRQChan=0;
+	}
+}
 
 static Bit16u ExecuteReadRegister(void) {
 	Bit8u tmpreg;
-
+//	LOG_MSG("Read global reg %x",myGUS.gRegSelect);
 	switch (myGUS.gRegSelect) {
 	case 0x41: // Dma control register - read acknowledges DMA IRQ
 		tmpreg = myGUS.DMAControl & 0xbf;
-		if(myGUS.irq.DMATC) tmpreg |= 0x40;
-
-		myGUS.irq.DMATC = false;
-		PIC_DeActivateIRQ(myGUS.irq1);
-
+		tmpreg |= (myGUS.IRQStatus & 0x80) >> 1;
+		myGUS.IRQStatus&=0x7f;
 		return (Bit16u)(tmpreg << 8);
 	case 0x42:  // Dma address register
 		return myGUS.dmaAddr;
@@ -557,212 +423,182 @@ static Bit16u ExecuteReadRegister(void) {
 		break;
 	case 0x49:  // Dma sample register
 		tmpreg = myGUS.DMAControl & 0xbf;
-		if(myGUS.irq.DMATC) tmpreg |= 0x40;
-
-		myGUS.irq.DMATC = false;
-		PIC_DeActivateIRQ(myGUS.irq1);
-		//LOG_MSG("Read sampling status, returned 0x%x", tmpreg);
-
+		tmpreg |= (myGUS.IRQStatus & 0x80) >> 1;
 		return (Bit16u)(tmpreg << 8);
 	case 0x80: // Channel voice control read register
-		if(curchan != NULL) {
-			Bit8u sndout;
-			sndout = curchan->voiceCont & 0xFC;
-			if(!curchan->moving) sndout |= 0x3;
+		if (curchan) return curchan->ReadWaveCtrl() << 8;
+		else return 0x0300;
 
-			return (Bit16u)(sndout<< 8);
-		} else return 0x0300;
+	case 0x82: // Channel MSB start address register
+		if (curchan) return (Bit16u)(curchan->WaveStart >> (WAVE_BITS+16));
+		else return 0x0000;
+	case 0x83: // Channel LSW start address register
+		if (curchan) return (Bit16u)(curchan->WaveStart >> WAVE_BITS);
+		else return 0x0000;
 
-	case 0x82: // Channel MSB address register
-		if(curchan != NULL) {
-			return (curchan->StartAddr >> 16);
-		} else return 0x0000;
-	case 0x83: // Channel LSW address register
-		if(curchan != NULL) {
-			return (curchan->StartAddr & 0xffff);
-		} else return 0x0000;
 	case 0x89: // Channel volume register
-		if(curchan != NULL) {
-			return (curchan->CurVolume << 4);
-		} else return 0x0000;
+		if (curchan) return (Bit16u)((curchan->RampVol >> RAMP_FRACT) << 4);
+		else return 0x0000;
 	case 0x8a: // Channel MSB current address register
-		if(curchan != NULL) {
-			return (curchan->CurAddr >> 16);
-		} else return 0x0000;
-
+		if (curchan) return (Bit16u)(curchan->WaveAddr >> (WAVE_BITS+16));
+		else return 0x0000;
 	case 0x8b: // Channel LSW current address register
-		if(curchan != NULL) {
-			return (curchan->CurAddr & 0xFFFF);
-		} else return 0x0000;
+		if (curchan) return (Bit16u)(curchan->WaveAddr >> WAVE_BITS);
+		else return 0x0000;
+
 	case 0x8d: // Channel volume control register
-		if(curchan != NULL) {
-			Bit8u volout;
-			volout = curchan->VolControl & 0xFC;
-			if(!curchan->ramping) volout |= 0x3;
-			return (volout << 8);
-		} else return 0x0300;
-
+		if (curchan) return curchan->ReadRampCtrl() << 8;
+		else return 0x0300;
 	case 0x8f: // General channel IRQ status register
-		Bit8u temp;
-		temp = 0x20;
-		IRQFifoEntry tmpentry;
-		PIC_DeActivateIRQ(myGUS.irq1);
-		popIRQ(&tmpentry);
-		if(!tmpentry.WaveIRQ) temp |= 0x80;
-		if(!tmpentry.RampIRQ) temp |= 0x40;
-		temp |= tmpentry.channum;
-
-		return (Bit16u)(temp << 8);
+		tmpreg=myGUS.IRQChan|0x20;
+		Bit32u mask;
+		mask=1 << myGUS.IRQChan;
+        if (!(myGUS.RampIRQ & mask)) tmpreg|=0x40;
+		if (!(myGUS.WaveIRQ & mask)) tmpreg|=0x80;
+		myGUS.RampIRQ&=~mask;
+		myGUS.WaveIRQ&=~mask;
+		CheckVoiceIrq();
+		return (Bit16u)(tmpreg << 8);
 	default:
 		LOG_GUS("Read Register num 0x%x", myGUS.gRegSelect);
 		return myGUS.gRegData;
 	}
 }
 
-  
+static void GUS_TimerEvent(Bitu val) {
+	if (!myGUS.timers[val].masked) myGUS.timers[val].reached=true;
+	if (myGUS.timers[val].raiseirq) {
+		myGUS.IRQStatus|=0x4 << val;
+		GUS_CheckIRQ();
+	}
+	if (myGUS.timers[val].running) 
+		PIC_AddEvent(GUS_TimerEvent,myGUS.timers[val].delay,val);
+};
+
+ 
 static void ExecuteGlobRegister(void) {
 	int i;
-	//LOG_MSG("Access global register %x with %x", myGUS.gRegSelect, myGUS.gRegData);
+//	if (myGUS.gRegSelect|1!=0x44) LOG_MSG("write global register %x with %x", myGUS.gRegSelect, myGUS.gRegData);
 	switch(myGUS.gRegSelect) {
 	case 0x0:  // Channel voice control register
-		if(curchan != NULL) {
-			curchan->WriteVoiceCtrl((Bit8u)myGUS.gRegData);
-		}
+		if(curchan) curchan->WriteWaveCtrl((Bit16u)myGUS.gRegData>>8);
 		break;
 	case 0x1:  // Channel frequency control register
-		if(curchan != NULL) {
-			curchan->WriteFreqCtrl(myGUS.gRegData);
+		if(curchan) curchan->WriteWaveFreq(myGUS.gRegData);
+		break;
+	case 0x2:  // Channel MSW start address register
+		if (curchan) {
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData & 0x1fff) << (16+WAVE_BITS);
+			curchan->WaveStart = (curchan->WaveStart & WAVE_MSWMASK) | tmpaddr;
 		}
 		break;
-	case 0x2:  // Channel MSB start address register
+	case 0x3:  // Channel LSW start address register
 		if(curchan != NULL) {
-			Bit32u tmpaddr = myGUS.gRegData << 16;
-			curchan->StartAddr = (curchan->StartAddr & 0xFFFF) | tmpaddr;
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData) << WAVE_BITS;
+			curchan->WaveStart = (curchan->WaveStart & WAVE_LSWMASK) | tmpaddr;
 		}
 		break;
-	case 0x3:  // Channel LSB start address register
+	case 0x4:  // Channel MSW end address register
 		if(curchan != NULL) {
-			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData);
-			curchan->StartAddr = (curchan->StartAddr & 0x1FFF0000) | tmpaddr;
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData & 0x1fff) << (16+WAVE_BITS);
+			curchan->WaveEnd = (curchan->WaveEnd & WAVE_MSWMASK) | tmpaddr;
 		}
 		break;
-	case 0x4:  // Channel MSB end address register
+	case 0x5:  // Channel MSW end address register
 		if(curchan != NULL) {
-			Bit32u tmpaddr = (Bit32u)myGUS.gRegData << 16;
-			curchan->EndAddr = (curchan->EndAddr & 0xFFFF) | tmpaddr;
-		}
-		break;
-	case 0x5:  // Channel MSB end address register
-		if(curchan != NULL) {
-			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData);
-			curchan->EndAddr = (curchan->EndAddr & 0x1FFF0000) | tmpaddr;
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData) << WAVE_BITS;
+			curchan->WaveEnd = (curchan->WaveEnd & WAVE_LSWMASK) | tmpaddr;
 		}
 		break;
 	case 0x6:  // Channel volume ramp rate register
 		if(curchan != NULL) {
-			Bit8u tmpdata = (Bit8u)myGUS.gRegData;
-			curchan->VolRampRate = tmpdata;
+			Bit8u tmpdata = (Bit16u)myGUS.gRegData>>8;
+			curchan->WriteRampRate(tmpdata);
 		}
 		break;
 	case 0x7:  // Channel volume ramp start register  EEEEMMMM
 		if(curchan != NULL) {
-			Bit8u tmpdata = (Bit8u)myGUS.gRegData;
-			curchan->VolRampStart = vol8bit[tmpdata];
-			curchan->VolRampStartOrg = tmpdata << 4;
+			Bit8u tmpdata = (Bit16u)myGUS.gRegData >> 8;
+			curchan->RampStart = tmpdata << (4+RAMP_FRACT);
 		}
 		break;
 	case 0x8:  // Channel volume ramp end register  EEEEMMMM
 		if(curchan != NULL) {
-			Bit8u tmpdata = (Bit8u)myGUS.gRegData;
-			curchan->VolRampEnd = vol8bit[tmpdata];	
-			curchan->VolRampEndOrg = tmpdata << 4;
+			Bit8u tmpdata = (Bit16u)myGUS.gRegData >> 8;
+			curchan->RampEnd = tmpdata << (4+RAMP_FRACT);
 		}
 		break;
 	case 0x9:  // Channel current volume register
 		if(curchan != NULL) {
 			Bit16u tmpdata = (Bit16u)myGUS.gRegData >> 4;
-			curchan->CurVolume = tmpdata;
+			curchan->RampVol = tmpdata << RAMP_FRACT;
+			curchan->UpdateVolumes();
 		}
 		break;
-	case 0xA:  // Channel MSB current address register
+	case 0xA:  // Channel MSW current address register
 		if(curchan != NULL) {
-			curchan->CurAddr = (curchan->CurAddr & 0xFFFF) | ((Bit32u)myGUS.gRegData << 16);
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData & 0x1fff) << (16+WAVE_BITS);
+			curchan->WaveAddr = (curchan->WaveAddr & WAVE_MSWMASK) | tmpaddr;
 		}
 		break;
 	case 0xB:  // Channel LSW current address register
 		if(curchan != NULL) {
-			curchan->CurAddr = (curchan->CurAddr & 0xFFFF0000) | ((Bit32u)myGUS.gRegData);
+			Bit32u tmpaddr = (Bit32u)(myGUS.gRegData) << (WAVE_BITS);
+			curchan->WaveAddr = (curchan->WaveAddr & WAVE_LSWMASK) | tmpaddr;
 		}
 		break;
 	case 0xC:  // Channel pan pot register
-		if(curchan != NULL) {
-			curchan->WritePanPot((Bit8u)myGUS.gRegData);
-		}
+		if(curchan) curchan->WritePanPot((Bit16u)myGUS.gRegData>>8);
 		break;
 	case 0xD:  // Channel volume control register
-		if(curchan != NULL) {
-			curchan->WriteVolControl((Bit8u)myGUS.gRegData);
-		}
+		if(curchan) curchan->WriteRampCtrl((Bit16u)myGUS.gRegData>>8);
 		break;
 	case 0xE:  // Set active channel register
-		myGUS.activechan = (myGUS.gRegData & 31) +1;
-		if(myGUS.activechan < 14) myGUS.activechan = 14;
-		if(myGUS.activechan > 32) myGUS.activechan = 32;
-		MIXER_Enable(gus_chan,true);
-		myGUS.basefreq = (Bit32u)((float)1000000/(1.619695497*(float)myGUS.activechan));
-		
-		float simple;
-		simple = (1.0 / (float)GUS_RATE) / 0.000001;
-		myGUS.mupersamp = (Bit32s)simple*1024;
-		myGUS.muperchan = (Bit32s)((float)1.6 * (float)myGUS.activechan * 1024);
-		LOG_GUS("GUS set to %d channels", myGUS.activechan);
-
-		for(i=0;i<myGUS.activechan;i++) {	if(guschan[i] != NULL) guschan[i]->UpdateFreqCtrl(); }
-	
+		myGUS.gRegSelect = myGUS.gRegData>>8;		//JAZZ Jackrabbit seems to assume this?
+		myGUS.ActiveChannels = 1+((myGUS.gRegData>>8) & 63);
+		if(myGUS.ActiveChannels < 14) myGUS.ActiveChannels = 14;
+		if(myGUS.ActiveChannels > 32) myGUS.ActiveChannels = 32;
+		myGUS.ActiveMask=0xffffffffU >> (32-myGUS.ActiveChannels);
+		gus_chan->Enable(true);
+		myGUS.basefreq = (Bit32u)((float)1000000/(1.619695497*(float)(myGUS.ActiveChannels)));
+		LOG_GUS("GUS set to %d channels", myGUS.ActiveChannels);
+		for (i=0;i<myGUS.ActiveChannels;i++) guschan[i]->UpdateWaveRamp();
 		break;
 	case 0x10:  // Undocumented register used in Fast Tracker 2
 		break;
 	case 0x41:  // Dma control register
-		myGUS.DMAControl = (Bit8u)myGUS.gRegData;
-		if ((myGUS.DMAControl & 0x1) != 0) {
-			//LOG_MSG("GUS request DMA transfer");
-			if(DmaChannels[myGUS.dma1]->enabled) UseDMA(DmaChannels[myGUS.dma1]);
-		}
+		myGUS.DMAControl = (Bit8u)(myGUS.gRegData>>8);
+		DmaChannels[myGUS.dma1]->Register_Callback(
+			(myGUS.DMAControl & 0x1) ? GUS_DMA_Callback : 0);
 		break;
 	case 0x42:  // Gravis DRAM DMA address register
 		myGUS.dmaAddr = myGUS.gRegData;
 		break;
 	case 0x43:  // MSB Peek/poke DRAM position
-
 		myGUS.gDramAddr = (0xff0000 & myGUS.gDramAddr) | ((Bit32u)myGUS.gRegData);
 		break;
 	case 0x44:  // LSW Peek/poke DRAM position
-		myGUS.gDramAddr = (0xffff & myGUS.gDramAddr) | ((Bit32u)myGUS.gRegData) << 16;
+		myGUS.gDramAddr = (0xffff & myGUS.gDramAddr) | ((Bit32u)myGUS.gRegData>>8) << 16;
 		break;
 	case 0x45:  // Timer control register.  Identical in operation to Adlib's timer
-		myGUS.TimerControl = (Bit8u)myGUS.gRegData;
-		if((myGUS.TimerControl & 0x08) !=0) myGUS.timers[1].countdown = myGUS.timers[1].setting;
-		if((myGUS.TimerControl & 0x04) !=0) myGUS.timers[0].countdown = myGUS.timers[0].setting;
-		myGUS.irq.T1 = false;
-		myGUS.irq.T2 = false;
-		PIC_DeActivateIRQ(myGUS.irq1);
+		myGUS.TimerControl = (Bit8u)(myGUS.gRegData>>8);
+		myGUS.timers[0].raiseirq=(myGUS.TimerControl & 0x04)>0;
+		if (!myGUS.timers[0].raiseirq) myGUS.IRQStatus&=~0x04;
+		myGUS.timers[1].raiseirq=(myGUS.TimerControl & 0x08)>0;
+		if (!myGUS.timers[1].raiseirq) myGUS.IRQStatus&=~0x08;
 		break;
-
 	case 0x46:  // Timer 1 control
-		myGUS.timers[0].bytetimer = (Bit8u)myGUS.gRegData;
-		myGUS.timers[0].setting = ((Bit32s)0xff - (Bit32s)myGUS.timers[0].bytetimer) * ((Bit32s)80 << 10);
-		myGUS.timers[0].countdown = myGUS.timers[0].setting;
+		myGUS.timers[0].value = (Bit8u)(myGUS.gRegData>>8);
+		myGUS.timers[0].delay = (0x100 - myGUS.timers[0].value) * 0.080f;
 		break;
 	case 0x47:  // Timer 2 control
-		myGUS.timers[1].bytetimer = (Bit8u)myGUS.gRegData;
-		myGUS.timers[1].setting = ((Bit32s)0xff - (Bit32s)myGUS.timers[1].bytetimer) * ((Bit32s)360 << 10);
-		myGUS.timers[1].countdown = myGUS.timers[1].setting;
+		myGUS.timers[1].value = (Bit8u)(myGUS.gRegData>>8);
+		myGUS.timers[1].delay = (0x100 - myGUS.timers[1].value) * 0.320f;
 		break;
 	case 0x49:  // DMA sampling control register
-		myGUS.SampControl = (Bit8u)myGUS.gRegData;
-		if ((myGUS.SampControl & 0x1) != 0) {
-			if(DmaChannels[myGUS.dma1]->enabled) UseDMA(DmaChannels[myGUS.dma1]);
-		}
+		myGUS.SampControl = (Bit8u)(myGUS.gRegData>>8);
+		DmaChannels[myGUS.dma1]->Register_Callback(
+			(myGUS.SampControl & 0x1)  ? GUS_DMA_Callback : 0);
 		break;
 	case 0x4c:  // GUS reset register
 		GUSReset();
@@ -774,49 +610,29 @@ static void ExecuteGlobRegister(void) {
 }
 
 
-static Bit16u read_gus16(Bit32u port) {
-
-	return ExecuteReadRegister();
-}
-
-static void write_gus16(Bit32u port,Bit16u val) {
-	myGUS.gRegData = val;
-	ExecuteGlobRegister();
-}
-
-
-static Bit8u read_gus(Bit32u port) {
-
+static Bitu read_gus(Bitu port,Bitu iolen) {
+//	LOG_MSG("read from gus port %x",port);
 	switch(port - GUS_BASE) {
 	case 0x206:
-		Bit8u temp;
-		temp = 0;
-		if(myGUS.irq.MIDITx) temp |= 1;
-		if(myGUS.irq.MIDIRx) temp |= 2;
-		if(myGUS.irq.T1) temp |= 4;
-		if(myGUS.irq.T2) temp |= 8;
-		if(myGUS.irq.Resv) temp |= 16;
-		if(myGUS.irq.WaveTable) temp |= 32;
-		if(myGUS.irq.VolRamp) temp |= 64;
-		if(myGUS.irq.DMATC) temp |= 128;
-		PIC_DeActivateIRQ(myGUS.irq1);
-		return temp;
+		return myGUS.IRQStatus;
 	case 0x208:
 		Bit8u tmptime;
 		tmptime = 0;
-
-		if(myGUS.irq.T1) tmptime |= (1 << 6);
-		if(myGUS.irq.T2) tmptime |= (1 << 5);
-		if((myGUS.irq.T1) || (myGUS.irq.T2)) tmptime |= (1 << 7);
+		if (myGUS.timers[0].reached) tmptime |= (1 << 6);
+		if (myGUS.timers[1].reached) tmptime |= (1 << 5);
+		if (tmptime & 0x60) tmptime |= (1 << 7);
+		if (myGUS.IRQStatus & 0x04) tmptime|=(1 << 2);
+		if (myGUS.IRQStatus & 0x08) tmptime|=(1 << 1);
 		return tmptime;
 	case 0x20a:
-		return myGUS.timerReg;
+		return adlib_commandreg;
 	case 0x302:
 		return (Bit8u)myGUS.gCurChannel;
 	case 0x303:
 		return myGUS.gRegSelect;
 	case 0x304:
-		return ExecuteReadRegister() & 0xff;
+		if (iolen==2) return ExecuteReadRegister() & 0xffff;
+		else return ExecuteReadRegister() & 0xff;
 	case 0x305:
 		return ExecuteReadRegister() >> 8;
 	case 0x307:
@@ -834,56 +650,70 @@ static Bit8u read_gus(Bit32u port) {
 }
 
 
-static void write_gus(Bit32u port,Bit8u val) {
-
+static void write_gus(Bitu port,Bitu val,Bitu iolen) {
+//	LOG_MSG("Write gus port %x val %x",port,val);
 	switch(port - GUS_BASE) {
 	case 0x200:
 		myGUS.mixControl = val;
-		break;
+		myGUS.ChangeIRQDMA = true;
+		return;
 	case 0x208:
-		myGUS.timerReg = val;
+		adlib_commandreg = val;
 		break;
 	case 0x209:
-		myGUS.timers[0].active = ((val & 0x1) > 0);
-		myGUS.timers[1].active = ((val & 0x2) > 0);
-		
-		break;
-	case 0x20b:
-		if((myGUS.mixControl & 0x40) != 0) {
-			// IRQ configuration
-			Bit8u temp = val & 0x7; // Select GF1 irq
-			if(myGUS.irq1 == irqtable[temp]) {
-			} else {
-				LOG_GUS("Attempt to assign GUS to wrong IRQ - at %x set to %x", myGUS.irq1, irqtable[temp]);
-			}
-		} else {
-			// DMA configuration
-			Bit8u temp = val & 0x7; // Select playback IRQ
-			if(myGUS.dma1 == dmatable[temp]) {
-			} else {
-				LOG_GUS("Attempt to assign GUS to wrong DMA - at %x, assigned %x", myGUS.dma1, dmatable[temp]);
-			}
+//TODO adlib_commandreg should be 4 for this to work else it should just latch the value
+		if (val & 0x80) {
+			myGUS.timers[0].reached=false;
+			myGUS.timers[1].reached=false;
+			return;
 		}
-
+		myGUS.timers[0].masked=(val & 0x40)>0;
+		myGUS.timers[1].masked=(val & 0x20)>0;
+		if (val & 0x1) {
+			if (!myGUS.timers[0].running) {
+				PIC_AddEvent(GUS_TimerEvent,myGUS.timers[0].delay,0);
+				myGUS.timers[0].running=true;
+			}
+		} else myGUS.timers[0].running=false;
+		if (val & 0x2) {
+			if (!myGUS.timers[1].running) {
+				PIC_AddEvent(GUS_TimerEvent,myGUS.timers[1].delay,1);
+				myGUS.timers[1].running=true;
+			}
+		} else myGUS.timers[1].running=false;
+		break;
+//TODO Check if 0x20a register is also available on the gus like on the interwave
+	case 0x20b:
+		if (!myGUS.ChangeIRQDMA) break;
+		myGUS.ChangeIRQDMA=false;
+		if (myGUS.mixControl & 0x40) {
+			// IRQ configuration, only use low bits for irq 1
+			if (irqtable[val & 0x7]) myGUS.irq1=irqtable[val & 0x7];
+			LOG_GUS("Assigned GUS to IRQ %d", myGUS.irq1);
+		} else {
+			// DMA configuration, only use low bits for dma 1
+			if (dmatable[val & 0x7]) myGUS.dma1=dmatable[val & 0x7];
+			LOG_GUS("Assigned GUS to DMA %d", myGUS.dma1);
+		}
 		break;
 	case 0x302:
-		myGUS.gCurChannel = val ;
-		if (myGUS.gCurChannel > 32) myGUS.gCurChannel = 32;
-		curchan = guschan[val];
+		myGUS.gCurChannel = val & 31 ;
+		curchan = guschan[myGUS.gCurChannel];
 		break;
 	case 0x303:
 		myGUS.gRegSelect = val;
 		myGUS.gRegData = 0;
 		break;
 	case 0x304:
+		if (iolen==2) {
+			myGUS.gRegData=val;
+			ExecuteGlobRegister();
+		} else myGUS.gRegData = val;
+		break;
+	case 0x305:
 		myGUS.gRegData = (0x00ff & myGUS.gRegData) | val << 8;
 		ExecuteGlobRegister();
 		break;
-	case 0x305:
-		myGUS.gRegData = (0xff00 & myGUS.gRegData) | val;
-		ExecuteGlobRegister();
-		break;
-
 	case 0x307:
 		if(myGUS.gDramAddr < sizeof(GUSRam)) GUSRam[myGUS.gDramAddr] = val;
 		break;
@@ -891,146 +721,84 @@ static void write_gus(Bit32u port,Bit8u val) {
 		LOG_GUS("Write GUS at port 0x%x with %x", port, val);
 		break;
 	}
-	
-
 }
 
-static void UseDMA(DmaChannel *useDMA) {
-	Bit32s dmaaddr = myGUS.dmaAddr << 4;
+static void GUS_DMA_Callback(DmaChannel * chan,DMAEvent event) {
+	if (event!=DMA_UNMASKED) return;
+	Bitu dmaaddr = myGUS.dmaAddr << 4;
 	if((myGUS.DMAControl & 0x2) == 0) {
-		//Write data into UltraSound
-		Bit32s comsize = useDMA->currcnt;
-		
-		useDMA->Read(useDMA->currcnt,&GUSRam[dmaaddr]);
+		Bitu read=chan->Read(chan->currcnt+1,&GUSRam[dmaaddr]);
+		//Check for 16 or 8bit channel
+		read*=(chan->DMA16+1);
 		if((myGUS.DMAControl & 0x80) != 0) {
 			//Invert the MSB to convert twos compliment form
-
-			int i;
+			Bitu i;
 			if((myGUS.DMAControl & 0x40) == 0) {
 				// 8-bit data
-				for(i=dmaaddr;i<(dmaaddr+comsize);i++) GUSRam[i] ^= 0x80;
+				for(i=dmaaddr;i<(dmaaddr+read);i++) GUSRam[i] ^= 0x80;
 			} else {
 				// 16-bit data
-				for(i=dmaaddr+1;i<(dmaaddr+comsize-1);i+=2) GUSRam[i] ^= 0x80;
+				for(i=dmaaddr+1;i<(dmaaddr+read-1);i+=2) GUSRam[i] ^= 0x80;
 			}
 		}
 	} else {
 		//Read data out of UltraSound
-		useDMA->Write(useDMA->currcnt,&GUSRam[dmaaddr]);
-
+		chan->Write(chan->currcnt+1,&GUSRam[dmaaddr]);
 	}
+	/* Raise the TC irq if needed */
+	if((myGUS.DMAControl & 0x20) != 0) {
+		myGUS.IRQStatus |= 0x80;
+		GUS_CheckIRQ();
+	}
+	chan->Register_Callback(0);
 }
 
-static void GUS_DMA_Callback(void *useChannel, bool tc) {
-	DmaChannel *myDMA;
-	myDMA = (DmaChannel *)useChannel;
-
-	if(tc) {
-		if((myGUS.DMAControl & 0x20) != 0) {
-			myGUS.irq.DMATC = true;
-			PIC_ActivateIRQ(myGUS.irq2);
+static void GUS_CallBack(Bitu len) {
+	memset(&MixTemp,0,len*8);
+	Bitu i;
+	Bit16s * buf16 = (Bit16s *)MixTemp;
+	Bit32s * buf32 = (Bit32s *)MixTemp;
+	for(i=0;i<myGUS.ActiveChannels;i++) 
+		guschan[i]->generateSamples(buf32,len);
+	for(i=0;i<len*2;i++) {
+		Bit32s sample=((buf32[i] >> 13)*AutoAmp)>>9;
+		if (sample>32767) {
+			sample=32767;                       
+			AutoAmp--;
+		} else if (sample<-32768) {
+			sample=-32768;
+			AutoAmp--;
 		}
-	} else {
-		if ((myGUS.DMAControl & 0x1) != 0)  UseDMA(myDMA);
+		buf16[i] = (Bit16s)(sample);
 	}
-	
-	
+	gus_chan->AddSamples_s16(len,buf16);
+	CheckVoiceIrq();
 }
-
-static void GUS_CallBack(Bit8u * stream,Bit32u len) {
-
-	Bit16s *bufptr;
-	Bit16s buffer[4096];
-	Bit32s tmpbuf[4096];
-
-	memset(&buffer[0],0,len*4);
-	memset(&tmpbuf[0],0,len*8);
-
-	int i,t;
-	for(i=0;i<myGUS.activechan;i++) {
-		if (guschan[i]->playing) {
-			guschan[i]->generateSamples(&buffer[0],len);
-
-			for(t=0;t<len*2;t++) {
-				tmpbuf[t]+=(Bit32s)buffer[t];
-			}
-		}
-	}
-
-	if(myGUS.irqenabled) {
-		if(IRQFifo.stackpos >= 0) {
-			PIC_ActivateIRQ(myGUS.irq1);
-		}
-	}
-
-	if(myGUS.timers[0].active) {
-		myGUS.timers[0].countdown-=(len * (Bit32u)myGUS.mupersamp);
-		if(!myGUS.irq.T1) {
-			// Expire Timer 1
-			if(myGUS.timers[0].countdown < 0) {
-				if((myGUS.TimerControl & 0x04) !=0) {
-					PIC_ActivateIRQ(myGUS.irq1);
-				}
-				myGUS.irq.T1 = true;
-				//LOG_MSG("T1 timer expire");
-				//myGUS.timers[0].countdown = myGUS.timers[0].setting;
-			}
-		}
-	}
-	if(myGUS.timers[1].active) {
-		if(!myGUS.irq.T2) {
-			myGUS.timers[1].countdown-=(len * (Bit32u)myGUS.mupersamp);
-			// Expire Timer 2
-			if(myGUS.timers[1].countdown < 0) {
-				if((myGUS.TimerControl & 0x08) !=0) {
-					PIC_ActivateIRQ(myGUS.irq1);
-				}
-				myGUS.irq.T2 = true;
-			}
-		}
-	}
-
-	
-	bufptr = (Bit16s *)stream;
-	for(i=0;i<len*2;i++) bufptr[i] = (Bit16s)(tmpbuf[i] & 0xffff);
-
-}
-
 
 // Generate logarithmic to linear volume conversion tables
-void MakeTables(void) 
-{
+static void MakeTables(void) {
 	int i;
-
-	for(i=0;i<256;i++) {
-		float a,b;
-		a = pow(2.0f,(float)(i >> 4));
-		b = 1.0+((float)(i & 0xf))/(float)16;
-		a *= b;
-		a /= 16;
-		vol8bit[i] = (Bit16u)a;
+#if USEVOLTABLE
+	double out = (double)(1 << 13);
+	for (i=4095;i>=0;i--) {
+		vol16bit[i]=(Bit16s)out;
+		out/=1.002709201;		/* 0.0235 dB Steps */
 	}
-	for(i=0;i<4096;i++) {
-		float a,b;
-		a = pow(2.0f,(float)(i >> 8));
-		b = 1.0+((float)(i & 0xff))/(float)256;
-		a *= b;
-		a /= 16;
-		vol16bit[i] = (Bit16u)a;
+#endif
+	pantable[0]=0;
+	for (i=1;i<16;i++) {
+		pantable[i]=(Bit32u)(-128.0*(log((double)i/15.0)/log(2.0))*(double)(1 << RAMP_FRACT));
 	}
-
-
 }
 
-
 void GUS_Init(Section* sec) {
+	if(machine!=MCH_VGA) return;
+	Section_prop * section=static_cast<Section_prop *>(sec);
+	if(!section->Get_bool("gus")) return;
 
-	
 	memset(&myGUS,0,sizeof(myGUS));
 	memset(GUSRam,0,1024*1024);
 
-	Section_prop * section=static_cast<Section_prop *>(sec);
-	if(!section->Get_bool("gus")) return;
 	myGUS.rate=section->Get_int("rate");
 
 	myGUS.portbase = section->Get_hex("base") - 0x200;
@@ -1040,77 +808,55 @@ void GUS_Init(Section* sec) {
 	myGUS.irq2 = section->Get_int("irq2");
 	strcpy(&myGUS.ultradir[0], section->Get_string("ultradir"));
 
-	myGUS.timerReg = 85;
-	myGUS.timers[0].active = false;
-	myGUS.timers[1].active = false;
-	
-
-	memset(&myGUS.irq, 0, sizeof(myGUS.irq));
-	IRQFifo.stackpos = -1;
-	myGUS.irqenabled = false;
-
 	// We'll leave the MIDI interface to the MPU-401 
-
 	// Ditto for the Joystick 
-
 	// GF1 Synthesizer 
-	
-	IO_RegisterWriteHandler(0x302 + GUS_BASE,write_gus,"GF1 Page Register");
-	IO_RegisterReadHandler(0x302 + GUS_BASE,read_gus,"GF1 Page Register");
 
-	IO_RegisterWriteHandler(0x303 + GUS_BASE,write_gus,"GF1 Global Register Select");
-	IO_RegisterReadHandler(0x303 + GUS_BASE,read_gus,"GF1 Global Register Select");
+	IO_RegisterWriteHandler(0x302 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x302 + GUS_BASE,read_gus,IO_MB);
 
-	IO_RegisterWriteHandler(0x304 + GUS_BASE,write_gus,"GF1 Global Data Low Byte");
-	IO_RegisterReadHandler(0x304 + GUS_BASE,read_gus,"GF1 Global Data Low Byte");
+	IO_RegisterWriteHandler(0x303 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x303 + GUS_BASE,read_gus,IO_MB);
 
-	IO_RegisterWriteWHandler(0x304 + GUS_BASE,write_gus16);
-	IO_RegisterReadWHandler(0x304 + GUS_BASE,read_gus16);
+	IO_RegisterWriteHandler(0x304 + GUS_BASE,write_gus,IO_MB|IO_MW);
+	IO_RegisterReadHandler(0x304 + GUS_BASE,read_gus,IO_MB|IO_MW);
 
-	IO_RegisterWriteHandler(0x305 + GUS_BASE,write_gus,"GF1 Global Data High Byte");
-	IO_RegisterReadHandler(0x305 + GUS_BASE,read_gus,"GF1 Global Data High Byte");
+	IO_RegisterWriteHandler(0x305 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x305 + GUS_BASE,read_gus,IO_MB);
 
-	IO_RegisterReadHandler(0x206 + GUS_BASE,read_gus,"GF1 IRQ Status Register");
+	IO_RegisterReadHandler(0x206 + GUS_BASE,read_gus,IO_MB);
 
-	IO_RegisterWriteHandler(0x208 + GUS_BASE,write_gus,"Timer Control Reg");
-	IO_RegisterReadHandler(0x208 + GUS_BASE,read_gus,"Timer Control Reg");
+	IO_RegisterWriteHandler(0x208 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x208 + GUS_BASE,read_gus,IO_MB);
 
-	IO_RegisterWriteHandler(0x209 + GUS_BASE,write_gus,"Timer Data IO");
+	IO_RegisterWriteHandler(0x209 + GUS_BASE,write_gus,IO_MB);
 
-	IO_RegisterWriteHandler(0x307 + GUS_BASE,write_gus,"DRAM IO");
-	IO_RegisterReadHandler(0x307 + GUS_BASE,read_gus,"DRAM IO");
+	IO_RegisterWriteHandler(0x307 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x307 + GUS_BASE,read_gus,IO_MB);
 
 	// Board Only 
 
-	IO_RegisterWriteHandler(0x200 + GUS_BASE,write_gus,"Mix Control Register");
-	IO_RegisterReadHandler(0x20A + GUS_BASE,read_gus,"GUS Undocumented");
-	IO_RegisterWriteHandler(0x20B + GUS_BASE,write_gus,"IRQ/DMA Control Register");
+	IO_RegisterWriteHandler(0x200 + GUS_BASE,write_gus,IO_MB);
+	IO_RegisterReadHandler(0x20A + GUS_BASE,read_gus,IO_MB);
+	IO_RegisterWriteHandler(0x20B + GUS_BASE,write_gus,IO_MB);
 
-	PIC_RegisterIRQ(myGUS.irq1,0,"GUS");
-	PIC_RegisterIRQ(myGUS.irq2,0,"GUS");
-
-	DmaChannels[myGUS.dma1]->RegisterCallback(GUS_DMA_Callback);
+//	DmaChannels[myGUS.dma1]->Register_TC_Callback(GUS_DMA_TC_Callback);
 
 	MakeTables();
 
 	int i;
-	for(i=0;i<=32;i++) {
+	for(i=0;i<32;i++) {
 		guschan[i] = new GUSChannels(i);
 	}
-
 	// Register the Mixer CallBack 
-
 	gus_chan=MIXER_AddChannel(GUS_CallBack,GUS_RATE,"GUS");
-	MIXER_SetMode(gus_chan,MIXER_16STEREO);
-	MIXER_Enable(gus_chan,false);
-
+	myGUS.gRegData=0x1;
+	GUSReset();
+	myGUS.gRegData=0x0;
 	int portat = 0x200+GUS_BASE;
 	// ULTRASND=Port,DMA1,DMA2,IRQ1,IRQ2
 	SHELL_AddAutoexec("SET ULTRASND=%3X,%d,%d,%d,%d",portat,myGUS.dma1,myGUS.dma2,myGUS.irq1,myGUS.irq2);
 	SHELL_AddAutoexec("SET ULTRADIR=%s", myGUS.ultradir);
-
-	
 }
-
 
 

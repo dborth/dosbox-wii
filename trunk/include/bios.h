@@ -9,12 +9,15 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+#ifndef _BIOS_H_
+#define _BIOS_H_
 
 #define BIOS_BASE_ADDRESS_COM1          0x400
 #define BIOS_BASE_ADDRESS_COM2          0x402
@@ -88,6 +91,8 @@
 #define BIOS_WAIT_FLAG_POINTER          0x498
 #define BIOS_WAIT_FLAG_COUNT	        0x49c		
 #define BIOS_WAIT_FLAG_ACTIVE			0x4a0
+#define BIOS_WAIT_FLAG_TEMP				0x4a1
+
 
 #define BIOS_PRINT_SCREEN_FLAG          0x500
 
@@ -96,23 +101,57 @@
 /* The Section handling Bios Disk Access */
 #define BIOS_MAX_DISK 10
 
-class BIOS_Disk {
-public:
-	virtual Bit8u Read_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data)=0;
-	virtual Bit8u Write_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data)=0;
+struct diskGeo {
+	Bit32u ksize;  /* Size in kilobytes */
+	Bit16u secttrack; /* Sectors per track */
+	Bit16u headscyl;  /* Heads per cylinder */
+	Bit16u cylcount;  /* Cylinders per side */
+	Bit16u biosval;   /* Type to return from BIOS */
 };
 
-class imageDisk : public BIOS_Disk {
+extern diskGeo DiskGeometryList[];
+
+#include <stdio.h>
+#include "mem.h"
+#include "dos_inc.h"
+
+class imageDisk  {
 public:
-	Bit8u Read_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data);
-	Bit8u Write_Sector(Bit8u * count,Bit8u head,Bit16u cylinder,Bit16u sector,Bit8u * data);
-	imageDisk(char * file);
-private:
-	Bit16u sector_size;
-	Bit16u heads,cylinders,sectors;
-	Bit8u * image;
+	Bit8u Read_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * data);
+	Bit8u Write_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * data);
+	Bit8u Read_AbsoluteSector(Bit32u sectnum, void * data);
+	Bit8u Write_AbsoluteSector(Bit32u sectnum, void * data);
+
+	void Set_Geometry(Bit32u setHeads, Bit32u setCyl, Bit32u setSect, Bit32u setSectSize);
+	void Get_Geometry(Bit32u * getHeads, Bit32u *getCyl, Bit32u *getSect, Bit32u *getSectSize);
+	Bit8u GetBiosType(void);
+	Bit32u getSectSize(void);
+	imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHardDisk);
+	~imageDisk() { if(diskimg != NULL) { fclose(diskimg); }	};
+
+	bool hardDrive;
+	bool active;
+	FILE *diskimg;
+	Bit8u diskname[512];
+	Bit8u floppytype;
+
+	Bit32u sector_size;
+	Bit32u heads,cylinders,sectors;
 };
 
+void updateDPT(void);
+
+#define MAX_HDD_IMAGES 2
+
+extern imageDisk *imageDiskList[2 + MAX_HDD_IMAGES];
+extern imageDisk *diskSwap[20];
+extern Bits swapPosition;
+extern Bit16u imgDTASeg; /* Real memory location of temporary DTA pointer for fat image disk access */
+extern RealPt imgDTAPtr; /* Real memory location of temporary DTA pointer for fat image disk access */
+extern DOS_DTA *imgDTA;
+
+void swapInDisks(void);
+void swapInNextDisk(void);
 
 void BIOS_ZeroExtendedSize(void);
 void char_out(Bit8u chr,Bit32u att,Bit8u page);
@@ -123,4 +162,4 @@ void INT2F_StartUp(void);
 void INT33_StartUp(void);
 void INT13_StartUp(void);
 
-
+#endif

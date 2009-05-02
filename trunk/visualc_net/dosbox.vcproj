@@ -25,6 +25,7 @@
 				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
+				RuntimeTypeInfo="TRUE"
 				PrecompiledHeaderFile=".\Debug/dosbox.pch"
 				AssemblerListingLocation=".\Debug/"
 				ObjectFile=".\Debug/"
@@ -97,6 +98,7 @@
 				RuntimeLibrary="2"
 				BufferSecurityCheck="FALSE"
 				EnableFunctionLevelLinking="TRUE"
+				RuntimeTypeInfo="TRUE"
 				PrecompiledHeaderFile=".\Release/dosbox.pch"
 				AssemblerOutput="4"
 				AssemblerListingLocation=".\Release/"
@@ -170,6 +172,9 @@
 				</File>
 				<File
 					RelativePath="..\src\cpu\core_normal.cpp">
+				</File>
+				<File
+					RelativePath="..\src\cpu\core_simple.cpp">
 				</File>
 				<File
 					RelativePath="..\src\cpu\cpu.cpp">
@@ -306,6 +311,9 @@
 					RelativePath="..\src\dos\cdrom_ioctl_win32.cpp">
 				</File>
 				<File
+					RelativePath="..\src\dos\cdrom_image.cpp">
+				</File>
+				<File
 					RelativePath="..\src\dos\dev_con.h">
 				</File>
 				<File
@@ -345,10 +353,16 @@
 					RelativePath="..\src\dos\drive_cache.cpp">
 				</File>
 				<File
+					RelativePath="..\src\dos\drive_fat.cpp">
+				</File>
+				<File
 					RelativePath="..\src\dos\drive_local.cpp">
 				</File>
 				<File
 					RelativePath="..\src\dos\drive_virtual.cpp">
+				</File>
+				<File
+					RelativePath="..\src\dos\drive_iso.cpp">
 				</File>
 				<File
 					RelativePath="..\src\dos\drives.cpp">
@@ -391,6 +405,9 @@
 					RelativePath="..\src\hardware\cmos.cpp">
 				</File>
 				<File
+					RelativePath="..\src\hardware\directserial_win32.cpp">
+				</File>
+				<File
 					RelativePath="..\src\hardware\dma.cpp">
 				</File>
 				<File
@@ -401,6 +418,12 @@
 				</File>
 				<File
 					RelativePath="..\src\hardware\iohandler.cpp">
+				</File>
+				<File
+					RelativePath="..\src\hardware\ipx.cpp">
+				</File>
+				<File
+					RelativePath="..\src\hardware\ipxserver.cpp">
 				</File>
 				<File
 					RelativePath="..\src\hardware\joystick.cpp">
@@ -454,7 +477,13 @@
 						RelativePath="..\src\hardware\vga_misc.cpp">
 					</File>
 					<File
+						RelativePath="..\src\hardware\vga_other.cpp">
+					</File>
+					<File
 						RelativePath="..\src\hardware\vga_seq.cpp">
+					</File>
+					<File
+						RelativePath="..\src\hardware\vga_xga.cpp">
 					</File>
 				</Filter>
 				<Filter
@@ -499,21 +528,20 @@
 					RelativePath="..\src\gui\render.cpp">
 				</File>
 				<File
+					RelativePath="..\src\gui\render_scalers.cpp">
+				</File>
+				<File
+					RelativePath="..\src\gui\render_scalers.h">
+				</File>
+				<File
+					RelativePath="..\src\gui\render_templates.h">
+				</File>
+				<File
+					RelativePath="..\src\gui\sdl_mapper.cpp">
+				</File>
+				<File
 					RelativePath="..\src\gui\sdlmain.cpp">
 				</File>
-				<Filter
-					Name="scalers"
-					Filter="">
-					<File
-						RelativePath="..\src\gui\render_normal.h">
-					</File>
-					<File
-						RelativePath="..\src\gui\render_scale2x.h">
-					</File>
-					<File
-						RelativePath="..\src\gui\render_templates.h">
-					</File>
-				</Filter>
 			</Filter>
 			<Filter
 				Name="ints"
@@ -526,9 +554,6 @@
 				</File>
 				<File
 					RelativePath="..\src\ints\bios_keyboard.cpp">
-				</File>
-				<File
-					RelativePath="..\src\ints\dpmi.cpp">
 				</File>
 				<File
 					RelativePath="..\src\ints\ems.cpp">

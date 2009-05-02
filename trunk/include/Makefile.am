@@ -12,8 +12,11 @@ fpu.h \
 hardware.h \
 inout.h \
 joystick.h \
+ipx.h \
+ipxserver.h \
 keyboard.h \
 logging.h \
+mapper.h \
 mem.h \
 mixer.h \
 modules.h \

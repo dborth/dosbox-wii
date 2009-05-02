@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_vesa.cpp,v 1.7 2004/01/11 09:27:52 harekiet Exp $ */
+/* $Id: int10_vesa.cpp,v 1.12 2004/09/10 22:09:54 harekiet Exp $ */
 
 #include <string.h>
 #include <stddef.h>
@@ -125,12 +125,12 @@ Bit8u VESA_GetSVGAModeInformation(Bit16u mode,Bit16u seg,Bit16u off) {
 	
 	Bitu i=0;
 	if (mode<0x100) return 0x01;
-	while (ModeList[i].mode!=0xffff) {
-		if (mode==ModeList[i].mode) goto foundit; else i++;
+	while (ModeList_VGA[i].mode!=0xffff) {
+		if (mode==ModeList_VGA[i].mode) goto foundit; else i++;
 	}
 	return 0x01;
 foundit:
-	VideoModeBlock * mblock=&ModeList[i];
+	VideoModeBlock * mblock=&ModeList_VGA[i];
 	switch (mblock->type) {
 	case M_LIN8:		//Linear 8-bit
 		WLE(minfo.ModeAttributes,0x9b);
@@ -161,7 +161,7 @@ foundit:
 
 
 Bit8u VESA_SetSVGAMode(Bit16u mode) {
-	if (INT10_SetVideoMode(mode)) return 0x00;
+	if (INT10_SetVideoMode(mode & 0xfff)) return 0x00;
 	return 0x01;
 };
 
@@ -231,8 +231,8 @@ Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u & bytes,Bit16u & pixels,Bit16u & 
 	case 0x00:	/* Set in pixels */
 		bytes=(pixels*bpp);
 	case 0x02:	/* Set in bytes */
-		scan_len=bytes/4;
-		if (bytes % 4) scan_len++;
+		scan_len=bytes/8;
+		if (bytes % 8) scan_len++;
 		vga.config.scan_len=scan_len;
 		VGA_StartResize();
 		break;
@@ -246,8 +246,8 @@ Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u & bytes,Bit16u & pixels,Bit16u & 
 		return 0x1;			//Illegal call
 	}
 	/* Write the scan line to video card the simple way */
-	pixels=(vga.config.scan_len*4)/bpp;
-	bytes=vga.config.scan_len*4;
+	pixels=(vga.config.scan_len*8)/bpp;
+	bytes=vga.config.scan_len*8;
 	return 0x0;
 }
 
@@ -299,7 +299,7 @@ Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y) {
 
 static Bitu SetWindowPositionHandler(void) {
 	if (reg_bh) reg_ah=VESA_GetCPUWindow(reg_bl,reg_dx);
-	else reg_ah=VESA_SetCPUWindow(reg_bl,reg_dx);
+	else reg_ah=VESA_SetCPUWindow(reg_bl,(Bit8u)reg_dx);
 	reg_al=0x4f;
 	return 0;
 }
@@ -310,9 +310,9 @@ void INT10_SetupVESA(void) {
 	i=0;
 	int10.rom.vesa_modes=RealMake(0xc000,int10.rom.used);
 //TODO Maybe add normal vga modes too, but only seems to complicate things
-	while (ModeList[i].mode!=0xffff) {
-		if (ModeList[i].mode>=0x100){
-			phys_writew(PhysMake(0xc000,int10.rom.used),ModeList[i].mode);
+	while (ModeList_VGA[i].mode!=0xffff) {
+		if (ModeList_VGA[i].mode>=0x100){
+			phys_writew(PhysMake(0xc000,int10.rom.used),ModeList_VGA[i].mode);
 			int10.rom.used+=2;
 		}
 		i++;

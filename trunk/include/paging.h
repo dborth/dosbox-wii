@@ -9,16 +9,19 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: paging.h,v 1.11 2004/09/07 18:21:51 qbix79 Exp $ */
+
 #ifndef _PAGING_H_
 #define _PAGING_H_
 
+#include "dosbox.h"
 #include "mem.h"
 
 class PageDirectory;
@@ -70,13 +73,10 @@ bool PAGING_MakePhysPage(Bitu & page);
 void MEM_SetLFB(Bitu _page,Bitu _pages,HostPt _pt);
 void MEM_SetPageHandler(Bitu phys_page,Bitu pages,PageHandler * handler);
 
-Bit32u MEM_PhysReadD(Bitu addr);
-
-
-
-
-#pragma pack(1)
-typedef struct {
+#ifdef _MSC_VER
+#pragma pack (1)
+#endif
+struct X86_PageEntryBlock{
 	Bit32u		p:1;
 	Bit32u		wr:1;
 	Bit32u		us:1;
@@ -88,8 +88,11 @@ typedef struct {
 	Bit32u		g:1;
 	Bit32u		avl:3;
 	Bit32u		base:20;
-} X86_PageEntryBlock GCC_ATTRIBUTE(packed);
-#pragma pack()
+} GCC_ATTRIBUTE(packed);
+#ifdef _MSC_VER
+#pragma pack ()
+#endif
+
 
 union X86PageEntry {
 	Bit32u load;

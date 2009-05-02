@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cross.h,v 1.7 2004/02/02 19:22:23 qbix79 Exp $ */
+/* $Id: cross.h,v 1.11 2004/09/16 21:46:03 qbix79 Exp $ */
 
 #ifndef _CROSS_H
 #define _CROSS_H
@@ -29,6 +29,8 @@
 #include <direct.h>
 #include <io.h>
 #define LONGTYPE(a) a##i64
+#define snprintf _snprintf
+#define vsnprintf _vsnprintf
 #else										/* LINUX / GCC */
 #include <dirent.h>
 #include <unistd.h>
@@ -39,7 +41,7 @@
 
 
 #if defined (WIN32)							/* Win 32 */
-#define CROSS_FILENAME(blah) {if(blah && *blah && (blah[strlen(blah)-1] == '\\')) strcat(blah,".");}
+#define CROSS_FILENAME(blah) 
 #define CROSS_FILESPLIT '\\'
 #define F_OK 0
 #else

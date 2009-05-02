@@ -131,15 +131,16 @@ target_os = @target_os@
 target_vendor = @target_vendor@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
-EXTRA_DIST = fmopl.c fmopl.h
+EXTRA_DIST = fmopl.c fmopl.h ymf262.h ymf262.c
 
 noinst_LIBRARIES = libhardware.a
 
 libhardware_a_SOURCES = adlib.cpp dma.cpp gameblaster.cpp hardware.cpp iohandler.cpp joystick.cpp keyboard.cpp \
                         memory.cpp mixer.cpp pcspeaker.cpp pic.cpp sblaster.cpp tandy_sound.cpp timer.cpp \
-			vga.cpp vga_attr.cpp vga_crtc.cpp vga_dac.cpp vga_draw.cpp vga_gfx.cpp \
-			vga_memory.cpp vga_misc.cpp vga_seq.cpp font-switch.h ega-switch.h cmos.cpp disney.cpp \
-			gus.cpp mpu401.cpp serialport.cpp softmodem.cpp
+			vga.cpp vga_attr.cpp vga_crtc.cpp vga_dac.cpp vga_draw.cpp vga_gfx.cpp vga_other.cpp \
+			vga_memory.cpp vga_misc.cpp vga_seq.cpp vga_xga.cpp cmos.cpp disney.cpp \
+			gus.cpp mpu401.cpp serialport.cpp softmodem.cpp ipx.cpp ipxserver.cpp \
+			directserial_win32.cpp
 
 subdir = src/hardware
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -157,18 +158,22 @@ am_libhardware_a_OBJECTS = adlib.$(OBJEXT) dma.$(OBJEXT) \
 	sblaster.$(OBJEXT) tandy_sound.$(OBJEXT) timer.$(OBJEXT) \
 	vga.$(OBJEXT) vga_attr.$(OBJEXT) vga_crtc.$(OBJEXT) \
 	vga_dac.$(OBJEXT) vga_draw.$(OBJEXT) vga_gfx.$(OBJEXT) \
-	vga_memory.$(OBJEXT) vga_misc.$(OBJEXT) vga_seq.$(OBJEXT) \
-	cmos.$(OBJEXT) disney.$(OBJEXT) gus.$(OBJEXT) mpu401.$(OBJEXT) \
-	serialport.$(OBJEXT) softmodem.$(OBJEXT)
+	vga_other.$(OBJEXT) vga_memory.$(OBJEXT) vga_misc.$(OBJEXT) \
+	vga_seq.$(OBJEXT) vga_xga.$(OBJEXT) cmos.$(OBJEXT) \
+	disney.$(OBJEXT) gus.$(OBJEXT) mpu401.$(OBJEXT) \
+	serialport.$(OBJEXT) softmodem.$(OBJEXT) ipx.$(OBJEXT) \
+	ipxserver.$(OBJEXT) directserial_win32.$(OBJEXT)
 libhardware_a_OBJECTS = $(am_libhardware_a_OBJECTS)
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/adlib.Po ./$(DEPDIR)/cmos.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/directserial_win32.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/disney.Po ./$(DEPDIR)/dma.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/gameblaster.Po ./$(DEPDIR)/gus.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/hardware.Po ./$(DEPDIR)/iohandler.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/ipx.Po ./$(DEPDIR)/ipxserver.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/joystick.Po ./$(DEPDIR)/keyboard.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/memory.Po ./$(DEPDIR)/mixer.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mpu401.Po ./$(DEPDIR)/pcspeaker.Po \
@@ -179,16 +184,13 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/vga_crtc.Po ./$(DEPDIR)/vga_dac.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/vga_draw.Po ./$(DEPDIR)/vga_gfx.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/vga_memory.Po ./$(DEPDIR)/vga_misc.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/vga_seq.Po
+@AMDEP_TRUE@	./$(DEPDIR)/vga_other.Po ./$(DEPDIR)/vga_seq.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vga_xga.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
 	-o $@
-COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
-	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
-CCLD = $(CC)
-LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 DIST_SOURCES = $(libhardware_a_SOURCES)
 DIST_COMMON = $(srcdir)/Makefile.in Makefile.am
 SOURCES = $(libhardware_a_SOURCES)
@@ -220,12 +222,15 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/adlib.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmos.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/directserial_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disney.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dma.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gameblaster.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gus.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hardware.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iohandler.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ipxserver.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/joystick.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/keyboard.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memory.Po@am__quote@
@@ -246,7 +251,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_gfx.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_memory.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_misc.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_other.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_seq.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vga_xga.Po@am__quote@
 
 .cpp.o:
 @am__fastdepCXX_TRUE@	if $(CXXCOMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" \

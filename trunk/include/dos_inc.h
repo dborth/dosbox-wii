@@ -9,12 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: dos_inc.h,v 1.48 2004/08/04 09:12:50 qbix79 Exp $ */
 
 #ifndef DOS_H_
 #define DOS_H_
@@ -43,27 +45,25 @@ struct DOS_Version {
 	Bit8u major,minor,revision;
 };
 
-struct DOS_Block {
-	DOS_Date date;
-	DOS_Version version;
-	Bit16u firstMCB;
-	Bit16u errorcode;
-	Bit16u psp;
-	Bit16u env;
-	RealPt cpmentry;
-	RealPt dta;
-	Bit8u return_code,return_mode;
-	
-	Bit8u current_drive;
-	bool verify;
-	bool breakcheck;
-	bool echo;          // if set to true dev_con::read will echo input 
-	struct  {
-		RealPt indosflag;
-		RealPt mediaid;
-		RealPt tempdta;
-	} tables;
-};
+
+#ifdef _MSC_VER
+#pragma pack (1)
+#endif
+union bootSector {
+	struct entries {
+		Bit8u jump[3];
+		Bit8u oem_name[8];
+		Bit16u bytesect;
+		Bit8u sectclust;
+		Bit16u reserve_sect;
+		Bit8u misc[496];
+	} bootdata;
+	Bit8u rawdata[512];
+} GCC_ATTRIBUTE(packed);
+#ifdef _MSC_VER
+#pragma pack ()
+#endif
+
 
 enum { MCB_FREE=0x0000,MCB_DOS=0x0008 };
 enum { RETURN_EXIT=0,RETURN_CTRLC=1,RETURN_ABORT=2,RETURN_TSR=3};
@@ -72,7 +72,7 @@ enum { RETURN_EXIT=0,RETURN_CTRLC=1,RETURN_ABORT=2,RETURN_TSR=3};
 #define DOS_DRIVES 26
 
 /* internal Dos Tables */
-extern DOS_Block dos;
+
 extern DOS_File * Files[DOS_FILES];
 extern DOS_Drive * Drives[DOS_DRIVES];
 extern Bit8u dos_copybuf[0x10000];
@@ -100,7 +100,7 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry);
 bool DOS_OpenFileExtended(char *name, Bit16u flags, Bit16u createAttr, Bit16u action, Bit16u *entry, Bit16u* status);
 bool DOS_CreateFile(char * name,Bit16u attribute,Bit16u * entry);
 bool DOS_UnlinkFile(char * name);
-bool DOS_FindFirst(char *search,Bit16u attr);
+bool DOS_FindFirst(char *search,Bit16u attr,bool fcb_findfirst=false);
 bool DOS_FindNext(void);
 bool DOS_Canonicalize(char * name,char * big);
 bool DOS_CreateTempFile(char * name,Bit16u * entry);
@@ -208,30 +208,26 @@ INLINE Bit16u DOS_PackDate(Bit16u year,Bit16u mon,Bit16u day) {
 
 
 /* Remains some classes used to access certain things */
-
-#define sGet(s,m) GetIt(((s *)0)->m,(PhysPt)&(((s *)0)->m))
-#define sSave(s,m,val) SaveIt(((s *)0)->m,(PhysPt)&(((s *)0)->m),val)
-
+#define sOffset(s,m) ((char*)&(((s*)NULL)->m)-(char*)NULL)
+#define sGet(s,m) GetIt(sizeof(((s *)&pt)->m),(PhysPt)sOffset(s,m))
+#define sSave(s,m,val) SaveIt(sizeof(((s *)&pt)->m),(PhysPt)sOffset(s,m),val)
 
 class MemStruct {
 public:
-	INLINE Bit8u GetIt(Bit8u&,PhysPt addr) {
-		return mem_readb(pt+addr);
+	INLINE Bitu GetIt(Bitu size,PhysPt addr) {
+		switch (size) {
+		case 1:return mem_readb(pt+addr);
+		case 2:return mem_readw(pt+addr);
+		case 4:return mem_readd(pt+addr);
+		}
+		return 0;
 	}
-	INLINE Bit16u GetIt(Bit16u&,PhysPt addr) {
-		return mem_readw(pt+addr);
-	}
-	INLINE Bit32u GetIt(Bit32u&,PhysPt addr) {
-		return mem_readd(pt+addr);
-	}
-	INLINE void SaveIt(Bit8u&,PhysPt addr,Bit8u val) {
-		mem_writeb(pt+addr,val);
-	}
-	INLINE void SaveIt(Bit16u&,PhysPt addr,Bit16u val) {
-		mem_writew(pt+addr,val);
-	}
-	INLINE void SaveIt(Bit32u&,PhysPt addr,Bit32u val) {
-		mem_writed(pt+addr,val);
+	INLINE void SaveIt(Bitu size,PhysPt addr,Bitu val) {
+		switch (size) {
+		case 1:mem_writeb(pt+addr,val);break;
+		case 2:mem_writew(pt+addr,val);break;
+		case 4:mem_writed(pt+addr,val);break;
+		}
 	}
 	INLINE void SetPt(Bit16u seg) { pt=PhysMake(seg,0);}
 	INLINE void SetPt(Bit16u seg,Bit16u off) { pt=PhysMake(seg,off);}
@@ -252,8 +248,6 @@ public:
 	void	RestoreVectors		(void);
 	void	SetSize				(Bit16u size)			{ sSave(sPSP,next_seg,size);		};
 	Bit16u	GetSize				(void)					{ return sGet(sPSP,next_seg);		};
-	void	SetDTA				(RealPt ptdta)			{ sSave(sPSP,dta,ptdta);			};
-	RealPt	GetDTA				(void)					{ return sGet(sPSP,dta);			};
 	void	SetEnvironment		(Bit16u envseg)			{ sSave(sPSP,environment,envseg);	};
 	Bit16u	GetEnvironment		(void)					{ return sGet(sPSP,environment);	};
 	Bit16u	GetSegment			(void)					{ return seg;						};
@@ -291,8 +285,11 @@ private:
 		Bit16u	max_files;			/* Maximum open files */
 		RealPt	file_table;			/* Pointer to File Table PSP:0x18 */
 		RealPt	prev_psp;			/* Pointer to previous PSP */
-		RealPt	dta;				/* Pointer to current Process DTA */
-		Bit8u	fill_2[16];			/* Lot's of unused stuff i can't care aboue */
+	   Bit8u interim_flag;
+	   Bit8u truename_flag;
+	   Bit16u nn_flags;
+	   Bit16u dos_version;
+		Bit8u	fill_2[14];			/* Lot's of unused stuff i can't care aboue */
 		Bit8u	service[3];			/* INT 0x21 Service call int 0x21;retf; */
 		Bit8u	fill_3[9];			/* This has some blocks with FCB info */
 		Bit8u	fcb1[16];			/* first FCB */
@@ -343,25 +340,50 @@ public:
 	void SetFirstMCB(Bit16u _first_mcb);
 	void SetfirstFileTable(RealPt _first_table);
 	void SetBuffers(Bit16u x,Bit16u y);
+	void SetCurDirStruct(Bit32u _curdirstruct);
+	void SetFCBTable(Bit32u _fcbtable);
+	void SetDeviceChainStart(Bit32u _devchain);
+	void SetDiskInfoBuffer(Bit32u _dinfobuf);
 	RealPt GetPointer (void);
 
 	#ifdef _MSC_VER
 	#pragma pack(1)
 	#endif
 	struct sDIB {		
-		Bit8u	stuff1[22];			// -0x18 some stuff, hopefully never used....
-		Bit16u	firstMCB;			// -0x2  first memory control block
-		RealPt	firstDPB;			//  0x00 first drive parameter block
+		Bit16u	regCXfrom5e;		// -0x18 CX from last int21/ah=5e
+		Bit16u	countLRUcache;		// -0x16 LRU counter for FCB caching
+		Bit16u	countLRUopens;		// -0x14 LRU counter for FCB openings
+		Bit8u	stuff[6];		// -0x12 some stuff, hopefully never used....
+		Bit16u	sharingCount;		// -0x0c sharing retry count
+		Bit16u	sharingDelay;		// -0x0a sharing retry delay
+		RealPt	diskBufPtr;		// -0x08 pointer to disk buffer
+		Bit16u	ptrCONinput;		// -0x04 pointer to con input
+		Bit16u	firstMCB;		// -0x02 first memory control block
+		RealPt	firstDPB;		//  0x00 first drive parameter block
 		RealPt	firstFileTable;		//  0x04 first system file table
 		RealPt	activeClock;		//  0x08 active clock device header
-		RealPt	activeCon;			//  0x0c active console device header
+		RealPt	activeCon;		//  0x0c active console device header
 		Bit16u	maxSectorLength;	//  0x10 maximum bytes per sector of any block device;
-		RealPt	discInfoBuffer;		//  0x12 pointer to disc info buffer
+		RealPt	diskInfoBuffer;		//  0x12 pointer to disk info buffer
 		RealPt  curDirStructure;	//  0x16 pointer to current array of directory structure
-		RealPt	fcbTable;			//  0x1a pointer to system FCB table
-		Bit8u	stuff2[0x21];		//  0x1e more stuff
-		Bit16u	buffers_x;			//	x in BUFFERS x,y
-		Bit16u	buffers_y;			//	y in BUFFERS x,y
+		RealPt	fcbTable;		//  0x1a pointer to system FCB table
+		Bit16u	protFCBs;		//  0x1e protected fcbs
+		Bit8u	blockDevices;		//  0x20 installed block devices
+		Bit8u	lastdrive;		//  0x21 lastdrive
+		Bit32u	nulNextDriver;	//  0x22 NUL driver next pointer
+		Bit16u	nulAttributes;	//  0x26 NUL driver aattributes
+		Bit32u	nulStrategy;	//  0x28 NUL driver strategy routine
+		Bit8u	nulString[8];	//  0x2c NUL driver name string
+		Bit8u	joindedDrives;		//  0x34 joined drives
+		Bit16u	specialCodeSeg;		//  0x35 special code segment
+		RealPt  setverPtr;		//  0x37 pointer to setver
+		Bit16u  a20FixOfs;		//  0x3b a20 fix routine offset
+		Bit16u  pspLastIfHMA;		//  0x3d psp of last program (if dos in hma)
+		Bit16u	buffers_x;		//  0x3f x in BUFFERS x,y
+		Bit16u	buffers_y;		//  0x41 y in BUFFERS x,y
+		Bit8u	bootDrive;		//  0x43 boot drive
+		Bit8u	useDwordMov;		//  0x44 use dword moves
+		Bit16u	extendedSize;		//  0x45 size of extended memory
 		// some more stuff, hopefully never used.
 	} GCC_ATTRIBUTE(packed);
 	#ifdef _MSC_VER
@@ -389,9 +411,9 @@ private:
 	#endif
 	struct sDTA {
 		Bit8u sdrive;						/* The Drive the search is taking place */
-		Bit8u sattr;						/* The Attributes that need to be found */
 		Bit8u sname[8];						/* The Search pattern for the filename */		
 		Bit8u sext[3];						/* The Search pattern for the extenstion */
+		Bit8u sattr;						/* The Attributes that need to be found */
 		Bit16u dirID;						/* custom: dir-search ID for multiple searches at the same time */
 		Bit8u fill[6];
 		Bit8u attr;
@@ -422,6 +444,8 @@ public:
 	void SetRandom(Bit32u  _random);
 	Bit8u GetDrive(void);
 	bool Extended(void);
+	void GetAttr(Bit8u & attr);
+	void SetAttr(Bit8u attr);
 private:
 	bool extended;
 	PhysPt real_pt;
@@ -438,8 +462,11 @@ private:
 		Bit16u date;
 		Bit16u time;
 		/* Reserved Block should be 8 bytes */
+		Bit8u sft_entries;
+		Bit8u share_attributes;
+		Bit8u extra_info;
 		Bit8u file_handle;
-		Bit8u reserved[7];
+		Bit8u reserved[4];
 		/* end */
 		Bit8u  cur_rec;			/* Current record in current block */
 		Bit32u rndm;			/* Current relative record number */
@@ -476,10 +503,78 @@ private:
 	#endif
 };
 
-extern DOS_InfoBlock dos_infoblock;;
+extern Bit16u sdaseg;
+#define DOS_SDA_SEG sdaseg
+#define DOS_SDA_OFS 0
+
+
+class DOS_SDA : public MemStruct {
+public:
+	DOS_SDA(Bit16u _seg,Bit16u _offs) { SetPt(_seg,_offs); }
+	void Init();   
+	void SetDrive(Bit8u _drive) { sSave(sSDA,current_drive, _drive); }
+	void SetDTA(Bit32u _dta) { sSave(sSDA,current_dta, _dta); }
+	void SetPSP(Bit16u _psp) { sSave(sSDA,current_psp, _psp); }
+	Bit8u GetDrive(void) { return sGet(sSDA,current_drive); }
+	Bit16u GetPSP(void) { return sGet(sSDA,current_psp); }
+	Bit32u GetDTA(void) { return sGet(sSDA,current_dta); }
+	
+	
+private:
+	#ifdef _MSC_VER
+	#pragma pack (1)
+	#endif
+	struct sSDA {
+		Bit8u crit_error_flag;		/* 0x00 Critical Error Flag */
+		Bit8u inDOS_flag;		/* 0x01 InDOS flag (count of active INT 21 calls) */
+		Bit8u drive_crit_error;		/* 0x02 Drive on which current critical error occurred or FFh */
+		Bit8u locus_of_last_error;	/* 0x03 locus of last error */
+		Bit16u extended_error_code;	/* 0x04 extended error code of last error */
+		Bit8u suggested_action;		/* 0x06 suggested action for last error */
+		Bit8u error_class;		/* 0x07 class of last error*/
+		Bit32u last_error_pointer; 	/* 0x08 ES:DI pointer for last error */
+		Bit32u current_dta;		/* 0x0C current DTA (Disk Transfer Address) */
+		Bit16u current_psp; 		/* 0x10 current PSP */
+		Bit16u sp_int_23;		/* 0x12 stores SP across an INT 23 */
+		Bit16u return_code;		/* 0x14 return code from last process termination (zerod after reading with AH=4Dh) */
+		Bit8u current_drive;		/* 0x16 current drive */
+		Bit8u extended_break_flag; 	/* 0x17 extended break flag */
+		Bit8u fill[2];			/* 0x18 flag: code page switching || flag: copy of previous byte in case of INT 24 Abort*/
+	} GCC_ATTRIBUTE(packed);
+	#ifdef _MSC_VER
+	#pragma pack()
+	#endif
+};
+extern DOS_InfoBlock dos_infoblock;
+
+struct DOS_Block {
+	DOS_Date date;
+	DOS_Version version;
+	Bit16u firstMCB;
+	Bit16u errorcode;
+	Bit16u psp(){return DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).GetPSP();};
+	void psp(Bit16u _seg){ DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).SetPSP(_seg);};
+	Bit16u env;
+	RealPt cpmentry;
+	RealPt dta(){return DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).GetDTA();};
+	void dta(RealPt _dta){DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).SetDTA(_dta);};
+	Bit8u return_code,return_mode;
+	
+	Bit8u current_drive;
+	bool verify;
+	bool breakcheck;
+	bool echo;          // if set to true dev_con::read will echo input 
+	struct  {
+		RealPt mediaid;
+		RealPt tempdta;
+		RealPt dcbs;
+	} tables;
+};
+
+extern DOS_Block dos;
 
 INLINE Bit8u RealHandle(Bit16u handle) {
-	DOS_PSP psp(dos.psp);	
+	DOS_PSP psp(dos.psp());	
 	return psp.GetFileHandle(handle);
 }
 

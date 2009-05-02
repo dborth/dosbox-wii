@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -185,8 +185,14 @@ bool Virtual_Drive::FileExists(const char* name){
 	return false;
 }
 
-bool Virtual_Drive::FindFirst(char * _dir,DOS_DTA & dta) {
+bool Virtual_Drive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 	search_file=first_file;
+	Bit8u attr;char pattern[DOS_NAMELENGTH_ASCII];
+	dta.GetSearchParams(attr,pattern);
+	if(attr & DOS_ATTR_VOLUME) {
+		dta.SetResult("DOSBOX",0,0,0,DOS_ATTR_ARCHIVE);
+		return true;
+	}
 	return FindNext(dta);
 }
 

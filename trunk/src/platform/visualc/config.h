@@ -1,6 +1,7 @@
 #define INLINE __forceinline
 
-#define VERSION "0.60"
+#define VERSION "0.62"
+
 
 /* Define to 1 to enable internal debugger, requires libcurses */
 #define C_DEBUG 1
@@ -13,6 +14,9 @@
 
 /* Define to 1 to enable internal modem support, requires SDL_net */
 #define C_MODEM 1
+
+/* Define to 1 to enable IPX networking support, requires SDL_net */
+#define C_IPX 1
 
 /* Enable some heavy debugging options */
 #define C_HEAVY_DEBUG 0
@@ -35,4 +39,24 @@
 /* environ can be linked */
 #define ENVIRON_LINKED 1
 
+/* Define to 1 if you have the <ddraw.h> header file. */
+#define HAVE_DDRAW_H 1
+
+/* Define to 1 if you want serial passthrough support (Win32 only). */
+#define C_DIRECTSERIAL 1
+
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
+
+typedef         double		Real64;
+/* The internal types */
+typedef  unsigned char		Bit8u;
+typedef    signed char		Bit8s;
+typedef unsigned short		Bit16u;
+typedef   signed short		Bit16s;
+typedef  unsigned long		Bit32u;
+typedef    signed long		Bit32s;
+typedef unsigned __int64	Bit64u;
+typedef   signed __int64	Bit64s;
+typedef unsigned int		Bitu;
+typedef signed int			Bits;
+

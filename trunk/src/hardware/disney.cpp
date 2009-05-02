@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -20,13 +20,8 @@
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
-#include "dma.h"
 #include "pic.h"
-#include "hardware.h"
 #include "setup.h"
-#include "programs.h"
-
-
 
 #define DISNEY_BASE 0x0378
 
@@ -37,11 +32,15 @@ static struct {
 	Bit8u status;
 	Bit8u control;
 	Bit8u buffer[DISNEY_SIZE];
-	Bitu used;
-	MIXER_Channel * chan;
+	Bitu used;Bitu last_used;
+	MixerChannel * chan;
 } disney;
 
-static void disney_write(Bit32u port,Bit8u val) {
+static void disney_write(Bitu port,Bitu val,Bitu iolen) {
+	if (!disney.last_used) {
+		disney.chan->Enable(true);
+	}
+	disney.last_used=PIC_Ticks;
 	switch (port-DISNEY_BASE) {
 	case 0:		/* Data Port */
 		disney.data=val;
@@ -62,8 +61,7 @@ static void disney_write(Bit32u port,Bit8u val) {
 	}
 }
 
-static Bit8u disney_read(Bit32u port) {
-
+static Bitu disney_read(Bitu port,Bitu iolen) {
 	switch (port-DISNEY_BASE) {
 	case 0:		/* Data Port */
 //		LOG(LOG_MISC,LOG_NORMAL)("DISNEY:Read from data port");
@@ -83,17 +81,20 @@ static Bit8u disney_read(Bit32u port) {
 }
 
 
-static void DISNEY_CallBack(Bit8u * stream,Bit32u len) {
+static void DISNEY_CallBack(Bitu len) {
 	if (!len) return;
 	if (disney.used>len) {
-		memcpy(stream,disney.buffer,len);
+		disney.chan->AddSamples_m8(len,disney.buffer);
 		memmove(disney.buffer,&disney.buffer[len],disney.used-len);
 		disney.used-=len;
-		return;
 	} else {
-		memcpy(stream,disney.buffer,disney.used);
-		memset(stream+disney.used,0x80,len-disney.used);
+		disney.chan->AddSamples_m8(disney.used,disney.buffer);
+		disney.chan->AddSilence();
 		disney.used=0;
+	}
+	if (disney.last_used+5000<PIC_Ticks) {
+		disney.last_used=0;
+		disney.chan->Enable(false);
 	}
 }
 
@@ -103,20 +104,14 @@ void DISNEY_Init(Section* sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	if(!section->Get_bool("disney")) return;
 
-	IO_RegisterWriteHandler(DISNEY_BASE,disney_write,"DISNEY");
-	IO_RegisterWriteHandler(DISNEY_BASE+1,disney_write,"DISNEY");
-	IO_RegisterWriteHandler(DISNEY_BASE+2,disney_write,"DISNEY");
-
-	IO_RegisterReadHandler(DISNEY_BASE,disney_read,"DISNEY");
-	IO_RegisterReadHandler(DISNEY_BASE+1,disney_read,"DISNEY");
-	IO_RegisterReadHandler(DISNEY_BASE+2,disney_read,"DISNEY");
+	IO_RegisterWriteHandler(DISNEY_BASE,disney_write,IO_MB,3);
+	IO_RegisterReadHandler(DISNEY_BASE,disney_read,IO_MB,3);
 
 	disney.chan=MIXER_AddChannel(&DISNEY_CallBack,7000,"DISNEY");
-	MIXER_SetMode(disney.chan,MIXER_8MONO);
-	MIXER_Enable(disney.chan,true);
 
 	disney.status=0x84;
 	disney.control=0;
 	disney.used=0;
+	disney.last_used=0;
 }
 

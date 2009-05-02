@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -29,7 +29,7 @@ using namespace std;
 
 
 
-#define LINE_IN_MAXLEN 1024
+#define LINE_IN_MAXLEN 2048
 
 struct MessageBlock {
 	string name;
@@ -130,7 +130,7 @@ void MSG_Write(const char * location) {
 
 void MSG_Init(Section_prop * section) {
 	std::string file_name;
-	if (control->cmdline->FindString("-lang",file_name)) {
+	if (control->cmdline->FindString("-lang",file_name,true)) {
 		LoadMessageFile(file_name.c_str());
 	} else LoadMessageFile(section->Get_string("language"));
 }

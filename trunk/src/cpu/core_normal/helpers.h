@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -141,17 +141,22 @@
 	}																		\
 }
 
-#define POPSEG(_SEG_,_VAL_,_ESP_CHANGE_)									\
-	if (CPU_SetSegGeneral(_SEG_,_VAL_)) {									\
-		LEAVECORE;															\
-		reg_eip-=(core.ip_lookup-core.op_start);reg_esp-=_ESP_CHANGE_;		\
-		CPU_StartException();goto decode_start;								\
-	}
+#define CASE_W(_WHICH)							\
+	case (OPCODE_NONE+_WHICH):
 
-#define LOADSEG(_SEG_,_SEG_VAL_)											\
-	if (CPU_SetSegGeneral(_SEG_,_SEG_VAL_)) {								\
-		LEAVECORE;															\
-		reg_eip-=(core.ip_lookup-core.op_start);							\
-		CPU_StartException();goto decode_start;								\
-	}																		\
+#define CASE_D(_WHICH)							\
+	case (OPCODE_SIZE+_WHICH):
 
+#define CASE_B(_WHICH)							\
+	CASE_W(_WHICH)								\
+	CASE_D(_WHICH)
+
+#define CASE_0F_W(_WHICH)						\
+	case ((OPCODE_0F|OPCODE_NONE)+_WHICH):
+
+#define CASE_0F_D(_WHICH)						\
+	case ((OPCODE_0F|OPCODE_SIZE)+_WHICH):
+
+#define CASE_0F_B(_WHICH)						\
+	CASE_0F_W(_WHICH)							\
+	CASE_0F_D(_WHICH)

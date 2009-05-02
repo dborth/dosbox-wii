@@ -9,12 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: dos_mscdex.cpp,v 1.24 2004/08/13 19:43:02 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -35,6 +37,7 @@
 #define MSCDEX_MAX_DRIVES	5
 
 // Error Codes
+#define MSCDEX_ERROR_BAD_FORMAT			11
 #define MSCDEX_ERROR_UNKNOWN_DRIVE		15
 #define MSCDEX_ERROR_DRIVE_NOT_READY	21
 
@@ -95,6 +98,7 @@ public:
 	Bit8u		GetSubUnit			(Bit16u _drive);
 	bool		GetUPC				(Bit8u subUnit, Bit8u& attr, char* upc);
 
+	void		InitNewMedia		(Bit8u subUnit);
 	bool		PlayAudioSector		(Bit8u subUnit, Bit32u start, Bit32u length);
 	bool		PlayAudioMSF		(Bit8u subUnit, Bit32u start, Bit32u length);
 	bool		StopAudio			(Bit8u subUnit);
@@ -271,11 +275,9 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 							cdrom[numDrives] = new CDROM_Interface_SDL();
 							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: SDL Interface.");
 						  } break;
-			case 0x01	:	// iso cdrom interface
-							// FIXME: Not yet supported	
-							LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Mounting iso file as cdrom: %s"	,physicalPath);
-							cdrom[numDrives] = new CDROM_Interface_Fake;
-							return 2;
+			case 0x01	:	// iso cdrom interface	
+							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: Mounting iso file as cdrom: %s", physicalPath);
+							cdrom[numDrives] = new CDROM_Interface_Image((Bit8u)numDrives);
 							break;
 			case 0x02	:	// fake cdrom interface (directories)
 							cdrom[numDrives] = new CDROM_Interface_Fake;
@@ -304,9 +306,8 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 PhysPt CMscdex::GetDefaultBuffer(void)
 {
 	if (defaultBuffer==0) {
-		Bit16u seg,size = 128;
-		if (!DOS_AllocateMemory(&seg,&size)) E_Exit("MSCDEX: cannot allocate default buffer.");		
-		defaultBuffer = PhysMake(seg,0);
+		Bit16u size = 128; //Size in block is size in pages ?
+		defaultBuffer = DOS_GetMemory(size);
 	};
 	return defaultBuffer;
 };
@@ -324,6 +325,8 @@ bool CMscdex::GetCDInfo(Bit8u subUnit, Bit8u& tr1, Bit8u& tr2, TMSF& leadOut)
 {
 	if (subUnit>=numDrives) return false;
 	int tr1i,tr2i;
+	// Assume Media change
+	cdrom[subUnit]->InitNewMedia();
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioTracks(tr1i,tr2i,leadOut);
 	if (!dinfo[subUnit].lastResult) {
 		tr1 = tr2 = 0;
@@ -452,8 +455,19 @@ Bit32u CMscdex::GetVolumeSize(Bit8u subUnit)
 
 bool CMscdex::ReadVTOC(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error)	
 { 
-	ReadSectors(GetSubUnit(drive),false,/*150+*/16,1,data) ? error=0:error=MSCDEX_ERROR_DRIVE_NOT_READY;
-	return (error==0);
+     if (!ReadSectors(GetSubUnit(drive),false,16+volume,1,data)) {
+          error=MSCDEX_ERROR_DRIVE_NOT_READY;
+          return false;
+     }
+     char id[5];
+     MEM_BlockRead(data + 1, id, 5);
+     if (strncmp("CD001",id, 5)!=0) {
+          error = MSCDEX_ERROR_BAD_FORMAT;
+          return false;
+     }
+     Bit8u type = mem_readb(data);
+     error = (type == 1) ? 1 : (type == 0xFF) ? 0xFF : 0;
+     return true;
 };
 
 bool CMscdex::GetVolumeName(Bit8u subUnit, char* data) 
@@ -585,9 +599,12 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 		if (!ReadSectors(GetSubUnit(drive),false,dirEntrySector,1,defBuffer)) return false;
 		// Get string part
 		foundName	= false;
-		useName		= searchPos;
-		searchPos	= strchr(searchPos,'\\'); 
-		if (searchPos) { *searchPos = 0; searchPos++; }
+		if (searchPos) { 
+			useName = searchPos; 
+			searchPos = strchr(searchPos,'\\'); 
+		}
+
+	   	if (searchPos) { *searchPos = 0; searchPos++; }
 		else foundComplete = true;
 
 		do {
@@ -606,7 +623,7 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 		if (foundName) {
 			// TO DO : name gefunden, Daten in den Buffer kopieren
 			if (foundComplete) {
-				if (copyFlag) E_Exit("MSCDEX: GetDirEntry: Unsupported copyflag");
+				if (copyFlag) LOG(LOG_MISC,LOG_ERROR)("MSCDEX: GetDirEntry: Unsupported copyflag. (result structure should be different");
 				// Direct copy
 				MEM_BlockCopy(buffer,defBuffer+index,entryLength);
 				error = iso ? 1:0;
@@ -706,6 +723,14 @@ Bit16u CMscdex::GetStatusWord(Bit8u subUnit)
 	} 
 	dinfo[subUnit].lastResult	= true;
 	return status;
+};
+
+void CMscdex::InitNewMedia(Bit8u subUnit)
+{
+	if (subUnit<numDrives) {
+		// Reopen new media
+		cdrom[subUnit]->InitNewMedia();
+	}
 };
 
 static CMscdex* mscdex = 0;
@@ -893,7 +918,7 @@ static bool MSCDEX_Handler(void)
 	if (reg_ah!=0x15) return false;
 
 	PhysPt data = PhysMake(SegValue(es),reg_bx);
-	MSCDEX_LOG("MSCDEX: INT 2F %04X",reg_ax);
+	MSCDEX_LOG("MSCDEX: INT 2F %04X BX= %04X CX=%04X",reg_ax,reg_bx,reg_bx);
 	switch (reg_ax) {
 	
 		case 0x1500:	/* Install check */
@@ -970,6 +995,7 @@ static bool MSCDEX_Handler(void)
 		case 0x1510:	/* Device driver request */
 						mscdex->SendDriverRequest(reg_cx,data);
 						return true;
+ 
 		default	:		LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unknwon call : %04X",reg_ax);
 						return true;
 
@@ -1011,9 +1037,12 @@ bool MSCDEX_HasMediaChanged(Bit8u subUnit)
 	Bit8u tr1,tr2;
 	if (mscdex->GetCDInfo(subUnit,tr1,tr2,leadnew)) {
 		bool changed = (leadOut[subUnit].min!=leadnew.min) || (leadOut[subUnit].sec!=leadnew.sec) || (leadOut[subUnit].fr!=leadnew.fr);
-		leadOut[subUnit].min = leadnew.min;
-		leadOut[subUnit].sec = leadnew.sec;
-		leadOut[subUnit].fr	 = leadnew.fr;
+		if (changed) {
+			leadOut[subUnit].min = leadnew.min;
+			leadOut[subUnit].sec = leadnew.sec;
+			leadOut[subUnit].fr	 = leadnew.fr;
+			mscdex->InitNewMedia(subUnit);
+		}
 		return changed;
 	};
 	if (subUnit<MSCDEX_MAX_DRIVES) {

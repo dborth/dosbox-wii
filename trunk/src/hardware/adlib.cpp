@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -19,19 +19,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <sys/types.h>
+#include <dirent.h>
+
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
 #include "pic.h"
 #include "hardware.h"
 #include "setup.h"
+#include "mapper.h"
+#include "mem.h"
+
 /* 
 	Thanks to vdmsound for nice simple way to implement this
 */
 
-namespace MAME {
-  /* Defines */
-# define logerror(x)
+#define logerror
 
 #ifdef _MSC_VER
   /* Disable recurring warnings */
@@ -39,166 +43,288 @@ namespace MAME {
 # pragma warning ( disable : 4244 )
 #endif
 
-  /* Work around ANSI compliance problem (see driver.h) */
-  struct __MALLOCPTR {
-    void* m_ptr;
+struct __MALLOCPTR {
+	void* m_ptr;
 
-    __MALLOCPTR(void) : m_ptr(NULL) { }
-    __MALLOCPTR(void* src) : m_ptr(src) { }
-    void* operator=(void* rhs) { return (m_ptr = rhs); }
-    operator int*() const { return (int*)m_ptr; }
-    operator int**() const { return (int**)m_ptr; }
-    operator char*() const { return (char*)m_ptr; }
-  };
-
-  /* Bring in the MAME OPL emulation */
-# define HAS_YM3812 1
-# include "fmopl.c"
-
-}
-
-
-struct OPLTimer_t {
-	bool isEnabled;
-	bool isMasked;
-	bool isOverflowed;
-	Bit64u count;
-	Bit64u base;
+	__MALLOCPTR(void) : m_ptr(NULL) { }
+	__MALLOCPTR(void* src) : m_ptr(src) { }
+	void* operator=(void* rhs) { return (m_ptr = rhs); }
+	operator int*() const { return (int*)m_ptr; }
+	operator int**() const { return (int**)m_ptr; }
+	operator char*() const { return (char*)m_ptr; }
 };
 
-static OPLTimer_t timer1,timer2;
-static Bit8u regsel;
+namespace OPL2 {
+	#define HAS_YM3812 1
+	#include "fmopl.c"
+	void TimerOver(Bitu val){
+		YM3812TimerOver(val>>8,val & 0xff);
+	}
+	void TimerHandler(int channel,double interval_Sec) {
+		if (interval_Sec==0.0) return;
+		PIC_AddEvent(TimerOver,1000.0f*interval_Sec,channel);		
+	}
+}
+#undef OSD_CPU_H
+#undef TL_TAB_LEN
+namespace THEOPL3 {
+	#define HAS_YMF262 1
+	#include "ymf262.c"
+	void TimerOver(Bitu val){
+		YMF262TimerOver(val>>8,val & 0xff);
+	}
+	void TimerHandler(int channel,double interval_Sec) {
+		if (interval_Sec==0.0) return;
+		PIC_AddEvent(TimerOver,1000.0f*interval_Sec,channel);		
+	}
+}
 
-#define OPL_INTERNAL_FREQ     3600000   // The OPL operates at 3.6MHz
-#define OPL_NUM_CHIPS         1         // Number of OPL chips
-#define OPL_CHIP0             0
+#define OPL2_INTERNAL_FREQ    3600000   // The OPL2 operates at 3.6MHz
+#define OPL3_INTERNAL_FREQ    14400000  // The OPL3 operates at 14.4MHz
 
-static MIXER_Channel * adlib_chan;
+#define RAW_SIZE 1024
+static struct {
+	bool active;
+	OPL_Mode mode;
+	MixerChannel * chan;
+	Bit32u last_used;
+	Bit16s mixbuf[2][128];
+	struct {
+		FILE * handle;
+		bool capturing;
+		Bit32u start;
+		Bit32u last;
+		Bit8u index;
+		Bit8u buffer[RAW_SIZE+8];
+		Bit8u regs[2][256];
+		Bit32u used;
+		Bit32u done;
+		Bit8u cmd[2];
+	} raw;
+} opl;
 
-static void ADLIB_CallBack(Bit8u *stream, Bit32u len) {
+static void OPL_CallBack(Bitu len) {
 	/* Check for size to update and check for 1 ms updates to the opl registers */
-	/* Calculate teh machine ms we are at now */
-
-	/* update 1 ms of data */
-	MAME::YM3812UpdateOne(0,(MAME::INT16 *)stream,len);
-}
-
-static Bit8u read_p388(Bit32u port) {
-	Bit8u ret=0;
-	Bit64u micro=PIC_MicroCount();
-	if (timer1.isEnabled) {
-		if ((micro-timer1.base)>timer1.count) {
-			timer1.isOverflowed=true;
-			timer1.base=micro;
+	Bitu i;
+	switch(opl.mode) {
+	case OPL_opl2:
+		OPL2::YM3812UpdateOne(0,(OPL2::INT16 *)MixTemp,len);
+		opl.chan->AddSamples_m16(len,(Bit16s*)MixTemp);
+		break;
+	case OPL_opl3:
+		THEOPL3::YMF262UpdateOne(0,(OPL2::INT16 *)MixTemp,len);
+		opl.chan->AddSamples_s16(len,(Bit16s*)MixTemp);
+		break;
+	case OPL_dualopl2:
+		OPL2::YM3812UpdateOne(0,(OPL2::INT16 *)opl.mixbuf[0],len);
+		OPL2::YM3812UpdateOne(1,(OPL2::INT16 *)opl.mixbuf[1],len);
+		for (i=0;i<len;i++) {
+			((Bit16s*)MixTemp)[i*2+0]=opl.mixbuf[0][i];
+			((Bit16s*)MixTemp)[i*2+1]=opl.mixbuf[1][i];
 		}
-		if (timer1.isOverflowed || !timer1.isMasked) {
-			ret|=0xc0;
-		}
+		opl.chan->AddSamples_s16(len,(Bit16s*)MixTemp);
+		break;
 	}
-	if (timer2.isEnabled) {
-		if ((micro-timer2.base)>timer2.count) {
-			timer2.isOverflowed=true;
-			timer2.base=micro;
-		}
-		if (timer2.isOverflowed || !timer2.isMasked) {
-			ret|=0xA0;
-		}
+	if ((PIC_Ticks-opl.last_used)>30000) {
+		opl.chan->Enable(false);
+		opl.active=false;
 	}
-	return ret;
 }
 
-static void write_p388(Bit32u port,Bit8u val) {
-	regsel=val;
-
-	// The following writes this value to ultrasounds equivalent register.
-	// I don't know of any other way to do this
-	IO_Write(0x248,val);
+static Bitu OPL_Read(Bitu port,Bitu iolen) {
+	Bitu addr=port & 3;
+	switch (opl.mode) {
+	case OPL_opl2:
+		return OPL2::YM3812Read(0,addr);
+	case OPL_dualopl2:
+		return OPL2::YM3812Read(addr>>1,addr);
+	case OPL_opl3:
+		return THEOPL3::YMF262Read(0,addr);
+	}
+	return 0xff;
 }
 
-static void write_p389(Bit32u port,Bit8u val) {
-	switch (regsel) {
-		case 0x02:	/* Timer 1 */
-			timer1.count=val*80;
+static void OPL_RawAdd(Bitu index,Bitu val);
+void OPL_Write(Bitu port,Bitu val,Bitu iolen) {
+	opl.last_used=PIC_Ticks;
+	if (!opl.active) {
+		opl.active=true;
+		opl.chan->Enable(true);
+	}
+	port&=3;
+	if (port&1) {
+		Bitu index=port>>1;
+		opl.raw.regs[index][opl.raw.cmd[index]]=val;
+		if (opl.raw.capturing) OPL_RawAdd(index,val);
+	} else opl.raw.cmd[port>>1]=val;
+	if (!port) adlib_commandreg=val;
+	switch (opl.mode) {
+	case OPL_opl2:
+		OPL2::YM3812Write(0,port,val);
+		break;
+	case OPL_opl3:
+		THEOPL3::YMF262Write(0,port,val);
+		break;
+	case OPL_dualopl2:
+		OPL2::YM3812Write(port>>1,port,val);
+		break;
+	}
+}
+
+static Bit8u dro_header[]={
+	'D','B','R','A',		/* Bit32u ID */
+	'W','O','P','L',		/* Bit32u ID */
+	0x0,0x0,0x0,0x0,		/* Bit32u total milliseconds */
+	0x0,0x0,0x0,0x0,		/* Bit32u total data */
+	0x0,					/* Type 0=opl2,1=opl3,2=dual-opl2 */
+};
+/* Commands 
+	0x00 Bit8u, millisecond delay+1
+	0x01 Bit16u, millisecond delay+1
+	0x02 none, Use the low index/data pair
+	0x03 none, Use the high index/data pair
+	0xxx Bit8u, send command and data to current index/data pair
+*/ 
+
+static void OPL_RawEmptyBuffer(void) {
+	fwrite(opl.raw.buffer,1,opl.raw.used,opl.raw.handle);
+	opl.raw.done+=opl.raw.used;
+	opl.raw.used=0;
+}
+
+#define ADDBUF(_VAL_) opl.raw.buffer[opl.raw.used++]=_VAL_;
+static void OPL_RawAdd(Bitu index,Bitu val) {
+	/* Check if we have yet to start */
+	Bit8u cmd=opl.raw.cmd[index];
+	if (cmd<=3) return;
+	if (!opl.raw.handle) {
+		if (cmd<0xb0 || cmd>0xb8) return;
+		if (!(val&0x20))  return;
+		Bitu i;
+		opl.raw.last=PIC_Ticks;	
+		opl.raw.start=PIC_Ticks;
+		opl.raw.handle=OpenCaptureFile("Raw Opl",".dro");
+		if (!opl.raw.handle) {
+			opl.raw.capturing=false;		
 			return;
-		case 0x03:	/* Timer 2 */
-			timer2.count=val*320;
-			return;
-		case 0x04:	/* IRQ clear / mask and Timer enable */
-			if (val&0x80) {
-				timer1.isOverflowed=false;
-				timer2.isOverflowed=false;
-				return;
+		}
+		memset(opl.raw.buffer,0,sizeof(opl.raw.buffer));
+		fwrite(dro_header,1,sizeof(dro_header),opl.raw.handle);
+		/* Check the registers to add */
+		for (i=4;i<256;i++) {
+			if (!opl.raw.regs[0][i]) continue;
+			if (i>=0xb0 && i<=0xb8) continue;
+			ADDBUF((Bit8u)i);
+			ADDBUF(opl.raw.regs[0][i]);
+		}
+		bool donesecond=false;
+		for (i=4;i<256;i++) {
+			if (!opl.raw.regs[0][i]) continue;
+			if (i>=0xb0 && i<=0xb8) continue;
+			if (!donesecond) {
+				donesecond=true;
+				ADDBUF(0x3);
 			}
-			if (val&0x40) timer1.isMasked=true;
-			else timer1.isMasked=false;
-
-			if (val&1) {
-				timer1.isEnabled=true;
-				timer1.base=PIC_MicroCount();
-			} else timer1.isEnabled=false;
-			if (val&0x20) timer2.isMasked=true;
-			else timer2.isMasked=false;
-			if (val&2) {
-				timer2.isEnabled=true;
-				timer2.base=PIC_MicroCount();
-			} else timer2.isEnabled=false;
-			return;
-		default:		/* Normal OPL call queue it */
-			/* Use a little hack to directly write to the register */
-			MAME::OPLWriteReg(MAME::OPL_YM3812[0],regsel,val);
+			ADDBUF((Bit8u)i);
+			ADDBUF(opl.raw.regs[0][i]);
+		}
+		if (donesecond) ADDBUF(0x2);
 	}
+	/* Check how much time has passed, Allow an extra 5 milliseconds? */
+	if (PIC_Ticks>(opl.raw.last+5)) {
+		Bitu passed=PIC_Ticks-opl.raw.last;
+		opl.raw.last=PIC_Ticks;
+		while (passed) {
+			passed-=1;
+			if (passed<256) {
+				ADDBUF(0x00);					//8bit delay
+				ADDBUF((Bit8u)passed);			//8bit delay
+				passed=0;
+			} else if (passed<0x10000) {
+				ADDBUF(0x01);					//16bit delay
+				ADDBUF((Bit8u)(passed & 0xff));	//lo-byte
+				ADDBUF((Bit8u)(passed >> 8));	//hi-byte
+				passed=0;
+			} else {
+				ADDBUF(0x01);					//16bit delay
+				ADDBUF(0xff);					//lo-byte
+				ADDBUF(0xff);					//hi-byte
+				passed-=0xffff;
+			}
+		}
+	}
+	/* Check if we're still sending to the correct index */
+	if (opl.raw.index != index) {
+		opl.raw.index=index;
+		ADDBUF(opl.raw.index ? 0x3 : 0x2);
+	}
+	ADDBUF(cmd);
+	ADDBUF(val);
+	if (opl.raw.used>=RAW_SIZE) OPL_RawEmptyBuffer();
 }
 
-static bool adlib_enabled;
-
-static void ADLIB_Enable(bool enable) {
-	if (enable) {
-		adlib_enabled=true;
-		MIXER_Enable(adlib_chan,true);
-		IO_RegisterWriteHandler(0x388,write_p388,"ADLIB Register select");
-		IO_RegisterWriteHandler(0x389,write_p389,"ADLIB Data Write");
-		IO_RegisterReadHandler(0x388,read_p388,"ADLIB Status");
-
-		IO_RegisterWriteHandler(0x220,write_p388,"ADLIB Register select");
-		IO_RegisterWriteHandler(0x221,write_p389,"ADLIB Data Write");
-		IO_RegisterReadHandler(0x220,read_p388,"ADLIB Status");
+static void OPL_SaveRawEvent(void) {
+	/* Check for previously opened wave file */
+	if (opl.raw.handle) {
+		OPL_RawEmptyBuffer();
+		/* Fill in the header with useful information */
+		host_writed(&dro_header[0x08],opl.raw.last-opl.raw.start);
+		host_writed(&dro_header[0x0c],opl.raw.done);
+		switch (opl.mode) {
+		case OPL_opl2:host_writeb(&dro_header[0x10],0x0);break;
+		case OPL_opl3:host_writeb(&dro_header[0x10],0x1);break;
+		case OPL_dualopl2:host_writeb(&dro_header[0x10],0x2);break;
+		}
+		fseek(opl.raw.handle,0,0);
+		fwrite(dro_header,1,sizeof(dro_header),opl.raw.handle);
+		fclose(opl.raw.handle);
+		opl.raw.handle=0;
+	}
+	if (opl.raw.capturing) {
+		opl.raw.capturing=false;
+		LOG_MSG("Stopping Raw OPL capturing.");
 	} else {
-		adlib_enabled=false;
-		MIXER_Enable(adlib_chan,false);
-		IO_FreeWriteHandler(0x220);
-		IO_FreeWriteHandler(0x221);
-		IO_FreeReadHandler(0x220);
-		IO_FreeWriteHandler(0x388);
-		IO_FreeWriteHandler(0x389);
-		IO_FreeReadHandler(0x388);
+		LOG_MSG("Preparing to capture Raw OPL, will start with first note played.");
+		opl.raw.capturing=true;
+		opl.raw.index=0;
+		opl.raw.used=0;
+		opl.raw.done=0;
+		opl.raw.start=0;
+		opl.raw.last=0;
 	}
 }
 
+static void OPL_Stop(Section* sec) {
+	if (opl.raw.handle) OPL_SaveRawEvent();
+}
 
-void ADLIB_Init(Section* sec) {
+void OPL_Init(Section* sec,Bitu base,OPL_Mode oplmode,Bitu rate) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
-	if(!section->Get_bool("adlib")) return;
-
-	timer1.isMasked=true;
-	timer1.base=0;
-	timer1.count=0;
-	timer1.isEnabled=false;
-	timer1.isOverflowed=false;
-
-	timer2.isMasked=true;
-	timer2.base=0;
-	timer2.count=0;
-	timer2.isEnabled=false;
-	timer2.isOverflowed=false;
-
-	#define ADLIB_FREQ 22050
-	if (MAME::YM3812Init(OPL_NUM_CHIPS,OPL_INTERNAL_FREQ,ADLIB_FREQ)) {
-		E_Exit("Can't create adlib OPL Emulator");	
+	if (OPL2::YM3812Init(2,OPL2_INTERNAL_FREQ,rate)) {
+		E_Exit("Can't create OPL2 Emulator");	
 	};
+	OPL2::YM3812SetTimerHandler(0,OPL2::TimerHandler,0);
+	OPL2::YM3812SetTimerHandler(1,OPL2::TimerHandler,256);
+	if (THEOPL3::YMF262Init(1,OPL3_INTERNAL_FREQ,rate)) {
+		E_Exit("Can't create OPL3 Emulator");	
+	};
+	THEOPL3::YMF262SetTimerHandler(0,THEOPL3::TimerHandler,0);
+	IO_RegisterWriteHandler(0x388,OPL_Write,IO_MB,4);
+	IO_RegisterReadHandler(0x388,OPL_Read,IO_MB,4);
+	if (oplmode>=OPL_dualopl2) {
+		IO_RegisterWriteHandler(base,OPL_Write,IO_MB,4);
+		IO_RegisterReadHandler(base,OPL_Read,IO_MB,4);
+	}
 
+	IO_RegisterWriteHandler(base+8,OPL_Write,IO_MB,2);
+	IO_RegisterReadHandler(base+8,OPL_Read,IO_MB,2);
 
-	adlib_chan=MIXER_AddChannel(ADLIB_CallBack,ADLIB_FREQ,"ADLIB");
-	MIXER_SetMode(adlib_chan,MIXER_16MONO);
-	ADLIB_Enable(true);	
+	opl.active=false;
+	opl.last_used=0;
+	opl.mode=oplmode;
+	memset(&opl.raw,0,sizeof(opl.raw));
+	opl.chan=MIXER_AddChannel(OPL_CallBack,rate,"FM");
+	MAPPER_AddHandler(OPL_SaveRawEvent,MK_f7,MMOD1|MMOD2,"caprawopl","Cap OPL");
+	sec->AddDestroyFunction(&OPL_Stop);
 };
 

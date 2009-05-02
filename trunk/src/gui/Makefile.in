@@ -132,8 +132,8 @@ target_vendor = @target_vendor@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libgui.a
-libgui_a_SOURCES = sdlmain.cpp \
-	render.cpp render_normal.h render_scale2x.h render_templates.h \
+libgui_a_SOURCES = sdlmain.cpp sdl_mapper.cpp \
+	render.cpp render_scalers.cpp render_scalers.h render_templates.h \
 	midi.cpp midi_win32.h midi_oss.h midi_coreaudio.h midi_alsa.h
 
 subdir = src/gui
@@ -145,14 +145,16 @@ LIBRARIES = $(noinst_LIBRARIES)
 
 libgui_a_AR = $(AR) cru
 libgui_a_LIBADD =
-am_libgui_a_OBJECTS = sdlmain.$(OBJEXT) render.$(OBJEXT) midi.$(OBJEXT)
+am_libgui_a_OBJECTS = sdlmain.$(OBJEXT) sdl_mapper.$(OBJEXT) \
+	render.$(OBJEXT) render_scalers.$(OBJEXT) midi.$(OBJEXT)
 libgui_a_OBJECTS = $(am_libgui_a_OBJECTS)
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/midi.Po ./$(DEPDIR)/render.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/sdlmain.Po
+@AMDEP_TRUE@	./$(DEPDIR)/render_scalers.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/sdl_mapper.Po ./$(DEPDIR)/sdlmain.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -193,6 +195,8 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/midi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/render.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/render_scalers.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sdl_mapper.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sdlmain.Po@am__quote@
 
 .cpp.o:

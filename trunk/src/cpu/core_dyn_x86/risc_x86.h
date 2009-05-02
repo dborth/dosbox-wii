@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -32,8 +32,8 @@ static void gen_init(void);
 #define X86_REG_MASK(_REG_) (1 << X86_REG_ ## _REG_)
 
 static struct {
+	bool flagsactive;
 	Bitu last_used;
-	Bitu stored_flags;
 	GenReg * regs[X86_REGS];
 } x86gen;
 
@@ -98,13 +98,13 @@ static BlockReturn gen_runcode(Bit8u * code) {
 		push	edi
 		mov		ebx,[reg_flags]
 		and		ebx,FMASK_TEST
+		push	offset(return_address)
 		push	ebx
-		popfd
-		call	eax
+		jmp		eax
 /* Restore the flags */
-		pushfd	
+return_address:
+		/*	return here with flags in ecx */
 		and		dword ptr [reg_flags],~FMASK_TEST
-		pop		ecx
 		and		ecx,FMASK_TEST
 		or		[reg_flags],ecx
 		pop		edi
@@ -114,23 +114,19 @@ static BlockReturn gen_runcode(Bit8u * code) {
 		mov		[retval],eax
 	}
 #else
+	register Bit32u tempflags=reg_flags & FMASK_TEST;
 	__asm__ volatile (
-		"movl %1,%%esi					\n"
-		"andl %2,%%esi					\n"
-		"pushl %%ebp					\n"
-		"pushl %%esi					\n"
-		"popfl							\n"
-		"calll  *%4						\n"
-		"popl %%ebp						\n"
-		"pushfl							\n"
-		"andl %3,(%1)					\n"
-		"popl %%esi						\n"
-	    "andl %2,%%esi					\n"
-		"orl %%esi,(%1)					\n"
-		:"=a" (retval)
-		:"m" (reg_flags), "n" (FMASK_TEST),"n" (~FMASK_TEST),"r" (code)
-		:"%ecx","%edx","%ebx","%edi","%esi","cc","memory"
+		"pushl %%ebp						\n"
+		"pushl $(run_return_adress)			\n"
+		"pushl  %2							\n"
+		"jmp  *%3							\n"
+		"run_return_adress:					\n"
+		"popl %%ebp							\n"
+		:"=a" (retval), "=c" (tempflags)
+		:"r" (tempflags),"r" (code)
+		:"%edx","%ebx","%edi","%esi","cc","memory"
 	);
+	reg_flags=(reg_flags & ~FMASK_TEST) | (tempflags & FMASK_TEST);
 #endif
 	return retval;
 }
@@ -232,28 +228,23 @@ static void gen_synchreg(DynReg * dnew,DynReg * dsynch) {
 	}
 }
 
-static void gen_storeflags(void) {
-	if (!x86gen.stored_flags) {
-		cache_addb(0x9c);		//PUSHFD
+static void gen_needflags(void) {
+	if (!x86gen.flagsactive) {
+		x86gen.flagsactive=true;
+		cache_addb(0x9d);		//POPFD
 	}
-	x86gen.stored_flags++;
 }
 
-static void gen_restoreflags(bool noreduce=false) {
-	if (noreduce) {
-		cache_addb(0x9d);
-		return;
+static void gen_protectflags(void) {
+	if (x86gen.flagsactive) {
+		x86gen.flagsactive=false;
+		cache_addb(0x9c);		//PUSHFD
 	}
-	if (x86gen.stored_flags) {
-		x86gen.stored_flags--;
-		if (!x86gen.stored_flags) 
-			cache_addb(0x9d);		//POPFD
-	} else IllegalOption();
 }
 
 static void gen_reinit(void) {
 	x86gen.last_used=0;
-	x86gen.stored_flags=0;
+	x86gen.flagsactive=false;
 	for (Bitu i=0;i<X86_REGS;i++) {
 		x86gen.regs[i]->dynreg=0;
 	}
@@ -483,55 +474,32 @@ static void gen_sop_word(SingleOps op,bool dword,DynReg * dr1) {
 	dr1->flags|=DYNFLG_CHANGED;
 }
 
-static void gen_shift_byte(ShiftOps op,DynReg * drecx,DynReg * dr1,Bit8u di1) {
+static void gen_shift_byte_cl(Bitu op,DynReg * dr1,Bit8u di1,DynReg * drecx) {
 	ForceDynReg(x86gen.regs[X86_REG_ECX],drecx);
 	GenReg * gr1=FindDynReg(dr1);
-	switch (op) {
-	case SHIFT_ROL:cache_addw(0xc0d2+((gr1->index+di1)<<8));break;
-	case SHIFT_ROR:cache_addw(0xc8d2+((gr1->index+di1)<<8));break;
-	case SHIFT_RCL:cache_addw(0xd0d2+((gr1->index+di1)<<8));break;
-	case SHIFT_RCR:cache_addw(0xd8d2+((gr1->index+di1)<<8));break;
-	case SHIFT_SHL:cache_addw(0xe0d2+((gr1->index+di1)<<8));break;
-	case SHIFT_SHR:cache_addw(0xe8d2+((gr1->index+di1)<<8));break;
-	case SHIFT_SAR:cache_addw(0xf8d2+((gr1->index+di1)<<8));break;
-	default:
-		IllegalOption();
-	}
+	cache_addw(0xc0d2+(((Bit16u)op) << 11)+ ((gr1->index+di1)<<8));
 	dr1->flags|=DYNFLG_CHANGED;
 }
 
-static void gen_shift_word(ShiftOps op,DynReg * drecx,bool dword,DynReg * dr1) {
-	ForceDynReg(x86gen.regs[X86_REG_ECX],drecx);
+static void gen_shift_byte_imm(Bitu op,DynReg * dr1,Bit8u di1,Bit8u imm) {
 	GenReg * gr1=FindDynReg(dr1);
-	if (!dword) cache_addb(0x66);
-	switch (op) {
-	case SHIFT_ROL:cache_addw(0xc0d3+((gr1->index)<<8));break;
-	case SHIFT_ROR:cache_addw(0xc8d3+((gr1->index)<<8));break;
-	case SHIFT_RCL:cache_addw(0xd0d3+((gr1->index)<<8));break;
-	case SHIFT_RCR:cache_addw(0xd8d3+((gr1->index)<<8));break;
-	case SHIFT_SHL:cache_addw(0xe0d3+((gr1->index)<<8));break;
-	case SHIFT_SHR:cache_addw(0xe8d3+((gr1->index)<<8));break;
-	case SHIFT_SAR:cache_addw(0xf8d3+((gr1->index)<<8));break;
-	default:
-		IllegalOption();
-	}
+	cache_addw(0xc0c0+(((Bit16u)op) << 11) + ((gr1->index+di1)<<8));
+	cache_addb(imm);
 	dr1->flags|=DYNFLG_CHANGED;
 }
 
-static void gen_shift_word_imm(ShiftOps op,bool dword,DynReg * dr1,Bit8u imm) {
+static void gen_shift_word_cl(Bitu op,bool dword,DynReg * dr1,DynReg * drecx) {
+	ForceDynReg(x86gen.regs[X86_REG_ECX],drecx);
 	GenReg * gr1=FindDynReg(dr1);
 	if (!dword) cache_addb(0x66);
-	switch (op) {
-	case SHIFT_ROL:cache_addw(0xc0c1+((gr1->index)<<8));break;
-	case SHIFT_ROR:cache_addw(0xc8c1+((gr1->index)<<8));break;
-	case SHIFT_RCL:cache_addw(0xd0c1+((gr1->index)<<8));break;
-	case SHIFT_RCR:cache_addw(0xd8c1+((gr1->index)<<8));break;
-	case SHIFT_SHL:cache_addw(0xe0c1+((gr1->index)<<8));break;
-	case SHIFT_SHR:cache_addw(0xe8c1+((gr1->index)<<8));break;
-	case SHIFT_SAR:cache_addw(0xf8c1+((gr1->index)<<8));break;
-	default:
-		IllegalOption();
-	}
+	cache_addw(0xc0d3+(((Bit16u)op) << 11) + ((gr1->index)<<8));
+	dr1->flags|=DYNFLG_CHANGED;
+}
+
+static void gen_shift_word_imm(Bitu op,bool dword,DynReg * dr1,Bit8u imm) {
+	GenReg * gr1=FindDynReg(dr1);
+	if (!dword) cache_addb(0x66);
+	cache_addw(0xc0c1+(((Bit16u)op) << 11) + ((gr1->index)<<8));
 	cache_addb(imm);
 	dr1->flags|=DYNFLG_CHANGED;
 }
@@ -604,7 +572,7 @@ static void gen_call_function(void * func,char * ops,...) {
 	x86gen.regs[X86_REG_EAX]->Clear();
 	x86gen.regs[X86_REG_EAX]->notusable=true;;
 	/* Save the flags */
-	gen_storeflags();
+	gen_protectflags();
 	/* Scan for the amount of params */
 	if (ops) {
 		va_list params;
@@ -704,7 +672,6 @@ static void gen_call_function(void * func,char * ops,...) {
 		}
 		dynreg->flags|=DYNFLG_CHANGED;
 	}
-	gen_restoreflags();
 	/* Restore EAX registers to be used again */
 	x86gen.regs[X86_REG_EAX]->notusable=false;
 }
@@ -717,6 +684,11 @@ static Bit8u * gen_create_branch(BranchTypes type) {
 }
 
 static void gen_fill_branch(Bit8u * data,Bit8u * from=cache.pos) {
+#if C_DEBUG
+	Bits len=from-data;
+	if (len<0) len=-len;
+	if (len>126) LOG_MSG("BIg jump %d",len);
+#endif
 	*data=(from-data-1);
 }
 
@@ -747,17 +719,20 @@ static void gen_jmp_ptr(void * ptr,Bits imm=0) {
 	}
 }
 
-static void gen_save_flags(DynReg * dynreg,bool stored) {
+static void gen_save_flags(DynReg * dynreg) {
+	if (x86gen.flagsactive) IllegalOption();
 	GenReg * genreg=FindDynReg(dynreg);
-	if (!stored) cache_addb(0x9c);		//Pushfd
-	cache_addb(0x58+genreg->index);		//POP 32 REG
+	cache_addb(0x8b);					//MOV REG,[esp]
+	cache_addw(0x2404+(genreg->index << 3));
 	dynreg->flags|=DYNFLG_CHANGED;
 }
 
 static void gen_load_flags(DynReg * dynreg) {
+	if (x86gen.flagsactive) IllegalOption();
+	cache_addw(0xc483);				//ADD ESP,4
+	cache_addb(0x4);
 	GenReg * genreg=FindDynReg(dynreg);
 	cache_addb(0x50+genreg->index);		//PUSH 32
-	cache_addb(0x9d);					//POPFD
 }
 
 static void gen_save_host_direct(void * data,Bits imm) {
@@ -781,9 +756,11 @@ static void gen_load_host(void * data,DynReg * dr1,Bitu size) {
 }
 
 static void gen_return(BlockReturn retcode) {
-	cache_addb(0xb8);
+	gen_protectflags();
+	cache_addb(0x59);			//POP ECX, the flags
+	cache_addb(0xb8);			//MOV EAX, retcode
 	cache_addd(retcode);
-	cache_addb(0xc3);
+	cache_addb(0xc3);			//RET
 }
 
 static void gen_init(void) {

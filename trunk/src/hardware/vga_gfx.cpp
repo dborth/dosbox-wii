@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -20,19 +20,18 @@
 #include "inout.h"
 #include "vga.h"
 
-
 #define gfx(blah) vga.gfx.blah
 static bool index9warned=false;
 
-void write_p3ce(Bit32u port,Bit8u val) {
+static void write_p3ce(Bitu port,Bitu val,Bitu iolen) {
 	gfx(index)=val & 0x0f;
 }
 
-Bit8u read_p3ce(Bit32u port) {
+static Bitu read_p3ce(Bitu port,Bitu iolen) {
 	return gfx(index);
 }
 
-void write_p3cf(Bit32u port,Bit8u val) {
+static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 	switch (gfx(index)) {
 	case 0:	/* Set/Reset Register */
 		gfx(set_reset)=val & 0x0f;
@@ -92,8 +91,11 @@ void write_p3cf(Bit32u port,Bit8u val) {
 		vga.config.read_map_select=val & 0x03;
 //		LOG_DEBUG("Read Map %2X",val);
 		break;
-	case 5: /* Mode Register */								/* Important one very */
+	case 5: /* Mode Register */
+		if ((gfx(mode) ^ val) & 0xf0) {
 		gfx(mode)=val;
+			VGA_DetermineMode();
+		} else gfx(mode)=val;
 		vga.config.write_mode=val & 3;
 		vga.config.read_mode=(val >> 3) & 1;
 //		LOG_DEBUG("Write Mode %d Read Mode %d val %d",vga.config.write_mode,vga.config.read_mode,val);
@@ -134,7 +136,6 @@ void write_p3cf(Bit32u port,Bit8u val) {
 			4	Enables Odd/Even mode if set (See 3C4h index 4 bit 2).
 			5	Enables CGA style 4 color pixels using even/odd bit pairs if set.
 			6	Enables 256 color mode if set.	
-
 		*/
 		break;
 	case 6: /* Miscellaneous Register */
@@ -183,7 +184,7 @@ void write_p3cf(Bit32u port,Bit8u val) {
 	}
 }
 
-Bit8u read_p3cf(Bit32u port) {
+static Bitu read_p3cf(Bitu port,Bitu iolen) {
 	switch (gfx(index)) {
 	case 0:	/* Set/Reset Register */
 		return gfx(set_reset);
@@ -212,10 +213,12 @@ Bit8u read_p3cf(Bit32u port) {
 
 
 void VGA_SetupGFX(void) {
-	IO_RegisterWriteHandler(0x3ce,write_p3ce,"VGA Graphics Index");
-	IO_RegisterWriteHandler(0x3cf,write_p3cf,"VGA Graphics Data");
-	IO_RegisterReadHandler(0x3ce,read_p3ce,"Vga Graphics Index");
-	IO_RegisterReadHandler(0x3cf,read_p3cf,"Vga Graphics Data");
+	if (machine==MCH_VGA) {
+		IO_RegisterWriteHandler(0x3ce,write_p3ce,IO_MB);
+		IO_RegisterWriteHandler(0x3cf,write_p3cf,IO_MB);
+		IO_RegisterReadHandler(0x3ce,read_p3ce,IO_MB);
+		IO_RegisterReadHandler(0x3cf,read_p3cf,IO_MB);
+	}
 }
 
 

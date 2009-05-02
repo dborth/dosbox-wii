@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: ems.cpp,v 1.31 2004/02/02 20:23:54 qbix79 Exp $ */
+/* $Id: ems.cpp,v 1.34 2004/08/04 09:12:56 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -150,9 +150,20 @@ static Bit8u EMM_MapPage(Bitu phys_page,Bit16u handle,Bit16u log_page) {
 //	LOG_MSG("EMS MapPage handle %d phys %d log %d",handle,phys_page,log_page);
 	/* Check for too high physical page */
 	if (phys_page>=EMM_MAX_PHYS) return EMM_ILL_PHYS;
+
+	/* unmapping doesn't need valid handle (as handle isn't used) */
+	if (log_page==NULL_PAGE) {
+		/* Unmapping */
+		emm_mappings[phys_page].handle=NULL_HANDLE;
+		emm_mappings[phys_page].page=NULL_PAGE;
+		for (Bitu i=0;i<4;i++) 
+			PAGING_MapPage(EMM_PAGEFRAME4K+phys_page*4+i,EMM_PAGEFRAME4K+phys_page*4+i);
+		PAGING_ClearTLB();
+		return EMM_NO_ERROR;
+	}
 	/* Check for valid handle */
 	if (!ValidHandle(handle)) return EMM_INVALID_HANDLE;
-	/* Check to do unmapping or mappning */
+	
 	if (log_page<emm_handles[handle].pages) {
 		/* Mapping it is */
 		emm_mappings[phys_page].handle=handle;
@@ -165,15 +176,7 @@ static Bit8u EMM_MapPage(Bitu phys_page,Bit16u handle,Bit16u log_page) {
 		}
 		PAGING_ClearTLB();
 		return EMM_NO_ERROR;
-	} else if (log_page==NULL_PAGE) {
-		/* Unmapping it is */
-		emm_mappings[phys_page].handle=NULL_HANDLE;
-		emm_mappings[phys_page].page=NULL_PAGE;
-		for (Bitu i=0;i<4;i++) 
-			PAGING_MapPage(EMM_PAGEFRAME4K+phys_page*4+i,EMM_PAGEFRAME4K+phys_page*4+i);
-		PAGING_ClearTLB();
-		return EMM_NO_ERROR;
-	} else {
+	} else  {
 		/* Illegal logical page it is */
 		return EMM_LOG_OUT_RANGE;
 	}
@@ -570,6 +573,14 @@ static Bitu INT67_Handler(void) {
 		// Set number of pages
 		reg_cx = EMM_MAX_PHYS;
 		reg_ah = EMM_NO_ERROR;
+		break;
+	case 0x5A:              /* Allocate standard/raw Pages */
+		if (reg_al==0x00) {
+			reg_ah=EMM_AllocateMemory(reg_bx,reg_dx);
+		} else {
+			LOG(LOG_MISC,LOG_ERROR)("EMS:Call 5A subfct %2X not supported",reg_al);
+			reg_ah=EMM_FUNC_NOSUP;
+		};
 		break;
 	case 0xDE:		/* VCPI Functions */
 		LOG(LOG_MISC,LOG_ERROR)("EMS:VCPI Call %2X not supported",reg_al);

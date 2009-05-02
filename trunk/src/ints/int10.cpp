@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -72,7 +72,26 @@ static Bitu INT10_Handler(void) {
 		reg_ah=0;
 		break;
 	case 0x05:								/* Set Active Page */
-		if (reg_al & 0x80) LOG(LOG_INT10,LOG_NORMAL)("Tandy set CRT/CPU Page Func %x",reg_al);
+		if (reg_al & 0x80 && machine==MCH_TANDY) {
+			Bit8u crtcpu=real_readb(BIOSMEM_SEG, BIOSMEM_CRTCPU_PAGE);		
+			switch (reg_al) {
+			case 0x80:
+				reg_bh=crtcpu & 7;
+				reg_bl=(crtcpu >> 3) & 0x7;
+				break;
+			case 0x81:
+				crtcpu=(crtcpu & 0xc7) | ((reg_bl & 7) << 3);
+				break;
+			case 0x82:
+				crtcpu=(crtcpu & 0xf8) | (reg_bh & 7);
+				break;
+			case 0x83:
+				crtcpu=(crtcpu & 0xc0) | (reg_bh & 7) | ((reg_bl & 7) << 3);
+				break;
+			}
+			IO_WriteB(0x3df,crtcpu);
+			real_writeb(BIOSMEM_SEG, BIOSMEM_CRTCPU_PAGE,crtcpu);
+		}
 		else INT10_SetActivePage(reg_al);
 		break;	
 	case 0x06:								/* Scroll Up */
@@ -342,7 +361,7 @@ graphics_chars:
 			break;
 		case 0x06:
 			reg_al=0x4f;
-			reg_ah=VESA_ScanLineLength(reg_al,reg_bx,reg_cx,reg_dx);
+			reg_ah=VESA_ScanLineLength(reg_bl,reg_bx,reg_cx,reg_dx);
 			break;
 		case 0x07:
 			switch (reg_bl) {
@@ -437,7 +456,7 @@ static void SetupTandyBios(void) {
 		0x64, 0x2e, 0x0d, 0x0a, 0x61, 0x6e, 0x64, 0x20, 0x54, 0x61, 0x6e, 0x64, 0x79
 	};
 	Bitu i;
-	real_writeb(0xffff,0xe,0xff);
+	phys_writeb(0xffffe,0xff);
 	for(i=0;i<130;i++) {
 		phys_writeb(0xf0000+i+0xc000, TandyConfig[i]);
 	}
@@ -445,7 +464,7 @@ static void SetupTandyBios(void) {
 
 void INT10_Init(Section* sec) {
 	INT10_InitVGA();
-	if (machine==MCH_TANDY || machine==MCH_AUTO) SetupTandyBios();
+	if (machine==MCH_TANDY) SetupTandyBios();
 	/* Setup the INT 10 vector */
 	call_10=CALLBACK_Allocate();	
 	CALLBACK_Setup(call_10,&INT10_Handler,CB_IRET);

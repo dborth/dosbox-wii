@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: fpu.cpp,v 1.17 2004/01/19 18:54:15 qbix79 Exp $ */
+/* $Id: fpu.cpp,v 1.22 2004/09/08 08:46:37 qbix79 Exp $ */
 
 #include "dosbox.h"
 #if C_FPU
@@ -61,6 +61,20 @@ INLINE void FPU_SetCW(Bitu word) {
 	fpu.ex_mask = word & 0x3f;
 }
 	
+static Bit16u FPU_GetTag(void){
+	Bit16u tag=0;
+	for(Bitu i=0;i<8;i++)
+		tag |= ( (fpu.tags[i]&3) <<(2*i));
+	return tag;
+}
+
+static void FPU_SetTag(Bit16u tag)
+{
+	for(Bitu i=0;i<8;i++)
+		fpu.tags[i]= static_cast<FPU_Tag>((tag >>(2*i))&3);
+}
+
+
 
 
 INLINE Bitu FPU_GET_TOP(void){
@@ -109,7 +123,7 @@ INLINE Bitu FPU_GET_C3(void){
 
 /* WATCHIT : ALWAYS UPDATE REGISTERS BEFORE AND AFTER USING THEM 
 			STATUS WORD =>	FPU_SET_TOP(TOP) BEFORE a read
-							TOP=FPU_GET_TOP() after a write;
+			TOP=FPU_GET_TOP() after a write;
 			*/
 static void EATREE(Bitu _rm){
 	Bitu group=(_rm >> 3) & 7;
@@ -152,7 +166,7 @@ void FPU_ESC0_EA(Bitu rm,PhysPt addr) {
 		float f;
 		Bit32u l;
 	}	blah;
-    blah.l = mem_readd(addr);
+	blah.l = mem_readd(addr);
 	fpu.regs[8].d = static_cast<double>(blah.f);
 	EATREE(rm);
 }
@@ -234,11 +248,17 @@ void FPU_ESC1_EA(Bitu rm,PhysPt addr) {
 		}
 		FPU_FPOP();
 		break;
-	case 0x05: /*FLDCW */
+	case 0x04: /* FLDENV */
+		FPU_FLDENV(addr);
+		break;
+	case 0x05: /* FLDCW */
 		{
 			Bit16u temp =mem_readw(addr);
 			FPU_SetCW(temp);
 		}
+		break;
+	case 0x06: /* FSTENV */
+		FPU_FSTENV(addr);
 		break;
 	case 0x07:  /* FNSTCW*/
 		mem_writew(addr,fpu.cw);
@@ -391,7 +411,23 @@ void FPU_ESC2_EA(Bitu rm,PhysPt addr) {
 void FPU_ESC2_Normal(Bitu rm) {
 	Bitu group=(rm >> 3) & 7;
 	Bitu sub=(rm & 7);
-	LOG(LOG_FPU,LOG_WARN)("ESC 2:Unhandled group %d subfunction %d",group,sub);
+	switch(group){
+	case 0x05:
+		switch(sub){
+		case 0x01:		/* FUCOMPP Almost the same as FCOMPP */
+			FPU_FCOM(TOP,ST(1));
+			FPU_FPOP();
+			FPU_FPOP();
+			break;
+		default:
+			LOG(LOG_FPU,LOG_WARN)("ESC 2:Unhandled group %d subfunction %d",group,sub); 
+			break;
+		}
+		break;
+	default:
+	   	LOG(LOG_FPU,LOG_WARN)("ESC 2:Unhandled group %d subfunction %d",group,sub);
+		break;
+	}
 }
 
 
@@ -417,10 +453,13 @@ void FPU_ESC3_EA(Bitu rm,PhysPt addr) {
 		FPU_FPOP();
 		break;
 	case 0x05:	/* FLD 80 Bits Real */
-		FPU_FLD80(addr);
+		{
+			Real64 val = FPU_FLD80(addr);
+			FPU_PUSH(val);
+		}
 		break;
 	case 0x07:	/* FSTP 80 Bits Real */
-		FPU_ST80(addr);
+		FPU_ST80(addr,TOP);
 		FPU_FPOP();
 		break;
 	default:
@@ -446,7 +485,7 @@ void FPU_ESC3_Normal(Bitu rm) {
 			break;
 		case 0x04:				//FNSETPM
 		case 0x05:				//FRSTPM
-			LOG(LOG_FPU,LOG_ERROR)("80267 protected mode (un)set. Nothing done");
+//			LOG(LOG_FPU,LOG_ERROR)("80267 protected mode (un)set. Nothing done");
 			FPU_FNOP();
 			break;
 		default:
@@ -527,6 +566,12 @@ void FPU_ESC5_EA(Bitu rm,PhysPt addr) {
 		mem_writed(addr,fpu.regs[TOP].l.lower);
 		mem_writed(addr+4,fpu.regs[TOP].l.upper);
 		FPU_FPOP();
+		break;
+	case 0x04:	/* FSTOR */
+		FPU_FSTOR(addr);
+		break;
+	case 0x06:	/* FSAVE */
+		FPU_FSAVE(addr);
 		break;
 	case 0x07:   /*FNSTSW    NG DISAGREES ON THIS*/
 		FPU_SET_TOP(TOP);
@@ -664,7 +709,11 @@ void FPU_ESC7_EA(Bitu rm,PhysPt addr) {
 		FPU_FPOP();
 		break;
 	case 0x04:   /* FBLD packed BCD */
-		//Don't think anybody will ever use this.
+		{
+			Real64 in = FPU_FBLD(addr);
+			FPU_PUSH(in);
+		}
+		break;
 	default:
 		LOG(LOG_FPU,LOG_WARN)("ESC 7 EA:Unhandled group %d subfunction %d",group,sub);
 		break;
