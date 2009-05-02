@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drives.h,v 1.31 2006/02/12 13:32:30 qbix79 Exp $ */
+/* $Id: drives.h,v 1.36 2007/01/21 16:21:22 c2woody Exp $ */
 
 #ifndef _DRIVES_H__
 #define _DRIVES_H__
@@ -29,12 +29,31 @@
 
 bool WildFileCmp(const char * file, const char * wild);
 
+class DriveManager {
+public:
+	static void AppendDisk(int drive, DOS_Drive* disk);
+	static void InitializeDrive(int drive);
+	static int UnmountDrive(int drive);
+//	static void CycleDrive(bool pressed);
+//	static void CycleDisk(bool pressed);
+	static void CycleAllDisks(void);
+	static void Init(Section* sec);
+	
+private:
+	static struct DriveInfo {
+		std::vector<DOS_Drive*> disks;
+		Bit32u currentDisk;
+	} driveInfos[DOS_DRIVES];
+	
+	static int currentDrive;
+};
+
 class localDrive : public DOS_Drive {
 public:
 	localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid);
 	virtual bool FileOpen(DOS_File * * file,char * name,Bit32u flags);
-	virtual FILE *GetSystemFilePtr(char * name, char * type);
-	virtual bool GetSystemFilename(char *sysName, char *dosName);
+	virtual FILE *GetSystemFilePtr(char const * const name, char const * const type);
+	virtual bool GetSystemFilename(char* sysName, char const * const dosName);
 	virtual bool FileCreate(DOS_File * * file,char * name,Bit16u attributes);
 	virtual bool FileUnlink(char * name);
 	virtual bool RemoveDir(char * dir);
@@ -50,6 +69,7 @@ public:
 	virtual Bit8u GetMediaByte(void);
 	virtual bool isRemote(void);
 	virtual bool isRemovable(void);
+	virtual Bits UnMount(void);
 private:
 	char basedir[CROSS_LEN];
 	friend void DOS_Shell::CMD_SUBST(char* args); 	
@@ -142,6 +162,7 @@ public:
 	virtual Bit8u GetMediaByte(void);
 	virtual bool isRemote(void);
 	virtual bool isRemovable(void);
+	virtual Bits UnMount(void);
 public:
 	Bit32u getAbsoluteSectFromBytePos(Bit32u startClustNum, Bit32u bytePos);
 	Bit32u getSectorSize(void);
@@ -153,6 +174,7 @@ public:
 	bool directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum);
 	bool directoryChange(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum);
 	imageDisk *loadedDisk;
+	bool created_succesfully;
 private:
 	Bit32u getClusterValue(Bit32u clustNum);
 	void setClusterValue(Bit32u clustNum, Bit32u clustValue);
@@ -203,8 +225,10 @@ public:
 	virtual void SetDir(const char* path);
 	virtual bool isRemote(void);
 	virtual bool isRemovable(void);
+	virtual Bits UnMount(void);
 private:
 	Bit8u subUnit;
+	char driveLetter;
 };
 
 #ifdef _MSC_VER
@@ -257,7 +281,7 @@ struct isoDirEntry {
 	Bit16u VolumeSeqNumberL;
 	Bit16u VolumeSeqNumberM;
 	Bit8u fileIdentLength;
-	Bit8u ident[100];
+	Bit8u ident[222];
 } GCC_ATTRIBUTE(packed);
 
 #ifdef _MSC_VER
@@ -303,14 +327,16 @@ public:
 	virtual void EmptyCache(void){}
 	virtual bool isRemote(void);
 	virtual bool isRemovable(void);
+	virtual Bits UnMount(void);
 	bool readSector(Bit8u *buffer, Bit32u sector);
 	virtual char const* GetLabel(void) {return discLabel;};
+	virtual void Activate(void);
 private:
 	int  readDirEntry(isoDirEntry *de, Bit8u *data);
 	bool loadImage();
 	bool lookupSingle(isoDirEntry *de, const char *name, Bit32u sectorStart, Bit32u length);
 	bool lookup(isoDirEntry *de, const char *path);
-	
+	int  UpdateMscdex(char driveLetter, const char* physicalPath, Bit8u& subUnit);
 	int  GetDirIterator(const isoDirEntry* de);
 	bool GetNextDirEntry(const int dirIterator, isoDirEntry* de);
 	void FreeDirIterator(const int dirIterator);
@@ -333,7 +359,9 @@ private:
 
 	isoDirEntry rootEntry;
 	Bit8u mediaid;
+	char fileName[CROSS_LEN];
 	Bit8u subUnit;
+	char driveLetter;
 	char discLabel[32];
 };
 
@@ -359,6 +387,7 @@ public:
 	void EmptyCache(void){}
 	bool isRemote(void);
 	virtual bool isRemovable(void);
+	virtual Bits UnMount(void);
 private:
 	VFILE_Block * search_file;
 };

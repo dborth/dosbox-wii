@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,9 +16,10 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cpu.cpp,v 1.79 2006/02/26 16:11:00 qbix79 Exp $ */
+/* $Id: cpu.cpp,v 1.98 2007/02/22 08:35:34 qbix79 Exp $ */
 
 #include <assert.h>
+#include <sstream>
 #include "dosbox.h"
 #include "cpu.h"
 #include "memory.h"
@@ -29,29 +30,42 @@
 #include "support.h"
 
 Bitu DEBUG_EnableDebugger(void);
+extern void GFX_SetTitle(Bit32s cycles ,Bits frameskip,bool paused);
 
 #if 1
 #undef LOG
+#if defined (_MSC_VER)
 #define LOG(X,Y)
+#else
+#define LOG(X,Y) CPU_LOG
+#define CPU_LOG(...)
+#endif
 #endif
 
 CPU_Regs cpu_regs;
 CPUBlock cpu;
 Segments Segs;
 
-Bits CPU_Cycles = 0;
-Bits CPU_CycleLeft = 0;
-Bits CPU_CycleMax = 2500;
-Bits CPU_CycleUp = 0;
-Bits CPU_CycleDown = 0;
+Bit32s CPU_Cycles = 0;
+Bit32s CPU_CycleLeft = 0;
+Bit32s CPU_CycleMax = 3000;
+Bit32s CPU_OldCycleMax = 3000;
+Bit32s CPU_CyclePercUsed = 100;
+Bit32s CPU_CycleLimit = -1;
+Bit32s CPU_CycleUp = 0;
+Bit32s CPU_CycleDown = 0;
+Bit64s CPU_IODelayRemoved = 0;
 CPU_Decoder * cpudecoder;
-bool CPU_CycleAuto;
+bool CPU_CycleAutoAdjust;
+Bitu CPU_AutoDetermineMode;
 
 void CPU_Core_Full_Init(void);
 void CPU_Core_Normal_Init(void);
 void CPU_Core_Simple_Init(void);
 void CPU_Core_Dyn_X86_Init(void);
 void CPU_Core_Dyn_X86_Cache_Init(bool enable_cache);
+void CPU_Core_Dyn_X86_Cache_Close(void);
+void CPU_Core_Dyn_X86_SetFPUMode(bool dh_fpu);
 
 /* In debug mode exceptions are tested and dosbox exits when 
  * a unhandled exception state is detected. 
@@ -90,26 +104,26 @@ void CPU_Core_Dyn_X86_Cache_Init(bool enable_cache);
 
 
 void CPU_Push16(Bitu value) {
-	Bit32u new_esp=(reg_esp&~cpu.stack.mask)|((reg_esp-2)&cpu.stack.mask);
+	Bit32u new_esp=(reg_esp&cpu.stack.notmask)|((reg_esp-2)&cpu.stack.mask);
 	mem_writew(SegPhys(ss) + (new_esp & cpu.stack.mask) ,value);
 	reg_esp=new_esp;
 }
 
 void CPU_Push32(Bitu value) {
-	Bit32u new_esp=(reg_esp&~cpu.stack.mask)|((reg_esp-4)&cpu.stack.mask);
+	Bit32u new_esp=(reg_esp&cpu.stack.notmask)|((reg_esp-4)&cpu.stack.mask);
 	mem_writed(SegPhys(ss) + (new_esp & cpu.stack.mask) ,value);
 	reg_esp=new_esp;
 }
 
 Bitu CPU_Pop16(void) {
 	Bitu val=mem_readw(SegPhys(ss) + (reg_esp & cpu.stack.mask));
-	reg_esp=(reg_esp&~cpu.stack.mask)|((reg_esp+2)&cpu.stack.mask);
+	reg_esp=(reg_esp&cpu.stack.notmask)|((reg_esp+2)&cpu.stack.mask);
 	return val;
 }
 
 Bitu CPU_Pop32(void) {
 	Bitu val=mem_readd(SegPhys(ss) + (reg_esp & cpu.stack.mask));
-	reg_esp=(reg_esp&~cpu.stack.mask)|((reg_esp+4)&cpu.stack.mask);
+	reg_esp=(reg_esp&cpu.stack.notmask)|((reg_esp+4)&cpu.stack.mask);
 	return val;
 }
 
@@ -401,7 +415,8 @@ doconforming:
 	CPU_SetSegGeneral(fs,new_fs);
 	CPU_SetSegGeneral(gs,new_gs);
 	if (!cpu_tss.SetSelector(new_tss_selector)) LOG(LOG_CPU,LOG_NORMAL)("TaskSwitch: set tss selector %X failed",new_tss_selector);
-	cpu_tss.desc.SetBusy(true);
+//	cpu_tss.desc.SetBusy(true);
+//	cpu_tss.SaveSelector();
 //	LOG_MSG("Task CPL %X CS:%X IP:%X SS:%X SP:%X eflags %x",cpu.cpl,SegValue(cs),reg_eip,SegValue(ss),reg_esp,reg_flags);
 	return true;
 }
@@ -409,11 +424,11 @@ doconforming:
 bool CPU_IO_Exception(Bitu port,Bitu size) {
 	if (cpu.pmode && ((GETFLAG_IOPL<cpu.cpl) || GETFLAG(VM))) {
 		if (!cpu_tss.is386) goto doexception;
-		PhysPt where=cpu_tss.base+0x66;
-		Bitu ofs=mem_readw(where);
+		PhysPt bwhere=cpu_tss.base+0x66;
+		Bitu ofs=mem_readw(bwhere);
 		if (ofs>cpu_tss.limit) goto doexception;
-		where=cpu_tss.base+ofs+(port/8);
-		Bitu map=mem_readw(where);
+		bwhere=cpu_tss.base+ofs+(port/8);
+		Bitu map=mem_readw(bwhere);
 		Bitu mask=(0xffff>>(16-size)) << (port&7);
 		if (map & mask) goto doexception;
 	}
@@ -438,8 +453,9 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 #if C_HEAVY_DEBUG
  		LOG(LOG_CPU,LOG_ERROR)("Call to interrupt 0xCD this is BAD");
 		DEBUG_HeavyWriteLogInstruction();
-#endif
 		E_Exit("Call to interrupt 0xCD this is BAD");
+#endif
+		break;
 	case 0x03:
 		if (DEBUG_Breakpoint()) {
 			CPU_Cycles=0;
@@ -552,10 +568,12 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 						if (n_ss_desc.Big()) {
 							cpu.stack.big=true;
 							cpu.stack.mask=0xffffffff;
+							cpu.stack.notmask=0;
 							reg_esp=n_esp;
 						} else {
 							cpu.stack.big=false;
 							cpu.stack.mask=0xffff;
+							cpu.stack.notmask=0xffff0000;
 							reg_sp=n_esp & 0xffff;
 						}
 
@@ -814,10 +832,12 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			if (n_ss_desc.Big()) {
 				cpu.stack.big=true;
 				cpu.stack.mask=0xffffffff;
+				cpu.stack.notmask=0;
 				reg_esp=n_esp;
 			} else {
 				cpu.stack.big=false;
 				cpu.stack.mask=0xffff;
+				cpu.stack.notmask=0xffff0000;
 				reg_sp=n_esp & 0xffff;
 			}
 
@@ -1070,10 +1090,12 @@ call_code:
 						if (n_ss_desc.Big()) {
 							cpu.stack.big=true;
 							cpu.stack.mask=0xffffffff;
+							cpu.stack.notmask=0;
 							reg_esp=n_esp;
 						} else {
 							cpu.stack.big=false;
 							cpu.stack.mask=0xffff;
+							cpu.stack.notmask=0xffff0000;
 							reg_sp=n_esp & 0xffff;
 						}
 
@@ -1141,9 +1163,12 @@ call_code:
 			LOG(LOG_CPU,LOG_NORMAL)("CALL:TSS to %X",selector);
 			CPU_SwitchTask(selector,TSwitch_CALL_INT,oldeip);
 			break;
+		case DESC_INVALID:
+			// used by some installers
+			CPU_Exception(EXCEPTION_GP,selector & 0xfffc);
+			return;
 		default:
 			E_Exit("CALL:Descriptor type %x unsupported",call.Type());
-
 		}
 	}
 	assert(1);
@@ -1303,10 +1328,12 @@ RET_same_level:
 			if (n_ss_desc.Big()) {
 				cpu.stack.big=true;
 				cpu.stack.mask=0xffffffff;
+				cpu.stack.notmask=0;
 				reg_esp=n_esp+bytes;
 			} else {
 				cpu.stack.big=false;
 				cpu.stack.mask=0xffff;
+				cpu.stack.notmask=0xffff0000;
 				reg_sp=(n_esp & 0xffff)+bytes;
 			}
 
@@ -1385,6 +1412,7 @@ bool CPU_LTR(Bitu selector) {
 		}
 		if (!cpu_tss.SetSelector(selector)) E_Exit("LTR failed, selector=%X",selector);
 		cpu_tss.desc.SetBusy(true);
+		cpu_tss.SaveSelector();
 	} else {
 		/* Descriptor was no available TSS descriptor */ 
 		LOG(LOG_CPU,LOG_NORMAL)("LTR failed, selector=%X (type=%X)",selector,desc.Type());
@@ -1420,13 +1448,32 @@ void CPU_SET_CRX(Bitu cr,Bitu value) {
 	switch (cr) {
 	case 0:
 		{
-			Bitu changed=cpu.cr0 ^ value;		
+			Bitu changed=cpu.cr0 ^ value;
 			if (!changed) return;
 			cpu.cr0=value;
 			if (value & CR0_PROTECTION) {
 				cpu.pmode=true;
 				LOG(LOG_CPU,LOG_NORMAL)("Protected mode");
 				PAGING_Enable((value & CR0_PAGING)>0);
+
+				if (!(CPU_AutoDetermineMode&CPU_AUTODETERMINE_MASK)) break;
+
+				if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CYCLES) {
+					CPU_CycleAutoAdjust=true;
+					CPU_CycleLeft=0;
+					CPU_Cycles=0;
+					CPU_OldCycleMax=CPU_CycleMax;
+					GFX_SetTitle(CPU_CyclePercUsed,-1,false);
+				} else {
+					GFX_SetTitle(-1,-1,false);
+				}
+ #if (C_DYNAMIC_X86)
+				if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CORE) {
+					CPU_Core_Dyn_X86_Cache_Init(true);
+					cpudecoder=&CPU_Core_Dyn_X86_Run;
+				}
+#endif
+				CPU_AutoDetermineMode<<=CPU_AUTODETERMINE_SHIFT;
 			} else {
 				cpu.pmode=false;
 				if (value & CR0_PAGING) LOG_MSG("Paging requested without PE=1");
@@ -1528,6 +1575,38 @@ bool CPU_READ_DRX(Bitu dr,Bit32u & retvalue) {
 		break;
 	}
 	return false;
+}
+
+bool CPU_WRITE_TRX(Bitu tr,Bitu value) {
+	/* Check if privileged to access control registers */
+	if (cpu.pmode && (cpu.cpl>0)) return CPU_PrepareException(EXCEPTION_GP,0);
+	switch (tr) {
+//	case 3:
+	case 6:
+	case 7:
+		cpu.trx[tr]=value;
+		return false;
+	default:
+		LOG(LOG_CPU,LOG_ERROR)("Unhandled MOV TR%d,%X",tr,value);
+		break;
+	}
+	return CPU_PrepareException(EXCEPTION_UD,0);
+}
+
+bool CPU_READ_TRX(Bitu tr,Bit32u & retvalue) {
+	/* Check if privileged to access control registers */
+	if (cpu.pmode && (cpu.cpl>0)) return CPU_PrepareException(EXCEPTION_GP,0);
+	switch (tr) {
+//	case 3:
+	case 6:
+	case 7:
+		retvalue=cpu.trx[tr];
+		return false;
+	default:
+		LOG(LOG_CPU,LOG_ERROR)("Unhandled MOV XXX, TR%d",tr);
+		break;
+	}
+	return CPU_PrepareException(EXCEPTION_UD,0);
 }
 
 
@@ -1712,6 +1791,7 @@ bool CPU_SetSegGeneral(SegNames seg,Bitu value) {
 		if (seg==ss) {
 			cpu.stack.big=false;
 			cpu.stack.mask=0xffff;
+			cpu.stack.notmask=0xffff0000;
 		}
 		return false;
 	} else {
@@ -1741,8 +1821,8 @@ bool CPU_SetSegGeneral(SegNames seg,Bitu value) {
 			}
 
 			if (!desc.saved.seg.p) {
-				E_Exit("CPU_SetSegGeneral: Stack segment not present");	// or #SS(sel)
-//				return CPU_PrepareException(EXCEPTION_SS,value & 0xfffc);
+//				E_Exit("CPU_SetSegGeneral: Stack segment not present");	// or #SS(sel)
+				return CPU_PrepareException(EXCEPTION_SS,value & 0xfffc);
 			}
 
 			Segs.val[seg]=value;
@@ -1750,9 +1830,11 @@ bool CPU_SetSegGeneral(SegNames seg,Bitu value) {
 			if (desc.Big()) {
 				cpu.stack.big=true;
 				cpu.stack.mask=0xffffffff;
+				cpu.stack.notmask=0;
 			} else {
 				cpu.stack.big=false;
 				cpu.stack.mask=0xffff;
+				cpu.stack.notmask=0xffff0000;
 			}
 		} else {
 			if ((value & 0xfffc)==0) {
@@ -1799,7 +1881,7 @@ bool CPU_PopSeg(SegNames seg,bool use32) {
 	Bitu val=mem_readw(SegPhys(ss) + (reg_esp & cpu.stack.mask));
 	if (CPU_SetSegGeneral(seg,val)) return true;
 	Bitu addsp=use32?0x04:0x02;
-	reg_esp=(reg_esp&~cpu.stack.mask)|((reg_esp+addsp)&cpu.stack.mask);
+	reg_esp=(reg_esp&cpu.stack.notmask)|((reg_esp+addsp)&cpu.stack.mask);
 	return false;
 }
 
@@ -1872,38 +1954,49 @@ void CPU_ENTER(bool use32,Bitu bytes,Bitu level) {
 		}
 	}
 	sp_index-=bytes;
-	reg_esp=(reg_esp&~cpu.stack.mask)|((sp_index)&cpu.stack.mask);
+	reg_esp=(reg_esp&cpu.stack.notmask)|((sp_index)&cpu.stack.mask);
 }
 
-extern void GFX_SetTitle(Bits cycles ,Bits frameskip,bool paused);
 static void CPU_CycleIncrease(bool pressed) {
-	if (!pressed || CPU_CycleAuto)
-		return;
-	Bits old_cycles=CPU_CycleMax;
-	if(CPU_CycleUp < 100){
-		CPU_CycleMax = (Bits)(CPU_CycleMax * (1 + (float)CPU_CycleUp / 100.0));
+	if (!pressed) return;
+	if (CPU_CycleAutoAdjust) {
+		CPU_CyclePercUsed+=5;
+		if (CPU_CyclePercUsed>100) CPU_CyclePercUsed=100;
+		LOG_MSG("CPU:%d percent",CPU_CyclePercUsed);
+		GFX_SetTitle(CPU_CyclePercUsed,-1,false);
 	} else {
-		CPU_CycleMax = (Bits)(CPU_CycleMax + CPU_CycleUp);
+		Bit32s old_cycles=CPU_CycleMax;
+		if (CPU_CycleUp < 100) {
+			CPU_CycleMax = (Bit32s)(CPU_CycleMax * (1 + (float)CPU_CycleUp / 100.0));
+		} else {
+			CPU_CycleMax = (Bit32s)(CPU_CycleMax + CPU_CycleUp);
+		}
+	    
+		CPU_CycleLeft=0;CPU_Cycles=0;
+		if (CPU_CycleMax==old_cycles) CPU_CycleMax++;
+		LOG_MSG("CPU:%d cycles",CPU_CycleMax);
+		GFX_SetTitle(CPU_CycleMax,-1,false);
 	}
-    
-	CPU_CycleLeft=0;CPU_Cycles=0;
-	if (CPU_CycleMax==old_cycles) CPU_CycleMax++;
-	LOG_MSG("CPU:%d cycles",CPU_CycleMax);
-	GFX_SetTitle(CPU_CycleMax,-1,false);
 }
 
 static void CPU_CycleDecrease(bool pressed) {
-	if (!pressed || CPU_CycleAuto)
-		return;
-	if(CPU_CycleDown < 100){
-		CPU_CycleMax = (Bits)(CPU_CycleMax / (1 + (float)CPU_CycleDown / 100.0));
+	if (!pressed) return;
+	if (CPU_CycleAutoAdjust) {
+		CPU_CyclePercUsed-=5;
+		if (CPU_CyclePercUsed<=0) CPU_CyclePercUsed=1;
+		LOG_MSG("CPU:%d percent",CPU_CyclePercUsed);
+		GFX_SetTitle(CPU_CyclePercUsed,-1,false);
 	} else {
-		CPU_CycleMax = (Bits)(CPU_CycleMax - CPU_CycleDown);
+		if (CPU_CycleDown < 100) {
+			CPU_CycleMax = (Bit32s)(CPU_CycleMax / (1 + (float)CPU_CycleDown / 100.0));
+		} else {
+			CPU_CycleMax = (Bit32s)(CPU_CycleMax - CPU_CycleDown);
+		}
+		CPU_CycleLeft=0;CPU_Cycles=0;
+		if (CPU_CycleMax <= 0) CPU_CycleMax=1;
+		LOG_MSG("CPU:%d cycles",CPU_CycleMax);
+		GFX_SetTitle(CPU_CycleMax,-1,false);
 	}
-	CPU_CycleLeft=0;CPU_Cycles=0;
-	if (CPU_CycleMax <= 0) CPU_CycleMax=1;
-	LOG_MSG("CPU:%d cycles",CPU_CycleMax);
-	GFX_SetTitle(CPU_CycleMax,-1,false);
 }
 
 class CPU: public Module_base {
@@ -1938,11 +2031,16 @@ public:
 		CPU_SET_CRX(0,0);						//Initialize
 		cpu.code.big=false;
 		cpu.stack.mask=0xffff;
+		cpu.stack.notmask=0xffff0000;
 		cpu.stack.big=false;
+		cpu.trap_skip=false;
 		cpu.idt.SetBase(0);
 		cpu.idt.SetLimit(1023);
 
-		for (Bitu i=0; i<7; i++) cpu.drx[i]=0;
+		for (Bitu i=0; i<7; i++) {
+			cpu.drx[i]=0;
+			cpu.trx[i]=0;
+		}
 		cpu.drx[6]=0xffff1ff0;
 		cpu.drx[7]=0x00000400;
 
@@ -1960,15 +2058,78 @@ public:
 	}
 	bool Change_Config(Section* newconfig){
 		Section_prop * section=static_cast<Section_prop *>(newconfig);
+		CPU_AutoDetermineMode=CPU_AUTODETERMINE_NONE;
 		CPU_CycleLeft=0;//needed ?
 		CPU_Cycles=0;
-		const char *cyclesLine = section->Get_string("cycles");
-		if (!strcasecmp(cyclesLine,"auto")) {
+
+		std::string str;
+		CommandLine cmd(0,section->Get_string("cycles"));
+		cmd.FindCommand(1,str);
+
+		if (str=="max") {
 			CPU_CycleMax=0;
-			CPU_CycleAuto=true;
+			CPU_CyclePercUsed=100;
+			CPU_CycleAutoAdjust=true;
+			CPU_CycleLimit=-1;
+			for (Bitu cmdnum=2; cmdnum<=cmd.GetCount(); cmdnum++) {
+				if (cmd.FindCommand(cmdnum,str)) {
+					if (str.find('%')==str.length()-1) {
+						str.erase(str.find('%'));
+						int percval=0;
+						std::istringstream stream(str);
+						stream >> percval;
+						if ((percval>0) && (percval<=100)) CPU_CyclePercUsed=(Bit32s)percval;
+					} else if (str=="limit") {
+						cmdnum++;
+						if (cmd.FindCommand(cmdnum,str)) {
+							int cyclimit=0;
+							std::istringstream stream(str);
+							stream >> cyclimit;
+							if (cyclimit>0) CPU_CycleLimit=cyclimit;
+						}
+					}
+				}
+			}
 		} else {
-			CPU_CycleMax=atoi(cyclesLine);
-			CPU_CycleAuto=false;
+			if (str=="auto") {
+				CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CYCLES;
+				CPU_CycleMax=3000;
+				CPU_OldCycleMax=3000;
+				CPU_CyclePercUsed=100;
+				for (Bitu cmdnum=2; cmdnum<=cmd.GetCount(); cmdnum++) {
+					if (cmd.FindCommand(cmdnum,str)) {
+						if (str.find('%')==str.length()-1) {
+							str.erase(str.find('%'));
+							int percval=0;
+							std::istringstream stream(str);
+							stream >> percval;
+							if ((percval>0) && (percval<=100)) CPU_CyclePercUsed=(Bit32s)percval;
+						} else if (str=="limit") {
+							cmdnum++;
+							if (cmd.FindCommand(cmdnum,str)) {
+								int cyclimit=0;
+								std::istringstream stream(str);
+								stream >> cyclimit;
+								if (cyclimit>0) CPU_CycleLimit=cyclimit;
+							}
+						} else {
+							int rmdval=0;
+							std::istringstream stream(str);
+							stream >> rmdval;
+							if (rmdval>0) {
+								CPU_CycleMax=(Bit32s)rmdval;
+								CPU_OldCycleMax=(Bit32s)rmdval;
+							}
+						}
+					}
+				}
+			} else {
+				int rmdval=0;
+				std::istringstream stream(str);
+				stream >> rmdval;
+				CPU_CycleMax=(Bit32s)rmdval;
+			}
+			CPU_CycleAutoAdjust=false;
 		}
 		CPU_CycleUp=section->Get_int("cycleup");
 		CPU_CycleDown=section->Get_int("cycledown");
@@ -1984,6 +2145,13 @@ public:
 #if (C_DYNAMIC_X86)
 		else if (!strcasecmp(core,"dynamic")) {
 			cpudecoder=&CPU_Core_Dyn_X86_Run;
+			CPU_Core_Dyn_X86_SetFPUMode(true);
+		} else if (!strcasecmp(core,"dynamic_nodhfpu")) {
+			cpudecoder=&CPU_Core_Dyn_X86_Run;
+			CPU_Core_Dyn_X86_SetFPUMode(false);
+		} else if (!strcasecmp(core,"auto")) {
+			cpudecoder=&CPU_Core_Normal_Run;
+			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
 		} 
 #endif
 		else {
@@ -1991,13 +2159,14 @@ public:
 		}
 
 #if (C_DYNAMIC_X86)
-		CPU_Core_Dyn_X86_Cache_Init(!strcasecmp(core,"dynamic"));
+		CPU_Core_Dyn_X86_Cache_Init(!strcasecmp(core,"dynamic") || !strcasecmp(core,"dynamic_nodhfpu"));
 #endif
 	
-		if(CPU_CycleMax <= 0) CPU_CycleMax = 2500;
+		if(CPU_CycleMax <= 0) CPU_CycleMax = 3000;
 		if(CPU_CycleUp <= 0)   CPU_CycleUp = 500;
 		if(CPU_CycleDown <= 0) CPU_CycleDown = 20;
-		GFX_SetTitle(CPU_CycleMax,-1,false);
+		if (CPU_CycleAutoAdjust) GFX_SetTitle(CPU_CyclePercUsed,-1,false);
+		else GFX_SetTitle(CPU_CycleMax,-1,false);
 		return true;
 	}
 	~CPU(){ /* empty */};
@@ -2006,6 +2175,9 @@ public:
 static CPU * test;
 
 void CPU_ShutDown(Section* sec) {
+#if (C_DYNAMIC_X86)
+	CPU_Core_Dyn_X86_Cache_Close();
+#endif
 	delete test;
 }
 

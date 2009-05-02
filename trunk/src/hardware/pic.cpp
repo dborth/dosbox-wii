@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: pic.cpp,v 1.34 2006/03/12 21:14:45 qbix79 Exp $ */
+/* $Id: pic.cpp,v 1.39 2007/01/18 14:57:59 c2woody Exp $ */
 
 #include <list>
 
@@ -282,6 +282,7 @@ static inline bool PIC_startIRQ(Bitu i) {
 void PIC_runIRQs(void) {
 	if (!GETFLAG(IF)) return;
 	if (!PIC_IRQCheck) return;
+	if (cpudecoder==CPU_Core_Normal_Trap_Run) return;
 
 	static Bitu IRQ_priority_order[16] = 
 		{ 0,1,2,8,9,10,11,12,13,14,15,3,4,5,6,7 };
@@ -393,6 +394,30 @@ void PIC_AddEvent(PIC_EventHandler handler,float delay,Bitu val) {
 	AddEntry(entry);
 }
 
+void PIC_RemoveSpecificEvents(PIC_EventHandler handler, Bitu val) {
+	PICEntry * entry=pic.next_entry;
+	PICEntry * prev_entry;
+	prev_entry = 0;
+	while (entry) {
+		if ((entry->event == handler) && (entry->value == val)) {
+			if (prev_entry) {
+				prev_entry->next=entry->next;
+				entry->next=pic.free_entry;
+				pic.free_entry=entry;
+				entry=prev_entry->next;
+				continue;
+			} else {
+				pic.next_entry=entry->next;
+				entry->next=pic.free_entry;
+				pic.free_entry=entry;
+				entry=pic.next_entry;
+				continue;
+			}
+		}
+		prev_entry=entry;
+		entry=entry->next;
+	}	
+}
 
 void PIC_RemoveEvents(PIC_EventHandler handler) {
 	PICEntry * entry=pic.next_entry;
@@ -428,8 +453,8 @@ bool PIC_RunQueue(void) {
 		return false;
 	}
 	/* Check the queue for an entry */
-	double index=PIC_TickIndex();
-	while (pic.next_entry && pic.next_entry->index<=index) {
+	Bits index_nd=PIC_TickIndexND();
+	while (pic.next_entry && (pic.next_entry->index*CPU_CycleMax<=index_nd)) {
 		PICEntry * entry=pic.next_entry;
 		pic.next_entry=entry->next;
 		(entry->event)(entry->value);
@@ -439,7 +464,7 @@ bool PIC_RunQueue(void) {
 	}
 	/* Check when to set the new cycle end */
 	if (pic.next_entry) {
-		Bits cycles=PIC_MakeCycles(pic.next_entry->index-index);
+		Bits cycles=(Bits)(pic.next_entry->index*CPU_CycleMax-index_nd);
 		if (!cycles) cycles=1;
 		if (cycles<CPU_CycleLeft) {
 			CPU_Cycles=cycles;
@@ -451,20 +476,6 @@ bool PIC_RunQueue(void) {
 	if 	(PIC_IRQCheck)	PIC_runIRQs();
 	return true;
 }
-
-//Irq 9-2 calling code
-static Bitu INT71_Handler() {
-	IO_Write(0xa0,0x61);
-	CALLBACK_RunRealInt(0xa);
-	return CBRET_NONE;
-}
-
-static Bitu INT0A_Handler() {
-	IO_Write(0x20,0x62);
-	return CBRET_NONE;
-}
-
-   
 
 /* The TIMER Part */
 struct TickerBlock {
@@ -522,7 +533,6 @@ class PIC:public Module_base{
 private:
 	IO_ReadHandleObject ReadHandler[4];
 	IO_WriteHandleObject WriteHandler[4];
-	CALLBACK_HandlerObject callback[2];
 public:
 	PIC(Section* configuration):Module_base(configuration){
 		/* Setup pic0 and pic1 with initial values like DOS has normally */
@@ -575,12 +585,6 @@ public:
 		pic.entries[PIC_QUEUESIZE-1].next=0;
 		pic.free_entry=&pic.entries[0];
 		pic.next_entry=0;
-		/* Irq 9 and 2 thingie 
-		 * Should be done by bios but then it overwrites the mpu handler */
-		callback[0].Install(&INT71_Handler,CB_IRET,"irq 9 bios");
-		callback[0].Set_RealVec(0x71);
-		callback[1].Install(&INT0A_Handler,CB_IRET,"irq 2 bios");
-		callback[1].Set_RealVec(0xA);
 	}
 	~PIC(){
 	}

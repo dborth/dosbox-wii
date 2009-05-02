@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios_disk.cpp,v 1.27 2006/02/12 23:23:52 harekiet Exp $ */
+/* $Id: bios_disk.cpp,v 1.33 2007/01/21 16:21:22 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"
@@ -24,9 +24,9 @@
 #include "regs.h"
 #include "mem.h"
 #include "dos_inc.h" /* for Drives[] */
+#include "../dos/drives.h"
 #include "mapper.h"
 
-#define MAX_SWAPPABLE_DISKS 20
 #define MAX_DISK_IMAGES 4
 
 diskGeo DiskGeometryList[] = {
@@ -51,6 +51,7 @@ Bit16u imgDTASeg;
 RealPt imgDTAPtr;
 DOS_DTA *imgDTA;
 bool killRead;
+static bool swapping_requested;
 
 void CMOS_SetRegister(Bitu regNr, Bit8u val); //For setting equipment word
 
@@ -62,24 +63,26 @@ Bits swapPosition;
 void updateDPT(void) {
 	Bit32u tmpheads, tmpcyl, tmpsect, tmpsize;
 	if(imageDiskList[2] != NULL) {
+		PhysPt dp0physaddr=CALLBACK_PhysPointer(diskparm0);
 		imageDiskList[2]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		real_writew(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0)),tmpcyl);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+2,tmpheads);
-		real_writew(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0x3,0);
-		real_writew(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0x5,(Bit16u)-1);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0x7,0);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0x8,(0xc0 | (((imageDiskList[2]->heads) > 8) << 3)));
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0x9,0);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0xa,0);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0xb,0);
-		real_writew(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0xc,tmpcyl);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+0xe,tmpsect);
+		phys_writew(dp0physaddr,tmpcyl);
+		phys_writeb(dp0physaddr+0x2,tmpheads);
+		phys_writew(dp0physaddr+0x3,0);
+		phys_writew(dp0physaddr+0x5,(Bit16u)-1);
+		phys_writeb(dp0physaddr+0x7,0);
+		phys_writeb(dp0physaddr+0x8,(0xc0 | (((imageDiskList[2]->heads) > 8) << 3)));
+		phys_writeb(dp0physaddr+0x9,0);
+		phys_writeb(dp0physaddr+0xa,0);
+		phys_writeb(dp0physaddr+0xb,0);
+		phys_writew(dp0physaddr+0xc,tmpcyl);
+		phys_writeb(dp0physaddr+0xe,tmpsect);
 	}
 	if(imageDiskList[3] != NULL) {
+		PhysPt dp1physaddr=CALLBACK_PhysPointer(diskparm1);
 		imageDiskList[3]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		real_writew(RealSeg(CALLBACK_RealPointer(diskparm1)),RealOff(CALLBACK_RealPointer(diskparm1)),tmpcyl);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm1)),RealOff(CALLBACK_RealPointer(diskparm1))+2,tmpheads);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm1)),RealOff(CALLBACK_RealPointer(diskparm1))+0xe,tmpsect);
+		phys_writew(dp1physaddr,tmpcyl);
+		phys_writeb(dp1physaddr+0x2,tmpheads);
+		phys_writeb(dp1physaddr+0xe,tmpsect);
 	}
 }
 
@@ -112,16 +115,24 @@ void swapInDisks(void) {
 	}
 }
 
+bool getSwapRequest(void) {
+	bool sreq=swapping_requested;
+	swapping_requested = false;
+	return sreq;
+}
+
 void swapInNextDisk(bool pressed) {
 	if (!pressed)
 		return;
 	/* Hack/feature: rescan all disks as well */
+	DriveManager::CycleAllDisks();
 	for(Bitu i=0;i<DOS_DRIVES;i++) {
 		if (Drives[i]) Drives[i]->EmptyCache();
 	}
 	swapPosition++;
 	if(diskSwap[swapPosition] == NULL) swapPosition = 0;
 	swapInDisks();
+	swapping_requested = true;
 }
 
 
@@ -243,7 +254,7 @@ Bit32u imageDisk::getSectSize(void) {
 
 static Bitu GetDosDriveNumber(Bitu biosNum) {
 	switch(biosNum) {
-    case 0x0:
+		case 0x0:
 			return 0x0;
 		case 0x1:
 			return 0x1;
@@ -290,15 +301,16 @@ static Bitu INT13_DiskHandler(void) {
 	int i,t;
 	last_drive = reg_dl;
 	drivenum = GetDosDriveNumber(reg_dl);
+	bool any_images = false;
+	for(Bitu i = 0;i < MAX_DISK_IMAGES;i++) {
+		if(imageDiskList[i]) any_images=true;
+	}
+
 	//drivenum = 0;
 	//LOG_MSG("INT13: Function %x called on drive %x (dos drive %d)", reg_ah,  reg_dl, drivenum);
 	switch(reg_ah) {
 	case 0x0: /* Reset disk */
 		{
-			bool any_images = false;
-			for(Bitu i = 0;i < MAX_DISK_IMAGES;i++) {
-				if(imageDiskList[i]) any_images=true;
-			}
 			/* if there aren't any diskimages (so only localdrives and virtual drives)
 			 * always succeed on reset disk. If there are diskimages then and only then
 			 * do real checks
@@ -334,6 +346,11 @@ static Bitu INT13_DiskHandler(void) {
 			CALLBACK_SCF(true);
 			return CBRET_NONE;
 		}
+		if(!any_images && (reg_dh == 0)) { // Inherit the Earth cdrom (uses it as disk test)
+			reg_ah = 0;
+			CALLBACK_SCF(false);
+			return CBRET_NONE;
+		}
 		if(driveInactive(drivenum)) {
 			reg_ah = 0xff;
 			CALLBACK_SCF(true);
@@ -357,7 +374,7 @@ static Bitu INT13_DiskHandler(void) {
 			}
 		}
 		reg_ah = 0x00;
-        CALLBACK_SCF(false);
+		CALLBACK_SCF(false);
 		break;
 	case 0x3: /* Write sectors */
 		
@@ -381,6 +398,7 @@ static Bitu INT13_DiskHandler(void) {
 				return CBRET_NONE;
 			}
         }
+		reg_ah = 0x00;
 		CALLBACK_SCF(false);
         break;
 	case 0x04: /* Verify sectors */
@@ -480,9 +498,11 @@ void BIOS_SetupDisks(void) {
 	RealSetVec(0x41,CALLBACK_RealPointer(diskparm0));
 	RealSetVec(0x46,CALLBACK_RealPointer(diskparm1));
 
+	PhysPt dp0physaddr=CALLBACK_PhysPointer(diskparm0);
+	PhysPt dp1physaddr=CALLBACK_PhysPointer(diskparm1);
 	for(i=0;i<16;i++) {
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm0)),RealOff(CALLBACK_RealPointer(diskparm0))+i,0);
-		real_writeb(RealSeg(CALLBACK_RealPointer(diskparm1)),RealOff(CALLBACK_RealPointer(diskparm1))+i,0);
+		phys_writeb(dp0physaddr+i,0);
+		phys_writeb(dp1physaddr+i,0);
 	}
 
 	imgDTASeg = 0;
@@ -492,4 +512,5 @@ void BIOS_SetupDisks(void) {
 
 	MAPPER_AddHandler(swapInNextDisk,MK_f4,MMOD1,"swapimg","Swap Image");
 	killRead = false;
+	swapping_requested = false;
 }

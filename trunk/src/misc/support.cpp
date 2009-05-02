@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: support.cpp,v 1.29 2006/02/09 11:47:57 qbix79 Exp $ */
+/* $Id: support.cpp,v 1.31 2007/01/08 19:45:41 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -65,7 +65,7 @@ char *trim(char *str) {
 }
 
 
-bool ScanCMDBool(char * cmd,char * check) {
+bool ScanCMDBool(char * cmd,char const * const check) {
 	char * scan=cmd;size_t c_len=strlen(check);
 	while ((scan=strchr(scan,'/'))) {
 		/* found a / now see behind it */
@@ -145,7 +145,7 @@ double ConvDblWord(char * word) {
 
 
 static char buf[1024];           //greater scope as else it doesn't always gets thrown right (linux/gcc2.95)
-void E_Exit(char * format,...) {
+void E_Exit(const char * format,...) {
 #if C_DEBUG && C_HEAVY_DEBUG
  	DEBUG_HeavyWriteLogInstruction();
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_files.cpp,v 1.72 2006/03/10 09:38:24 qbix79 Exp $ */
+/* $Id: dos_files.cpp,v 1.81 2007/01/08 21:20:23 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -49,7 +49,7 @@ Bit8u DOS_GetDefaultDrive(void) {
 }
 
 void DOS_SetDefaultDrive(Bit8u drive) {
-	if (drive<=DOS_DRIVES) dos.current_drive=drive;
+	if (drive<=DOS_DRIVES && ((drive<2) || Drives[drive])) dos.current_drive = drive;
 }
 
 bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
@@ -122,7 +122,7 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 				continue;
 			}
 
-			Bit32u iDown, cDots;
+			Bit32s iDown, cDots;
 			bool dots = true;
 			Bit32u templen =strlen(tempdir);
 			for(iDown=0;(iDown < templen) && dots;iDown++)
@@ -307,7 +307,7 @@ bool DOS_ReadFile(Bit16u entry,Bit8u * data,Bit16u * amount) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[handle]) {
+	if (!Files[handle] || !Files[handle]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -330,7 +330,7 @@ bool DOS_WriteFile(Bit16u entry,Bit8u * data,Bit16u * amount) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[handle]) {
+	if (!Files[handle] || !Files[handle]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -353,7 +353,7 @@ bool DOS_SeekFile(Bit16u entry,Bit32u * pos,Bit32u type) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[handle]) {
+	if (!Files[handle] || !Files[handle]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -370,7 +370,9 @@ bool DOS_CloseFile(Bit16u entry) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	Files[handle]->Close();
+	if (Files[handle]->IsOpen()) {
+		Files[handle]->Close();
+	}
 	DOS_PSP psp(dos.psp());
 	psp.SetFileHandle(entry,0xff);
 	if (Files[handle]->RemoveRef()<=0) {
@@ -379,6 +381,20 @@ bool DOS_CloseFile(Bit16u entry) {
 	}
 	return true;
 }
+
+static bool PathExists(char* name) {
+	char* leading = strrchr(name,'\\');
+	if(!leading) return true;
+	char temp[CROSS_LEN];
+	strcpy(temp,name);
+	leading = strrchr(temp,'\\');
+	*leading = 0;
+	Bit8u drive;char fulldir[DOS_PATHLENGTH];
+	if (!DOS_MakeName(temp,fulldir,&drive)) return false;
+	if(!Drives[drive]->TestDir(fulldir)) return false;
+	return true;
+}
+
 
 bool DOS_CreateFile(char * name,Bit16u attributes,Bit16u * entry) {
 	// Creation of a device is the same as opening it
@@ -410,10 +426,13 @@ bool DOS_CreateFile(char * name,Bit16u attributes,Bit16u * entry) {
 	}
 	bool foundit=Drives[drive]->FileCreate(&Files[handle],fullname,attributes);
 	if (foundit) { 
+		Files[handle]->SetDrive(drive);
 		Files[handle]->AddRef();
 		psp.SetFileHandle(*entry,handle);
 		return true;
 	} else {
+		if(!PathExists(name)) DOS_SetError(DOSERR_PATH_NOT_FOUND); 
+		else DOS_SetError(DOSERR_FILE_NOT_FOUND);
 		return false;
 	}
 }
@@ -462,6 +481,7 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 		Files[handle]=new DOS_Device(*Devices[devnum]);
 	} else {
 		exists=Drives[drive]->FileOpen(&Files[handle],fullname,flags);
+		if (exists) Files[handle]->SetDrive(drive);
 	}
 	if (exists || device ) { 
 		Files[handle]->AddRef();
@@ -471,8 +491,10 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 		//Test if file exists, but opened in read-write mode (and writeprotected)
 		if(((flags&3) != OPEN_READ) && Drives[drive]->FileExists(fullname))
 			DOS_SetError(DOSERR_ACCESS_DENIED);
-		else
-			DOS_SetError(DOSERR_FILE_NOT_FOUND);
+		else {
+			if(!PathExists(name)) DOS_SetError(DOSERR_PATH_NOT_FOUND); 
+			else DOS_SetError(DOSERR_FILE_NOT_FOUND);
+		}
 		return false;
 	}
 }
@@ -533,7 +555,7 @@ bool DOS_SetFileAttr(char * name,Bit16u attr)
 	Bit16u attrTemp;
 	char fullname[DOS_PATHLENGTH];Bit8u drive;
 	if (!DOS_MakeName(name,fullname,&drive)) return false;	
-	if (strcmp(Drives[drive]->GetInfo(),"CDRom.")==0 || strcmp(Drives[drive]->GetInfo(),"isoDrive")==0) {
+	if (strncmp(Drives[drive]->GetInfo(),"CDRom ",6)==0 || strncmp(Drives[drive]->GetInfo(),"isoDrive ",9)==0) {
 		DOS_SetError(DOSERR_ACCESS_DENIED);
 		return false;
 	}
@@ -574,7 +596,7 @@ bool DOS_DuplicateEntry(Bit16u entry,Bit16u * newentry) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[handle]) {
+	if (!Files[handle] || !Files[handle]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -599,7 +621,7 @@ bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[orig]) {
+	if (!Files[orig] || !Files[orig]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
@@ -653,10 +675,10 @@ static bool isvalid(const char in){
 
 Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *change) {
 	char * string_begin=string;Bit8u ret=0;
-    DOS_FCB fcb(seg,offset);
-	bool hasdrive,hasname,hasext;
-	hasdrive=hasname=hasext=false;
-	Bitu index;bool finished;Bit8u fill;
+	DOS_FCB fcb(seg,offset);
+	bool hasdrive,hasname,hasext,finished;
+	hasdrive=hasname=hasext=finished=false;
+	Bitu index=0;Bit8u fill=' ';
 /* First get the old data from the fcb */
 #ifdef _MSC_VER
 #pragma pack (1)
@@ -1035,7 +1057,7 @@ bool DOS_GetFileDate(Bit16u entry, Bit16u* otime, Bit16u* odate)
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-	if (!Files[handle]) {
+	if (!Files[handle] || !Files[handle]->IsOpen()) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};

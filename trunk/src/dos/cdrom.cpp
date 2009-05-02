@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ bool CDROM_Interface_SDL::GetAudioTrackInfo (int track, TMSF& start, unsigned ch
 {
 	if (CD_INDRIVE(SDL_CDStatus(cd))) {
 		FRAMES_TO_MSF(cd->track[track-1].offset+150,&start.min,&start.sec,&start.fr);
-		attr	= cd->track[track-1].type;
+		attr	= cd->track[track-1].type<<4;//sdl uses 0 for audio and 4 for data. instead of 0x00 and 0x40
 	}
 	return CD_INDRIVE(SDL_CDStatus(cd));	
 };
@@ -96,7 +96,7 @@ bool CDROM_Interface_SDL::GetAudioSub (unsigned char& attr, unsigned char& track
 	if (CD_INDRIVE(SDL_CDStatus(cd))) {
 		track	= cd->cur_track;
 		index	= cd->cur_track;
-		attr	= cd->track[track].type;
+		attr	= cd->track[track].type<<4;
 		FRAMES_TO_MSF(cd->cur_frame,&relPos.min,&relPos.sec,&relPos.fr);
 		FRAMES_TO_MSF(cd->cur_frame+cd->track[track].offset,&absPos.min,&absPos.sec,&absPos.fr);
 	}

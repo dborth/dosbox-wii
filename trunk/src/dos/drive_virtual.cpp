@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -85,6 +85,7 @@ Virtual_File::Virtual_File(Bit8u * in_data,Bit32u in_size) {
 	file_pos=0;
 	date=DOS_PackDate(2002,10,1);
 	time=DOS_PackTime(12,34,56);
+	open=true;
 }
 
 bool Virtual_File::Read(Bit8u * data,Bit16u * size) {
@@ -129,7 +130,7 @@ bool Virtual_File::Close(){
 
 
 Bit16u Virtual_File::GetInformation(void) {
-	return 0;
+	return 0x40;	// read-only drive
 }
 
 
@@ -176,7 +177,7 @@ bool Virtual_Drive::TestDir(char * dir) {
 }
 
 bool Virtual_Drive::FileStat(const char* name, FileStat_Block * const stat_block){
-    VFILE_Block * cur_file=first_file;
+	VFILE_Block * cur_file=first_file;
 	while (cur_file) {
 		if (strcasecmp(name,cur_file->name)==0) {
 			stat_block->attr=DOS_ATTR_ARCHIVE;
@@ -203,9 +204,14 @@ bool Virtual_Drive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 	search_file=first_file;
 	Bit8u attr;char pattern[DOS_NAMELENGTH_ASCII];
 	dta.GetSearchParams(attr,pattern);
-	if(attr & DOS_ATTR_VOLUME) {
+	if (attr == DOS_ATTR_VOLUME) {
 		dta.SetResult("DOSBOX",0,0,0,DOS_ATTR_VOLUME);
 		return true;
+	} else if ((attr & DOS_ATTR_VOLUME) && !fcb_findfirst) {
+		if (WildFileCmp("DOSBOX",pattern)) {
+			dta.SetResult("DOSBOX",0,0,0,DOS_ATTR_VOLUME);
+			return true;
+		}
 	}
 	return FindNext(dta);
 }
@@ -262,3 +268,8 @@ bool Virtual_Drive::isRemote(void) {
 bool Virtual_Drive::isRemovable(void) {
 	return false;
 }
+
+Bits Virtual_Drive::UnMount(void) {
+	return 1;
+}
+

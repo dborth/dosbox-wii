@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,15 +21,27 @@ static void conc4d(SCALERNAME,SBPP,DBPP,L)(const void *s) {
 #else
 static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
 #endif
+#ifdef RENDER_NULL_INPUT
+	if (!s) {
+		render.scale.cacheRead += render.scale.cachePitch;
+#if defined(SCALERLINEAR) 
+		Bitu skipLines = SCALERHEIGHT;
+#else
+		Bitu skipLines = Scaler_Aspect[ render.scale.outLine++ ];
+#endif
+		ScalerAddLines( 0, skipLines );
+		return;
+	}
+#endif
 	/* Clear the complete line marker */
+	Bitu hadChange = 0;
 	const SRCTYPE *src = (SRCTYPE*)s;
 	SRCTYPE *cache = (SRCTYPE*)(render.scale.cacheRead);
 	render.scale.cacheRead += render.scale.cachePitch;
 	PTYPE * line0=(PTYPE *)(render.scale.outWrite);
-	Bitu hadChange = 0;
 #if (SBPP == 9)
 	for (Bits x=render.src.width;x>0;) {
-		if (*(Bit32u*)src == *(Bit32u*)cache && !(
+		if (*(Bit32u const*)src == *(Bit32u*)cache && !(
 			render.pal.modified[src[0]] | 
 			render.pal.modified[src[1]] | 
 			render.pal.modified[src[2]] | 
@@ -40,7 +52,7 @@ static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
 			line0+=4*SCALERWIDTH;
 #else 
 	for (Bits x=render.src.width;x>0;) {
-		if (*(Bitu*)src == *(Bitu*)cache) {
+		if (*(Bitu const*)src == *(Bitu*)cache) {
 			x-=(sizeof(Bitu)/sizeof(SRCTYPE));
 			src+=(sizeof(Bitu)/sizeof(SRCTYPE));
 			cache+=(sizeof(Bitu)/sizeof(SRCTYPE));
@@ -90,26 +102,15 @@ static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
 	}
 #if defined(SCALERLINEAR) 
 	Bitu scaleLines = SCALERHEIGHT;
-	render.scale.outWrite += render.scale.outPitch * scaleLines;
 #else
-	Bitu scaleLines = SCALERHEIGHT;
-	if ( Scaler_Aspect[ render.scale.outLine++ ] ) {
-		scaleLines++;
-		if (hadChange)
-			BituMove( render.scale.outWrite + render.scale.outPitch * SCALERHEIGHT,
+	Bitu scaleLines = Scaler_Aspect[ render.scale.outLine++ ];
+	if ( scaleLines - SCALERHEIGHT && hadChange ) {
+		BituMove( render.scale.outWrite + render.scale.outPitch * SCALERHEIGHT,
 			render.scale.outWrite + render.scale.outPitch * (SCALERHEIGHT-1),
 			render.src.width * SCALERWIDTH * PSIZE);
-		render.scale.outWrite += render.scale.outPitch * (SCALERHEIGHT + 1);
-	} else {
-		render.scale.outWrite += render.scale.outPitch * SCALERHEIGHT;
-	}
-	/* Keep track of changed lines */
-	if ((Scaler_ChangedLineIndex & 1) == hadChange) {
-		Scaler_ChangedLines[Scaler_ChangedLineIndex] += scaleLines;
-	} else {
-		Scaler_ChangedLines[++Scaler_ChangedLineIndex] = scaleLines;
 	}
 #endif
+	ScalerAddLines( hadChange, scaleLines );
 }
 
 #if !defined(SCALERLINEAR) 

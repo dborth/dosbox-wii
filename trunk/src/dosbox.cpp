@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.99 2006/03/28 10:17:34 qbix79 Exp $ */
+/* $Id: dosbox.cpp,v 1.115 2007/02/22 08:44:06 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -96,10 +96,14 @@ void DEBUG_Init(Section*);
 void CMOS_Init(Section*);
 
 void MSCDEX_Init(Section*);
+void DRIVES_Init(Section*);
+void CDROM_Image_Init(Section*);
 
 /* Dos Internal mostly */
 void EMS_Init(Section*);
 void XMS_Init(Section*);
+
+void DOS_KeyboardLayout_Init(Section*);
 
 void AUTOEXEC_Init(Section*);
 void SHELL_Init(void);
@@ -148,7 +152,7 @@ increaseticks:
 		ticksScheduled = 0;
 	} else {
 		Bit32u ticksNew;
-        	ticksNew=GetTicks();
+		ticksNew=GetTicks();
 		ticksScheduled += ticksAdded;
 		if (ticksNew > ticksLast) {
 			ticksRemain = ticksNew-ticksLast;
@@ -158,16 +162,37 @@ increaseticks:
 				ticksRemain = 20;
 			}
 			ticksAdded = ticksRemain;
-			if (CPU_CycleAuto && (ticksScheduled >= 1000 || ticksDone >= 1000) ) {
-				/* ratio we are aiming for is around 90% usage*/
-				Bits ratio = (ticksScheduled * (90*1024/100)) / ticksDone ;
-//				LOG_MSG("Done %d schedulded %d ratio %d cycles %d", ticksDone, ticksScheduled, ratio, CPU_CycleMax);
-				if (ratio <= 1024) 
-					CPU_CycleMax = (CPU_CycleMax * ratio) / 1024;
-				else 
-					CPU_CycleMax = 1 + (CPU_CycleMax >> 1) + (CPU_CycleMax * ratio) / 2048;
-				ticksDone = 0;
-				ticksScheduled = 0;
+			if (CPU_CycleAutoAdjust) {
+				if(ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) ) {
+					/* ratio we are aiming for is around 90% usage*/
+					Bits ratio = (ticksScheduled * (CPU_CyclePercUsed*90*1024/100/100)) / ticksDone;
+					Bit32s new_cmax = CPU_CycleMax;
+					Bit64s cproc = (Bit64s)CPU_CycleMax * (Bit64s)ticksScheduled;
+					if(cproc > 0) {
+						double ratioremoved = (double) CPU_IODelayRemoved / (double) cproc;
+						if(ratioremoved < 1.0) {
+							ratio = (Bits)((double)ratio * (1 - ratioremoved));
+							if (ratio <= 1024) 
+								new_cmax = (CPU_CycleMax * ratio) / 1024;
+							else 
+								new_cmax = 1 + (CPU_CycleMax >> 1) + (CPU_CycleMax * ratio) / 2048;
+						}
+					}
+
+					// maybe care about not going negative
+					if (new_cmax > 0) 
+						CPU_CycleMax = new_cmax;
+					if (CPU_CycleLimit > 0) {
+						if (CPU_CycleMax>CPU_CycleLimit) CPU_CycleMax = CPU_CycleLimit;
+					}
+					CPU_IODelayRemoved = 0;
+					ticksDone = 0;
+					ticksScheduled = 0;
+				} else if (ticksAdded > 15) {
+					CPU_CycleMax /= 3;
+					if (CPU_CycleMax < 100)
+					CPU_CycleMax = 100;
+				}
 			}
 		} else {
 			ticksAdded = 0;
@@ -271,24 +296,31 @@ void DOSBOX_Init(void) {
 		"frameskip -- How many frames dosbox skips before drawing one.\n"
 		"aspect -- Do aspect correction, if your output method doesn't support scaling this can slow things down!.\n"
 		"scaler -- Scaler used to enlarge/enhance low resolution modes.\n"
-		"          Supported are none,normal2x,normal3x,advmame2x,advmame3x,advinterp2x,advinterp3x,tv2x,tv3x,rgb2x,rgb3x,scan2x,scan3x.\n"
+		"          Supported are none,normal2x,normal3x,advmame2x,advmame3x,hq2x,hq3x,\n"
+		"                        2xsai,super2xsai,supereagle,advinterp2x,advinterp3x,\n"
+		"                        tv2x,tv3x,rgb2x,rgb3x,scan2x,scan3x.\n"
 	);
 
 	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
+#if (C_DYNAMIC_X86)
+	secprop->Add_string("core","auto");
+#else
 	secprop->Add_string("core","normal");
-	secprop->Add_string("cycles","3000");
+#endif
+	secprop->Add_string("cycles","auto");
 	secprop->Add_int("cycleup",500);
 	secprop->Add_int("cycledown",20);
 	MSG_Add("CPU_CONFIGFILE_HELP",
-		"core -- CPU Core used in emulation: simple,normal,full"
+		"core -- CPU Core used in emulation: normal,simple"
 #if (C_DYNAMIC_X86)
-		",dynamic"
+		",dynamic,auto.\n"
+		"        auto switches from normal to dynamic if appropriate"
 #endif
 		".\n"
 		"cycles -- Amount of instructions dosbox tries to emulate each millisecond.\n"
-		"          Setting this higher than your machine can handle is bad!\n"
-		"          You can also let DOSBox guess the correct value by setting it to auto.\n"
-		"          Please note that this guessing feature is still experimental.\n"
+		"          Setting this value too high results in sound dropouts and lags.\n"
+		"          You can also let DOSBox guess the correct value by setting it to max.\n"
+		"          The default setting (auto) switches to max if appropriate.\n"
 		"cycleup   -- Amount of cycles to increase/decrease with keycombo.\n"
 		"cycledown    Setting it lower than 100 will be a percentage.\n"
 	);
@@ -391,18 +423,27 @@ void DOSBOX_Init(void) {
 		"disney -- Enable Disney Sound Source emulation.\n"
 	);
 
-	secprop=control->AddSection_prop("bios",&BIOS_Init,false);//done
-	MSG_Add("BIOS_CONFIGFILE_HELP",
-	        "joysticktype -- Type of joystick to emulate: none, 2axis, 4axis,\n"
-	        "                fcs (Thrustmaster) ,ch (CH Flightstick).\n"
+	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
+	MSG_Add("JOYSTICK_CONFIGFILE_HELP",
+	        "joysticktype -- Type of joystick to emulate: auto (default), none,\n"
+	        "                2axis (supports two joysticks), 4axis,\n"
+	        "                fcs (Thrustmaster), ch (CH Flightstick).\n"
 	        "                none disables joystick emulation.\n"
-	        "                2axis is the default and supports two joysticks.\n"
+	        "                auto chooses emulation depending on real joystick(s).\n"
+	        "timed -- enable timed intervals for axis. (false is old style behaviour).\n"
+	        "autofire -- continuously fires as long as you keep the button pressed.\n"
+	        "swap34 -- swap the 3rd and the 4th axis. can be useful for certain joysticks.\n"
+	        "buttonwrap -- enable button wrapping at the number of emulated buttons.\n"
 	);
 
 	secprop->AddInitFunction(&INT10_Init);
 	secprop->AddInitFunction(&MOUSE_Init); //Must be after int10 as it uses CurMode
 	secprop->AddInitFunction(&JOYSTICK_Init);
-	secprop->Add_string("joysticktype","2axis");
+	secprop->Add_string("joysticktype","auto");
+	secprop->Add_bool("timed",true);
+	secprop->Add_bool("autofire",false);
+	secprop->Add_bool("swap34",false);
+	secprop->Add_bool("buttonwrap",true);
 
 	// had to rename these to serial due to conflicts in config
 	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
@@ -412,12 +453,13 @@ void DOSBOX_Init(void) {
 	secprop->Add_string("serial4","disabled");
 	MSG_Add("SERIAL_CONFIGFILE_HELP",
 	        "serial1-4 -- set type of device connected to com port.\n"
-	        "             Can be disabled, dummy, modem, directserial.\n"
+	        "             Can be disabled, dummy, modem, nullmodem, directserial.\n"
 	        "             Additional parameters must be in the same line in the form of\n"
-	        "             parameter:value. Parameters for all types are irq, startbps, bytesize,\n"
-	        "             stopbits, parity (all optional).\n"
-	        "             for directserial: realport (required).\n"
+	        "             parameter:value. Parameter for all types is irq.\n"
+	        "             for directserial: realport (required), rxdelay (optional).\n"
 	        "             for modem: listenport (optional).\n"
+	        "             for nullmodem: server, rxdelay, txdelay, telnet, usedtr,\n"
+	        "                            transparent, port, inhsocket (all optional).\n"
 	        "             Example: serial1=modem listenport:5000\n"
 	);
 
@@ -428,14 +470,19 @@ void DOSBOX_Init(void) {
 	secprop->Add_bool("xms",true);
 	secprop->AddInitFunction(&EMS_Init,true);//done
 	secprop->Add_bool("ems",true);
-	secprop->Add_string("umb","true");
+	secprop->Add_bool("umb",true);
+	secprop->AddInitFunction(&DOS_KeyboardLayout_Init,true);
+	secprop->Add_string("keyboardlayout", "none");
 	MSG_Add("DOS_CONFIGFILE_HELP",
 		"xms -- Enable XMS support.\n"
 		"ems -- Enable EMS support.\n"
-		"umb -- Enable UMB support (false,true,max).\n"
+		"umb -- Enable UMB support.\n"
+		"keyboardlayout -- Language code of the keyboard layout (or none).\n"
 	);
 	// Mscdex
 	secprop->AddInitFunction(&MSCDEX_Init);
+	secprop->AddInitFunction(&DRIVES_Init);
+	secprop->AddInitFunction(&CDROM_Image_Init);
 #if C_IPX
 	secprop=control->AddSection_prop("ipx",&IPX_Init,true);
 	secprop->Add_bool("ipx", false);

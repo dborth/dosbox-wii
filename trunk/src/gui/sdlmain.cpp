@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.113 2006/03/29 12:26:07 qbix79 Exp $ */
+/* $Id: sdlmain.cpp,v 1.127 2007/01/24 16:29:09 harekiet Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -131,6 +131,7 @@ enum SCREEN_TYPES	{
 };
 
 enum PRIORITY_LEVELS {
+	PRIORITY_LEVEL_PAUSE,
 	PRIORITY_LEVEL_LOWEST,
 	PRIORITY_LEVEL_LOWER,
 	PRIORITY_LEVEL_NORMAL,
@@ -202,25 +203,33 @@ struct SDL_Block {
 		Bitu sensitivity;
 	} mouse;
 	SDL_Rect updateRects[1024];
+	Bitu num_joysticks;
+#if defined (WIN32)
+	bool using_windib;
+#endif
 };
 
 static SDL_Block sdl;
 
-extern char * RunningProgram;
-extern bool CPU_CycleAuto;
+extern const char* RunningProgram;
+extern bool CPU_CycleAutoAdjust;
 //Globals for keyboard initialisation
 bool startup_state_numlock=false;
 bool startup_state_capslock=false;
-void GFX_SetTitle(Bits cycles,Bits frameskip,bool paused){
+void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	char title[200]={0};
-	static Bits internal_cycles=0;
+	static Bit32s internal_cycles=0;
 	static Bits internal_frameskip=0;
 	if(cycles != -1) internal_cycles = cycles;
 	if(frameskip != -1) internal_frameskip = frameskip;
-	if(CPU_CycleAuto)
-		sprintf(title,"DOSBox %s, Cpu Cycles:     auto, Frameskip %2d, Program: %8s",VERSION,internal_frameskip,RunningProgram);
-	else
+	if(CPU_CycleAutoAdjust) {
+		if (internal_cycles>=100)
+			sprintf(title,"DOSBox %s, Cpu Cycles:      max, Frameskip %2d, Program: %8s",VERSION,internal_frameskip,RunningProgram);
+		else
+			sprintf(title,"DOSBox %s, Cpu Cycles:   [%3d%%], Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+	} else {
 		sprintf(title,"DOSBox %s, Cpu Cycles: %8d, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+	}
 
 	if(paused) strcat(title," PAUSED");
 	SDL_WM_SetCaption(title,VERSION);
@@ -240,6 +249,7 @@ static void PauseDOSBox(bool pressed) {
 	while (paused) {
 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
 		switch (event.type) {
+		case SDL_QUIT: throw(0); break;
 		case SDL_KEYDOWN:   // Must use Pause/Break Key to resume.
 		case SDL_KEYUP:
 			if(event.key.keysym.sym==SDLK_PAUSE){
@@ -250,7 +260,12 @@ static void PauseDOSBox(bool pressed) {
 		}
 	}
 }
- 
+
+#if defined (WIN32)
+bool GFX_SDLUsingWinDIB(void) {
+	return sdl.using_windib;
+}
+#endif
 
 /* Reset the screen with current values in the sdl structure */
 Bitu GFX_GetBestMode(Bitu flags) {
@@ -313,7 +328,8 @@ check_gotbpp:
 
 void GFX_ResetScreen(void) {
 	GFX_Stop();
-	if (sdl.draw.callback) (sdl.draw.callback)( GFX_CallBackReset );
+	if (sdl.draw.callback)
+		(sdl.draw.callback)( GFX_CallBackReset );
 	GFX_Start();
 }
 
@@ -380,7 +396,7 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 	sdl.draw.scaley=scaley;
 
 	Bitu bpp;
-	Bitu retFlags;
+	Bitu retFlags = 0;
 	
 	if (sdl.blit.surface) {
 		SDL_FreeSurface(sdl.blit.surface);
@@ -421,6 +437,7 @@ dosurface:
 				SDL_QuitSubSystem(SDL_INIT_VIDEO);
 				putenv("SDL_VIDEODRIVER=windib");
 				SDL_InitSubSystem(SDL_INIT_VIDEO);
+				sdl.using_windib=true;
 				sdl.surface = SDL_SetVideoMode(width,height,bpp,SDL_HWSURFACE);
 			}
 #endif
@@ -523,6 +540,9 @@ dosurface:
 			goto dosurface;
 		}
 		SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
+#if defined (WIN32) && SDL_VERSION_ATLEAST(1, 2, 11)
+		SDL_GL_SetAttribute( SDL_GL_SWAP_CONTROL, 0 );
+#endif
 		GFX_SetupSurfaceScaled(SDL_OPENGL,0);
 		if (!sdl.surface || sdl.surface->format->BitsPerPixel<15) {
 			LOG_MSG("SDL:OPENGL:Can't open drawing surface, are you running in 16bpp(or higher) mode?");
@@ -642,7 +662,8 @@ static void SwitchFullScreen(bool pressed) {
 
 
 bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
-	if (!sdl.active || sdl.updating) return false;
+	if (!sdl.active || sdl.updating) 
+		return false;
 	switch (sdl.desktop.type) {
 	case SCREEN_SURFACE:
 		if (sdl.blit.surface) {
@@ -691,7 +712,8 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 
 void GFX_EndUpdate( const Bit16u *changedLines ) {
 	int ret;
-	if (!sdl.updating) return;
+	if (!sdl.updating) 
+		return;
 	sdl.updating=false;
 	switch (sdl.desktop.type) {
 	case SCREEN_SURFACE:
@@ -726,15 +748,11 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 			}
 			if (rectCount)
 				SDL_UpdateRects( sdl.surface, rectCount, sdl.updateRects );
-		} else {
-			SDL_Flip(sdl.surface);
 		}
 		break;
 #if (HAVE_DDRAW_H) && defined(WIN32)
 	case SCREEN_SURFACE_DDRAW:
-		if (SDL_MUSTLOCK(sdl.blit.surface)) {
-			SDL_UnlockSurface(sdl.blit.surface);
-		}
+		SDL_UnlockSurface(sdl.blit.surface);
 		ret=IDirectDrawSurface3_Blt(
 			sdl.surface->hwdata->dd_writebuf,&sdl.blit.rect,
 			sdl.blit.surface->hwdata->dd_surface,0,
@@ -866,6 +884,7 @@ static void SetPriority(PRIORITY_LEVELS level) {
 #endif
 	switch (level) {
 #ifdef WIN32
+	case PRIORITY_LEVEL_PAUSE:	// if DOSBox is paused, assume idle priority
 	case PRIORITY_LEVEL_LOWEST:
 		SetPriorityClass(GetCurrentProcess(),IDLE_PRIORITY_CLASS);
 		break;
@@ -883,6 +902,7 @@ static void SetPriority(PRIORITY_LEVELS level) {
 		break;
 #elif C_SET_PRIORITY
 /* Linux use group as dosbox has mulitple threads under linux */
+	case PRIORITY_LEVEL_PAUSE:	// if DOSBox is paused, assume idle priority
 	case PRIORITY_LEVEL_LOWEST:
 		setpriority (PRIO_PGRP, 0,PRIO_MAX);
 		break;
@@ -953,6 +973,11 @@ static void GUI_StartUp(Section * sec) {
 				sdl.priority.nofocus=PRIORITY_LEVEL_HIGHER;
 			} else if (!strncasecmp(priority,"highest",7)) {
 				sdl.priority.nofocus=PRIORITY_LEVEL_HIGHEST;
+			} else if (!strncasecmp(priority,"pause",5)) {
+				/* we only check for pause here, because it makes no sense
+				 * for DOSBox to be paused while it has focus
+				 */
+				sdl.priority.nofocus=PRIORITY_LEVEL_PAUSE;
 			} else {
 				sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;
 			}
@@ -1156,13 +1181,22 @@ static Bit8u raltstate = SDL_KEYUP;
 
 void GFX_Events() {
 	SDL_Event event;
+#if defined (REDUCE_JOYSTICK_POLLING)
+	static int poll_delay=0;
+	int time=SDL_GetTicks();
+	if (time-poll_delay>20) {
+		poll_delay=time;
+		if (sdl.num_joysticks>0) SDL_JoystickUpdate();
+		MAPPER_UpdateJoysticks();
+	}
+#endif
 	while (SDL_PollEvent(&event)) {
-	    switch (event.type) {
+		switch (event.type) {
 		case SDL_ACTIVEEVENT:
 			if (event.active.state & SDL_APPINPUTFOCUS) {
 				if (event.active.gain) {
 					if (sdl.desktop.fullscreen && !sdl.mouse.locked)
-						GFX_CaptureMouse();	
+						GFX_CaptureMouse();
 					SetPriority(sdl.priority.focus);
 				} else {
 					if (sdl.mouse.locked) {
@@ -1177,6 +1211,53 @@ void GFX_Events() {
 					}
 					SetPriority(sdl.priority.nofocus);
 					MAPPER_LosingFocus();
+				}
+			}
+
+			/* Non-focus priority is set to pause; check to see if we've lost window or input focus
+			 * i.e. has the window been minimised or made inactive?
+			 */
+			if (sdl.priority.nofocus == PRIORITY_LEVEL_PAUSE) {
+				if ((event.active.state & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) && (!event.active.gain)) {
+					/* Window has lost focus, pause the emulator.
+					 * This is similar to what PauseDOSBox() does, but the exit criteria is different.
+					 * Instead of waiting for the user to hit Alt-Break, we wait for the window to
+					 * regain window or input focus.
+					 */
+					bool paused = true;
+					SDL_Event ev;
+
+					GFX_SetTitle(-1,-1,true);
+					KEYBOARD_ClrBuffer();
+					SDL_Delay(500);
+					while (SDL_PollEvent(&ev)) {
+						// flush event queue.
+					}
+
+					while (paused) {
+						// WaitEvent waits for an event rather than polling, so CPU usage drops to zero
+						SDL_WaitEvent(&ev);
+
+						switch (ev.type) {
+						case SDL_QUIT: throw(0); break; // a bit redundant at linux at least as the active events gets before the quit event. 
+						case SDL_ACTIVEEVENT:     // wait until we get window focus back
+							if (ev.active.state & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) {
+								// We've got focus back, so unpause and break out of the loop
+								if (ev.active.gain) {
+									paused = false;
+									GFX_SetTitle(-1,-1,false);
+								}
+
+								/* Now poke a "release ALT" command into the keyboard buffer
+								 * we have to do this, otherwise ALT will 'stick' and cause
+								 * problems with the app running in the DOSBox.
+								 */
+								KEYBOARD_AddKey(KBD_leftalt, false);
+								KEYBOARD_AddKey(KBD_rightalt, false);
+							}
+							break;
+						}
+					}
 				}
 			}
 			break;
@@ -1209,14 +1290,14 @@ void GFX_Events() {
 			void MAPPER_CheckEvent(SDL_Event * event);
 			MAPPER_CheckEvent(&event);
 		}
-    }
+	}
 }
 
 /* static variable to show wether there is not a valid stdout.
  * Fixes some bugs when -noconsole is used in a read only directory */
 static bool no_stdout = false;
 
-void GFX_ShowMsg(char * format,...) {
+void GFX_ShowMsg(char const* format,...) {
 	char buf[512];
 	va_list msg;
 	va_start(msg,format);
@@ -1275,10 +1356,40 @@ int main(int argc, char* argv[]) {
 
 	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
 		|SDL_INIT_NOPARACHUTE
-#ifndef DISABLE_JOYSTICK
-		|SDL_INIT_JOYSTICK
-#endif
 		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
+
+#ifndef DISABLE_JOYSTICK
+	//Initialise Joystick seperately. This way we can warn when it fails instead
+	//of exiting the application
+	if( SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0 ) LOG_MSG("Failed to init joystick support");
+#endif
+
+#if defined (WIN32)
+#if SDL_VERSION_ATLEAST(1, 2, 10)
+		sdl.using_windib=true;
+#else
+		sdl.using_windib=false;
+#endif
+		char sdl_drv_name[128];
+		if (getenv("SDL_VIDEODRIVER")==NULL) {
+			if (SDL_VideoDriverName(sdl_drv_name,128)!=NULL) {
+				if (strcmp(sdl_drv_name,"directx")!=0) {
+					SDL_QuitSubSystem(SDL_INIT_VIDEO);
+					putenv("SDL_VIDEODRIVER=directx");
+					SDL_InitSubSystem(SDL_INIT_VIDEO);
+				}
+				sdl.using_windib=false;
+			}
+		} else {
+			char* sdl_videodrv = getenv("SDL_VIDEODRIVER");
+			if (strcmp(sdl_videodrv,"directx")==0) sdl.using_windib = false;
+			else if (strcmp(sdl_videodrv,"windib")==0) sdl.using_windib = true;
+		}
+		if (SDL_VideoDriverName(sdl_drv_name,128)!=NULL) {
+			if (strcmp(sdl_drv_name,"windib")==0) LOG_MSG("SDL_Init: Starting up with SDL windib video driver.\n          Try to update your video card and directx drivers!");
+		}
+#endif
+		sdl.num_joysticks=SDL_NumJoysticks();
 		Section_prop * sdl_sec=control->AddSection_prop("sdl",&GUI_StartUp);
 		sdl_sec->AddInitFunction(&MAPPER_StartUp);
 		sdl_sec->Add_bool("fullscreen",false);
@@ -1309,7 +1420,7 @@ int main(int argc, char* argv[]) {
 			"autolock -- Mouse will automatically lock, if you click on the screen.\n"
 			"sensitiviy -- Mouse sensitivity.\n"
 			"waitonerror -- Wait before closing the console if dosbox has an error.\n"
-			"priority -- Priority levels for dosbox: lowest,lower,normal,higher,highest.\n"
+			"priority -- Priority levels for dosbox: lowest,lower,normal,higher,highest,pause (when not focussed).\n"
 			"            Second entry behind the comma is for when dosbox is not focused/minimized.\n"
 			"mapperfile -- File used to load/save the key/event mappings from.\n"
 			"usescancodes -- Avoid usage of symkeys, might not work on all operating systems.\n"
@@ -1317,24 +1428,22 @@ int main(int argc, char* argv[]) {
 		/* Init all the dosbox subsystems */
 		DOSBOX_Init();
 		std::string config_file;
-		if (control->cmdline->FindString("-conf",config_file,true)) {
-			
-		} else {
-			config_file="dosbox.conf";
+		bool parsed_anyconfigfile = false;
+		// First parse the configfile in the $HOME directory
+		if ((getenv("HOME") != NULL)) {
+			config_file = (std::string)getenv("HOME") + 
+				      (std::string)DEFAULT_CONFIG_FILE;
+			if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
 		}
-		/* Parse the config file
-		 * try open config file in $HOME if can't open dosbox.conf or specified file
-		 */
-		if (control->ParseConfigFile(config_file.c_str()) == false)  {
-			if ((getenv("HOME") != NULL)) {
-				config_file = (std::string)getenv("HOME") + 
-					      (std::string)DEFAULT_CONFIG_FILE;
-				if (control->ParseConfigFile(config_file.c_str()) == false) {
-					LOG_MSG("CONFIG: Using default settings. Create a configfile to change them");
-				}
-			   
-			}
-		}
+		// Add extra settings from dosbox.conf in the local directory if there is no configfile specified at the commandline
+		if (!control->cmdline->FindString("-conf",config_file,true)) config_file="dosbox.conf";
+		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
+		// Add extra settings from additional configfiles at the commandline
+		while(control->cmdline->FindString("-conf",config_file,true))
+			if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
+		// Give a message if no configfile whatsoever was found.
+		if(!parsed_anyconfigfile) LOG_MSG("CONFIG: Using default settings. Create a configfile to change them");
+	
 #if (ENVIRON_LINKED)
 		control->ParseEnv(environ);
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_misc.cpp,v 1.43 2006/02/28 19:41:27 qbix79 Exp $ */
+/* $Id: shell_misc.cpp,v 1.49 2007/02/03 14:04:23 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -39,16 +39,12 @@ static void outc(Bit8u c) {
 	DOS_WriteFile(STDOUT,&c,&n);
 }
 
-static void outs(char * str) {
-	Bit16u n=strlen(str);
-	DOS_WriteFile(STDOUT,(Bit8u *)str,&n);
-}
-
 void DOS_Shell::InputCommand(char * line) {
 	Bitu size=CMD_MAXLINE-2; //lastcharacter+0
 	Bit8u c;Bit16u n=1;
 	Bitu str_len=0;Bitu str_index=0;
-	Bit16u len;
+	Bit16u len=0;
+	bool current_hist=false; // current command stored in history?
 
 	line[0] = '\0';
 
@@ -116,6 +112,12 @@ void DOS_Shell::InputCommand(char * line) {
 				case 0x48:	/* UP */
 					if (l_history.empty() || it_history == l_history.end()) break;
 
+					// store current command in history if we are at beginning
+					if (it_history == l_history.begin() && !current_hist) {
+						current_hist=true;
+						l_history.push_front(line);
+					}
+
 					for (;str_index>0; str_index--) {
 						// removes all characters
 						outc(8); outc(' '); outc(8);
@@ -136,6 +138,12 @@ void DOS_Shell::InputCommand(char * line) {
 					if (it_history == l_history.begin()) {
 						// no previous commands in history
 						it_history ++;
+
+						// remove current command from history
+						if (current_hist) {
+							current_hist=false;
+							l_history.pop_front();
+						}
 						break;
 					} else it_history --;
 
@@ -207,15 +215,17 @@ void DOS_Shell::InputCommand(char * line) {
 					if (it_completion == l_completion.end()) it_completion = l_completion.begin();
 				} else {
 					// build new completion list
+					// Lines starting with CD will only get directories in the list
+					bool dir_only = (strncasecmp(line,"CD ",3)==0);
 
 					// get completion mask
-					char *completion_start = strrchr(line, ' ');
+					char *p_completion_start = strrchr(line, ' ');
 
-					if (completion_start) {
-						completion_start ++;
-						completion_index = str_index - strlen(completion_start);
+					if (p_completion_start) {
+						p_completion_start ++;
+						completion_index = str_index - strlen(p_completion_start);
 					} else {
-						completion_start = line;
+						p_completion_start = line;
 						completion_index = 0;
 					}
 
@@ -225,8 +235,8 @@ void DOS_Shell::InputCommand(char * line) {
 
 					// build the completion list
 					char mask[DOS_PATHLENGTH];
-					if (completion_start) {
-						strcpy(mask, completion_start);
+					if (p_completion_start) {
+						strcpy(mask, p_completion_start);
 						char* dot_pos=strrchr(mask,'.');
 						char* bs_pos=strrchr(mask,'\\');
 						char* fs_pos=strrchr(mask,'/');
@@ -249,23 +259,26 @@ void DOS_Shell::InputCommand(char * line) {
 					}
 
 					DOS_DTA dta(dos.dta());
-					char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
+					char name[DOS_NAMELENGTH_ASCII];Bit32u sz;Bit16u date;Bit16u time;Bit8u att;
 
 					std::list<std::string> executable;
 					while (res) {
-						dta.GetResult(name,size,date,time,attr);
+						dta.GetResult(name,sz,date,time,att);
 						// add result to completion list
 
 						char *ext;	// file extension
 						if (strcmp(name, ".") && strcmp(name, "..")) {
-							ext = strrchr(name, '.');
-							if (ext && (strcmp(ext, ".BAT") == 0 || strcmp(ext, ".COM") == 0 || strcmp(ext, ".EXE") == 0))
-								// we add executables to the a seperate list and place that list infront of the normal files
-								executable.push_front(name);
-							else
-								l_completion.push_back(name);
+							if (dir_only) { //Handle the dir only case different (line starts with cd)
+								if(att & DOS_ATTR_DIRECTORY) l_completion.push_back(name);
+							} else {
+								ext = strrchr(name, '.');
+								if (ext && (strcmp(ext, ".BAT") == 0 || strcmp(ext, ".COM") == 0 || strcmp(ext, ".EXE") == 0))
+									// we add executables to the a seperate list and place that list infront of the normal files
+									executable.push_front(name);
+								else
+									l_completion.push_back(name);
+							}
 						}
-
 						res=DOS_FindNext();
 					}
 					/* Add excutable list to front of completion list. */
@@ -329,6 +342,12 @@ void DOS_Shell::InputCommand(char * line) {
 	if (!str_len) return;
 	str_len++;
 
+	// remove current command from history if it's there
+	if (current_hist) {
+		current_hist=false;
+		l_history.pop_front();
+	}
+
 	// add command line to history
 	l_history.push_front(line); it_history = l_history.begin();
 	if (l_completion.size()) l_completion.clear();
@@ -337,7 +356,8 @@ void DOS_Shell::InputCommand(char * line) {
 bool DOS_Shell::Execute(char * name,char * args) {
 /* return true  => don't check for hardware changes in do_command 
  * return false =>       check for hardware changes in do_command */
-	char * fullname;
+	char fullname[DOS_PATHLENGTH+4]; //stores results from Which
+	char* p_fullname;
 	char line[CMD_MAXLINE];
 	if(strlen(args)!= 0){
 		if(*args != ' '){ //put a space in front
@@ -354,7 +374,7 @@ bool DOS_Shell::Execute(char * name,char * args) {
 	};
 
 	/* check for a drive change */
-	if ((strcmp(name + 1, ":") == 0) && isalpha(*name))
+	if (((strcmp(name + 1, ":") == 0) || (strcmp(name + 1, ":\\") == 0)) && isalpha(*name))
 	{
 		if (!DOS_SetDrive(toupper(name[0])-'A')) {
 			WriteOut(MSG_Get("SHELL_EXECUTE_DRIVE_NOT_FOUND"),toupper(name[0]));
@@ -362,15 +382,17 @@ bool DOS_Shell::Execute(char * name,char * args) {
 		return true;
 	}
 	/* Check for a full name */
-	fullname=Which(name);
-	if (!fullname) return false;
-	
-	char* extension =strrchr(fullname,'.');
+	p_fullname = Which(name);
+	if (!p_fullname) return false;
+	strcpy(fullname,p_fullname);
+	const char* extension = strrchr(fullname,'.');
 	
 	/*always disallow files without extension from being executed. */
 	/*only internal commands can be run this way and they never get in this handler */
 	if(extension == 0)
 	{
+		//Check if the result will fit in the parameters. Else abort
+		if(strlen(fullname) >( DOS_PATHLENGTH - 1) ) return false;
 		char temp_name[DOS_PATHLENGTH+4],* temp_fullname;
 		//try to add .com, .exe and .bat extensions to filename
 		
@@ -426,17 +448,19 @@ bool DOS_Shell::Execute(char * name,char * args) {
 		RealPt file_name=RealMakeSeg(ss,reg_sp+0x20);
 		MEM_BlockWrite(Real2Phys(file_name),fullname,strlen(fullname)+1);
 		/* Fill the command line */
-		CommandTail cmd;
+		CommandTail cmdtail;
+		cmdtail.count = 0;
+		memset(&cmdtail.buffer,0,126); //Else some part of the string is unitialized (valgrind)
 		if (strlen(line)>126) line[126]=0;
-		cmd.count=strlen(line);
-		memcpy(cmd.buffer,line,strlen(line));
-		cmd.buffer[strlen(line)]=0xd;
+		cmdtail.count=strlen(line);
+		memcpy(cmdtail.buffer,line,strlen(line));
+		cmdtail.buffer[strlen(line)]=0xd;
 		/* Copy command line in stack block too */
-		MEM_BlockWrite(SegPhys(ss)+reg_sp+0x100,&cmd,128);
+		MEM_BlockWrite(SegPhys(ss)+reg_sp+0x100,&cmdtail,128);
 		/* Parse FCB (first two parameters) and put them into the current DOS_PSP */
 		Bit8u add;
-		FCB_Parsename(dos.psp(),0x5C,0x00,cmd.buffer,&add);
-		FCB_Parsename(dos.psp(),0x6C,0x00,&cmd.buffer[add],&add);
+		FCB_Parsename(dos.psp(),0x5C,0x00,cmdtail.buffer,&add);
+		FCB_Parsename(dos.psp(),0x6C,0x00,&cmdtail.buffer[add],&add);
 		block.exec.fcb1=RealMake(dos.psp(),0x5C);
 		block.exec.fcb2=RealMake(dos.psp(),0x6C);
 		/* Set the command line in the block and save it */
@@ -473,9 +497,9 @@ bool DOS_Shell::Execute(char * name,char * args) {
 
 
 
-static char * bat_ext=".BAT";
-static char * com_ext=".COM";
-static char * exe_ext=".EXE";
+static const char * bat_ext=".BAT";
+static const char * com_ext=".COM";
+static const char * exe_ext=".EXE";
 static char which_ret[DOS_PATHLENGTH+4];
 
 char * DOS_Shell::Which(char * name) {

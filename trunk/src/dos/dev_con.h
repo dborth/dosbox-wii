@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dev_con.h,v 1.24 2006/02/26 16:05:13 qbix79 Exp $ */
+/* $Id: dev_con.h,v 1.28 2007/01/11 18:08:54 c2woody Exp $ */
 
 #include "dos_inc.h"
 #include "../ints/int10.h"
@@ -33,6 +33,8 @@ public:
 	bool Close();
 	void ClearAnsi(void);
 	Bit16u GetInformation(void);
+	bool ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
+	bool WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
 private:
 	Bit8u readcache;
 	Bit8u lastwrite;
@@ -48,7 +50,6 @@ private:
 		Bit8s savecol;
 		Bit8s saverow;
 	} ansi;
-    
 };
 
 bool device_CON::Read(Bit8u * data,Bit16u * size) {
@@ -155,6 +156,7 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 		continue;
 	}
 	/*ansi.esc and ansi.sci are true */
+	Bit8u page = real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAGE);
 	switch(data[count]){
 		case '0':
 		case '1':
@@ -265,47 +267,47 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 		case 'H':/* Cursor Pos*/
 			if(ansi.data[0]==0) ansi.data[0]=1;
 			if(ansi.data[1]==0) ansi.data[1]=1;
-			INT10_SetCursorPos(--(ansi.data[0]),--(ansi.data[1]),0); /*ansi=1 based, int10 is 0 based */
+			INT10_SetCursorPos(--(ansi.data[0]),--(ansi.data[1]),page); /*ansi=1 based, int10 is 0 based */
 			ClearAnsi();
 			break;
 
 			/* cursor up down and forward and backward only change the row or the col not both */
 		case 'A': /* cursor up*/
-			col=CURSOR_POS_COL(0) ;
-			row=CURSOR_POS_ROW(0) ;
+			col=CURSOR_POS_COL(page) ;
+			row=CURSOR_POS_ROW(page) ;
 			tempdata = (ansi.data[0]? ansi.data[0] : 1);
 			if(tempdata > row) { row=0; } 
 			else { row-=tempdata;}
-			INT10_SetCursorPos(row,col,0);
+			INT10_SetCursorPos(row,col,page);
 			ClearAnsi();
 			break;
 		case 'B': /*cursor Down */
-			col=CURSOR_POS_COL(0) ;
-			row=CURSOR_POS_ROW(0) ;
+			col=CURSOR_POS_COL(page) ;
+			row=CURSOR_POS_ROW(page) ;
 			tempdata = (ansi.data[0]? ansi.data[0] : 1);
 			if(tempdata + static_cast<Bitu>(row) >= ansi.nrows)
 				{ row = ansi.nrows - 1;}
 			else	{ row += tempdata; }
-			INT10_SetCursorPos(row,col,0);
+			INT10_SetCursorPos(row,col,page);
 			ClearAnsi();
 			break;
 		case 'C': /*cursor forward */
-			col=CURSOR_POS_COL(0);
-			row=CURSOR_POS_ROW(0);
+			col=CURSOR_POS_COL(page);
+			row=CURSOR_POS_ROW(page);
 			tempdata=(ansi.data[0]? ansi.data[0] : 1);
 			if(tempdata + static_cast<Bitu>(col) >= ansi.ncols) 
 				{ col = ansi.ncols - 1;} 
 			else	{ col += tempdata;}
-			INT10_SetCursorPos(row,col,0);
+			INT10_SetCursorPos(row,col,page);
 			ClearAnsi();
 			break;
 		case 'D': /*Cursor Backward  */
-			col=CURSOR_POS_COL(0);
-			row=CURSOR_POS_ROW(0);
+			col=CURSOR_POS_COL(page);
+			row=CURSOR_POS_ROW(page);
 			tempdata=(ansi.data[0]? ansi.data[0] : 1);
 			if(tempdata > col) {col = 0;}
 			else { col -= tempdata;}
-			INT10_SetCursorPos(row,col,0);
+			INT10_SetCursorPos(row,col,page);
 			ClearAnsi();
 			break;
 		case 'J': /*erase screen and move cursor home*/
@@ -313,9 +315,9 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 			if(ansi.data[0]!=2) {/* every version behaves like type 2 */
 				LOG(LOG_IOCTL,LOG_NORMAL)("ANSI: esc[%dJ called : not supported handling as 2",ansi.data[0]);
 			}
-			INT10_ScrollWindow(0,0,999,999,0,ansi.attr,0xFF);
+			INT10_ScrollWindow(0,0,255,255,0,ansi.attr,page);
 			ClearAnsi();
-			INT10_SetCursorPos(0,0,0);
+			INT10_SetCursorPos(0,0,page);
 			break;
 		case 'h': /* SET   MODE (if code =7 enable linewrap) */
 		case 'I': /* RESET MODE */
@@ -323,20 +325,20 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 			ClearAnsi();
 			break;
 		case 'u': /* Restore Cursor Pos */
-			INT10_SetCursorPos(ansi.saverow,ansi.savecol,0);
+			INT10_SetCursorPos(ansi.saverow,ansi.savecol,page);
 			ClearAnsi();
 			break;
 		case 's': /* SAVE CURSOR POS */
-			ansi.savecol=CURSOR_POS_COL(0);
-			ansi.saverow=CURSOR_POS_ROW(0);
+			ansi.savecol=CURSOR_POS_COL(page);
+			ansi.saverow=CURSOR_POS_ROW(page);
 			ClearAnsi();
 			break;
 		case 'K':/* erase till end of line (don't touch cursor) */
-			col = CURSOR_POS_COL(0);
-			row = CURSOR_POS_ROW(0);
-			INT10_WriteChar(' ',ansi.attr,0,ansi.ncols-col,true); //Use this one to prevent scrolling when end of screen is reached
+			col = CURSOR_POS_COL(page);
+			row = CURSOR_POS_ROW(page);
+			INT10_WriteChar(' ',ansi.attr,page,ansi.ncols-col,true); //Use this one to prevent scrolling when end of screen is reached
 			//for(i = col;i<(Bitu) ansi.ncols; i++) INT10_TeletypeOutputAttr(' ',ansi.attr,true);
-			INT10_SetCursorPos(row,col,0);
+			INT10_SetCursorPos(row,col,page);
 			ClearAnsi();
 			break;
 		case 'l':/* (if code =7) disable linewrap */
@@ -367,8 +369,16 @@ Bit16u device_CON::GetInformation(void) {
 	Bit16u head=mem_readw(BIOS_KEYBOARD_BUFFER_HEAD);
 	Bit16u tail=mem_readw(BIOS_KEYBOARD_BUFFER_TAIL);
 
-	if ((head==tail) && !readcache) return 0x80D3; /* No Key Available */
-	return 0x8093;		/* Key Available */
+	if ((head==tail) && !readcache) return 0x80D3;	/* No Key Available */
+	if (real_readw(0x40,head)) return 0x8093;		/* Key Available */
+
+	/* remove the zero from keyboard buffer */
+	Bit16u start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
+	Bit16u end	=mem_readw(BIOS_KEYBOARD_BUFFER_END);
+	head+=2;
+	if (head>=end) head=start;
+	mem_writew(BIOS_KEYBOARD_BUFFER_HEAD,head);
+	return 0x80D3; /* No Key Available */
 };
 
 device_CON::device_CON() {

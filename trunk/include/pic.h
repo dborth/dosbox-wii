@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,9 +21,9 @@
 
 
 /* CPU Cycle Timing */
-extern Bits CPU_Cycles;
-extern Bits CPU_CycleLeft;
-extern Bits CPU_CycleMax;
+extern Bit32s CPU_Cycles;
+extern Bit32s CPU_CycleLeft;
+extern Bit32s CPU_CycleMax;
 
 typedef void (PIC_EOIHandler) (void);
 typedef void (* PIC_EventHandler)(Bitu val);
@@ -38,6 +38,10 @@ extern Bitu PIC_Ticks;
 
 INLINE float PIC_TickIndex(void) {
 	return (CPU_CycleMax-CPU_CycleLeft-CPU_Cycles)/(float)CPU_CycleMax;
+}
+
+INLINE Bits PIC_TickIndexND(void) {
+	return CPU_CycleMax-CPU_CycleLeft-CPU_Cycles;
 }
 
 INLINE Bits PIC_MakeCycles(double amount) {
@@ -57,6 +61,7 @@ bool PIC_RunQueue(void);
 //Delay in milliseconds
 void PIC_AddEvent(PIC_EventHandler handler,float delay,Bitu val=0);
 void PIC_RemoveEvents(PIC_EventHandler handler);
+void PIC_RemoveSpecificEvents(PIC_EventHandler handler, Bitu val);
 
 void PIC_SetIRQMask(Bitu irq, bool masked);
 #endif

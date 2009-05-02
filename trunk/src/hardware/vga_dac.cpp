@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -50,10 +50,22 @@ Note:  Each read or write of this register will cycle through first the
 
 enum {DAC_READ,DAC_WRITE};
 
+static INLINE void VGA_DAC_UpdateColor( Bitu index ) {
+	Bitu maskIndex = index & vga.dac.pel_mask;
+	RENDER_SetPal( index,
+		vga.dac.rgb[maskIndex].red << 2,
+		vga.dac.rgb[maskIndex].green << 2,
+		vga.dac.rgb[maskIndex].blue << 2
+	);
+}
 
 static void write_p3c6(Bitu port,Bitu val,Bitu iolen) {
-	if (val!=0xff) LOG(LOG_VGAGFX,LOG_NORMAL)("VGA:Pel Mask not 0xff");
-	vga.dac.pel_mask=val;
+	if ( vga.dac.pel_mask != val ) {
+		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:DCA:Pel Mask set to %X", val);
+		vga.dac.pel_mask = val;
+		for ( Bitu i = 0;i<256;i++) 
+			VGA_DAC_UpdateColor( i );
+	}
 }
 
 
@@ -100,17 +112,20 @@ static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
 		switch (vga.mode) {
 		case M_VGA:
 		case M_LIN8:
-		case M_LIN16:
-				RENDER_SetPal(vga.dac.write_index,
-					vga.dac.rgb[vga.dac.write_index].red << 2,
-					vga.dac.rgb[vga.dac.write_index].green << 2,
-					vga.dac.rgb[vga.dac.write_index].blue << 2
-				);
+			VGA_DAC_UpdateColor( vga.dac.write_index );
+			if ( GCC_UNLIKELY( vga.dac.pel_mask != 0xff)) {
+				Bitu index = vga.dac.write_index;
+				if ( (index & vga.dac.pel_mask) == index ) {
+					for ( Bitu i = index+1;i<256;i++) 
+						if ( (i & vga.dac.pel_mask) == index )
+							VGA_DAC_UpdateColor( i );
+				}
+			} 
 			break;
 		default:
 			/* Check for attributes and DAC entry link */
 			for (Bitu i=0;i<16;i++) {
-				if (vga.attr.palette[i]==vga.dac.write_index) {
+				if (vga.dac.combine[i]==vga.dac.write_index) {
 					RENDER_SetPal(i,
 					vga.dac.rgb[vga.dac.write_index].red << 2,
 					vga.dac.rgb[vga.dac.write_index].green << 2,
@@ -152,11 +167,10 @@ static Bitu read_p3c9(Bitu port,Bitu iolen) {
 
 void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	/* Check if this is a new color */
-	vga.attr.palette[attr]=pal;
+	vga.dac.combine[attr]=pal;
 	switch (vga.mode) {
 	case M_VGA:
 	case M_LIN8:
-	case M_LIN16:
 		break;
 	default:
 		RENDER_SetPal(attr,
@@ -168,17 +182,12 @@ void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 }
 
 void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue) {
+	//Should only be called in machine != vga
 	vga.dac.rgb[entry].red=red;
 	vga.dac.rgb[entry].green=green;
 	vga.dac.rgb[entry].blue=blue;
-	switch (vga.mode) {
-	case M_VGA:
-	case M_LIN8:
-	case M_LIN16:
-		return;
-	}
 	for (Bitu i=0;i<16;i++) 
-		if (vga.attr.palette[i]==entry)
+		if (vga.dac.combine[i]==entry)
 			RENDER_SetPal(i,red << 2,green << 2,blue << 2);
 }
 

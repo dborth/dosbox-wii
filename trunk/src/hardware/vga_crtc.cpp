@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,14 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#include <stdlib.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "vga.h"
 #include "debug.h"
 #include "cpu.h"
 #include "video.h"
+#include "pic.h"
 
 #define crtc(blah) vga.crtc.blah
 
@@ -215,6 +217,10 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 0x12:	/* Vertical Display End Register */
 		if (val!=crtc(vertical_display_end)) {
+			if (abs((Bits)val-(Bits)crtc(vertical_display_end))<3) {
+				PIC_RemoveEvents(VGA_SetupDrawing);
+				vga.draw.resizing=false;
+			}
 			crtc(vertical_display_end)=val;
 			VGA_StartResize();
 		}
@@ -236,6 +242,13 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 0x14:	/* Underline Location Register */
 		crtc(underline_location)=val;
+		//Byte,word,dword mode
+		if ( crtc(underline_location) & 0x20 )
+			vga.config.addr_shift = 2;
+		else if ( crtc( mode_control) & 0x40 )
+			vga.config.addr_shift = 0;
+		else
+			vga.config.addr_shift = 1;
 		/*
 			0-4	Position of underline within Character cell.
 			5	If set memory address is only changed every fourth character clock.
@@ -262,7 +275,24 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 0x17:	/* Mode Control Register */
 		crtc(mode_control)=val;
+		vga.tandy.line_mask = (~val) & 3;
+		//Byte,word,dword mode
+		if ( crtc(underline_location) & 0x20 )
+			vga.config.addr_shift = 2;
+		else if ( crtc( mode_control) & 0x40 )
+			vga.config.addr_shift = 0;
+		else
+			vga.config.addr_shift = 1;
+
+		if ( vga.tandy.line_mask ) {
+			vga.tandy.line_shift = 13;
+			vga.tandy.addr_mask = (1 << 13) - 1;
+		} else {
+			vga.tandy.addr_mask = ~0;
+			vga.tandy.line_shift = 0;
+		}
 		VGA_DetermineMode();
+		//Should we really need to do a determinemode here?
 		/*
 			0	If clear use CGA compatible memory addressing system
 				by substituting character row scan counter bit 0 for address bit 13,

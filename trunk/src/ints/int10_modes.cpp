@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -54,6 +54,8 @@ VideoModeBlock ModeList_VGA[]={
 
 { 0x054  ,M_TEXT   ,1056,688, 132,43, 8, 8,  1 ,0xB8000 ,0x4000, 192, 800, 132,688, 0   },
 { 0x055  ,M_TEXT   ,1056,400, 132,25, 8, 16, 1 ,0xB8000 ,0x2000, 192, 449, 132,400, 0   },
+
+{ 0x06A  ,M_LIN4   ,800 ,600 ,100,37 ,8 ,16 ,1 ,0xA0000 ,0x10000,128 ,663 ,100,600 ,0	},
 
 /* Follow vesa 1.2 for first 0x20 */
 { 0x100  ,M_LIN8   ,640 ,400 ,80 ,25 ,8 ,16 ,1 ,0xA0000 ,0x10000,100 ,449 ,80 ,400 ,0   },
@@ -236,7 +238,7 @@ static void FinishSetMode(bool clearmem) {
 		case M_CGA2:
 		case M_TANDY16:
 			for (i=0;i<16*1024;i++) {
-				real_writew(0xb800,i*2,0x0000);
+				real_writew( 0xb800,i*2,0x0000);
 			}
 			break;
 		case M_TEXT:
@@ -305,7 +307,12 @@ bool INT10_SetVideoMode_OTHER(Bitu mode,bool clearmem) {
 		}
 		break;
 	case MCH_HERC:
-		if (mode!=7) return false;
+		if (mode!=7) {
+			//Just the text memory, most games seem to use any random mode to clear the screen
+			for (i=0;i<16*1024;i++)
+				real_writew(0xb000,i*2,0x0120);
+			return false;
+		}
 		CurMode=&Hercules_Mode;
 		break;
 	}
@@ -371,8 +378,10 @@ bool INT10_SetVideoMode_OTHER(Bitu mode,bool clearmem) {
 	case MCH_HERC:
 		IO_WriteB(0x3bf,0x3);	//Enable changing all bits
 		IO_WriteB(0x3b8,0x8);	//TEXT mode and non-blinking characters
-		IO_WriteB(0x3bf,0x0);	//Disable changing all bits
-		VGA_DAC_CombineColor(1,0xf);
+		IO_WriteB(0x3bf,0x0);
+		VGA_DAC_CombineColor(0,0);
+		for ( i = 1; i < 15;i++)
+			VGA_DAC_CombineColor(i,0xf);
 		break;
 	case MCH_CGA:
 		mode_control=mode_control_list[CurMode->mode];
@@ -398,6 +407,12 @@ bool INT10_SetVideoMode_OTHER(Bitu mode,bool clearmem) {
 		default:
 			IO_WriteB(0x3de,0x0);break;
 		}
+		//Clear extended mapping
+		IO_WriteB(0x3da,0x5);
+		IO_WriteB(0x3de,0x0);
+		//Clear monitor mode
+		IO_WriteB(0x3da,0x8);
+		IO_WriteB(0x3de,0x0);
 		crtpage=(CurMode->mode>=0x9) ? 0xf6 : 0x3f;
 		IO_WriteB(0x3df,crtpage);
 		real_writeb(BIOSMEM_SEG,BIOSMEM_CRTCPU_PAGE,crtpage);
@@ -681,6 +696,9 @@ bool INT10_SetVideoMode(Bitu mode) {
 	/* This register actually has more bits but only use the extended offset ones */
 	IO_Write(crtc_base,0x51);
 	IO_Write(crtc_base + 1,(offset & 0x300) >> 4);
+	/* Clear remaining bits of the display start */
+	IO_Write(crtc_base,0x69);
+	IO_Write(crtc_base + 1,0);
 	/* Extended Vertical Overflow */
 	IO_Write(crtc_base,0x5e);IO_Write(crtc_base+1,ver_overflow);
 
@@ -784,8 +802,8 @@ bool INT10_SetVideoMode(Bitu mode) {
 	att_data[0x12]=0xf;				//Always have all color planes enabled
 	/* Program Attribute Controller */
 	switch (CurMode->type) {
-	case M_LIN4:
 	case M_EGA:
+	case M_LIN4:
 		att_data[0x10]=0x01;		//Color Graphics
 		switch (CurMode->mode) {
 		case 0x0f:
@@ -802,6 +820,8 @@ bool INT10_SetVideoMode(Bitu mode) {
 		case 0x10:
 		case 0x12: goto att_text16;
 		default:
+			if ( CurMode->type == M_LIN4 )
+				goto att_text16;
 			for (i=0;i<8;i++) {
 				att_data[i]=i;
 				att_data[i+8]=i+0x10;
@@ -969,7 +989,6 @@ dac_text16:
 	}
 	IO_Write(crtc_base,0x31);IO_Write(crtc_base+1,reg_31);	//Enable banked memory and 256k+ access
 	IO_Write(crtc_base,0x58);IO_Write(crtc_base+1,0x3);		//Enable 8 mb of linear addressing
-	IO_Write(crtc_base,0x58);IO_Write(crtc_base+1,0x3);	//Enable 8 mb of linear addressing
 
 	IO_Write(crtc_base,0x38);IO_Write(crtc_base+1,0x48);	//Register lock 1
 	IO_Write(crtc_base,0x39);IO_Write(crtc_base+1,0xa5);	//Register lock 2

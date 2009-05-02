@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_devices.cpp,v 1.11 2006/02/09 11:47:48 qbix79 Exp $ */ 
+/* $Id: dos_devices.cpp,v 1.16 2007/01/13 08:35:49 qbix79 Exp $ */ 
 
 #include <string.h>
 #include "dosbox.h"
@@ -37,22 +37,30 @@ DOS_Device * Devices[DOS_DEVICES];
 class device_NUL : public DOS_Device {
 public:
 	device_NUL() { SetName("NUL"); };
-	bool Read(Bit8u * data,Bit16u * size) {
+	virtual bool Read(Bit8u * data,Bit16u * size) {
 		for(Bitu i = 0; i < *size;i++) 
 			data[i]=0; 
-		LOG(LOG_IOCTL,LOG_NORMAL)("NUL:READ");	   
+		LOG(LOG_IOCTL,LOG_NORMAL)("%s:READ",GetName());
 		return true;
 	}
-	bool Write(Bit8u * data,Bit16u * size) {
-		LOG(LOG_IOCTL,LOG_NORMAL)("NUL:WRITE");
+	virtual bool Write(Bit8u * data,Bit16u * size) {
+		LOG(LOG_IOCTL,LOG_NORMAL)("%s:WRITE",GetName());
 		return true;
 	}
-	bool Seek(Bit32u * pos,Bit32u type) {
-		LOG(LOG_IOCTL,LOG_NORMAL)("NUL:SEEK");
+	virtual bool Seek(Bit32u * pos,Bit32u type) {
+		LOG(LOG_IOCTL,LOG_NORMAL)("%s:SEEK",GetName());
 		return true;
 	}
-	bool Close() { return true; }
-	Bit16u GetInformation(void) { return 0x8084; }
+	virtual bool Close() { return true; }
+	virtual Bit16u GetInformation(void) { return 0x8084; }
+	virtual bool ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
+	virtual bool WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
+};
+
+class device_LPT1 : public device_NUL {
+public:
+   	device_LPT1() { SetName("LPT1");}
+	Bit16u GetInformation(void) { return 0x80A0; }
 };
 
 bool DOS_Device::Read(Bit8u * data,Bit16u * size) {
@@ -73,6 +81,14 @@ bool DOS_Device::Close() {
 
 Bit16u DOS_Device::GetInformation(void) { 
 	return Devices[devnum]->GetInformation();
+}
+
+bool DOS_Device::ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode) { 
+	return Devices[devnum]->ReadFromControlChannel(bufptr,size,retcode);
+}
+
+bool DOS_Device::WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode) { 
+	return Devices[devnum]->WriteToControlChannel(bufptr,size,retcode);
 }
 
 DOS_File::DOS_File(const DOS_File& orig) {
@@ -110,11 +126,24 @@ DOS_File & DOS_File::operator= (const DOS_File & orig) {
 
 Bit8u DOS_FindDevice(char * name) {
 	/* should only check for the names before the dot and spacepadded */
+	// STDAUX is alias for COM1
+	// A bit of a hack, but no application will probably use stdaux to determine wether a directory exists
+	if (strcasecmp(name, "STDAUX") == 0) name = "COM1";
+
 	char temp[CROSS_LEN];//TODO
 	if(!name || !(*name)) return DOS_DEVICES;
 	strcpy(temp,name);
 	char* dot= strrchr(temp,'.');
 	if(dot && *dot) *dot=0; //no ext checking
+
+	char* leading = strrchr(temp,'\\');
+	if(leading) {
+		*leading = 0;
+		Bit8u drive;char fulldir[DOS_PATHLENGTH];
+		if (!DOS_MakeName(temp,fulldir,&drive)) return DOS_DEVICES;
+		if(!Drives[drive]->TestDir(fulldir)) return DOS_DEVICES;
+		*leading='\\';
+	}
 
 	/* loop through devices */
 	for(Bit8u index = 0;index < DOS_DEVICES;index++) {
@@ -158,4 +187,7 @@ void DOS_SetupDevices(void) {
 	DOS_Device * newdev2;
 	newdev2=new device_NUL();
 	DOS_AddDevice(newdev2);
+	DOS_Device * newdev3;
+	newdev3=new device_LPT1();
+	DOS_AddDevice(newdev3);
 }

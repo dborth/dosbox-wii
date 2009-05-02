@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,6 +18,8 @@
 
 #ifndef DOSBOX_VIDEO_H
 #define DOSBOX_VIDEO_H
+
+#define REDUCE_JOYSTICK_POLLING
 
 typedef enum {
 	GFX_CallBackReset,
@@ -63,6 +65,14 @@ void GFX_Stop(void);
 void GFX_SwitchFullScreen(void);
 bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch);
 void GFX_EndUpdate( const Bit16u *changedLines );
+
+#if defined (WIN32)
+bool GFX_SDLUsingWinDIB(void);
+#endif
+
+#if defined (REDUCE_JOYSTICK_POLLING)
+void MAPPER_UpdateJoysticks(void);
+#endif
 
 /* Mouse related */
 void GFX_CaptureMouse(void);

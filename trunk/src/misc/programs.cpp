@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.cpp,v 1.24 2006/03/02 14:12:49 qbix79 Exp $ */
+/* $Id: programs.cpp,v 1.27 2007/01/08 19:45:41 qbix79 Exp $ */
 
 #include <vector>
 #include <ctype.h>
@@ -51,7 +51,7 @@ static Bit8u exe_block[]={
 
 static std::vector<PROGRAMS_Main*> internal_progs;
 
-void PROGRAMS_MakeFile(char * name,PROGRAMS_Main * main) {
+void PROGRAMS_MakeFile(char const * const name,PROGRAMS_Main * main) {
 	Bit8u * comdata=(Bit8u *)malloc(32); //MEM LEAK
 	memcpy(comdata,&exe_block,sizeof(exe_block));
 	comdata[CB_POS]=call_program&0xff;
@@ -248,7 +248,7 @@ void CONFIG::Run(void) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECTION_ERROR"),temp_line.c_str());
 			return;
 		}
-		char* val = sec->GetPropValue(prop.c_str());
+		char const* val = sec->GetPropValue(prop.c_str());
 		if(!val) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_NO_PROPERTY"),prop.c_str(),temp_line.c_str());   
 			return;

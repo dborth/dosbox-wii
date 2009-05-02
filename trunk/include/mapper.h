@@ -1,5 +1,5 @@
  /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ enum MapKeys {
 };
 
 typedef void (MAPPER_Handler)(bool pressed);
-void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char * eventname,char * buttonname);
+void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char const * const eventname,char const * const buttonname);
 void MAPPER_Init(void);
 void MAPPER_StartUp(Section * sec);
 void MAPPER_Run(bool pressed);

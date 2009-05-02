@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -64,7 +64,6 @@ void VGA_DetermineMode(void) {
 				VGA_SetMode(M_LIN4);
 			else
 				VGA_SetMode(M_EGA);
-			
 		}
 	} else {
 		VGA_SetMode(M_TEXT);

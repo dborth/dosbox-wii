@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_image.cpp,v 1.11 2006/02/09 11:47:48 qbix79 Exp $ */
+/* $Id: cdrom_image.cpp,v 1.15 2007/02/22 08:36:25 qbix79 Exp $ */
 
 #include <cctype>
 #include <cmath>
@@ -136,9 +136,6 @@ CDROM_Interface_Image::CDROM_Interface_Image(Bit8u subUnit)
 {
 	images[subUnit] = this;
 	if (refCount == 0) {
-#if defined(C_SDL_SOUND)
-		Sound_Init();
-#endif
 		player.mutex = SDL_CreateMutex();
 		if (!player.channel) {
 			player.channel = MIXER_AddChannel(&CDAudioCallBack, 44100, "CDAUDIO");
@@ -154,9 +151,6 @@ CDROM_Interface_Image::~CDROM_Interface_Image()
 	if (player.cd == this) player.cd = NULL;
 	ClearTracks();
 	if (refCount == 0) {
-#if defined(C_SDL_SOUND)
-		Sound_Quit();
-#endif
 		SDL_DestroyMutex(player.mutex);
 		player.channel->Enable(false);
 	}
@@ -261,7 +255,7 @@ bool CDROM_Interface_Image::ReadSectors(PhysPt buffer, bool raw, unsigned long s
 	
 	bool success = true; //Gobliiins reads 0 sectors
 	for(int i = 0; i < num; i++) {
-		success = ReadSector(&buf[i * sectorSize], raw, sector);
+		success = ReadSector(&buf[i * sectorSize], raw, sector + i);
 		if (!success) break;
 	}
 
@@ -348,7 +342,7 @@ bool CDROM_Interface_Image::LoadIsoFile(char* filename)
 		return false;
 	}
 	track.number = 1;
-	track.attr = 4;
+	track.attr = 0x40;//data
 	
 	// try to detect iso type
 	if (CanReadPVD(track.file, COOKED_SECTOR_SIZE, false)) {
@@ -452,19 +446,19 @@ bool CDROM_Interface_Image::LoadCueSheet(char *cuefile)
 				track.mode2 = false;
 			} else if (type == "MODE1/2048") {
 				track.sectorSize = COOKED_SECTOR_SIZE;
-				track.attr = 4;
+				track.attr = 0x40;
 				track.mode2 = false;
 			} else if (type == "MODE1/2352") {
 				track.sectorSize = RAW_SECTOR_SIZE;
-				track.attr = 4;
+				track.attr = 0x40;
 				track.mode2 = false;
 			} else if (type == "MODE2/2336") {
 				track.sectorSize = 2336;
-				track.attr = 4;
+				track.attr = 0x40;
 				track.mode2 = true;
 			} else if (type == "MODE2/2352") {
 				track.sectorSize = RAW_SECTOR_SIZE;
-				track.attr = 4;
+				track.attr = 0x40;
 				track.mode2 = true;
 			} else success = false;
 			
@@ -522,6 +516,7 @@ bool CDROM_Interface_Image::LoadCueSheet(char *cuefile)
 	
 	// add leadout track
 	track.number++;
+	track.attr = 0;//sync with load iso
 	track.start = 0;
 	track.length = 0;
 	track.file = NULL;
@@ -661,4 +656,17 @@ void CDROM_Interface_Image::ClearTracks()
 		i++;
 	}
 	tracks.clear();
+}
+
+void CDROM_Image_Destroy(Section*) {
+#if defined(C_SDL_SOUND)
+	Sound_Quit();
+#endif
+}
+
+void CDROM_Image_Init(Section* section) {
+#if defined(C_SDL_SOUND)
+	Sound_Init();
+	section->AddDestroyFunction(CDROM_Image_Destroy, false);
+#endif
 }

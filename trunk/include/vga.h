@@ -1,5 +1,5 @@
  /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,7 +23,17 @@
 #include "dosbox.h"
 #endif
 
+//Don't enable keeping changes and mapping lfb probably...
+#define VGA_LFB_MAPPED
+//#define VGA_KEEP_CHANGES
+#define VGA_MEMORY (2*1024*1024)
+#define VGA_CHANGE_SHIFT	9
+
+//Offset inside VGA_MEMORY that will be used for certain types of caching
+#define VGA_CACHE_OFFSET	(512*1024)
+
 class PageHandler;
+
 
 enum VGAModes {
 	M_CGA2, M_CGA4,
@@ -70,6 +80,7 @@ typedef struct {
 	Bit8u pel_panning;				/* Amount of pixels to skip when starting horizontal line */
 	Bit8u hlines_skip;
 	Bit8u bytes_skip;
+	Bit8u addr_shift;
 
 /* Specific stuff memory write/read handling */
 	
@@ -95,9 +106,11 @@ typedef struct {
 	Bitu width;
 	Bitu height;
 	Bitu blocks;
-	Bitu panning;
 	Bitu address;
+	Bit8u *linear_base;
+	Bitu linear_mask;
 	Bitu address_add;
+	Bitu line_length;
 	Bitu address_line_total;
 	Bitu address_line;
 	Bitu lines_total;
@@ -108,13 +121,14 @@ typedef struct {
 	Bitu parts_lines;
 	Bitu parts_left;
 	struct {
-		float vtotal;
-		float vstart;
-		float vend;
-		float htotal;
-		float hstart;
-		float hend;
-		float parts;
+		double framestart;
+		double vrstart, vrend;		// V-retrace
+		double hrstart, hrend;		// H-retrace
+		double hblkstart, hblkend;	// H-blanking
+		double vblkstart, vblkend;	// V-Blanking
+		double vdend, vtotal;
+		double hdend, htotal;
+		double parts;
 	} delay;
 	bool double_scan;
 	bool doublewidth,doubleheight;
@@ -140,8 +154,23 @@ typedef struct {
 	Bit8u mc[64][64];
 } VGA_HWCURSOR;
 
+typedef union {
+	Bit32u fullbank;
+#ifndef WORDS_BIGENDIAN
+	struct {
+		Bit16u lowerbank;
+		Bit16u bank;
+	} b;
+#else
+	struct {
+		Bit16u bank;
+		Bit16u lowerbank;
+	} b;
+#endif
+} VGA_S3_BANK;
+
 typedef struct {
-	Bit8u bank;
+	VGA_S3_BANK svga_bank;
 	Bit8u reg_lock1;
 	Bit8u reg_lock2;
 	Bit8u reg_31;
@@ -179,31 +208,36 @@ typedef struct {
 	Bit8u htotal;
 	Bit8u hdend;
 	Bit8u hsyncp;
-	Bit8u hsyncw;
+	Bit8u syncw;
 	Bit8u vtotal;
 	Bit8u vdend;
 	Bit8u vadjust;
 	Bit8u vsyncp;
 	Bit8u vsyncw;
 	Bit8u max_scanline;
+	Bit8u lpen_low, lpen_high;
+	Bit8u cursor_start;
+	Bit8u cursor_end;
 } VGA_OTHER;
 
 typedef struct {
+	Bit8u pcjr_flipflop;
 	Bit8u mode_control;
 	Bit8u color_select;
-	Bit8u mem_bank;
 	Bit8u disp_bank;
 	Bit8u reg_index;
 	Bit8u gfx_control;
 	Bit8u palette_mask;
+	Bit8u extended_ram;
 	Bit8u border_color;
-	bool is_32k_mode;
-	bool pcjr_flipflop;
+	Bit8u line_mask, line_shift;
+	Bit8u draw_bank, mem_bank;
+	Bit8u *draw_base, *mem_base;
+	Bitu addr_mask;
 } VGA_TANDY;
 
 typedef struct {
 	Bit8u index;
-
 	Bit8u reset;
 	Bit8u clocking_mode;
 	Bit8u map_mask;
@@ -266,11 +300,11 @@ typedef struct {
 	Bit8u bit_mask;
 } VGA_Gfx;
 
-struct RGBEntry {
+typedef struct  {
 	Bit8u red;
 	Bit8u green;
 	Bit8u blue;
-};
+} RGBEntry;
 
 typedef struct {
 	Bit8u bits;						/* DAC bits, usually 6 or 8 */
@@ -280,19 +314,33 @@ typedef struct {
 	Bit8u write_index;
 	Bit8u read_index;
 	Bitu first_changed;
+	Bit8u combine[16];
 	RGBEntry rgb[0x100];
 } VGA_Dac;
 
-union VGA_Latch {
+typedef struct {
+	Bitu	readStart, writeStart;
+	Bitu	bankMask;
+} VGA_SVGA;
+
+typedef union {
 	Bit32u d;
 	Bit8u b[4];
-};
+} VGA_Latch;
 
-union VGA_Memory {
-	Bit8u linear[512*1024*4];
-	Bit8u paged[512*1024][4];
-	VGA_Latch latched[512*1024];
-};
+typedef struct {
+	Bit8u	linear[VGA_MEMORY];
+} VGA_Memory;
+
+typedef struct {
+	//Add a few more just to be safe
+	Bit8u	map[(VGA_MEMORY >> VGA_CHANGE_SHIFT) + 32];
+	Bit8u	checkMask, frame, writeMask;
+	bool	active;
+	Bit32u  clearMask;
+	Bit32u	start, last;
+	Bit32u	lastAddress;
+} VGA_Changes;
 
 typedef struct {
 	Bit32u page;
@@ -301,8 +349,6 @@ typedef struct {
 	PageHandler *handler;
 } VGA_LFB;
 
-#define VGA_CHANGE_SHIFT	9
-typedef Bit8u VGA_Changed[(2*1024*1024) >> VGA_CHANGE_SHIFT];
 typedef struct {
 	VGAModes mode;								/* The mode the vga system is in */
 	VGAModes lastmode;
@@ -318,13 +364,15 @@ typedef struct {
 	VGA_Dac dac;
 	VGA_Latch latch;
 	VGA_S3 s3;
+	VGA_SVGA svga;
 	VGA_HERC herc;
 	VGA_TANDY tandy;
 	VGA_OTHER other;
 	VGA_Memory mem;
+#ifdef VGA_KEEP_CHANGES
+	VGA_Changes changes;
+#endif
 	VGA_LFB lfb;
-	VGA_Changed changed;
-	Bit8u * gfxmem_start;
 } VGA_Type;
 
 
@@ -336,6 +384,7 @@ void VGA_SetupHandlers(void);
 void VGA_StartResize(void);
 void VGA_SetupDrawing(Bitu val);
 void VGA_CheckScanLength(void);
+void VGA_ChangedBank(void);
 
 /* Some DAC/Attribute functions */
 void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal);

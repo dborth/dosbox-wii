@@ -1,5 +1,5 @@
 dnl Init.
-AC_INIT(dosbox,0.65)
+AC_INIT(dosbox,0.70)
 AC_PREREQ(2.50)
 AC_CONFIG_SRCDIR(README)
 
@@ -51,31 +51,47 @@ AC_CHECK_SIZEOF(unsigned long long)
 AC_CHECK_SIZEOF(int *)
 
 AC_MSG_CHECKING(if environ can be included)
-AC_TRY_LINK([#include <unistd.h>
-#include <stdlib.h>],[*environ;],
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+#include <unistd.h>
+#include <stdlib.h>]],[[*environ;]])],
 [AC_MSG_RESULT(yes);AC_DEFINE(ENVIRON_INCLUDED,1,[environ can be included])],AC_MSG_RESULT(no))
+
 AC_MSG_CHECKING(if environ can be linked)
-AC_TRY_LINK([extern char ** environ;],[*environ;],
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[extern char ** environ;]],[[*environ;]])],
 [AC_MSG_RESULT(yes);AC_DEFINE(ENVIRON_LINKED,1,[environ can be linked])],AC_MSG_RESULT(no))
+
+dnl Check for powf
+if test x$target = xi386-pc-os2-emx ; then
+  AC_MSG_CHECKING(for powf in libm);
+  LIBS_BACKUP=$LIBS;
+  LIBS="$LIBS -lm";
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <math.h>]],[[
+        powf(1.0f, 1.0f);
+  ]])], [AC_MSG_RESULT(yes)], [AC_DEFINE([DB_HAVE_NO_POWF],[1],[libm doesn't include powf])])
+  LIBS=$LIBS_BACKUP
+else
+AC_CHECK_LIB([m],[powf],,[AC_DEFINE([DB_HAVE_NO_POWF],[1],[libm doesn't include powf])])
+fi
 
 dnl Checks for libraries.
 
 #Check if the compiler support attributes
 AH_TEMPLATE([C_HAS_ATTRIBUTE],[Determines if the compilers supports attributes for structures.])
 AC_MSG_CHECKING(if compiler allows __attribute__)
-AC_TRY_COMPILE([], [typedef struct { } __attribute__ ((packed)) junk;], 
-    [ AC_MSG_RESULT(yes);AC_DEFINE(C_HAS_ATTRIBUTE)],AC_MSG_RESULT(no))
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+typedef struct { } __attribute__((packed)) junk;]],
+[[ ]])],[ AC_MSG_RESULT(yes);AC_DEFINE(C_HAS_ATTRIBUTE)],AC_MSG_RESULT(no))
 
 #Check if the compiler supports __builtin_expect
+#Switch language to c++
+AC_LANG_PUSH(C++)
 AH_TEMPLATE([C_HAS_BUILTIN_EXPECT],[Determines if the compilers supports __builtin_expect for branch prediction.])
 AC_MSG_CHECKING(if compiler allows __builtin_expect)
-AC_TRY_COMPILE([],[
-int main(int argc,char* argv[]){ 
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]],[[
 int x=10;if( __builtin_expect ((x==1),0) ) ;
-return 0; 
-}
-], [ AC_MSG_RESULT(yes);AC_DEFINE(C_HAS_BUILTIN_EXPECT)],AC_MSG_RESULT(no))
-
+]])], [ AC_MSG_RESULT(yes);AC_DEFINE(C_HAS_BUILTIN_EXPECT)],AC_MSG_RESULT(no))
+#switch language back
+AC_LANG_POP(C++)
 
 AM_PATH_ALSA(0.9.0, AC_DEFINE(HAVE_ALSA,1,[Define to 1 to use ALSA for MIDI]) , : )
 
@@ -217,18 +233,15 @@ if test x$target = xi386-pc-os2-emx ; then
   AC_MSG_CHECKING(for SDLNet_Init in SDL_net);
   LIBS_BACKUP=$LIBS;
   LIBS="$LIBS -lSDL_Net";
-  AC_LINK_IFELSE([
-    #include <SDL_Net.h>
-    int main(int argc,char * argv[]) {
-	return SDLNet_Init ();
-  };
-  ], [AC_MSG_RESULT(yes); have_sdl_net_lib=yes], AC_MSG_RESULT(no))
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <SDL_Net.h>]],[[
+	SDLNet_Init ();
+  ]])], [AC_MSG_RESULT(yes); have_sdl_net_lib=yes], AC_MSG_RESULT(no))
   LIBS=$LIBS_BACKUP
 else
 AC_CHECK_LIB(SDL_net, SDLNet_Init, have_sdl_net_lib=yes, , )
 fi
 if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
-  LIBS="$LIBS -lSDL_net"
+   LIBS="$LIBS -lSDL_net"
    AC_DEFINE(C_MODEM,1)
    AC_DEFINE(C_IPX,1)
 else 
@@ -237,24 +250,35 @@ fi
 
 AH_TEMPLATE(C_OPENGL,[Define to 1 to use opengl display output support])
 AC_ARG_ENABLE(opengl,AC_HELP_STRING([--disable-opengl],[Disable opengl support]),,enable_opengl=yes)
-AC_CHECK_LIB(GL, main, have_gl_lib=yes, have_gl_lib=no , )
-AC_CHECK_LIB(opengl32, main, have_opengl32_lib=yes,have_opengl32_lib=no , )
-AC_CHECK_HEADER(GL/gl.h, have_gl_h=yes , have_gl_h=no , )
 AC_MSG_CHECKING(whether opengl display output will be enabled) 
-if test x$enable_opengl = xyes -a x$have_gl_h = xyes -a x$have_gl_lib = xyes ; then 
-  AC_MSG_RESULT(yes)
-  LIBS="$LIBS -lGL"
-  AC_DEFINE(C_OPENGL,1)
-elif test x$enable_opengl = xyes -a x$have_gl_h = xyes -a x$have_opengl32_lib = xyes ; then 
-  AC_MSG_RESULT(yes)
-  LIBS="$LIBS -lopengl32"
-  AC_DEFINE(C_OPENGL,1)
-else
-  AC_MSG_RESULT(no)
+if test x$enable_opengl = xyes; then
+case "$target" in
+    *-*-darwin*)
+       AC_MSG_RESULT(yes)
+       LIBS="$LIBS -framework OpenGL"
+       AC_DEFINE(C_OPENGL,1)
+       ;;
+    *)
+       AC_CHECK_LIB(GL, main, have_gl_lib=yes, have_gl_lib=no , )
+       AC_CHECK_LIB(opengl32, main, have_opengl32_lib=yes,have_opengl32_lib=no , )
+       AC_CHECK_HEADER(GL/gl.h, have_gl_h=yes , have_gl_h=no , )
+       if test x$have_gl_h = xyes -a x$have_gl_lib = xyes ; then 
+         AC_MSG_RESULT(yes)
+         LIBS="$LIBS -lGL"
+         AC_DEFINE(C_OPENGL,1)
+       elif test x$have_gl_h = xyes -a x$have_opengl32_lib = xyes ; then 
+         AC_MSG_RESULT(yes)
+         LIBS="$LIBS -lopengl32"
+         AC_DEFINE(C_OPENGL,1)
+       else
+         AC_MSG_RESULT(no)
+       fi
+       ;;
+esac
 fi
 
 AH_TEMPLATE(C_SDL_SOUND,[Define to 1 to enable SDL_sound support])
-AC_CHECK_HEADER(SDL/SDL_sound.h,have_SDL_sound_h=yes,)
+AC_CHECK_HEADER(SDL_sound.h,have_SDL_sound_h=yes,)
 AC_CHECK_LIB(SDL_sound, Sound_Init, have_SDL_sound_init=yes,,)
 AC_CHECK_LIB(SDL_sound, Sound_Seek, have_SDL_sound_seek=yes,,)
 if test x$have_SDL_sound_h = xyes -a x$have_SDL_sound_init = xyes ; then
@@ -290,7 +314,10 @@ case "$target" in
     *-*-cygwin* | *-*-mingw32*)
        LIBS="$LIBS -lwinmm"
        AC_CHECK_HEADERS(ddraw.h)
-       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32 and OS/2 only).])
+       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2 only).])
+       if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
+         LIBS="$LIBS -lws2_32"
+       fi
        ;;
     *-*-darwin*)
        dnl We have a problem here: both MacOS X and Darwin report 
@@ -302,10 +329,11 @@ case "$target" in
        ;;
     *-*-linux-gnu*)
        AC_DEFINE(LINUX, 1, [Compiling on GNU/Linux])
+       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
        ;;
     *-*-os2-emx*)
        AC_DEFINE(OS2, 1, [Compiling on OS/2 EMX])
-       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32 and OS/2 only).])
+       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
        ;;
 esac
 
@@ -323,7 +351,7 @@ esac
        AC_SUBST(WINDRES)
 
 
-AC_OUTPUT([ 
+AC_CONFIG_FILES([ 
 Makefile
 src/Makefile
 src/cpu/Makefile
@@ -343,8 +371,8 @@ src/misc/Makefile
 src/shell/Makefile
 src/platform/Makefile
 src/platform/visualc/Makefile
-visualc/Makefile
 visualc_net/Makefile
 include/Makefile
 docs/Makefile
 ])
+AC_OUTPUT

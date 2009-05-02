@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 
 #include "config.h"
 
-void E_Exit(char * message,...);
+void E_Exit(const char * message,...) GCC_ATTRIBUTE( __format__(__printf__, 1, 2));
 
 void MSG_Add(const char*,const char*); //add messages to the internal langaugefile
 const char* MSG_Get(char const *);     //get messages from the internal langaugafile

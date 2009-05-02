@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2006  The DOSBox Team
+ *  Copyright (C) 2002-2007  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mouse.cpp,v 1.61 2006/02/13 07:48:25 qbix79 Exp $ */
+/* $Id: mouse.cpp,v 1.66 2007/01/08 19:45:41 qbix79 Exp $ */
 
 #include <string.h>
 #include <math.h>
@@ -34,7 +34,7 @@
 #include "bios.h"
 
 
-static Bitu call_int33,call_int74;
+static Bitu call_int33,call_int74,int74_ret_callback;
 static Bit16u ps2cbseg,ps2cbofs;
 static bool useps2callback,ps2callbackinit;
 static Bit16u call_ps2;
@@ -86,7 +86,7 @@ static struct {
 	Bit16u last_released_y[MOUSE_BUTTONS];
 	Bit16u last_pressed_x[MOUSE_BUTTONS];
 	Bit16u last_pressed_y[MOUSE_BUTTONS];
-	Bit16s shown;
+	Bit16u shown;
 	float add_x,add_y;
 	Bit16u min_x,max_x,min_y,max_y;
 	float mickey_x,mickey_y;
@@ -116,7 +116,7 @@ static struct {
 	Bit16u  doubleSpeedThreshold;
 	Bit16u  language;
 	Bit16u  cursorType;
-	Bit16s	oldshown;
+	Bit16u	oldshown;
 	Bit8u  page;
 	bool enabled;
 
@@ -216,7 +216,7 @@ extern void ReadCharAttr(Bit16u col,Bit16u row,Bit8u page,Bit16u * result);
 
 void RestoreCursorBackgroundText()
 {
-	if (mouse.shown<0) return;
+	if (mouse.shown) return;
 
 	if (mouse.background) {
 		WriteChar(mouse.backposx,mouse.backposy,0,mouse.backData[0],mouse.backData[1],true);
@@ -303,7 +303,7 @@ void ClipCursorArea(Bit16s& x1, Bit16s& x2, Bit16s& y1, Bit16s& y2, Bit16u& addx
 
 void RestoreCursorBackground()
 {
-	if (mouse.shown<0) return;
+	if (mouse.shown) return;
 
 	SaveVgaRegisters();
 	if (mouse.background) {
@@ -332,7 +332,7 @@ void RestoreCursorBackground()
 };
 
 void DrawCursor() {
-	if (mouse.shown<0) return;
+	if (mouse.shown) return;
 // Check video page
 	if (real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAGE)!=mouse.page) return;
 // Check if cursor in update region
@@ -525,7 +525,8 @@ void Mouse_NewVideoMode(void)
 	} else {
 		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
 	}
-//	mouse.shown=-1;//Disabled as ida doesn't have mousecursor anymore
+	mouse.shown = 1;//Disabled as ida doesn't have mousecursor anymore
+	//enabled again as it seems to be a bug in ida4
 	/* Get the correct resolution from the current video mode */
 	Bitu mode=mem_readb(BIOS_VIDEO_MODE);
 	switch (mode) {
@@ -557,7 +558,7 @@ void Mouse_NewVideoMode(void)
 		mouse.max_y=199;
 		LOG(LOG_MOUSE,LOG_ERROR)("Unhandled videomode %X on reset",mode);
 		// Hide mouse cursor on non supported modi. Pirates Gold
-		mouse.shown = -1;
+		mouse.shown = 1;
 		break;
 	} 
 	mouse.max_x = 639;
@@ -586,7 +587,7 @@ void Mouse_NewVideoMode(void)
 	mouse.updateRegion_y[1] = 1;
 	mouse.cursorType = 0;
 	mouse.enabled=true;
-	mouse.oldshown=-1;
+	mouse.oldshown=1;
 
 	SetMickeyPixelRate(8,16);
 	oldmouseX = static_cast<Bit16s>(mouse.x);
@@ -599,17 +600,14 @@ static void mouse_reset(void) {
 	/* Remove drawn mouse Legends of Valor */
 	if (CurMode->type!=M_TEXT) RestoreCursorBackground();
 	else RestoreCursorBackgroundText();
-	mouse.shown = -1;
+	mouse.shown = 1;
 
 	Mouse_NewVideoMode();
 
    	mouse.sub_mask=0;
-	mouse.sub_seg=0;
-	mouse.sub_ofs=0;
+
 	mouse.senv_x=1.0;
-
 	mouse.senv_y=1.0;
-
 }
 
 static Bitu INT33_Handler(void) {
@@ -625,16 +623,15 @@ static Bitu INT33_Handler(void) {
 		Mouse_AutoLock(true);
 		break;
 	case 0x01:	/* Show Mouse */
-		mouse.shown++;
+		if(mouse.shown) mouse.shown--;
 		Mouse_AutoLock(true);
-		if (mouse.shown>0) mouse.shown=0;
 		DrawCursor();
 		break;
 	case 0x02:	/* Hide Mouse */
 		{
 			if (CurMode->type!=M_TEXT) RestoreCursorBackground();
 			else RestoreCursorBackgroundText();
-			mouse.shown--;
+			mouse.shown++;
 		}
 		break;
 	case 0x03:	/* Return position and Button Status */
@@ -823,7 +820,7 @@ static Bitu INT33_Handler(void) {
 		SegSet16(es,0);	   
 		mouse.enabled=false; /* Just for reporting not doing a thing with it */
 		mouse.oldshown=mouse.shown;
-		mouse.shown=-1;
+		mouse.shown=1;
 		break;
 	case 0x20:	/* Enable Mousedriver */
 		mouse.enabled=true;
@@ -870,83 +867,86 @@ static Bitu INT74_Handler(void) {
 		mouse.events--;
 		/* Check for an active Interrupt Handler that will get called */
 		if (mouse.sub_mask & mouse.event_queue[mouse.events].type) {
-			/* Save lot's of registers */
-			Bit32u oldeax,oldebx,oldecx,oldedx,oldesi,oldedi,oldebp,oldesp;
-			Bit16u oldds,oldes,oldss;
-			oldeax=reg_eax;oldebx=reg_ebx;oldecx=reg_ecx;oldedx=reg_edx;
-			oldesi=reg_esi;oldedi=reg_edi;oldebp=reg_ebp;oldesp=reg_esp;
-			oldds=SegValue(ds); oldes=SegValue(es);	oldss=SegValue(ss); // Save segments
 			reg_ax=mouse.event_queue[mouse.events].type;
 			reg_bx=mouse.event_queue[mouse.events].buttons;
 			reg_cx=POS_X;
 			reg_dx=POS_Y;
 			reg_si=(Bit16s)(mouse.mickey_x*mouse.mickeysPerPixel_x);
 			reg_di=(Bit16s)(mouse.mickey_y*mouse.mickeysPerPixel_y);
-			// Hmm... this look ok, but moonbase wont work with it
-			/*if (mouse.event_queue[mouse.events].type==MOUSE_MOVED) {
-				mouse.mickey_x=0;
-				mouse.mickey_y=0;
-			}*/
-			CALLBACK_RunRealFar(mouse.sub_seg,mouse.sub_ofs);
-			reg_eax=oldeax;reg_ebx=oldebx;reg_ecx=oldecx;reg_edx=oldedx;
-			reg_esi=oldesi;reg_edi=oldedi;reg_ebp=oldebp;reg_esp=oldesp;
-			SegSet16(ds,oldds); SegSet16(es,oldes); SegSet16(ss,oldss); // Save segments
-
+			CPU_Push16(RealSeg(CALLBACK_RealPointer(int74_ret_callback)));
+			CPU_Push16(RealOff(CALLBACK_RealPointer(int74_ret_callback)));
+			SegSet16(cs, mouse.sub_seg);
+			reg_ip = mouse.sub_ofs;
+		} else if (useps2callback) {
+			CPU_Push16(RealSeg(CALLBACK_RealPointer(int74_ret_callback)));
+			CPU_Push16(RealOff(CALLBACK_RealPointer(int74_ret_callback)));
+			DoPS2Callback(mouse.event_queue[mouse.events].buttons, POS_X, POS_Y);
+		} else {
+			SegSet16(cs, RealSeg(CALLBACK_RealPointer(int74_ret_callback)));
+			reg_ip = RealOff(CALLBACK_RealPointer(int74_ret_callback));
 		}
-		DoPS2Callback(mouse.event_queue[mouse.events].buttons, POS_X, POS_Y);
-
+	} else {
+		SegSet16(cs, RealSeg(CALLBACK_RealPointer(int74_ret_callback)));
+		reg_ip = RealOff(CALLBACK_RealPointer(int74_ret_callback));
 	}
-	IO_Write(0xa0,0x20);
-	IO_Write(0x20,0x20);
-	/* Check for more Events if so reactivate IRQ */
+	return CBRET_NONE;
+}
+
+Bitu MOUSE_UserInt_CB_Handler(void) {
 	if (mouse.events) {
 		PIC_ActivateIRQ(MOUSE_IRQ);
 	}
 	return CBRET_NONE;
 }
 
-void WriteMouseIntVector(void)
-{
-	// Create a mouse vector with weird address 
-	// for strange mouse detection routines in Sim City & Wasteland
-	real_writed(0,0x33<<2,RealMake(CB_SEG+1,(call_int33<<4)-0x10+1));	// +1 = Skip NOP 
-};
-
-void CreateMouseCallback(void)
-{
-	// Create callback
+void MOUSE_Init(Section* sec) {
+	// Callback for mouse interrupt 0x33
 	call_int33=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int33,&INT33_Handler,CB_IRET,"Mouse");
+	// Wasteland needs low(seg(int33))!=0 and low(ofs(int33))!=0
+	real_writed(0,0x33<<2,RealMake(CB_SEG+1,(call_int33*CB_SIZE)-0x10));
 
-	// Create a mouse vector with weird address 
-	// for strange mouse detection routines in Sim City & Wasteland
-	Bit16u ofs = call_int33<<4;
-	phys_writeb(CB_BASE+ofs+0,(Bit8u)0x90);	//NOP
-	phys_writeb(CB_BASE+ofs+1,(Bit8u)0xFE);	//GRP 4
-	phys_writeb(CB_BASE+ofs+2,(Bit8u)0x38);	//Extra Callback instruction
-	phys_writew(CB_BASE+ofs+3,call_int33);	//The immediate word
-	phys_writeb(CB_BASE+ofs+5,(Bit8u)0xCF);	//An IRET Instruction
-	// Write weird vector
-	WriteMouseIntVector();
-};
-
-void MOUSE_Init(Section* sec) {
-
-	// Callback 0x33
-	CreateMouseCallback();
+	// Callback for ps2 irq
 	call_int74=CALLBACK_Allocate();
-	CALLBACK_Setup(call_int74,&INT74_Handler,CB_IRET,"int 74");
-	if(MOUSE_IRQ > 7) {
-		real_writed(0,((0x70+MOUSE_IRQ-8)<<2),CALLBACK_RealPointer(call_int74));
-	} else {
-		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
-	}
+	CALLBACK_Setup(call_int74,&INT74_Handler,CB_IRQ12,"int 74");
+	// pseudocode for CB_IRQ12:
+	//	push ds
+	//	push es
+	//	pushad
+	//	sti
+	//	callback INT74_Handler
+	//		doesn't return here, but rather to CB_IRQ12_RET
+	//		(ps2 callback/user callback inbetween if requested)
+
+	int74_ret_callback=CALLBACK_Allocate();
+	CALLBACK_Setup(int74_ret_callback,&MOUSE_UserInt_CB_Handler,CB_IRQ12_RET,"int 74 ret");
+	// pseudocode for CB_IRQ12_RET:
+	//	callback MOUSE_UserInt_CB_Handler
+	//	cli
+	//	mov al, 0x20
+	//	out 0xa0, al
+	//	out 0x20, al
+	//	popad
+	//	pop es
+	//	pop ds
+	//	iret
+
+	Bit8u hwvec=(MOUSE_IRQ>7)?(0x70+MOUSE_IRQ-8):(0x8+MOUSE_IRQ);
+	RealSetVec(hwvec,CALLBACK_RealPointer(call_int74));
+
+	// Callback for ps2 user callback handling
 	useps2callback = false; ps2callbackinit = false;
  	call_ps2=CALLBACK_Allocate();
-	CALLBACK_Setup(call_ps2,&PS2_Handler,CB_IRET,"ps2 bios callback");
+	CALLBACK_Setup(call_ps2,&PS2_Handler,CB_RETF,"ps2 bios callback");
 	ps2_callback=CALLBACK_RealPointer(call_ps2);
+
 	memset(&mouse,0,sizeof(mouse));
-	mouse.shown=-1; //Hide mouse on startup
+	mouse.shown = 1; //Hide mouse on startup
+
+   	mouse.sub_mask=0;
+	mouse.sub_seg=0x6362;	// magic value
+	mouse.sub_ofs=0;
+
 	mouse_reset_hardware();
 	mouse_reset();
 }
