@@ -82,49 +82,6 @@ char *trim(char *str) {
 	return ltrim(str);
 }
 
-bool wildcmp(char *wild, char *string) 
-{
-	// special case - Everything goes through
-	if (strcmp(wild,"*")==0) return true; 
-	
-	while (*wild) {
-		if (*wild=='*') {
-			// Any other chars after that ?
-			if ((wild[1]!=0) && (wild[1]!='.')) {
-				// search string
-				while ((*string) && (*string!='.')) {
-					// thats the char ? then exit
-					if (toupper(*string)==toupper(wild[1])) break;
-					string++;	
-				};		
-				
-			} else {
-				// skip to extension or end
-				while (*string && (*string!='.')) string++;
-			}
-			wild++;
-		
-		} else if (*string=='.') {
-			// only valid : '?' & '*'
-			while (*wild && (*wild!='.')) {
-				if ((*wild!='?') && (*wild!='*')) return false;
-				wild++;
-			}
-			if (*wild) wild++;
-			string++;
-
-		} else if ((*wild!='?') && (toupper(*string)!=toupper(*wild))) {
-			// no match
-			return false;
-		
-		} else {
-			wild++;
-			string++;
-		}
-	}
-
-	return ((*string==0) && (*wild==0));
-};
 
 bool ScanCMDBool(char * cmd,char * check) {
 	char * scan=cmd;size_t c_len=strlen(check);
@@ -215,22 +172,17 @@ void S_Warn(char * format,...) {
 #endif
 }
 
+static char buf[1024];           //greater scope as else it doesn't always gets thrown right (linux/gcc2.95)
 void E_Exit(char * format,...) {
-
-	char buf[1024];
-
-//	SysShutDown();
-	va_list msg;
-	strcpy(buf,"EXIT:");
-	va_start(msg,format);
-	vsprintf(buf+strlen(buf),format,msg);
-	va_end(msg);
-
-	strcat(buf,"\n");
-	printf(buf);
-	printf("Press ENTER to stop\n");
-	fgetc(stdin);
-	GFX_Stop();
-	exit(2);
-
-};
+	if(errorlevel>=1) {
+		va_list msg;
+		va_start(msg,format);
+		vsprintf(buf,format,msg);
+		va_end(msg);
+		
+		strcat(buf,"\n");
+	} else  {
+		strcpy(buf,"an unsupported feature\n");
+	}
+	throw(buf);
+}

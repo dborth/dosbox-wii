@@ -35,119 +35,53 @@
 #include "setup.h"
 #include "cross.h"
 #include "programs.h"
+#include "support.h"
 
-char dosbox_basedir[CROSS_LEN];
+Config * control;
+Bitu errorlevel=1;
+
+/* The whole load of startups for all the subfunctions */
+void MSG_Init(Section_prop *);
+void MEM_Init(Section *);
+void IO_Init(Section * );
+void CALLBACK_Init(Section*);
+void PROGRAMS_Init(Section*);
+
+void RENDER_Init(Section*);
+void VGA_Init(Section*);
+
+void DOS_Init(Section*);
 
 
-#if 0
-
-int main(int argc, char* argv[]) {
-
-	
-
-	/* Strip out the dosbox startup directory */
-	
-	
-	
-	/* Handle the command line for new stuff to add to autoexec.bat */
-	int argl=1;
-	if (argc>1) {
-		if (*argv[1]!='-') {
-			struct stat test;
-			if (stat(argv[1],&test)) {
-				E_Exit("%s Doesn't exist",argv[1]);
-			}
-			/* Not a switch so a normal directory/file */
-			if (test.st_mode & S_IFDIR) { 
-				SHELL_AddAutoexec("MOUNT C %s",argv[1]);
-				SHELL_AddAutoexec("C:");
-			} else {
-				char * name=strrchr(argv[1],CROSS_FILESPLIT);
-				if (!name) E_Exit("This is weird %s",argv[1]);
-				*name++=0;
-				if (access(argv[1],F_OK)) E_Exit("Illegal Directory %s",argv[1]);
-				SHELL_AddAutoexec("MOUNT C %s",argv[1]);
-				SHELL_AddAutoexec("C:");
-				SHELL_AddAutoexec(name);
-			}
-			argl++;
-		}
-	}
-	bool sw_c=false;
-	while (argl<argc) {
-		if (*argv[argl]=='-') {
-			sw_c=false;
-			if (strcmp(argv[argl],"-c")==0) sw_c=true;
-			else E_Exit("Illegal switch %s",argv[argl]);
-			argl++;
-			continue;
-		}
-			SHELL_AddAutoexec(argv[argl]);
-		if (sw_c) {
-		}
-		argl++;
-	}
-
-	SysShutDown();
-
-	SDL_Quit();
-	return 0;
-}
-
-#endif
-
-//The whole load of startups for all the subfunctions
-void MSG_Init(void);
-void MEM_Init(void);
-void VGA_Init(void);
-void CALLBACK_Init();
-void DOS_Init();
-void RENDER_Init(void);
-
-void CPU_Init();
+void CPU_Init(Section*);
 //void FPU_Init();
-void IO_Init(void);
-void DMA_Init(void);
-void MIXER_Init(void);
-void HARDWARE_Init(void);
+void DMA_Init(Section*);
+void MIXER_Init(Section*);
+void HARDWARE_Init(Section*);
 
 
-void KEYBOARD_Init(void);	//TODO This should setup INT 16 too but ok ;)
-void JOYSTICK_Init(void);
-void MOUSE_Init(void);
-void SBLASTER_Init(void);
-void ADLIB_Init(void);
-void PCSPEAKER_Init(void);
-void TANDY_Init(void);
-void CMS_Init(void);
+void KEYBOARD_Init(Section*);	//TODO This should setup INT 16 too but ok ;)
+void JOYSTICK_Init(Section*);
+void MOUSE_Init(Section*);
+void SBLASTER_Init(Section*);
+void ADLIB_Init(Section*);
+void PCSPEAKER_Init(Section*);
+void TANDYSOUND_Init(Section*);
+void CMS_Init(Section*);
 
-void PIC_Init(void);
-void TIMER_Init(void);
-void BIOS_Init(void);
-void DEBUG_Init(void);
-
-
-void PLUGIN_Init(void);
+void PIC_Init(Section*);
+void TIMER_Init(Section*);
+void BIOS_Init(Section*);
+void DEBUG_Init(Section*);
 
 /* Dos Internal mostly */
-void EMS_Init(void);
-void XMS_Init(void);
-void PROGRAMS_Init(void);
+void EMS_Init(Section*);
+void XMS_Init(Section*);
+void AUTOEXEC_Init(Section*);
 void SHELL_Init(void);
 
+void INT10_Init(Section*);
 
-void CALLBACK_ShutDown(void);
-void PIC_ShutDown(void);
-void KEYBOARD_ShutDown(void);
-void CPU_ShutDown(void);
-void VGA_ShutDown(void);
-void BIOS_ShutDown(void);
-void MEMORY_ShutDown(void);
-
-
-
-
-Bit32u LastTicks;
 static LoopHandler * loop;
 
 static Bitu Normal_Loop(void) {
@@ -159,30 +93,18 @@ static Bitu Normal_Loop(void) {
 		LastTicks=new_ticks;
 		TIMER_AddTicks(ticks);
 	}
-	TIMER_CheckPIT();
 	GFX_Events();
-	PIC_runIRQs();
-	return (*cpudecoder)(cpu_cycles);
-};
-
-
-static Bitu Speed_Loop(void) {
-	Bit32u new_ticks;
-	new_ticks=GetTicks();
-	Bitu ret=0;
-	Bitu cycles=1;
-	if (new_ticks>LastTicks) {
-		Bit32u ticks=new_ticks-LastTicks;
-		if (ticks>20) ticks=20;
-//		if (ticks>3) LOG_DEBUG("Ticks %d",ticks);
-		LastTicks=new_ticks;
-		TIMER_AddTicks(ticks);
-		cycles+=cpu_cycles*ticks;
-	}
 	TIMER_CheckPIT();
-	GFX_Events();
 	PIC_runIRQs();
-	return (*cpudecoder)(cycles);
+	Bitu ret;
+	do {
+		PIC_IRQAgain=false;
+		ret=(*cpudecoder)(cpu_cycles);
+	} while (!ret && PIC_IRQAgain);
+#if C_DEBUG
+	if (DEBUG_ExitLoop()) return 0;
+#endif
+	return ret;
 }
 
 void DOSBOX_SetLoop(LoopHandler * handler) {
@@ -200,111 +122,89 @@ void DOSBOX_RunMachine(void){
 	} while (!ret);
 }
 
+static void DOSBOX_RealInit(Section * sec) {
+	Section_prop * section=static_cast<Section_prop *>(sec);
+	/* Initialize some dosbox internals */
+	errorlevel=section->Get_int("warnings");
+	MSG_Add("DOSBOX_CONFIGFILE_HELP","General Dosbox settings\n");
+    LastTicks=GetTicks();
+	DOSBOX_SetLoop(&Normal_Loop);
+	MSG_Init(section);
+}
 
 
-static void InitSystems(void) {
-	MSG_Init();
-	MEM_Init();
-	IO_Init();
-	CALLBACK_Init();
-	PROGRAMS_Init();
-	HARDWARE_Init();
-	TIMER_Init();
-	CPU_Init();
+void DOSBOX_Init(void) {
+//	Section * sec;
+	Section_prop * secprop;
+	Section_line * secline;
+
+	/* Setup all the different modules making up DOSBox */
+	
+	secprop=control->AddSection_prop("dosbox",&DOSBOX_RealInit);
+    secprop->Add_string("language","");
+#if C_DEBUG	
+	secprop->Add_int("warnings",4);
+#else 
+	secprop->Add_int("warnings",0);
+#endif
+	
+	secprop->AddInitFunction(&MEM_Init);
+	secprop->AddInitFunction(&IO_Init);
+	secprop->AddInitFunction(&CALLBACK_Init);
+	secprop->AddInitFunction(&PIC_Init);
+	secprop->AddInitFunction(&PROGRAMS_Init);
+	secprop->AddInitFunction(&TIMER_Init);
+	secprop->AddInitFunction(&RENDER_Init);
+	secprop->Add_string("snapshots","snapshots");
+	
+	secprop=control->AddSection_prop("cpu",&CPU_Init);
+	secprop->Add_int("cycles",4000);
+
+	secprop->AddInitFunction(&DMA_Init);
+	secprop->AddInitFunction(&VGA_Init);
+	secprop->AddInitFunction(&KEYBOARD_Init);
+	secprop->AddInitFunction(&MOUSE_Init);
+	secprop->AddInitFunction(&JOYSTICK_Init);
+
+	secprop=control->AddSection_prop("mixer",&MIXER_Init);
+#if C_DEBUG
+	secprop=control->AddSection_prop("debug",&DEBUG_Init);
+#endif
+	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init);
+    secprop->Add_hex("base",0x220);
+	secprop->Add_int("irq",7);
+	secprop->Add_int("dma",1);
+	secprop->Add_int("hdma",5);
+	secprop->Add_bool("enabled",true);
+
+	secprop->AddInitFunction(&ADLIB_Init);
+	secprop->Add_bool("adlib",true);
+	secprop->AddInitFunction(&CMS_Init);
+    secprop->Add_bool("cms",false);
+	
+	secprop=control->AddSection_prop("speaker",&PCSPEAKER_Init);
+	secprop->Add_bool("sinewave",false);
+	secprop->AddInitFunction(&TANDYSOUND_Init);
+	secprop->Add_bool("tandy",false);
+
+	secprop=control->AddSection_prop("bios",&BIOS_Init);
+	secprop->AddInitFunction(&INT10_Init);
+
+	/* All the DOS Related stuff, which will eventually start up in the shell */
+	//TODO Maybe combine most of the dos stuff in one section like ems,xms
+	secprop=control->AddSection_prop("dos",&DOS_Init);
+	secprop->AddInitFunction(&EMS_Init);
+	secprop->Add_int("emssize",4);
+	secprop->AddInitFunction(&XMS_Init);
+	secprop->Add_int("xmssize",8);
+
+	secline=control->AddSection_line("autoexec",&AUTOEXEC_Init);
+    
+	control->SetStartUp(&SHELL_Init);	
+
 #if C_FPU
 	FPU_Init();
 #endif
-	MIXER_Init();
-#if C_DEBUG
-	DEBUG_Init();
-#endif
-	//Start up individual hardware
-	DMA_Init();
-	PIC_Init();
-	VGA_Init();
-	KEYBOARD_Init();
-	MOUSE_Init();
-	JOYSTICK_Init();
-	SBLASTER_Init();
-	TANDY_Init();
-	PCSPEAKER_Init();
-	ADLIB_Init();
-	CMS_Init();
-
-	PLUGIN_Init();
-/* Most of teh interrupt handlers */
-	BIOS_Init();
-	DOS_Init();
-	EMS_Init();		//Needs dos first
-	XMS_Init();		//Needs dos first
-
-/* Setup the normal system loop */
-	LastTicks=GetTicks();
-	DOSBOX_SetLoop(&Normal_Loop);
-//	DOSBOX_SetLoop(&Speed_Loop);
 }
 
 
-void DOSBOX_Init(int argc, char* argv[]) {
-/* Find the base directory */
-	SHELL_AddAutoexec("SET PATH=Z:\\");
-	SHELL_AddAutoexec("SET COMSPEC=Z:\\COMMAND.COM");
-    strcpy(dosbox_basedir,argv[0]);
-	char * last=strrchr(dosbox_basedir,CROSS_FILESPLIT); //if windowsversion fails: 
-    if (!last){     
-            getcwd(dosbox_basedir,CROSS_LEN);
-            char a[2];
-            a[0]=CROSS_FILESPLIT;
-            a[1]='\0';
-            strcat(dosbox_basedir,a);
-    } else {
-	*++last=0;
-    }
-	/* Parse the command line with a setup function */
-	int argl=1;
-	if (argc>1) {
-		if (*argv[1]!='-') {
-			struct stat test;
-			if (stat(argv[1],&test)) {
-				E_Exit("%s Doesn't exist",argv[1]);
-			}
-			/* Not a switch so a normal directory/file */
-			if (test.st_mode & S_IFDIR) { 
-				SHELL_AddAutoexec("MOUNT C %s",argv[1]);
-				SHELL_AddAutoexec("C:");
-			} else {
-				char * name=strrchr(argv[1],CROSS_FILESPLIT);
-				if (!name) E_Exit("This is weird %s",argv[1]);
-				*name++=0;
-				if (access(argv[1],F_OK)) E_Exit("Illegal Directory %s",argv[1]);
-				SHELL_AddAutoexec("MOUNT C %s",argv[1]);
-				SHELL_AddAutoexec("C:");
-				SHELL_AddAutoexec(name);
-			}
-			argl++;
-		}
-	}
-	bool sw_c=false;
-	while (argl<argc) {
-		if (*argv[argl]=='-') {
-			sw_c=false;
-			if (strcmp(argv[argl],"-c")==0) sw_c=true;
-			else E_Exit("Illegal switch %s",argv[argl]);
-			argl++;
-			continue;
-		}
-			SHELL_AddAutoexec(argv[argl]);
-		if (sw_c) {
-		}
-		argl++;
-	}
-
-
-	
-	InitSystems();	
-}
-
-
-void DOSBOX_StartUp(void) {
-	SHELL_Init();
-};

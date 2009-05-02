@@ -18,8 +18,9 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <SDL/SDL.h>
-#include <SDL/SDL_thread.h>
+#include <SDL.h>
+#include <SDL_thread.h>
+
 #include "dosbox.h"
 #include "video.h"
 #include "keyboard.h"
@@ -27,7 +28,8 @@
 #include "joystick.h"
 #include "pic.h"
 #include "timer.h"
-
+#include "setup.h"
+#include "debug.h"
 
 //#define DISABLE_JOYSTICK
 
@@ -39,13 +41,23 @@ struct SDL_Block {
 	Bitu bpp;
 	GFX_DrawHandler * draw;
 	GFX_ResizeHandler * resize;
-	bool mouse_grabbed;
 	bool full_screen;
 	SDL_Thread * thread;
 	SDL_mutex * mutex;
 	SDL_Surface * surface;
 	SDL_Joystick * joy;
 	SDL_Color pal[256];
+	struct {
+		bool autolock;
+		bool autoenable;
+		bool requestlock;
+		bool locked;
+		Bitu sensitivity;
+	} mouse;
+	struct {
+		Bitu skip;
+		Bitu count;
+	} frames ;
 };
 
 static SDL_Block sdl;
@@ -98,14 +110,24 @@ void GFX_Resize(Bitu width,Bitu height,Bitu bpp,GFX_ResizeHandler * resize) {
 }
 
 static void CaptureMouse() {
-	sdl.mouse_grabbed=!sdl.mouse_grabbed;
-	if (sdl.mouse_grabbed) {
+	sdl.mouse.locked=!sdl.mouse.locked;
+	if (sdl.mouse.locked) {
 		SDL_WM_GrabInput(SDL_GRAB_ON);
 		SDL_ShowCursor(SDL_DISABLE);
 	} else {
 		SDL_WM_GrabInput(SDL_GRAB_OFF);
 		SDL_ShowCursor(SDL_ENABLE);
 	}
+}
+
+static void DecreaseSkip() {
+	if (sdl.frames.skip>0) sdl.frames.skip--;
+	LOG_MSG("Frame Skip %d",sdl.frames.skip);
+}
+
+static void IncreaseSkip() {
+	if (sdl.frames.skip<10) sdl.frames.skip++;
+	LOG_MSG("Frame Skip %d",sdl.frames.skip);
 }
 
 static void SwitchFullScreen(void) {
@@ -120,6 +142,10 @@ static void SwitchFullScreen(void) {
 	ResetScreen();
 	GFX_Start();
 }
+//only prototype existed
+void GFX_SwitchFullScreen(void) {
+    SwitchFullScreen();
+}
 
 static void GFX_Redraw() {
 #if C_THREADED
@@ -127,6 +153,9 @@ static void GFX_Redraw() {
 		E_Exit("Can't Lock Mutex");
 	};
 #endif	
+
+	if (++sdl.frames.count<sdl.frames.skip) goto skipframe;
+	sdl.frames.count=0;
 	if (sdl.active) {
 		SDL_LockSurface(sdl.surface );
 		if (sdl.surface->pixels && sdl.draw) (*sdl.draw)((Bit8u *)sdl.surface->pixels);
@@ -134,6 +163,7 @@ static void GFX_Redraw() {
 		 if (sdl.full_screen) SDL_Flip(sdl.surface);
 		 else SDL_UpdateRect(sdl.surface,0,0,0,0);
 	};
+skipframe:
 #if C_THREADED	
 	if (SDL_mutexV(sdl.mutex)) {
 		E_Exit("Can't Release Mutex");
@@ -193,32 +223,53 @@ void GFX_Start() {
 	sdl.active=true;
 }
 
+static void GUI_ShutDown(Section * sec) {
+	GFX_Stop();
+	if (sdl.mouse.locked) CaptureMouse();
+	if (sdl.full_screen) SwitchFullScreen();
+}
 
-void GFX_StartUp() {
+static void GUI_StartUp(Section * sec) {
+    MSG_Add("SDL_CONFIGFILE_HELP","SDL related options.\n");
+	sec->AddDestroyFunction(&GUI_ShutDown);
+	Section_prop * section=static_cast<Section_prop *>(sec);
 	sdl.active=false;
 	sdl.full_screen=false;
+	sdl.frames.skip=0;
+	sdl.frames.count=0;
 	sdl.draw=0;
+	sdl.mouse.locked=false;
+	sdl.mouse.requestlock=false;
+	sdl.mouse.autoenable=section->Get_bool("autolock");
+	sdl.mouse.autolock=false;
+	sdl.mouse.sensitivity=section->Get_int("sensitivity");
+	GFX_Resize(640,400,8,0);
 #if C_THREADED
 	sdl.mutex=SDL_CreateMutex();
 	sdl.thread = SDL_CreateThread(&SDLGFX_Thread,0);
 #else 
 	TIMER_RegisterMicroHandler(GFX_Redraw,1000000/70);
 #endif
-	GFX_Resize(640,400,8,0);
 	SDL_EnableKeyRepeat(250,30);
 	
 /* Get some Keybinds */
-	KEYBOARD_AddEvent(KBD_f9,CTRL_PRESSED,SwitchFullScreen);
 	KEYBOARD_AddEvent(KBD_f10,CTRL_PRESSED,CaptureMouse);
+	KEYBOARD_AddEvent(KBD_f7,CTRL_PRESSED,DecreaseSkip);
+	KEYBOARD_AddEvent(KBD_f8,CTRL_PRESSED,IncreaseSkip);
 	KEYBOARD_AddEvent(KBD_enter,ALT_PRESSED,SwitchFullScreen);
 }
 
 void GFX_ShutDown() {
 	if (sdl.full_screen) SwitchFullScreen();
-	if (sdl.mouse_grabbed) CaptureMouse();
+	if (sdl.mouse.locked) CaptureMouse();
 	GFX_Stop();
 }
 
+void Mouse_AutoLock(bool enable) {
+	sdl.mouse.autolock=enable;
+	if (enable && sdl.mouse.autoenable) sdl.mouse.requestlock=true;
+	else sdl.mouse.requestlock=false;
+}
 
 static void HandleKey(SDL_KeyboardEvent * key) {
 	Bit32u code;
@@ -348,16 +399,17 @@ static void HandleKey(SDL_KeyboardEvent * key) {
 }
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
-	if (!sdl.mouse_grabbed) {
-		Mouse_CursorSet((float)motion->x/(float)sdl.width,(float)motion->y/(float)sdl.height);
+	if (sdl.mouse.locked) {
+		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100,(float)motion->yrel*sdl.mouse.sensitivity/100);
 	} else {
-		Mouse_CursorMoved((float)motion->xrel/(float)sdl.width,(float)motion->yrel/(float)sdl.height);
+//		Mouse_CursorSet((float)motion->x/(float)sdl.width,(float)motion->y/(float)sdl.height);
 	}
 }
 
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	switch (button->state) {
 	case SDL_PRESSED:
+		if (sdl.mouse.requestlock && !sdl.mouse.locked) CaptureMouse();
 		switch (button->button) {
 		case SDL_BUTTON_LEFT:
 			Mouse_ButtonPressed(0);
@@ -424,6 +476,13 @@ void GFX_Events() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 	    switch (event.type) {
+		case SDL_ACTIVEEVENT:
+			if (event.active.state & SDL_APPINPUTFOCUS) {
+				if (!event.active.gain && sdl.mouse.locked) {
+					CaptureMouse();	
+				}
+			}
+			break;
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
 			HandleKey(&event.key);
@@ -451,24 +510,6 @@ void GFX_Events() {
 		}
     }
 }
-#if 0
-
-void E_Exit(char * format,...) {
-	char buf[1024];
-
-	va_list msg;
-	strcpy(buf,"EXIT:");
-	va_start(msg,format);
-	vsprintf(buf+strlen(buf),format,msg);
-	va_end(msg);
-	waddstr(dbg.win_out,buf);
-	wprintw(dbg.win_out," %d\n",cycle_count);
-	wrefresh(dbg.win_out);
-	throw ((Bitu)1);
-}
-
-#endif
-
 
 void GFX_ShowMsg(char * msg) {
 	char buf[1024];
@@ -478,36 +519,57 @@ void GFX_ShowMsg(char * msg) {
 };
 
 int main(int argc, char* argv[]) {
-	try { 
-	if ( SDL_Init(SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
+	
+#if C_DEBUG
+	DEBUG_SetupConsole();
+#endif
+	
+	try {
+		CommandLine com_line(argc,argv);
+		Config myconf(&com_line);
+		control=&myconf;
+
+		if ( SDL_Init(SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
 #ifndef DISABLE_JOYSTICK
 		|SDL_INIT_JOYSTICK
 	
 #endif
-		) < 0 ) {
-       E_Exit("Can't init SDL %s",SDL_GetError());
-	}
-	GFX_StartUp();
-/* Init all the dosbox subsystems */
-	DOSBOX_Init(argc,argv);
-/* Start the systems that SDL should provide */
+		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
+		Section_prop * sdl_sec=control->AddSection_prop("sdl",&GUI_StartUp);
+		sdl_sec->Add_bool("fullscreen",false);
+		sdl_sec->Add_bool("autolock",true);
+		sdl_sec->Add_int("sensitivity",100);
+
+		/* Init all the dosbox subsystems */
+		DOSBOX_Init();
+		std::string config_file;
+		if (control->cmdline->FindString("-conf",config_file,true)) {
+			
+		} else {
+			config_file="dosbox.conf";
+		}
+		/* Parse the config file */
+		control->ParseConfigFile(config_file.c_str());
+		/* Init all the sections */
+		control->Init();
+		/* Some extra SDL Functions */
 #ifndef DISABLE_JOYSTICK
-	if (SDL_NumJoysticks()>0) {
-		SDL_JoystickEventState(SDL_ENABLE);
-		sdl.joy=SDL_JoystickOpen(0);
-		LOG_MSG("Using joystick %s with %d axes and %d buttons",SDL_JoystickName(0),SDL_JoystickNumAxes(sdl.joy),SDL_JoystickNumButtons(sdl.joy));
-		JOYSTICK_Enable(0,true);
+		if (SDL_NumJoysticks()>0) {
+			SDL_JoystickEventState(SDL_ENABLE);
+			sdl.joy=SDL_JoystickOpen(0);
+			LOG_MSG("Using joystick %s with %d axes and %d buttons",SDL_JoystickName(0),SDL_JoystickNumAxes(sdl.joy),SDL_JoystickNumButtons(sdl.joy));
+			JOYSTICK_Enable(0,true);
+		}
+#endif	
+		if (control->cmdline->FindExist("-fullscreen") || sdl_sec->Get_bool("fullscreen")) {
+			SwitchFullScreen();
+		}
+		/* Start up main machine */
+		control->StartUp();
+		/* Shutdown everything */
+	} catch (char * error) {
+		LOG_MSG("Exit to error: %sPress enter to continue.",error);
+		fgetc(stdin);
 	}
-#endif
-	/* Start dosbox up */
-	DOSBOX_StartUp();	
-	}
-	catch (Bitu e) {
-		LOG_MSG("Exit to error %d",e);
-	}
-	GFX_Stop();
-
-	
-
 	return 0;
 };

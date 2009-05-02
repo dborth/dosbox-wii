@@ -22,7 +22,7 @@
 #include "callback.h"
 #include "inout.h"
 #include "mem.h"
-
+#include "timer.h"
 
 static Bitu call_int1a,call_int11,call_int8,call_int17,call_int12,call_int15,call_int1c;
 
@@ -136,6 +136,12 @@ static Bitu INT17_Handler(void) {
 	return CBRET_NONE;
 };
 
+static void WaitFlagEvent(void) {
+	PhysPt where=Real2Phys(mem_readd(BIOS_WAIT_FLAG_POINTER));
+	mem_writeb(where,mem_readb(where)|0x80);
+	mem_writeb(BIOS_WAIT_FLAG_ACTIVE,0);
+}
+
 static Bitu INT15_Handler(void) {
 	switch (reg_ah) {
 	case 0x06:
@@ -148,6 +154,12 @@ static Bitu INT15_Handler(void) {
 	case 0x4f:	/* BIOS - Keyboard intercept */
 		/* Carry should be set but let's just set it just in case */
 		CALLBACK_SCF(true);
+		break;
+	case 0x83:	/* BIOS - SET EVENT WAIT INTERVAL */
+		mem_writed(BIOS_WAIT_FLAG_POINTER,RealMake(SegValue(es),reg_bx));
+		mem_writed(BIOS_WAIT_FLAG_COUNT,reg_cx<<16|reg_dx);
+		mem_writeb(BIOS_WAIT_FLAG_ACTIVE,1);
+		TIMER_RegisterDelayHandler(&WaitFlagEvent,reg_cx<<16|reg_dx);
 		break;
 	case 0x84:	/* BIOS - JOYSTICK SUPPORT (XT after 11/8/82,AT,XT286,PS) */
 		//Does anyone even use this?
@@ -181,6 +193,8 @@ static Bitu INT15_Handler(void) {
 		break;
 	default:
 		LOG_WARN("INT15:Unknown call %2X",reg_ah);
+		reg_ah=0x86;
+		CALLBACK_SCF(false);
 	}
 	return CBRET_NONE;
 };
@@ -193,7 +207,8 @@ static void INT15_StartUp(void) {
 void BIOS_SetupKeyboard(void);
 void BIOS_SetupDisks(void);
 
-void BIOS_Init(void) {
+void BIOS_Init(Section* sec) {
+    MSG_Add("BIOS_CONFIGFILE_HELP","Nothing to setup yet!\n");
 	/* Clear the Bios Data Area */
 	for (Bit16u i=0;i<1024;i++) real_writeb(0x40,i,0);
 	/* Setup all the interrupt handlers the bios controls */
@@ -205,7 +220,7 @@ void BIOS_Init(void) {
 	mem_writed(BIOS_TIMER,0);			//Calculate the correct time
 	RealSetVec(0x8,CALLBACK_RealPointer(call_int8));
 	/* INT10 Video Bios */
-	INT10_StartUp();
+	
 	/* INT 11 Get equipment list */
 	call_int11=CALLBACK_Allocate();	
 	CALLBACK_Setup(call_int11,&INT11_Handler,CB_IRET);

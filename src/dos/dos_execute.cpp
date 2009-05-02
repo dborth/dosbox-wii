@@ -21,12 +21,11 @@
 #include "mem.h"
 #include "dos_inc.h"
 #include "cpu.h"
-#if defined (_MSC_VER)
-#pragma pack(1)
-#endif
+#include "callback.h"
+#include "debug.h"
 
+#pragma pack(1)
 struct EXE_Header {
-	
 	Bit16u signature;					/* EXE Signature MZ or ZM */
 	Bit16u extrabytes;					/* Bytes on the last page */
 	Bit16u pages;						/* Pages in file */
@@ -41,13 +40,8 @@ struct EXE_Header {
 	Bit16u initCS;
 	Bit16u reloctable;
 	Bit16u overlay;
-}
-#if defined (_MSC_VER)
-;
+} GCC_ATTRIBUTE(packed);
 #pragma pack()
-#else
-__attribute__ ((packed));
-#endif
 
 #define MAGIC1 0x5a4d
 #define MAGIC2 0x4d5a
@@ -63,32 +57,64 @@ __attribute__ ((packed));
 #define OVERLAY 3
 
 
-bool DOS_Terminate(bool tsr) {
-	PSP * psp=(PSP *)HostMake(dos.psp,0);
-	if (!tsr) {
-		/* Free Files owned by process */
-		for (Bit16u i=0;i<psp->max_files;i++) {
-			DOS_CloseFile(i);
-		}
-		DOS_FreeProcessMemory(dos.psp);
-	};
-	dos.psp=psp->psp_parent;
-	PSP * oldpsp=(PSP *)HostMake(dos.psp,0);
-	/* Restore the DTA */
-	dos.dta=psp->dta;
-	/* Restore the old CS:IP from int 22h */
-	RealPt old22;
-	old22=RealGetVec(0x22);
-	SegSet16(cs,RealSeg(old22));
-	reg_ip=RealOff(old22);
-	/* Restore the SS:SP to the previous one */
-	SegSet16(ss,RealSeg(oldpsp->stack));
-	reg_sp=RealOff(oldpsp->stack);
-	/* Restore interrupt 22,23,24 */
-	RealSetVec(0x22,psp->int_22);
-	RealSetVec(0x23,psp->int_23);
-	RealSetVec(0x24,psp->int_24);
 
+static void SaveRegisters(void) {
+	reg_sp-=20;
+	mem_writew(SegPhys(ss)+reg_sp+ 0,reg_ax);
+	mem_writew(SegPhys(ss)+reg_sp+ 2,reg_cx);
+	mem_writew(SegPhys(ss)+reg_sp+ 4,reg_dx);
+	mem_writew(SegPhys(ss)+reg_sp+ 6,reg_bx);
+	mem_writew(SegPhys(ss)+reg_sp+ 8,reg_si);
+	mem_writew(SegPhys(ss)+reg_sp+10,reg_di);
+	mem_writew(SegPhys(ss)+reg_sp+12,reg_bp);
+	mem_writew(SegPhys(ss)+reg_sp+14,SegValue(ds));
+	mem_writew(SegPhys(ss)+reg_sp+16,SegValue(es));
+}
+
+static void RestoreRegisters(void) {
+	reg_ax=mem_readw(SegPhys(ss)+reg_sp+ 0);
+	reg_cx=mem_readw(SegPhys(ss)+reg_sp+ 2);
+	reg_dx=mem_readw(SegPhys(ss)+reg_sp+ 4);
+	reg_bx=mem_readw(SegPhys(ss)+reg_sp+ 6);
+	reg_si=mem_readw(SegPhys(ss)+reg_sp+ 8);
+	reg_di=mem_readw(SegPhys(ss)+reg_sp+10);
+	reg_bp=mem_readw(SegPhys(ss)+reg_sp+12);
+	SegSet16(ds,mem_readw(SegPhys(ss)+reg_sp+14));
+	SegSet16(es,mem_readw(SegPhys(ss)+reg_sp+16));
+	reg_sp+=20;
+}
+
+
+bool DOS_Terminate(bool tsr) {
+
+	dos.return_code=reg_al;
+	dos.return_mode=RETURN_EXIT;
+	
+	Bit16u mempsp = dos.psp;
+	DOS_PSP curpsp(dos.psp);
+	if (dos.psp==curpsp.GetParent()) return true;
+
+	/* Free Files owned by process */
+	if (!tsr) curpsp.CloseFiles();	
+	/* Get the termination address */
+	RealPt old22 = curpsp.GetInt22();
+	/* Restore vector 22,23,24 */
+	curpsp.RestoreVectors();
+	/* Set the parent PSP */
+	dos.psp = curpsp.GetParent();
+	DOS_PSP parentpsp(curpsp.GetParent());
+	/* Restore the DTA of the parent psp */
+	dos.dta = parentpsp.GetDTA();
+	/* Restore the SS:SP to the previous one */
+	SegSet16(ss,RealSeg(parentpsp.GetStack()));
+	reg_sp = RealOff(parentpsp.GetStack());		
+	/* Restore the old CS:IP from int 22h */
+	RestoreRegisters();
+	/* Set the CS:IP stored in int 0x22 back on the stack */
+	mem_writew(SegPhys(ss)+reg_sp+0,RealOff(old22));
+	mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(old22));
+	// Free memory owned by process
+	if (!tsr) DOS_FreeProcessMemory(mempsp);
 	return true;
 }
 
@@ -97,20 +123,19 @@ bool DOS_Terminate(bool tsr) {
 static bool MakeEnv(char * name,Bit16u * segment) {
 
 	/* If segment to copy environment is 0 copy the caller's environment */
-	PSP * psp=(PSP *)HostMake(dos.psp,0);
+	DOS_PSP psp(dos.psp);
 	Bit8u * envread,*envwrite;
 	Bit16u envsize=1;
 	bool parentenv=true;
 
 	if (*segment==0) {
-		if (!psp->environment) parentenv=false;				//environment seg=0
-		envread=HostMake(psp->environment,0);
+		if (!psp.GetEnvironment()) parentenv=false;				//environment seg=0
+		envread=HostMake(psp.GetEnvironment(),0);
 	} else {
 		if (!*segment) parentenv=false;						//environment seg=0
 		envread=HostMake(*segment,0);
 	}
 
-	//TODO Make a good DOS first psp 
 	if (parentenv) {
 		for (envsize=0; ;envsize++) {
 			if (envsize>=MAXENV - ENV_KEEPFREE) {
@@ -132,317 +157,187 @@ static bool MakeEnv(char * name,Bit16u * segment) {
 	}
 	*((Bit16u *) envwrite)=1;
 	envwrite+=2;
-	//TODO put the filename here 
+
 	return DOS_Canonicalize(name,(char *)envwrite);
 };
 
-bool DOS_NewPSP(Bit16u pspseg) {
-	PSP * newpsp=(PSP *)HostMake(pspseg,0);
-	PSP * prevpsp=(PSP *)HostMake(dos.psp,0);
-
-	memset((void *)newpsp,0,sizeof(PSP));
-	newpsp->exit[0]=0xcd;newpsp->exit[1]=0x20;
-	newpsp->service[0]=0xcd;newpsp->service[0]=0x21;newpsp->service[0]=0xcb;
-
-	newpsp->mem_size=prevpsp->mem_size;
-	newpsp->environment=0;
-
-	newpsp->int_22=RealGetVec(0x22);
-	newpsp->int_23=RealGetVec(0x23);
-	newpsp->int_24=RealGetVec(0x24);
-	
-	newpsp->psp_parent=dos.psp;
-	newpsp->prev_psp=0xFFFFFFFF;
-
-	Bit32u i;
-	Bit8u * prevfile=Real2Host(prevpsp->file_table);
-	for (i=0;i<20;i++) newpsp->files[i]=prevfile[i];
-
-	newpsp->max_files=20;
-	newpsp->file_table=RealMake(pspseg,offsetof(PSP,files));
-	/* Save the old DTA in this psp */
-	newpsp->dta=dos.dta;
-	/* Setup the DTA */
-	dos.dta=RealMake(pspseg,0x80);
+bool DOS_NewPSP(Bit16u segment, Bit16u size)
+{
+	DOS_PSP psp(segment);
+	psp.MakeNew(size);
+	DOS_PSP psp_parent(psp.GetParent());
+	psp.CopyFileTable(&psp_parent);
 	return true;
 };
 
 static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
 	
-	PSP * psp=(PSP *)HostMake(pspseg,0);
-	/* Fix the PSP index of this MCB */
+	/* Fix the PSP for psp and environment MCB's */
 	MCB * pspmcb=(MCB *)HostMake(pspseg-1,0);
 	pspmcb->psp_segment=pspseg;
 	MCB * envmcb=(MCB *)HostMake(envseg-1,0);
 	envmcb->psp_segment=pspseg;
 
-	memset((void *)psp,0,sizeof(PSP));
-	Bit32u i;
-
-	psp->exit[0]=0xcd;psp->exit[1]=0x20;
-	psp->mem_size=memsize+pspseg;
-	psp->environment=envseg;
-
-	psp->int_22=RealGetVec(0x22);
-	psp->int_23=RealGetVec(0x23);
-	psp->int_24=RealGetVec(0x24);
-	
-	psp->service[0]=0xcd;psp->service[0]=0x21;psp->service[0]=0xcb;
-	
-	psp->psp_parent=dos.psp;
-	psp->prev_psp=RealMake(dos.psp,0);
-
-	for (i=0;i<20;i++) psp->files[i]=0xff;
-	psp->files[STDIN]=DOS_FindDevice("CON");
-	psp->files[STDOUT]=DOS_FindDevice("CON");
-	psp->files[STDERR]=DOS_FindDevice("CON");
-	psp->files[STDAUX]=DOS_FindDevice("CON");
-	psp->files[STDNUL]=DOS_FindDevice("CON");
-	psp->files[STDPRN]=DOS_FindDevice("CON");
-
-	psp->max_files=20;
-	psp->file_table=RealMake(pspseg,offsetof(PSP,files));
+	DOS_PSP psp(pspseg);
+	psp.MakeNew(memsize);
+	psp.SetEnvironment(envseg);
+	psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
 	/* Save old DTA in psp */
-	psp->dta=dos.dta;
-
+	psp.SetDTA(dos.dta);
 	/* Setup the DTA */
 	dos.dta=RealMake(pspseg,0x80);
 }
 
-static void SetupCMDLine(Bit16u pspseg,ParamBlock * block) {
-	PSP * psp=(PSP *)HostMake(pspseg,0);
-
-	if (block->exec.cmdtail) {
-		memcpy((void *)&psp->cmdtail,(void *)Real2Host(block->exec.cmdtail),128);
-	} else {
-		char temp[]="";
-		psp->cmdtail.count=strlen(temp);
-		strcpy((char *)&psp->cmdtail.buffer,temp);
-		psp->cmdtail.buffer[0]=0x0d;
-
-	}
+static void SetupCMDLine(Bit16u pspseg,DOS_ParamBlock & block) 
+{
+	DOS_PSP psp(pspseg);
+	// if cmdtail==0 it will inited as empty in SetCommandTail
+	psp.SetCommandTail(block.exec.cmdtail);
 }
 
-
-
-
-static bool COM_Load(char * name,ParamBlock * block,Bit8u flag) {
-	Bit16u fhandle;
-	Bit16u size;Bit16u readsize;
-	Bit16u envseg,comseg;
-	Bit32u pos;
-
-	PSP * callpsp=(PSP *)HostMake(dos.psp,0);
-
-	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) return false;
-	if (flag!=OVERLAY) {
-		/* Allocate a new Environment */
-		envseg=block->exec.envseg;
-		if (!MakeEnv(name,&envseg)) return false;
-		/* Allocate max memory for COM file and PSP */
-		size=0xffff;
-		DOS_AllocateMemory(&comseg,&size);
-		//TODO Errors check for minimun of 64kb in pages
-		if (Bit32u(size <<4)<0x1000) { 
-			DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
-			DOS_FreeMemory(envseg);
-			return false;
-		}
-		DOS_AllocateMemory(&comseg,&size);
-	} else {
-		comseg=block->overlay.loadseg;
+bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
+	EXE_Header head;Bitu i;
+	Bit16u fhandle;Bit16u len;Bit32u pos;
+	Bit16u pspseg,envseg,loadseg,memsize,readsize;
+	HostPt loadaddress;RealPt relocpt;
+	Bitu headersize,imagesize;
+	DOS_ParamBlock block(block_pt);
+	block.LoadData();
+	if (flags!=LOADNGO && flags!=OVERLAY) {
+		E_Exit("DOS:Not supported execute mode %d for file %s",flags,name); 	
 	}
-	/* Memory allocated now load the program */
-	/* Now copy the File into allocated memory */
-	pos=0;
-	DOS_SeekFile(fhandle,&pos,0);	
-	readsize=0xffff-256;
-	if (flag==OVERLAY) {
-		DOS_ReadFile(fhandle,HostMake(comseg,0),&readsize);
-	} else {
-		DOS_ReadFile(fhandle,HostMake(comseg,256),&readsize);
-	}
-	DOS_CloseFile(fhandle);
-	if (flag==OVERLAY) /* Everything what should be done for Overlays */
-		return true;		
-	SetupPSP(comseg,size,envseg);
-	SetupCMDLine(comseg,block);
-	/* Setup termination Address */
-	RealSetVec(0x22,RealMakeSeg(cs,reg_ip));
-	/* Everything setup somewhat setup CS:IP and SS:SP */
-	/* First save the SS:SP of program that called execute */
-	callpsp->stack=RealMakeSeg(ss,reg_sp);
-	/* Clear out first Stack entry to point to int 20h at psp:0 */
-	real_writew(comseg,0xfffe,0);
-	dos.psp=comseg;
-	switch (flag) {
-	case LOADNGO:
-		SegSet16(cs,comseg);
-		SegSet16(ss,comseg);
-		SegSet16(ds,comseg);
-		SegSet16(es,comseg);
-		flags.intf=true;
-		reg_ip=0x100;
-		reg_sp=0xFFFE;
-		reg_ax=0;	
-		reg_bx=reg_cx=reg_dx=reg_si=reg_di=reg_bp=0;
-		return true;
-	case LOAD:
-		block->exec.initsssp=RealMake(comseg,0xfffe);
-		block->exec.initcsip=RealMake(comseg,0x100);
-		return true;
-	}
-	return false;
-
-}
-
-
-static bool EXE_Load(char * name,ParamBlock* _block,Bit8u flag) {
-
-	EXE_Header header;
-	Bit16u fhandle;Bit32u i;
-	Bit16u size,minsize,maxsize,freesize;Bit16u readsize;
-	Bit16u envseg,pspseg,exeseg;
-	Bit32u imagesize,headersize;
-
-	// During loading process, th param-block-mem might be overwritten (HostPt!) and 
-	// therefore change the relocation address, so save these values.
-	ParamBlock block;
-	memcpy(&block,_block,sizeof(ParamBlock));
-
-	PSP * callpsp=(PSP *)HostMake(dos.psp,0);
-
-	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) return false;
-	if (flag!=OVERLAY) {
-		/* Allocate a new Environment */
-		envseg=block.exec.envseg;
-		if (!MakeEnv(name,&envseg)) return false;
-	};
-
-	/* First Read the EXE Header */
-	readsize=sizeof(EXE_Header);
-	DOS_ReadFile(fhandle,(Bit8u*)&header,&readsize);
-	/* Calculate the size of the image to load */
-	headersize=header.headersize*16;
-	imagesize=header.pages*512-headersize;
-	if (flag!=OVERLAY) { 
-		minsize=long2para(imagesize+(header.minmemory<<4)+256);
-		if (header.maxmemory!=0) maxsize=long2para(imagesize+(header.maxmemory<<4)+256);
-		else maxsize=0xffff;
-		freesize=0xffff;
-		/* Check for enough free memory */
-		DOS_AllocateMemory(&exeseg,&freesize);
-		if (minsize>freesize) {
-			DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
-			DOS_FreeMemory(envseg);
-			return false;
-		}
-		if (maxsize>freesize) {
-			size=freesize;		
-		} else size=maxsize;
-		if ((header.minmemory|header.maxmemory)==0) {
-			size=freesize;
-			E_Exit("Special case exe header max and min=0");
-		}
-		if (!DOS_AllocateMemory(&pspseg,&size)) {
-			DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
-			DOS_FreeMemory(envseg);
-			return false;
-		}
-		SetupPSP(pspseg,size,envseg);
-		SetupCMDLine(pspseg,&block);
-		exeseg=pspseg+16;
-	} else {
-		/* For OVERLAY */
-		exeseg=block.overlay.loadseg;
-	}
-	/* Load the image in 32k blocks */
-	DOS_SeekFile(fhandle,&headersize,0);
-	Bit8u * imageoff=HostMake(exeseg,0);
-//TODO File size checking and remove size
-	// Remove psp size
-//	imagesize=256;
-	// Maybe remove final page and add last bytes on page
-	if (header.extrabytes) {
-		imagesize-=512;
-		imagesize+=header.extrabytes;
-	};
-	while (imagesize>0x7FFF) {
-		readsize=0x8000;
-		DOS_ReadFile(fhandle,imageoff,&readsize);
-		if (readsize!=0x8000) {
-			E_Exit("Illegal header");
-		}
-		imageoff+=0x8000;
-		imagesize-=0x8000;
-	}
-	if (imagesize>0) {
-		readsize=(Bit16u) imagesize;
-		DOS_ReadFile(fhandle,imageoff,&readsize);
-	}
-	headersize=header.reloctable;
-	DOS_SeekFile(fhandle,&headersize,0);
-	RealPt reloc;
-	for (i=0;i<header.relocations;i++) {
-	 	readsize=4;
-		DOS_ReadFile(fhandle,(Bit8u *)&reloc,&readsize);
-		PhysPt address=Real2Phys(RealMake(RealSeg(reloc)+exeseg,RealOff(reloc)));
-		Bit16u change=mem_readw(address);
-		if (flag==OVERLAY) {
-			change+=block.overlay.relocation;
-		} else {
-			change+=exeseg;
-		};
-		mem_writew(address,change);
-
-	};
-	DOS_CloseFile(fhandle);
-	if (flag==OVERLAY) return true;
-
-	/* Setup termination Address */
-	RealSetVec(0x22,RealMakeSeg(cs,reg_ip));
-	/* Start up the actual EXE if we need to */
-	//TODO check for load and return
-	callpsp->stack=RealMakeSeg(ss,reg_sp);
-	dos.psp=pspseg;
-	SegSet16(cs,exeseg+header.initCS);
-	SegSet16(ss,exeseg+header.initSS);
-	SegSet16(ds,pspseg);
-	SegSet16(es,pspseg);
-	reg_ip=header.initIP;
-	reg_sp=header.initSP;
-	reg_ax=0;	
-	reg_bx=reg_cx=reg_dx=reg_si=reg_di=reg_bp=0;
-	flags.intf=true;
-	return true;
-};
-
-
-bool DOS_Execute(char * name,ParamBlock * block,Bit8u flags) {
-
-	EXE_Header head;
-	Bit16u fhandle;
-	Bit16u size;
+	/* Check for EXE or COM File */
 	bool iscom=false;
 	if (!DOS_OpenFile(name,OPEN_READ,&fhandle)) return false;
-	
-	size=sizeof(EXE_Header);
-	if (!DOS_ReadFile(fhandle,(Bit8u *)&head,&size)) {
+	len=sizeof(EXE_Header);
+	if (!DOS_ReadFile(fhandle,(Bit8u *)&head,&len)) {
 		DOS_CloseFile(fhandle);
 		return false;
 	}
-	if (!DOS_CloseFile(fhandle)) return false;
-	if (size<sizeof(EXE_Header)) iscom=true;	
-	if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
-
-	if (iscom) {
-		return COM_Load(name,block,flags);
-
-	} else {
-		return EXE_Load(name,block,flags);
+	/* Convert the header to correct endian, i hope this works */
+	HostPt endian=(HostPt)&head;
+	for (i=0;i<sizeof(EXE_Header)/2;i++) {
+		*((Bit16u *)endian)=readw(endian);
+		endian+=2;
 	}
-	
+	if (len<sizeof(EXE_Header)) iscom=true;	
+	if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
+	else {
+		headersize=head.headersize*16;
+		imagesize=(head.pages)*512-headersize; 
+		if (head.extrabytes) imagesize-=(512-head.extrabytes);
+	}
+	if (flags!=OVERLAY) {
+		/* Create an environment block */
+		envseg=block.exec.envseg;
+		if (!MakeEnv(name,&envseg)) {
+			DOS_CloseFile(fhandle);
+			return false;
+		}
+		/* Get Memory */		
+		Bit16u minsize,maxsize;Bit16u maxfree=0xffff;DOS_AllocateMemory(&pspseg,&maxfree);
+		if (iscom) {
+			minsize=0x1000;maxsize=0xffff;
+		} else {	/* Exe size calculated from header */
+			minsize=long2para(imagesize+(head.minmemory<<4)+256);
+			if (head.maxmemory!=0) maxsize=long2para(imagesize+(head.maxmemory<<4)+256);
+			else maxsize=0xffff;
+		}
+		if (maxfree<minsize) {
+			DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
+			DOS_FreeMemory(envseg);
+			return false;
+		}
+		if (maxfree<maxsize) memsize=maxfree;
+		else memsize=maxsize;
+		if (!DOS_AllocateMemory(&pspseg,&memsize)) E_Exit("DOS:Exec error in memory");
+		loadseg=pspseg+16;
+		/* Setup a psp */
+		SetupPSP(pspseg,memsize,envseg);
+		SetupCMDLine(pspseg,block);
+	} else loadseg=block.overlay.loadseg;
+	/* Load the executable */
+	loadaddress=HostMake(loadseg,0);
+	if (iscom) {	/* COM Load 64k - 256 bytes max */
+		pos=0;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
+		readsize=0xffff-256;
+		DOS_ReadFile(fhandle,loadaddress,&readsize);
+	} else {		/* EXE Load in 32kb blocks and then relocate */
+		pos=headersize;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
+		while (imagesize>0x7FFF) {
+			readsize=0x8000;DOS_ReadFile(fhandle,loadaddress,&readsize);
+			if (readsize!=0x8000) E_Exit("Illegal header");
+			loadaddress+=0x8000;imagesize-=0x8000;
+		}
+		if (imagesize>0) {
+			readsize=(Bit16u)imagesize;DOS_ReadFile(fhandle,loadaddress,&readsize);
+			if (readsize!=imagesize) E_Exit("Illegal header");
+		}
+		/* Relocate the exe image */
+		Bit16u relocate;
+		if (flags==OVERLAY) relocate=block.overlay.relocation;
+		else relocate=loadseg;
+		pos=head.reloctable;DOS_SeekFile(fhandle,&pos,0);
+		for (i=0;i<head.relocations;i++) {
+			readsize=4;DOS_ReadFile(fhandle,(Bit8u *)&relocpt,&readsize);
+			relocpt=readd((Bit8u *)&relocpt);		//Endianize
+			PhysPt address=PhysMake(RealSeg(relocpt)+loadseg,RealOff(relocpt));
+			mem_writew(address,mem_readw(address)+relocate);
+		}
+	}
+	DOS_CloseFile(fhandle);
+	CALLBACK_SCF(false);		/* Carry flag cleared for caller if successfull */
+	if (flags==OVERLAY) return true;			/* Everything done for overlays */
+	RealPt csip,sssp;
+	if (iscom) {
+		csip=RealMake(pspseg,0x100);
+		sssp=RealMake(pspseg,0xfffe);
+		mem_writew(PhysMake(pspseg,0xfffe),0);
+	} else {
+		csip=RealMake(loadseg+head.initCS,head.initIP);
+		sssp=RealMake(loadseg+head.initSS,head.initSP);
+	}
+	if (flags==LOADNGO) {
+		/* Get Caller's program CS:IP of the stack and set termination address to that */
+		RealSetVec(0x22,RealMake(mem_readw(SegPhys(ss)+reg_sp+2),mem_readw(SegPhys(ss)+reg_sp)));
+		SaveRegisters();
+		DOS_PSP callpsp(dos.psp);
+		/* Save the SS:SP on the PSP of calling program */
+		callpsp.SetStack(RealMakeSeg(ss,reg_sp));
+		/* Switch the psp's and set new DTA */
+		dos.psp=pspseg;
+		DOS_PSP newpsp(dos.psp);
+		dos.dta=newpsp.GetDTA();
+		/* save vectors */
+		newpsp.SaveVectors();
+		/* copy fcbs */
+		newpsp.SetFCB1(block.exec.fcb1);
+		newpsp.SetFCB2(block.exec.fcb2);
+		/* Set the stack for new program */
+		SegSet16(ss,RealSeg(sssp));reg_sp=RealOff(sssp);
+		/* Add some flags and CS:IP on the stack for the IRET */
+		reg_sp-=6;
+		mem_writew(SegPhys(ss)+reg_sp+0,RealOff(csip));
+		mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(csip));
+		mem_writew(SegPhys(ss)+reg_sp+4,0x200);
+		/* Setup the rest of the registers */
+		reg_ax=0;
+		reg_cx=reg_dx=reg_bx=reg_si=reg_di=reg_bp=0;
+		SegSet16(ds,pspseg);SegSet16(es,pspseg);
+#if C_DEBUG		
+		/* Started from debug.com, then set breakpoint at start */
+		DEBUG_CheckExecuteBreakpoint(RealSeg(csip),RealOff(csip));
+#endif
+		return true;
+	}
+	return false;
 }
+
 
 
 

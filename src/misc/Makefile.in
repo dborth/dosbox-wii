@@ -84,7 +84,7 @@ install_sh = @install_sh@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libmisc.a
-libmisc_a_SOURCES = plugins.cpp programs.cpp messages.cpp support.cpp setup.cpp
+libmisc_a_SOURCES = programs.cpp messages.cpp support.cpp setup.cpp
 subdir = src/misc
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
@@ -93,8 +93,8 @@ LIBRARIES = $(noinst_LIBRARIES)
 
 libmisc_a_AR = $(AR) cru
 libmisc_a_LIBADD =
-am_libmisc_a_OBJECTS = plugins.$(OBJEXT) programs.$(OBJEXT) \
-	messages.$(OBJEXT) support.$(OBJEXT) setup.$(OBJEXT)
+am_libmisc_a_OBJECTS = programs.$(OBJEXT) messages.$(OBJEXT) \
+	support.$(OBJEXT) setup.$(OBJEXT)
 libmisc_a_OBJECTS = $(am_libmisc_a_OBJECTS)
 
 DEFS = @DEFS@
@@ -104,9 +104,8 @@ LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
-@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/messages.Po ./$(DEPDIR)/plugins.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/programs.Po ./$(DEPDIR)/setup.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/support.Po
+@AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/messages.Po ./$(DEPDIR)/programs.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/setup.Po ./$(DEPDIR)/support.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -143,7 +142,6 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/messages.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/plugins.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/programs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/setup.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/support.Po@am__quote@

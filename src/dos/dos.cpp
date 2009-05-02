@@ -29,19 +29,17 @@
 #include "dos_inc.h"
 
 DOS_Block dos;
-DOS_InfoBlock dosInfoBlock;
+DOS_InfoBlock dos_infoblock;
 
-static Bit8u dos_copybuf[0x10000];
-static Bitu call_20,call_21,call_theend;
+Bit8u dos_copybuf[0x10000];
+static Bitu call_20,call_21;
 
 void DOS_SetError(Bit16u code) {
 	dos.errorcode=code;
-};
-
+}
 
 #define DOSNAMEBUF 256
 static Bitu DOS_21Handler(void) {
-//TODO KEYBOARD	Check for break
 	char name1[DOSNAMEBUF+1];
 	char name2[DOSNAMEBUF+1];
 	switch (reg_ah) {
@@ -151,7 +149,7 @@ static Bitu DOS_21Handler(void) {
 				}
 				break;
 			default:
-				LOG_ERROR("DOS:0C:Illegal Flush STDIN Buffer call %d",reg_al);
+//				LOG_ERROR("DOS:0C:Illegal Flush STDIN Buffer call %d",reg_al);
 				break;
 			}
 		}
@@ -166,14 +164,13 @@ static Bitu DOS_21Handler(void) {
 		reg_al=26;
 		break;
 	case 0x0f:		/* Open File using FCB */
-		if(DOS_FCBOpen(SegValue(ds),reg_dx)){
+		if(DOS_FCBOpenCreate(SegValue(ds),reg_dx)){
 			reg_al=0;
 		}else{
 			reg_al=0xff;
 		}
 		LOG_DEBUG("DOS:0x0f FCB-fileopen used, result:al=%d",reg_al);
 		break;
-
 	case 0x10:		/* Close File using FCB */
 		if(DOS_FCBClose(SegValue(ds),reg_dx)){
 		reg_al=0;
@@ -182,7 +179,6 @@ static Bitu DOS_21Handler(void) {
 		}
 		LOG_DEBUG("DOS:0x10 FCB-fileclose used, result:al=%d",reg_al);
 		break;
-
 	case 0x11:		/* Find First Matching File using FCB */
 		if(DOS_FCBFindFirst(SegValue(ds),reg_dx)){
 		reg_al=0;
@@ -191,7 +187,6 @@ static Bitu DOS_21Handler(void) {
 		}
 		LOG_DEBUG("DOS:0x11 FCB-FindFirst used, result:al=%d",reg_al);
 		break;
-
 	case 0x12:		/* Find Next Matching File using FCB */
 		if(DOS_FCBFindNext(SegValue(ds),reg_dx)){
 		reg_al=0;
@@ -200,23 +195,59 @@ static Bitu DOS_21Handler(void) {
 		}
 		LOG_DEBUG("DOS:0x12 FCB-FindNext used, result:al=%d",reg_al);
 		break;
-
 	case 0x13:		/* Delete File using FCB */
-	case 0x14:		/* Sequential read from FCB */
-	case 0x15:		/* Sequential write to FCB */
-	case 0x16:		/* Create or truncate file using FCB */
-	case 0x17:		/* Rename file using FCB */
-	case 0x21:		/* Read random record from FCB */
-	case 0x22:		/* Write random record to FCB */
-	case 0x23:		/* Get file size for FCB */
-	case 0x24:		/* Set Random Record number for FCB */
-	case 0x27:		/* Random block read from FCB */
-	case 0x28:		/* Random Block read to FCB */
-		LOG_ERROR("DOS:Unhandled call %02X, FCB Stuff",reg_ah);
-		reg_al=0xff;		/* FCB Calls FAIL */
-		//CALLBACK_SCF(true); not needed.
+		if (DOS_FCBDeleteFile(SegValue(ds),reg_dx)) reg_al = 0x00;
+		else reg_al = 0xFF;
 		break;
-
+	case 0x14:		/* Sequential read from FCB */
+		reg_al = DOS_FCBRead(SegValue(ds),reg_dx,0);
+		LOG_DEBUG("DOS:0x14 FCB-Read used, result:al=%d",reg_al);
+		break;
+	case 0x15:		/* Sequential write to FCB */
+		if (DOS_FCBWrite(SegValue(ds),reg_dx,0)) reg_al = 0x00;
+		else reg_al = 0x01;
+		LOG_DEBUG("DOS:0x15 FCB-Write used, result:al=%d",reg_al);
+		break;
+	case 0x16:		/* Create or truncate file using FCB */
+		if (DOS_FCBOpenCreate(SegValue(ds),reg_dx)) reg_al = 0x00;
+		else reg_al = 0x01;
+		LOG_DEBUG("DOS:0x16 FCB-Create used, result:al=%d",reg_al);
+		break;
+	case 0x17:		/* Rename file using FCB */		
+		if (DOS_FCBRenameFile(SegValue(ds),reg_dx)) reg_al = 0x00;
+		else reg_al = 0xFF;
+		break;
+	case 0x1b:		/* Get allocation info for default drive */	
+		if (!DOS_GetAllocationInfo(0,&reg_cx,&reg_ax,&reg_dx)) reg_al=0xff;
+		break;
+	case 0x1c:		/* Get allocation info for specific drive */
+		if (!DOS_GetAllocationInfo(reg_dl,&reg_cx,&reg_ax,&reg_dx)) reg_al=0xff;
+		break;
+	case 0x21:		/* Read random record from FCB */
+		reg_al = DOS_FCBRandomRead(SegValue(ds),reg_dx,1,true);
+		LOG_DEBUG("DOS:0x21 FCB-Random read used, result:al=%d",reg_al);
+		break;
+	case 0x22:		/* Write random record to FCB */
+		if (DOS_FCBRandomWrite(SegValue(ds),reg_dx,1,true)) reg_al = 0x00;
+		else reg_al = 0x01;
+		LOG_DEBUG("DOS:0x28 FCB-Random write used, result:al=%d",reg_al);
+		break;
+	case 0x23:		/* Get file size for FCB */
+		if (DOS_FCBGetFileSize(SegValue(ds),reg_dx,reg_cx)) reg_al = 0x00;
+		else reg_al = 0xFF;
+		break;
+	case 0x24:		/* Set Random Record number for FCB */
+		DOS_FCBSetRandomRecord(SegValue(ds),reg_dx);
+		break;
+	case 0x27:		/* Random block read from FCB */
+		reg_al = DOS_FCBRandomRead(SegValue(ds),reg_dx,reg_cx,false);
+		LOG_DEBUG("DOS:0x27 FCB-Random read used, result:al=%d",reg_al);
+		break;
+	case 0x28:		/* Random Block write to FCB */
+		if (DOS_FCBRandomWrite(SegValue(ds),reg_dx,reg_cx,false)) reg_al = 0x00;
+		else reg_al = 0x01;
+		LOG_DEBUG("DOS:0x28 FCB-Random write used, result:al=%d",reg_al);
+		break;
 	case 0x29:		/* Parse filename into FCB */
         {   Bit8u difference;
             char string[1024];
@@ -226,7 +257,6 @@ static Bitu DOS_21Handler(void) {
         }
 		LOG_DEBUG("DOS:29:FCB Parse Filename, result:al=%d",reg_al);
         break;
-
 	case 0x18:		/* NULL Function for CP/M compatibility or Extended rename FCB */
 	case 0x1d:		/* NULL Function for CP/M compatibility or Extended rename FCB */
 	case 0x1e:		/* NULL Function for CP/M compatibility or Extended rename FCB */
@@ -239,26 +269,11 @@ static Bitu DOS_21Handler(void) {
 		reg_al=DOS_GetDefaultDrive();
 		break;
 	case 0x1a:		/* Set Disk Transfer Area Address */
-		dos.dta=RealMakeSeg(ds,reg_dx);
-		break;
-
-	case 0x1c:		/* Get allocation info for specific drive */
-		LOG_DEBUG("DOS: Allocation Info call not supported correctly");
-		SegSet16(ds,0xf000);
-		reg_bx=0;
-		real_writeb(0xf000,0,0);
-		reg_al=0x7f;
-		reg_cx=0x200;
-		reg_dx=0x1000;
-		break;		/* TODO maybe but hardly think a game needs this */
-	case 0x1b:		/* Get allocation info for default drive */	
-		LOG_DEBUG("DOS: Allocation Info call not supported correctly");
-		SegSet16(ds,0xf000);
-		reg_bx=0;
-		real_writeb(0xf000,0,0);
-		reg_al=0x7f;
-		reg_cx=0x200;
-		reg_dx=0x1000;
+		{
+			dos.dta=RealMakeSeg(ds,reg_dx);
+			DOS_PSP psp(dos.psp);
+			psp.SetDTA(dos.dta);
+		}
 		break;
 	case 0x1f:		/* Get drive parameter block for default drive */
 	case 0x32:		/* Get drive parameter block for specific drive */
@@ -268,7 +283,7 @@ static Bitu DOS_21Handler(void) {
 		RealSetVec(reg_al,RealMakeSeg(ds,reg_dx));
 		break;
 	case 0x26:		/* Create new PSP */
-		DOS_NewPSP(reg_dx);
+		DOS_NewPSP(reg_dx,DOS_PSP(dos.psp).GetSize());
 		break;
 	case 0x2a:		/* Get System Date */
 		reg_al=0;	/* It's always sunday TODO find that correct formula */
@@ -444,6 +459,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x3f:		/* READ Read from file or device */
 		{ 
 			Bit16u toread=reg_cx;
+			if (reg_cx+reg_dx>0xffff) LOG_DEBUG("DOS:READ:Buffer overflow %d",reg_cx+reg_dx);
 			if (DOS_ReadFile(reg_bx,dos_copybuf,&toread)) {
 				MEM_BlockWrite(SegPhys(ds)+reg_dx,dos_copybuf,toread);
 				reg_ax=toread;
@@ -457,6 +473,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x40:					/* WRITE Write to file or device */
 		{
 			Bit16u towrite=reg_cx;
+			if (reg_cx+reg_dx>0xffff) LOG_DEBUG("DOS:WRITE:Buffer overflow %d",reg_cx+reg_dx);
 			MEM_BlockRead(SegPhys(ds)+reg_dx,dos_copybuf,towrite);
 			if (DOS_WriteFile(reg_bx,dos_copybuf,&towrite)) {
 				reg_ax=towrite;
@@ -490,7 +507,6 @@ static Bitu DOS_21Handler(void) {
 			break;
 		}
 	case 0x43:					/* Get/Set file attributes */
-//TODO FIX THIS HACK
 		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		switch (reg_al)
 		case 0x00:				/* Get */
@@ -511,7 +527,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x44:					/* IOCTL Functions */
-		if (DOS_IOCTL(reg_al,reg_bx)) {
+		if (DOS_IOCTL()) {
 			CALLBACK_SCF(false);
 		} else {
 			reg_ax=dos.errorcode;
@@ -535,7 +551,6 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x47:					/* CWD Get current directory */
-		//TODO Memory
 		if (DOS_GetCurrentDir(reg_dl,name1)) {
 			MEM_BlockWrite(SegPhys(ds)+reg_si,name1,strlen(name1)+1);	
 			reg_ax=0x0100;
@@ -581,9 +596,8 @@ static Bitu DOS_21Handler(void) {
 	case 0x4b:					/* EXEC Load and/or execute program */
 		{ 
 			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
-			if (DOS_Execute(name1,(ParamBlock *)Phys2Host(SegPhys(es)+reg_bx),reg_al)) {
-				CALLBACK_SCF(false);
-			} else {
+			LOG_DEBUG("Execute %s %d",name1,reg_al);
+			if (!DOS_Execute(name1,SegPhys(es)+reg_bx,reg_al)) {
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
 			}
@@ -593,9 +607,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x4c:					/* EXIT Terminate with return code */
 		{
 			if (DOS_Terminate(false)) {
-				dos.return_code=reg_al;
-				dos.return_mode=RETURN_EXIT;
-				CALLBACK_SCF(false);
+				/* This can't ever return false normally */
 			} else {            
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
@@ -609,7 +621,8 @@ static Bitu DOS_21Handler(void) {
 	case 0x4e:					/* FINDFIRST Find first matching file */
 		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_FindFirst(name1,reg_cx)) {
-			CALLBACK_SCF(false);			
+			CALLBACK_SCF(false);	
+			reg_ax=0;			/* Undocumented */
 		} else {
 			reg_ax=dos.errorcode;
 			CALLBACK_SCF(true);
@@ -617,7 +630,8 @@ static Bitu DOS_21Handler(void) {
 		break;		 
 	case 0x4f:					/* FINDNEXT Find next matching file */
 		if (DOS_FindNext()) {
-			CALLBACK_SCF(false);			
+			CALLBACK_SCF(false);
+			reg_ax=0xffff;			/* Undocumented */
 		} else {
 			reg_ax=dos.errorcode;
 			CALLBACK_SCF(true);
@@ -630,9 +644,9 @@ static Bitu DOS_21Handler(void) {
 		reg_bx=dos.psp;
 		break;
 	case 0x52: {				/* Get list of lists */
-		Bit16u seg;
-		dosInfoBlock.GetDIBPointer(seg,reg_bx);
-		SegSet16(es,seg);
+		RealPt addr=dos_infoblock.GetPointer();
+		SegSet16(es,RealSeg(addr));
+		reg_bx=RealOff(addr);
 		LOG_DEBUG("Call is made for list of lists - let's hope for the best");
 		break; }
 //TODO Think hard how shit this is gonna be
@@ -640,8 +654,11 @@ static Bitu DOS_21Handler(void) {
 	case 0x53:					/* Translate BIOS parameter block to drive parameter block */
 //YEAH RIGHT
 	case 0x54:					/* Get verify flag */
-	case 0x55:					/* Create Child PSP*/
 		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+		break;
+	case 0x55:					/* Create Child PSP*/
+		DOS_NewPSP(reg_dx,reg_si);
+		dos.psp = reg_dx;
 		break;
 	case 0x56:					/* RENAME Rename file */
 		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
@@ -654,12 +671,28 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;		
 	case 0x57:					/* Get/Set File's Date and Time */
-		reg_cx=0;
-		reg_dx=0;
-		LOG_DEBUG("DOS:57:Getting/Setting File Date is faked",reg_ah);
+		if (reg_al==0x00) {
+			if (DOS_GetFileDate(reg_bx,&reg_cx,&reg_dx)) {
+				CALLBACK_SCF(false);
+			} else {
+				CALLBACK_SCF(true);
+			};
+		} else {
+			reg_cx=0;
+			reg_dx=0;
+			LOG_DEBUG("DOS:57:Setting File Date is faked",reg_ah);
+		}
 		break;
 	case 0x58:					/* Get/Set Memory allocation strategy */
-		LOG_DEBUG("DOS:58:Not Supported Set//Get memory allocation");
+		switch (reg_al) {
+		case 0:		/* Get Strategy */
+			reg_ax=0;			//Low memory first fit
+			break;
+		case 1:		/* Set Strategy */
+			break;
+		default:
+			LOG_DEBUG("DOS:58:Not Supported Set//Get memory allocation call %X",reg_al);
+		}
 		break;
 	case 0x59:					/* Get Extended error information */
 		reg_ax=dos.errorcode;
@@ -805,7 +838,8 @@ static Bitu DOS_20Handler(void) {
 }
 
 
-void DOS_Init(void) {
+void DOS_Init(Section* sec) {
+    MSG_Add("DOS_CONFIGFILE_HELP","Setting a memory size to 0 will disable it.\n");
 	call_20=CALLBACK_Allocate();
 	CALLBACK_Setup(call_20,DOS_20Handler,CB_IRET);
 	RealSetVec(0x20,CALLBACK_RealPointer(call_20));
@@ -816,8 +850,8 @@ void DOS_Init(void) {
 
 	DOS_SetupFiles();								/* Setup system File tables */
 	DOS_SetupDevices();							/* Setup dos devices */
-	DOS_SetupMemory();								/* Setup first MCB */
 	DOS_SetupTables();
+	DOS_SetupMemory();								/* Setup first MCB */
 	DOS_SetupPrograms();
 	DOS_SetupMisc();							/* Some additional dos interrupts */
 	DOS_SetDefaultDrive(25);

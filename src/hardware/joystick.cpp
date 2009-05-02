@@ -50,8 +50,8 @@ static Bit8u read_p201(Bit32u port) {
 		if (stick[0].button[1]) ret&=32;
 	}
 	if (stick[1].enabled) {
-		if (stick[1].xcount) stick[0].xcount--; else ret&=~4;
-		if (stick[1].ycount) stick[0].ycount--; else ret&=~8;
+		if (stick[1].xcount) stick[1].xcount--; else ret&=~4;
+		if (stick[1].ycount) stick[1].ycount--; else ret&=~8;
 		if (stick[1].button[0]) ret&=64;
 		if (stick[1].button[1]) ret&=128;
 	}
@@ -60,12 +60,12 @@ static Bit8u read_p201(Bit32u port) {
 
 static void write_p201(Bit32u port,Bit8u val) {
 	if (stick[0].enabled) {
-		stick[0].xcount=(Bitu)(stick[0].xpos*RANGE+RANGE*2);
-		stick[0].ycount=(Bitu)(stick[0].ypos*RANGE+RANGE*2);
+		stick[0].xcount=(Bitu)((stick[0].xpos*RANGE)+RANGE);
+		stick[0].ycount=(Bitu)((stick[0].ypos*RANGE)+RANGE);
 	}
 	if (stick[1].enabled) {
-		stick[1].xcount=(Bitu)(stick[1].xpos*RANGE+RANGE*2);
-		stick[1].ycount=(Bitu)(stick[1].ypos*RANGE+RANGE*2);
+		stick[1].xcount=(Bitu)((stick[1].xpos*RANGE)+RANGE);
+		stick[1].ycount=(Bitu)((stick[1].ypos*RANGE)+RANGE);
 	}
 
 }
@@ -91,7 +91,7 @@ void JOYSTICK_Move_Y(Bitu which,float y) {
 }
 
 
-void JOYSTICK_Init(void) {
+void JOYSTICK_Init(Section* sec) {
 	IO_RegisterReadHandler(0x201,read_p201,"JOYSTICK");
 	IO_RegisterWriteHandler(0x201,write_p201,"JOYSTICK");
 	stick[0].enabled=false;

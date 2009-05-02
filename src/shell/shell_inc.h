@@ -24,6 +24,7 @@
 #include "regs.h"
 #include "support.h"
 #include "callback.h"
+#include "setup.h"
 
 #define CMD_MAXLINE 4096
 #define CMD_MAXCMDS 20
@@ -39,20 +40,17 @@ public:
 	bool ReadLine(char * line);
 	bool Goto(char * where);
 	Bit16u file_handle;
-	Bit32u line_count;	
-	char * cmd_words[CMD_MAXCMDS];
-	char cmd_buffer[128];							//Command line can only be 128 chars
-	Bit32u cmd_count;
 	bool echo;
 	DOS_Shell * shell;
 	BatchFile * prev;
+	CommandLine * cmd;
 };
 
 
 
 class DOS_Shell : public Program {
 public:
-	DOS_Shell(PROGRAM_Info * program_info);
+	DOS_Shell();
 	void Run(void);
 /* A load of subfunctions */
 	void ParseLine(char * line);
@@ -77,6 +75,7 @@ public:
 	void CMD_IF(char * args);
 	void CMD_GOTO(char * args);
 	void CMD_TYPE(char * args);
+	void CMD_REM(char * args);
 	void SyntaxError(void);
 
 	/* The shell's variables */

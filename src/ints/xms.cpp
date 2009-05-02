@@ -23,6 +23,7 @@
 #include "mem.h"
 #include "regs.h"
 #include "dos_system.h"
+#include "setup.h"
 
 
 #define XMS_HANDLES							50		/* 50 XMS Memory Blocks */ 
@@ -53,6 +54,8 @@
 #define XMS_OUT_OF_SPACE					0xa0
 #define XMS_OUT_OF_HANDLES					0xa1
 #define XMS_INVALID_HANDLE					0xa2
+#define XMS_BLOCK_NOT_LOCKED				0xaa
+#define XMS_BLOCK_LOCKED					0xab
 
 struct XMS_Block {
 	Bit16u prev,next;
@@ -291,8 +294,13 @@ foundnew:
 			reg_bl=XMS_INVALID_HANDLE;
 			return CBRET_NONE;
 		}
-		if (xms_handles[reg_dx].locked) xms_handles[reg_dx].locked--;
-		reg_ax=1;reg_bl=0;
+		if (xms_handles[reg_dx].locked) {
+			xms_handles[reg_dx].locked--;
+			reg_ax=1;reg_bl=0;
+		} else {
+			reg_ax=0;
+			reg_bl=XMS_BLOCK_NOT_LOCKED;
+		}
 		break;
 	case XMS_GET_EMB_HANDLE_INFORMATION:						/* 0e */
 		/* Check for a valid handle */
@@ -324,7 +332,11 @@ foundnew:
 
 
 
-void XMS_Init(void) {
+void XMS_Init(Section* sec) {
+	Section_prop * section=static_cast<Section_prop *>(sec);
+	Bitu size=section->Get_int("xmssize");
+	if (!size) return;
+	if (size>C_MEM_MAX_SIZE-1) size=C_MEM_MAX_SIZE-1;
 	DOS_AddMultiplexHandler(multiplex_xms);
 	call_xms=CALLBACK_Allocate();
 	CALLBACK_Setup(call_xms,&XMS_Handler,CB_RETF);
@@ -345,6 +357,6 @@ void XMS_Init(void) {
 	/* Setup the 1st handle */
 	xms_handles[1].active=true;
 	xms_handles[1].phys=1088*1024;		/* right behind the hma area */
-	xms_handles[1].size=C_MEM_XMS_SIZE*1024-64;
+	xms_handles[1].size=size*1024-64;
 }
 

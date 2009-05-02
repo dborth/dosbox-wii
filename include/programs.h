@@ -18,32 +18,33 @@
 
 #ifndef __PROGRAM_H
 #define __PROGRAM_H
-#include <dosbox.h>
-#include <dos_inc.h>
+#include "dosbox.h"
+#include "dos_inc.h"
+#include "setup.h"
 
 
-char * MSG_Get(char * msg);
 
-struct PROGRAM_Info {
-	Bit16u psp_seg;
-	PSP psp_copy;
-	char full_name[32];						//Enough space for programs only on the z:\ drive
-	char * cmd_line;
-};
+class Program;
 
-typedef void (PROGRAMS_Main)(PROGRAM_Info * info);
+typedef void (PROGRAMS_Main)(Program * * make);
 void PROGRAMS_MakeFile(char * name,PROGRAMS_Main * main);
 
 class Program {
 public:
-	Program(PROGRAM_Info * program_info);
+	Program();
+	virtual ~Program(){
+		delete cmd;
+		delete psp;
+	}
+	std::string temp_line;
+	CommandLine * cmd;
+	DOS_PSP * psp;
 	virtual void Run(void)=0;
-	char * GetEnvStr(char * env_entry);
-	char * GetEnvNum(Bit32u num);
-	Bit32u GetEnvCount(void);
-	bool SetEnv(char * env_entry,char * new_string);
-	void WriteOut(char * format,...);					/* Write to standard output */
-	PROGRAM_Info * prog_info;
+	bool Program::GetEnvStr(const char * entry,std::string & result);
+	bool GetEnvNum(Bitu num,std::string & result);
+	Bitu GetEnvCount(void);
+	bool SetEnv(const char * entry,const char * new_string);
+	void WriteOut(const char * format,...);					/* Write to standard output */
 
 };
 

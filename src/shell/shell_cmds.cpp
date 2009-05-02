@@ -24,19 +24,21 @@
 
 
 static SHELL_Cmd cmd_list[]={
-	"CD",		0,			&DOS_Shell::CMD_CHDIR,		"Change Directory.",
-	"CLS",		0,			&DOS_Shell::CMD_CLS,		"Clear screen.",
+	"CD",		0,			&DOS_Shell::CMD_CHDIR,		"SHELL_CMD_CHDIR_HELP",
+	"CLS",		0,			&DOS_Shell::CMD_CLS,		"SHELL_CMD_CLS_HELP",
 //	"COPY",		0,			&DOS_Shell::CMD_COPY,		"Copy Files.",
-	"DIR",		0,			&DOS_Shell::CMD_DIR,		"Directory View.",
-	"ECHO",		0,			&DOS_Shell::CMD_ECHO,		"Display messages and enable/disable command echoing.",
-	"EXIT",		0,			&DOS_Shell::CMD_EXIT,		"Exit from the shell.",	
-	"HELP",		0,			&DOS_Shell::CMD_HELP,		"Show help.",
-	"MD",		0,			&DOS_Shell::CMD_MKDIR,		"Make Directory.",
-	"RD",		0,			&DOS_Shell::CMD_RMDIR,		"Remove Directory.",
-	"SET",		0,			&DOS_Shell::CMD_SET,		"Change environment variables.",
-	"IF",		0,			&DOS_Shell::CMD_IF,			"Performs conditional processing in batch programs.",
-	"GOTO",		0,			&DOS_Shell::CMD_GOTO,		"Jump to a labeled line in a batch script.",
-	"TYPE",		0,			&DOS_Shell::CMD_TYPE,		"Display the contents of a text-file.",
+	"DIR",		0,			&DOS_Shell::CMD_DIR,		"SHELL_CMD_DIR_HELP",
+	"ECHO",		0,			&DOS_Shell::CMD_ECHO,		"SHELL_CMD_ECHO_HELP",
+	"EXIT",		0,			&DOS_Shell::CMD_EXIT,		"SHELL_CMD_EXIT_HELP",	
+	"HELP",		0,			&DOS_Shell::CMD_HELP,		"SHELL_CMD_HELP_HELP",
+	"MD",		0,			&DOS_Shell::CMD_MKDIR,		"SHELL_CMD_MKDIR_HELP",
+	"RD",		0,			&DOS_Shell::CMD_RMDIR,		"SHELL_CMD_RMDIR_HELP",
+	"SET",		0,			&DOS_Shell::CMD_SET,		"SHELL_CMD_SET_HELP",
+	"IF",		0,			&DOS_Shell::CMD_IF,			"SHELL_CMD_IF_HELP",
+	"GOTO",		0,			&DOS_Shell::CMD_GOTO,		"SHELL_CMD_GOTO_HELP",
+	"TYPE",		0,			&DOS_Shell::CMD_TYPE,		"SHELL_CMD_TYPE_HELP",
+	"REM",		0,			&DOS_Shell::CMD_REM,		"SHELL_CMD_REM_HELP",
+	
 /*
 	"CHDIR",	0,			&DOS_Shell::CMD_CHDIR,		"Change Directory",
 	"MKDIR",	0,			&DOS_Shell::CMD_MKDIR,		"Make Directory",
@@ -63,9 +65,8 @@ void DOS_Shell::DoCommand(char * line) {
 	Bit32u cmd_index=0;
 	while (cmd_list[cmd_index].name) {
 		if (strcasecmp(cmd_list[cmd_index].name,cmd)==0) {
-//TODO CHECK Flags
 			(this->*(cmd_list[cmd_index].handler))(line);
-		        return;
+			return;
 		}
 		cmd_index++;
 	}
@@ -84,7 +85,7 @@ void DOS_Shell::CMD_HELP(char * args){
 	WriteOut(MSG_Get("SHELL_CMD_HELP"));
         Bit32u cmd_index=0;
 	while (cmd_list[cmd_index].name) {
-		if (!cmd_list[cmd_index].flags) WriteOut("%-8s %s\n",cmd_list[cmd_index].name,cmd_list[cmd_index].help);
+		if (!cmd_list[cmd_index].flags) WriteOut("%-8s %s",cmd_list[cmd_index].name,MSG_Get(cmd_list[cmd_index].help));
 		cmd_index++;
 	}
 
@@ -148,8 +149,8 @@ void DOS_Shell::CMD_RMDIR(char * args) {
 	}
 };
 
-static void FormatNumber(Bit32u num,char * buf) {
-	Bit32u numm,numk,numb;
+static void FormatNumber(Bitu num,char * buf) {
+	Bitu numm,numk,numb;
 	numb=num % 1000;
 	num/=1000;
 	numk=num % 1000;
@@ -178,7 +179,6 @@ void DOS_Shell::CMD_DIR(char * args) {
 		WriteOut(MSG_Get("SHELL_ILLEGAL_SWITCH"),rem);
 		return;
 	}
-
 	Bit32u byte_count,file_count,dir_count;
 	Bit32u w_count=0;
 	byte_count=file_count=dir_count=0;
@@ -193,48 +193,47 @@ void DOS_Shell::CMD_DIR(char * args) {
 	*(strrchr(path,'\\')+1)=0;
 	WriteOut(MSG_Get("SHELL_CMD_DIR_INTRO"),path);
 
-	DTA_FindBlock * dta;
-	dta=(DTA_FindBlock *)Real2Host(dos.dta);
+	DOS_DTA dta(dos.dta);
 	bool ret=DOS_FindFirst(args,0xffff);
 	if (!ret) {
 		WriteOut(MSG_Get("SHELL_CMD_FILE_NOT_FOUND"),args);
 		return;
 	}
-
 	while (ret) {
-
 /* File name and extension */
+		char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
+		dta.GetResult(name,size,date,time,attr);
+
 		char * ext="";
-		if (!optW && (*dta->name != '.')) {
-			ext = strrchr(dta->name, '.');
+		if (!optW && (name[0] != '.')) {
+			ext = strrchr(name, '.');
 			if (!ext) ext = "";
 			else *ext++ = '\0';
-		};
-	   
-		Bit8u day	= dta->date & 0x001f;
-		Bit8u month	= (dta->date >> 5) & 0x000f;
-		Bit8u hour	= dta->time >> 5 >> 6;
-		Bit8u minute = (dta->time >> 5) & 0x003f;
-		Bit16u year = (dta->date >> 9) + 1980;
+		}
+		Bit8u day	= date & 0x001f;
+		Bit8u month	= (date >> 5) & 0x000f;
+		Bit16u year = (date >> 9) + 1980;
+		Bit8u hour	= (time >> 5 ) >> 6;
+		Bit8u minute = (time >> 5) & 0x003f;
 
 		/* output the file */
-		if (dta->attr & DOS_ATTR_DIRECTORY) {
+		if (attr & DOS_ATTR_DIRECTORY) {
 			if (optW) {
-				WriteOut("[%s]",dta->name);
-				for (Bitu i=14-strlen(dta->name);i>0;i--) WriteOut(" ");
+				WriteOut("[%s]",name);
+				for (Bitu i=14-strlen(name);i>0;i--) WriteOut(" ");
 			} else {
-				WriteOut("%-8s %-3s   %-16s %02d-%02d-%04d %2d:%02d\n",dta->name,ext,"<DIR>",day,month,year,hour,minute);
+				WriteOut("%-8s %-3s   %-16s %02d-%02d-%04d %2d:%02d\n",name,ext,"<DIR>",day,month,year,hour,minute);
 			}
 			dir_count++;
 		} else {
 			if (optW) {
-				WriteOut("%-16s",dta->name);
+				WriteOut("%-16s",name);
 			} else {
-				FormatNumber(dta->size,numformat);
-				WriteOut("%-8s %-3s   %16s %02d-%02d-%04d %2d:%02d\n",dta->name,ext,numformat,day,month,year,hour,minute);
+				FormatNumber(size,numformat);
+				WriteOut("%-8s %-3s   %16s %02d-%02d-%04d %2d:%02d\n",name,ext,numformat,day,month,year,hour,minute);
 			}
 			file_count++;
-			byte_count+=dta->size;
+			byte_count+=size;
 		}
 		if (optW) {
 			w_count++;
@@ -247,8 +246,15 @@ void DOS_Shell::CMD_DIR(char * args) {
 	/* Show the summary of results */
 	FormatNumber(byte_count,numformat);
 	WriteOut(MSG_Get("SHELL_CMD_DIR_BYTES_USED"),file_count,numformat);
+	Bit8u drive=dta.GetSearchDrive();
 	//TODO Free Space
-	FormatNumber(1024*1024*100,numformat);
+	Bitu free_space=1024*1024*100;
+	if (Drives[drive]) {
+		Bit16u bytes_sector;Bit16u sectors_cluster;Bit16u total_clusters;Bit16u free_clusters;
+		Drives[drive]->AllocationInfo(&bytes_sector,&sectors_cluster,&total_clusters,&free_clusters);
+		free_space=bytes_sector*sectors_cluster*free_clusters;
+	}
+	FormatNumber(free_space,numformat);
 	WriteOut(MSG_Get("SHELL_CMD_DIR_BYTES_FREE"),dir_count,numformat);
 }
 
@@ -258,23 +264,22 @@ void DOS_Shell::CMD_COPY(char * args) {
 		WriteOut(MSG_Get("SHELL_ILLEGAL_SWITCH"),rem);
 		return;
 	}
-
 }
 
 void DOS_Shell::CMD_SET(char * args) {
+	std::string line;
 	if (!*args) {
 		/* No command line show all environment lines */	
-		Bit32u count=GetEnvCount();
-		for (Bit32u a=0;a<count;a++) {
-			WriteOut("%s\n",GetEnvNum(a));			
+		Bitu count=GetEnvCount();
+		for (Bitu a=0;a<count;a++) {
+			if (GetEnvNum(a,line)) WriteOut("%s\n",line.c_str());			
 		}
 		return;
 	}
 	char * p=strpbrk(args, "=");
 	if (!p) {
-		p=GetEnvStr(args);
-		if (p) WriteOut("%s\n",p);
-		else WriteOut(MSG_Get("SHELL_CMD_SET_NOT_SET"),args);
+		if (!GetEnvStr(args,line)) WriteOut(MSG_Get("SHELL_CMD_SET_NOT_SET"),args);
+		WriteOut("%s\n",line.c_str());
 	} else {
 		*p++=0;
 		if (!SetEnv(args,p)) {
@@ -377,5 +382,6 @@ nextfile:
 	if (*args) goto nextfile;
 }
 
+void DOS_Shell::CMD_REM(char * args) {
+}
 
-       

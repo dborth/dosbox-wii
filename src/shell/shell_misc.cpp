@@ -29,7 +29,6 @@ void DOS_Shell::ShowPrompt(void) {
 	WriteOut("%c:\\%s>",drive,dir);
 }
 
-
 static void outc(Bit8u c) {
 	Bit16u n=1;
 	DOS_WriteFile(STDOUT,&c,&n);
@@ -119,14 +118,17 @@ void DOS_Shell::InputCommand(char * line) {
 	size_t first_len=strlen(old.buffer)+1;
 	memmove(&old.buffer[first_len],&old.buffer[0],CMD_OLDSIZE-first_len);
 	strcpy(old.buffer,line);		
-
-
-
 }
 
 void DOS_Shell::Execute(char * name,char * args) {
 	char * fullname;
-
+    char line[255];
+    if(strlen(args)!=0){
+        line[0]=' ';line[1]=0;
+        strcat(line,args);
+    }else{
+        line[0]=0;
+    };
 	/* check for a drive change */
 	if ((strcmp(name + 1, ":") == 0) && isalpha(*name))
 	{
@@ -143,28 +145,30 @@ void DOS_Shell::Execute(char * name,char * args) {
 	}
 	if (strcasecmp(strrchr(fullname, '.'), ".bat") == 0) {
 	/* Run the .bat file */
-		bf=new BatchFile(this,fullname,args);
+		bf=new BatchFile(this,fullname,line);
 	} else {
 		/* Run the .exe or .com file from the shell */
 		/* Allocate some stack space for tables in physical memory */
 		reg_sp-=0x200;
 		//Add Parameter block
 		DOS_ParamBlock block(SegPhys(ss)+reg_sp);
+		block.Clear();
 		//Add a filename
 		RealPt file_name=RealMakeSeg(ss,reg_sp+0x20);
 		MEM_BlockWrite(Real2Phys(file_name),fullname,strlen(fullname)+1);
 		/* Fill the command line */
 		CommandTail cmd;
-		if (strlen(args)>126) args[126]=0;
-		cmd.count=strlen(args);
-		memcpy(cmd.buffer,args,strlen(args));
-		cmd.buffer[strlen(args)]=0xd;
-		MEM_BlockWrite(PhysMake(prog_info->psp_seg,128),&cmd,128);
-
-		block.InitExec(RealMake(prog_info->psp_seg,128));
+		if (strlen(line)>126) line[126]=0;
+		cmd.count=strlen(line);
+		memcpy(cmd.buffer,line,strlen(line));
+		cmd.buffer[strlen(line)]=0xd;
+		/* Copy command line in stack block too */
+		MEM_BlockWrite(SegPhys(ss)+reg_sp+0x100,&cmd,128);
+		/* Set the command line in the block and save it */
+		block.exec.cmdtail=RealMakeSeg(ss,reg_sp+0x100);
+		block.SaveData();
 		/* Save CS:IP to some point where i can return them from */
-		RealPt newcsip;
-		newcsip=CALLBACK_RealPointer(call_shellstop);
+		RealPt newcsip=CALLBACK_RealPointer(call_shellstop);
 		SegSet16(cs,RealSeg(newcsip));
 		reg_ip=RealOff(newcsip);
 		/* Start up a dos execute interrupt */
@@ -179,8 +183,6 @@ void DOS_Shell::Execute(char * name,char * args) {
 		CALLBACK_RunRealInt(0x21);
 		reg_sp+=0x200;
 	}
-
-
 }
 
 
@@ -193,34 +195,28 @@ static char which_ret[DOS_PATHLENGTH];
 
 char * DOS_Shell::Which(char * name) {
 	/* Parse through the Path to find the correct entry */
-
-//	if (which_result) free(which_result);
-	/* Check for extension */
-
-	
-	
 	/* Check if name is already ok but just misses an extension */
 	char * ext=strrchr(name,'.');
 	if (ext) if (strlen(ext)>4) ext=0;
 	if (ext) {
 		if (DOS_FileExists(name)) return name;
 	} else {
-		/* try to find .exe .com .bat */
-		strcpy(which_ret,name);
-		strcat(which_ret,bat_ext);
-		if (DOS_FileExists(which_ret)) return which_ret;
+		/* try to find .com .exe .bat */
 		strcpy(which_ret,name);
 		strcat(which_ret,com_ext);
 		if (DOS_FileExists(which_ret)) return which_ret;
 		strcpy(which_ret,name);
 		strcat(which_ret,exe_ext);
 		if (DOS_FileExists(which_ret)) return which_ret;
+		strcpy(which_ret,name);
+		strcat(which_ret,bat_ext);
+		if (DOS_FileExists(which_ret)) return which_ret;
 	}
 
-	/* No Path in filename look through %path% */
-
-	static char path[DOS_PATHLENGTH];
-	char * pathenv=GetEnvStr("PATH");
+	/* No Path in filename look through path environment string */
+	static char path[DOS_PATHLENGTH];std::string temp;
+	if (!GetEnvStr("PATH",temp)) return 0;
+	const char * pathenv=temp.c_str();
 	if (!pathenv) return 0;
 	pathenv=strchr(pathenv,'=');
 	if (!pathenv) return 0;
@@ -239,16 +235,15 @@ char * DOS_Shell::Which(char * name) {
 				if (DOS_FileExists(which_ret)) return which_ret;
 			} else {
 				strcpy(which_ret,path);
-				strcat(which_ret,bat_ext);
-				if (DOS_FileExists(which_ret)) return which_ret;
-				strcpy(which_ret,path);
 				strcat(which_ret,com_ext);
 				if (DOS_FileExists(which_ret)) return which_ret;
 				strcpy(which_ret,path);
 				strcat(which_ret,exe_ext);
 				if (DOS_FileExists(which_ret)) return which_ret;
+				strcpy(which_ret,path);
+				strcat(which_ret,bat_ext);
+				if (DOS_FileExists(which_ret)) return which_ret;
 			}
-
 			path_write=path;
 			if (*pathenv) pathenv++;
 		}

@@ -16,10 +16,16 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+void DEBUG_SetupConsole(void);
 void DEBUG_DrawScreen(void);
-bool DEBUG_BreakPoint(void);
+bool DEBUG_Breakpoint(void);
 bool DEBUG_IntBreakpoint(Bit8u intNum);
 void DEBUG_Enable(void);
+void DEBUG_CheckExecuteBreakpoint(Bit16u seg, Bit32u off);
+bool DEBUG_ExitLoop(void);
 
 extern Bitu cycle_count;
 
+#ifdef C_HEAVY_DEBUG
+bool DEBUG_HeavyIsBreakpoint();
+#endif
