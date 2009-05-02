@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.57 2003/10/14 23:33:33 harekiet Exp $ */
+/* $Id: dos.cpp,v 1.65 2004/02/02 11:38:44 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,10 +44,10 @@ void DOS_SetError(Bit16u code) {
 
 #define DOSNAMEBUF 256
 static Bitu DOS_21Handler(void) {
-
-	DOS_PSP psp(dos.psp);
-	psp.SetStack(RealMake(SegValue(ss),reg_sp));
-
+	if (((reg_ah != 0x50) && (reg_ah != 0x51) && (reg_ah != 0x62) && (reg_ah != 0x64)) && (reg_ah<0x6c)) {
+		DOS_PSP psp(dos.psp);
+		psp.SetStack(RealMake(SegValue(ss),reg_sp-20));
+	}
 	char name1[DOSNAMEBUF+1];
 	char name2[DOSNAMEBUF+1];
 	switch (reg_ah) {
@@ -519,6 +519,7 @@ static Bitu DOS_21Handler(void) {
 		case 0x00:				/* Get */
 		{
 			if (DOS_GetFileAttr(name1,&reg_cx)) {
+				reg_ax=reg_cx; /* Undocumented */   
 				CALLBACK_SCF(false);
 			} else {
 				CALLBACK_SCF(true);
@@ -527,7 +528,12 @@ static Bitu DOS_21Handler(void) {
 			break;
 		case 0x01:				/* Set */
 			LOG(LOG_MISC,LOG_ERROR)("DOS:Set File Attributes for %s not supported",name1);
-			CALLBACK_SCF(false);
+			if (DOS_SetFileAttr(name1,reg_cx)) {
+				CALLBACK_SCF(false);
+			} else {
+				CALLBACK_SCF(true);
+				reg_ax=dos.errorcode;
+			}
 			break;
 		default:
 			LOG(LOG_MISC,LOG_ERROR)("DOS:0x43:Illegal subfunction %2X",reg_al);
@@ -594,6 +600,7 @@ static Bitu DOS_21Handler(void) {
 		{
 			Bit16u size=reg_bx;
 			if (DOS_ResizeMemory(SegValue(es),&size)) {
+				reg_ax=SegValue(es);
 				CALLBACK_SCF(false);
 			} else {            
 				reg_ax=dos.errorcode;
@@ -744,7 +751,7 @@ static Bitu DOS_21Handler(void) {
 				DOS_CloseFile(handle);
 				DOS_SetError(DOSERR_ACCESS_DENIED);
 				reg_ax=dos.errorcode;
-				CALLBACK_SCF(false);
+				CALLBACK_SCF(true);
 				break;
 			}
 			if (DOS_CreateFile(name1,reg_cx,&handle)) {
@@ -757,7 +764,7 @@ static Bitu DOS_21Handler(void) {
 			break;
 		}
 	case 0x60:					/* Canonicalize filename or path */
-		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_si,name1,DOSNAMEBUF);
 		if (DOS_Canonicalize(name1,name2)) {
 				MEM_BlockWrite(SegPhys(es)+reg_di,name2,strlen(name2)+1);	
 				CALLBACK_SCF(false);
@@ -891,7 +898,6 @@ static Bitu DOS_27Handler(void)
 	return CBRET_NONE;
 }
 static Bitu DOS_25Handler(void) {
-	flags.type=0;
 	if(Drives[reg_al]==0){
 		reg_ax=0x8002;
 		SETFLAGBIT(CF,true);
@@ -905,7 +911,6 @@ static Bitu DOS_25Handler(void) {
 }
 static Bitu DOS_26Handler(void) {
 	LOG(LOG_DOSMISC,LOG_NORMAL)("int 26 called: hope for the best!");
-	flags.type=0;
 	if(Drives[reg_al]==0){
 		reg_ax=0x8002;
 		SETFLAGBIT(CF,true);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: xms.cpp,v 1.31 2004/01/14 20:54:41 finsterr Exp $ */
+
 #include <stdlib.h>
 #include <string.h>
 #include "dosbox.h"
@@ -26,6 +28,7 @@
 #include "setup.h"
 #include "inout.h"
 #include "xms.h"
+#include "bios.h"
 
 #define XMS_HANDLES							50		/* 50 XMS Memory Blocks */ 
 #define XMS_VERSION    						0x0300	/* version 3.00 */
@@ -49,6 +52,8 @@
 #define	XMS_RESIZE_EXTENDED_MEMORY_BLOCK	0x0f
 #define	XMS_ALLOCATE_UMB					0x10
 #define	XMS_DEALLOCATE_UMB					0x11
+#define XMS_QUERY_ANY_FREE_MEMORY			0x88
+#define XMS_ALLOCATE_ANY_MEMORY				0x89
 
 #define	HIGH_MEMORY_NOT_EXIST				0x90
 #define	HIGH_MEMORY_IN_USE					0x91
@@ -119,7 +124,7 @@ Bitu XMS_AllocateMemory(Bitu size, Bit16u& handle)
 	/* Find free handle */
 	Bit16u index=1;
 	while (!xms_handles[index].free) {
-		if (++index>XMS_HANDLES) return XMS_OUT_OF_HANDLES;
+		if (++index>=XMS_HANDLES) return XMS_OUT_OF_HANDLES;
 	}
 	Bitu pages=(size/4) + ((size & 3) ? 1 : 0);
 	MemHandle mem=MEM_AllocatePages(pages,true);
@@ -279,6 +284,9 @@ Bitu XMS_Handler(void) {
 	case XMS_QUERY_FREE_EXTENDED_MEMORY:						/* 08 */
 		reg_bl = XMS_QueryFreeMemory(reg_ax,reg_dx);
 		break;
+	case XMS_ALLOCATE_ANY_MEMORY:								/* 89 */
+		reg_edx &= 0xffff;
+		// fall through
 	case XMS_ALLOCATE_EXTENDED_MEMORY:							/* 09 */
 		{
 		Bit16u handle = 0;
@@ -323,7 +331,12 @@ Bitu XMS_Handler(void) {
 	case XMS_DEALLOCATE_UMB:									/* 11 */
 		LOG(LOG_MISC,LOG_ERROR)("XMS:Unhandled call %2X",reg_ah);
 		break;
-
+	case XMS_QUERY_ANY_FREE_MEMORY:								/* 88 */
+		reg_bl = XMS_QueryFreeMemory(reg_ax,reg_dx);
+        reg_eax &= 0xffff;
+        reg_edx &= 0xffff;
+        reg_ecx = (MEM_TotalPages()*MEM_PAGESIZE)-1;			// highest known physical memory address
+		break;
 	}
 //	LOG(LOG_MISC,LOG_ERROR)("XMS: CALL Result: %02X",reg_bl);
 	return CBRET_NONE;
@@ -334,7 +347,7 @@ void XMS_Init(Section* sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	if (!section->Get_bool("xms")) return;
 	Bitu i;
-
+	BIOS_ZeroExtendedSize();
 	DOS_AddMultiplexHandler(multiplex_xms);
 	call_xms=CALLBACK_Allocate();
 	CALLBACK_Setup(call_xms,&XMS_Handler,CB_RETF);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,28 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: cdrom_aspi_win32.cpp,v 1.10 2004/01/10 14:03:34 qbix79 Exp $ */
+
 #if defined (WIN32)
 
 #include <ctype.h>
 
-#include "cdrom.h"
-#include "scsidefs.h"			// Aspi stuff
 #include "dosbox.h"
+#include "cdrom.h"
+
+//Are actually system includes but leave for now
+#include "wnaspi32.h"
+
+#if defined (_MSC_VER)
+#include <ntddcdrm.h>			// Ioctl stuff
+#include <ntddscsi.h>
+#include <winioctl.h>			// Ioctl stuff
+#else 
+#include "ddk/ntddcdrm.h"		// Ioctl stuff
+#include "ddk/ntddscsi.h"
+#endif
+
+#include "scsidefs.h"
 
 // *****************************************************************
 // Windows ASPI functions (should work for all WIN with ASPI layer)
@@ -292,7 +307,7 @@ bool CDROM_Interface_Aspi::GetAudioTrackInfo	(int track, TMSF& start, unsigned c
 		start.min	= (unsigned char)(toc.tracks[track-1].lAddr >>  8) &0xFF;
 		start.sec	= (unsigned char)(toc.tracks[track-1].lAddr >> 16) &0xFF;
 		start.fr	= (unsigned char)(toc.tracks[track-1].lAddr >> 24) &0xFF;
-		attr		= toc.tracks[track-1].cAdrCtrl;
+		attr		= (toc.tracks[track-1].cAdrCtrl << 4) & 0xEF;
 		return true;
 	};		
 	return false;
@@ -503,7 +518,7 @@ bool CDROM_Interface_Aspi::GetAudioSub(unsigned char& attr, unsigned char& track
 	
 	if (s.SRB_Status!=SS_COMP) return false;
 
-	attr		= (pos.ADR<<4) | pos.Control;
+	attr		= (pos.Control<<4) &0xEF;
 	track		= pos.TrackNumber;
 	index		= pos.IndexNumber;
 	absPos.min	= pos.AbsoluteAddress[1];

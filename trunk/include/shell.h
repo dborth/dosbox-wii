@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,11 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_inc.h,v 1.17 2003/09/08 18:19:28 qbix79 Exp $ */
+/* $Id: shell.h,v 1.2 2004/01/10 14:03:33 qbix79 Exp $ */
+
+#ifndef SHELL_H_
+#define SHELL_H_
+
 
 #include <ctype.h>
 #include <stdio.h>
@@ -96,6 +100,8 @@ public:
 	void CMD_CALL(char * args);
 	void SyntaxError(void);
 	void CMD_PAUSE(char * args);
+	void CMD_SUBST(char* args);
+	void CMD_LOADHIGH(char* args);
 	/* The shell's variables */
 	Bit16u input_handle;
 	BatchFile * bf;
@@ -140,3 +146,4 @@ static inline char* ExpandDot(char*args, char* buffer)
 }
 
 
+#endif

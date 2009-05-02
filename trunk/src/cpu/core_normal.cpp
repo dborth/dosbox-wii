@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -115,6 +115,9 @@ static struct {
 	PhysPt seg_prefix_base;
 	bool rep_zero;
 	GetEATable * ea_table;
+	struct {
+		bool skip;
+	} trap;
 } core;
 
 #include "instructions.h"
@@ -148,14 +151,18 @@ static GetEATable * EAPrefixTable[8] = {
 
 #define EALookupTable (*(core.ea_table))
 
-
-static Bits CPU_Core_Normal_Decode_Trap(void);
-
-static Bits CPU_Core_Normal_Decode(void) {
+Bits CPU_Core_Normal_Run(void) {
 decode_start:
+	if (cpu.code.big) {
+		core.index_default=0x200;
+		core.prefix_default=PREFIX_ADDR;
+	} else {
+		core.index_default=0;
+		core.prefix_default=0;
+	}
 	LOADIP;
-	flags.type=t_UNKNOWN;
-	while (CPU_Cycles>0) {
+	lflags.type=t_UNKNOWN;
+	while (CPU_Cycles-->0) {
 		core.op_start=core.ip_lookup;
 		core.opcode_index=core.index_default;
 		core.prefixes=core.prefix_default;
@@ -169,7 +176,6 @@ decode_start:
 		};
 #endif
 #endif
-		CPU_Cycles--;
 restart_prefix:
 		core.ea_table=EAPrefixTable[core.prefixes];
 restart_opcode:
@@ -193,33 +199,23 @@ restart_opcode:
 	return CBRET_NONE;
 }
 
-static Bits CPU_Core_Normal_Decode_Trap(void) {
+Bits CPU_Core_Normal_Trap_Run(void) {
 
 	Bits oldCycles = CPU_Cycles;
 	CPU_Cycles = 1;
-	Bits ret=CPU_Core_Normal_Decode();
-	
-	Interrupt(1);
-	
+	core.trap.skip=false;
+
+	Bits ret=CPU_Core_Normal_Run();
+	if (!core.trap.skip) CPU_SW_Interrupt(1,0);
 	CPU_Cycles = oldCycles-1;
-	cpudecoder = &CPU_Core_Normal_Decode;
+	cpudecoder = &CPU_Core_Normal_Run;
 
 	return ret;
 }
 
 
 
-void CPU_Core_Normal_Start(bool big) {
-	
-	if (GETFLAG(TF)) cpudecoder=CPU_Core_Normal_Decode_Trap;
-	else cpudecoder=CPU_Core_Normal_Decode;
+void CPU_Core_Normal_Init(void) {
 
-	if (big) {
-		core.index_default=0x200;
-		core.prefix_default=PREFIX_ADDR;
-	} else {
-		core.index_default=0;
-		core.prefix_default=0;
-	}
 }
 

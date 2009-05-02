@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: keyboard.cpp,v 1.20 2004/01/29 20:13:29 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -66,6 +68,7 @@ struct KeyBlock {
 	bool enabled;
 	bool active;
 	bool scheduled;
+	bool key_on_60;
 };
 
 static KeyBlock keyb;
@@ -79,6 +82,7 @@ void KEYBOARD_ClrBuffer(void) {
 	keyb.buf.pos=0;
 	keyb.scheduled=false;
 	PIC_DeActivateIRQ(1);
+	keyb.key_on_60=false;
 }
 
 /* Read an entry from the keycode buffer */
@@ -97,6 +101,7 @@ void KEYBOARD_GetCode(void) {
 		keyb.buf.state=STATE_NORMAL;
 		break;
 	}
+	keyb.key_on_60=true;
 	if (keyb.enabled) PIC_ActivateIRQ(1);
 }
 
@@ -112,13 +117,14 @@ void KEYBOARD_AddCode(Bit8u scancode,Bit8u ascii,Bitu mod,KeyStates state) {
 		keyb.buf.code[start].mod=mod;
 	}
 	/* Start up an event to start the first IRQ */
-	if (!keyb.scheduled) {
+	if (!keyb.scheduled && !keyb.key_on_60) {
 		keyb.scheduled=true;
 		PIC_AddEvent(KEYBOARD_GetCode,KEYDELAY);
 	}
 }
 
 void KEYBOARD_ReadKey(Bitu & scancode,Bitu & ascii,Bitu & mod) {
+	keyb.key_on_60=false; //else no new keys get scheduled :)
 	switch (keyb.buf.state) {
 	case STATE_NORMAL:
 		if (keyb.buf.used && !keyb.scheduled) {
@@ -142,18 +148,21 @@ void KEYBOARD_ReadKey(Bitu & scancode,Bitu & ascii,Bitu & mod) {
 }
 
 static Bit8u read_p60(Bit32u port) {
+	keyb.key_on_60 = false;
 	switch (keyb.buf.state) {
 	case STATE_NORMAL:
-		if (keyb.buf.used && !keyb.scheduled) {
+      		if (keyb.buf.used && !keyb.scheduled) { //key60 is false
 			keyb.scheduled=true;
 			PIC_AddEvent(KEYBOARD_GetCode,KEYDELAY);
 		}
+
 		return keyb.buf.code[keyb.buf.pos].scancode;	
 	case STATE_EXTEND:
-		if (!keyb.scheduled) {
+      		if (!keyb.scheduled) {
 			keyb.scheduled=true;
 			PIC_AddEvent(KEYBOARD_GetCode,KEYDELAY);
 		}
+
 		return 224;
 	}
 	return 0;
@@ -179,8 +188,21 @@ static void write_p60(Bit32u port,Bit8u val) {
 			keyb.command=CMD_SETTYPERATE;
 			KEYBOARD_AddCode(0xfa,0,0,STATE_NORMAL);	/* Acknowledge */
 			break;
+		case 0xf4:	/* Enable keyboard,clear buffer, start scanning */
+			keyb.active=true;
+			KEYBOARD_ClrBuffer();
+			LOG(LOG_KEYBOARD,LOG_NORMAL)("Activated port 60");
+			KEYBOARD_AddCode(0xfa,0,0,STATE_NORMAL);	/* Acknowledge */
+			break;
+		case 0xf5:	 /* Reset keyboard and disable scanning */
+		case 0xf6:	/* Reset keyboard and enable scanning */
+			LOG(LOG_KEYBOARD,LOG_NORMAL)("Reset");
+			KEYBOARD_AddCode(0xfa,0,0,STATE_NORMAL);	/* Acknowledge */
+			break;
 		default:
+			/* Just always acknowledge strange commands */
 			LOG(LOG_KEYBOARD,LOG_ERROR)("60:Unhandled command %X",val);
+			KEYBOARD_AddCode(0xfa,0,0,STATE_NORMAL);	/* Acknowledge */
 		}
 		return;
 	case CMD_SETOUTPORT:
@@ -197,6 +219,7 @@ static void write_p60(Bit32u port,Bit8u val) {
 
 static Bit8u read_p61(Bit32u port) {
 	port_61_data^=0x20;
+	port_61_data^=0x10;
 	return port_61_data;
 }
 
@@ -214,11 +237,11 @@ static void write_p64(Bit32u port,Bit8u val) {
 	switch (val) {
 	case 0xae:		/* Activate keyboard */
 		keyb.active=true;
-		if (keyb.buf.used && !keyb.scheduled) {
+		if (keyb.buf.used && !keyb.scheduled && !keyb.key_on_60) {
 			keyb.scheduled=true;
 			PIC_AddEvent(KEYBOARD_GetCode,KEYDELAY);
 		}
-		LOG(LOG_KEYBOARD,LOG_NORMAL)("Activated");
+		LOG(LOG_KEYBOARD,LOG_NORMAL)("Activated port 64");
 		break;
 	case 0xad:		/* Deactivate keyboard */
 		keyb.active=false;
@@ -239,7 +262,11 @@ static void write_p64(Bit32u port,Bit8u val) {
 }
 
 static Bit8u read_p64(Bit32u port) {
-	return 0x1c | (keyb.buf.used ? 0x1 : 0x0);
+//	Bit8u status= 0x1c | ((keyb.buf.used ||keyb.key_on_60)? 0x1 : 0x0);
+//	Old one. Digitracker 2 doesn't like this. key_on_60 is much more advanged.
+	Bit8u status= 0x1c | (keyb.key_on_60? 0x1 : 0x0);
+	keyb.key_on_60=false;
+	return status;
 }
 
 void KEYBOARD_AddEvent(Bitu keytype,Bitu state,KEYBOARD_EventHandler * handler) {
@@ -407,5 +434,6 @@ void KEYBOARD_Init(Section* sec) {
 	keyb.enabled=true;
 	keyb.command=CMD_NONE;
 	keyb.last_index=0;
+	keyb.key_on_60=false;
 	KEYBOARD_ClrBuffer();
 }

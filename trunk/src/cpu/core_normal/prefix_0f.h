@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,7 +36,6 @@
 					Bitu loadval;
 					if (rm >= 0xc0 ) {GetEArw;loadval=*earw;}
 					else {GetEAa;loadval=LoadMw(eaa);}
-					break;
 					switch (which) {
 					case 0x02:CPU_LLDT(loadval);break;
 					case 0x03:CPU_LTR(loadval);break;
@@ -44,6 +43,7 @@
 					case 0x05:CPU_VERW(loadval);break;
 					}
 				}
+				break;
 			default:
 				LOG(LOG_CPU,LOG_ERROR)("GRP6:Illegal call %2X",which);
 			}
@@ -121,6 +121,8 @@
 			*rmrw=(Bit16u)limit;
 		}
 		break;
+	CASE_0F_B(0x06)												/* CLTS */
+		break;
 	CASE_0F_B(0x20)												/* MOV Rd.CRx */
 		{
 			GetRM;
@@ -134,13 +136,25 @@
 			}
 		}
 		break;
+	CASE_0F_B(0x21)												/* MOV Rd,DRx */
+		{
+			GetRM;
+			Bitu which=(rm >> 3) & 7;
+			if (rm >= 0xc0 ) {
+				GetEArd;
+			} else {
+				GetEAa;
+				LOG(LOG_CPU,LOG_ERROR)("MOV XXX,DR% with non-register",which);
+			}
+		}
+		break;
 	CASE_0F_B(0x22)												/* MOV CRx,Rd */
 		{
 			GetRM;
 			Bitu which=(rm >> 3) & 7;
 			if (rm >= 0xc0 ) {
 				GetEArd;
-				if (!CPU_SET_CRX(which,*eard)) goto decode_end;
+				CPU_SET_CRX(which,*eard);
 			} else {
 				GetEAa;
 				LOG(LOG_CPU,LOG_ERROR)("MOV CR%,XXX with non-register",which);
@@ -160,88 +174,89 @@
 		}
 		break;
 	CASE_0F_W(0x80)												/* JO */
-		JumpSIw(get_OF());break;
+		JumpCond16_w(TFLG_O);break;
 	CASE_0F_W(0x81)												/* JNO */
-		JumpSIw(!get_OF());break;
+		JumpCond16_w(TFLG_NO);break;
 	CASE_0F_W(0x82)												/* JB */
-		JumpSIw(get_CF());break;
+		JumpCond16_w(TFLG_B);break;
 	CASE_0F_W(0x83)												/* JNB */
-		JumpSIw(!get_CF());break;
+		JumpCond16_w(TFLG_NB);break;
 	CASE_0F_W(0x84)												/* JZ */
-		JumpSIw(get_ZF());break;
+		JumpCond16_w(TFLG_Z);break;
 	CASE_0F_W(0x85)												/* JNZ */
-		JumpSIw(!get_ZF());break;
+		JumpCond16_w(TFLG_NZ);break;
 	CASE_0F_W(0x86)												/* JBE */
-		JumpSIw(get_CF() || get_ZF());break;
+		JumpCond16_w(TFLG_BE);break;
 	CASE_0F_W(0x87)												/* JNBE */
-		JumpSIw(!get_CF() && !get_ZF());break;
+		JumpCond16_w(TFLG_NBE);break;
 	CASE_0F_W(0x88)												/* JS */
-		JumpSIw(get_SF());break;
+		JumpCond16_w(TFLG_S);break;
 	CASE_0F_W(0x89)												/* JNS */
-		JumpSIw(!get_SF());break;
+		JumpCond16_w(TFLG_NS);break;
 	CASE_0F_W(0x8a)												/* JP */
-		JumpSIw(get_PF());break;
+		JumpCond16_w(TFLG_P);break;
 	CASE_0F_W(0x8b)												/* JNP */
-		JumpSIw(!get_PF());break;
+		JumpCond16_w(TFLG_NP);break;
 	CASE_0F_W(0x8c)												/* JL */
-		JumpSIw(get_SF() != get_OF());break;
+		JumpCond16_w(TFLG_L);break;
 	CASE_0F_W(0x8d)												/* JNL */
-		JumpSIw(get_SF() == get_OF());break;
+		JumpCond16_w(TFLG_NL);break;
 	CASE_0F_W(0x8e)												/* JLE */
-		JumpSIw(get_ZF() || (get_SF() != get_OF()));break;
+		JumpCond16_w(TFLG_LE);break;
 	CASE_0F_W(0x8f)												/* JNLE */
-		JumpSIw((get_SF() == get_OF()) && !get_ZF());break;
+		JumpCond16_w(TFLG_NLE);break;
 	CASE_0F_B(0x90)												/* SETO */
-		SETcc(get_OF());break;
+		SETcc(TFLG_O);break;
 	CASE_0F_B(0x91)												/* SETNO */
-		SETcc(!get_OF());break;
+		SETcc(TFLG_NO);break;
 	CASE_0F_B(0x92)												/* SETB */
-		SETcc(get_CF());break;
+		SETcc(TFLG_B);break;
 	CASE_0F_B(0x93)												/* SETNB */
-		SETcc(!get_CF());break;
+		SETcc(TFLG_NB);break;
 	CASE_0F_B(0x94)												/* SETZ */
-		SETcc(get_ZF());break;
+		SETcc(TFLG_Z);break;
 	CASE_0F_B(0x95)												/* SETNZ */
-		SETcc(!get_ZF());	break;
+		SETcc(TFLG_NZ);	break;
 	CASE_0F_B(0x96)												/* SETBE */
-		SETcc(get_CF() || get_ZF());break;
+		SETcc(TFLG_BE);break;
 	CASE_0F_B(0x97)												/* SETNBE */
-		SETcc(!get_CF() && !get_ZF());break;
+		SETcc(TFLG_NBE);break;
 	CASE_0F_B(0x98)												/* SETS */
-		SETcc(get_SF());break;
+		SETcc(TFLG_S);break;
 	CASE_0F_B(0x99)												/* SETNS */
-		SETcc(!get_SF());break;
+		SETcc(TFLG_NS);break;
 	CASE_0F_B(0x9a)												/* SETP */
-		SETcc(get_PF());break;
+		SETcc(TFLG_P);break;
 	CASE_0F_B(0x9b)												/* SETNP */
-		SETcc(!get_PF());break;
+		SETcc(TFLG_NP);break;
 	CASE_0F_B(0x9c)												/* SETL */
-		SETcc(get_SF() != get_OF());break;
+		SETcc(TFLG_L);break;
 	CASE_0F_B(0x9d)												/* SETNL */
-		SETcc(get_SF() == get_OF());break;
+		SETcc(TFLG_NL);break;
 	CASE_0F_B(0x9e)												/* SETLE */
-		SETcc(get_ZF() || (get_SF() != get_OF()));break;
+		SETcc(TFLG_LE);break;
 	CASE_0F_B(0x9f)												/* SETNLE */
-		SETcc((get_SF() == get_OF()) && !get_ZF());break;
+		SETcc(TFLG_NLE);break;
 
 	CASE_0F_W(0xa0)												/* PUSH FS */		
 		Push_16(SegValue(fs));break;
-	CASE_0F_W(0xa1)												/* POP FS */		
-		CPU_SetSegGeneral(fs,Pop_16());break;
+	CASE_0F_W(0xa1)												/* POP FS */	
+		POPSEG(fs,Pop_16(),2);
+		break;
 	CASE_0F_B(0xa2)												/* CPUID */
 		CPU_CPUID();break;
 	CASE_0F_W(0xa3)												/* BT Ew,Gw */
 		{
-			GetRMrw;
+			FillFlags();GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
 				SETFLAGBIT(CF,(*earw & mask));
 			} else {
-				GetEAa;Bit16u old=LoadMw(eaa);
+				GetEAa;eaa+=(((Bit16s)*rmrw)>>4)*2;
+				Bit16u old=LoadMw(eaa);
 				SETFLAGBIT(CF,(old & mask));
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_W(0xa4)												/* SHLD Ew,Gw,Ib */
@@ -253,21 +268,21 @@
 	CASE_0F_W(0xa8)												/* PUSH GS */		
 		Push_16(SegValue(gs));break;
 	CASE_0F_W(0xa9)												/* POP GS */		
-		CPU_SetSegGeneral(gs,Pop_16());break;
+		POPSEG(gs,Pop_16(),2);break;
 	CASE_0F_W(0xab)												/* BTS Ew,Gw */
 		{
-			GetRMrw;
+			FillFlags();GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
 				SETFLAGBIT(CF,(*earw & mask));
 				*earw|=mask;
 			} else {
-				GetEAa;Bit16u old=LoadMw(eaa);
+				GetEAa;eaa+=(((Bit16s)*rmrw)>>4)*2;
+				Bit16u old=LoadMw(eaa);
 				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old | mask);
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_W(0xac)												/* SHRD Ew,Gw,Ib */
@@ -282,35 +297,38 @@
 	CASE_0F_W(0xb2)												/* LSS Ew */
 		{	
 			GetRMrw;GetEAa;
-			*rmrw=LoadMw(eaa);CPU_SetSegGeneral(ss,LoadMw(eaa+2));
+			LOADSEG(ss,LoadMw(eaa+2));
+			*rmrw=LoadMw(eaa);
 			break;
 		}
 	CASE_0F_W(0xb3)												/* BTR Ew,Gw */
 		{
-			GetRMrw;
+			FillFlags();GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
 				SETFLAGBIT(CF,(*earw & mask));
 				*earw&= ~mask;
 			} else {
-				GetEAa;Bit16u old=LoadMw(eaa);
+				GetEAa;eaa+=(((Bit16s)*rmrw)>>4)*2;
+				Bit16u old=LoadMw(eaa);
 				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old & ~mask);
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_W(0xb4)												/* LFS Ew */
 		{	
 			GetRMrw;GetEAa;
-			*rmrw=LoadMw(eaa);CPU_SetSegGeneral(fs,LoadMw(eaa+2));
+			LOADSEG(fs,LoadMw(eaa+2));
+			*rmrw=LoadMw(eaa);
 			break;
 		}
 	CASE_0F_W(0xb5)												/* LGS Ew */
 		{	
 			GetRMrw;GetEAa;
-			*rmrw=LoadMw(eaa);CPU_SetSegGeneral(gs,LoadMw(eaa+2));
+			LOADSEG(gs,LoadMw(eaa+2));
+			*rmrw=LoadMw(eaa);
 			break;
 		}
 	CASE_0F_W(0xb6)												/* MOVZX Gw,Eb */
@@ -330,7 +348,7 @@
 		}
 	CASE_0F_W(0xba)												/* GRP8 Ew,Ib */
 		{
-			GetRM;
+			FillFlags();GetRM;
 			if (rm >= 0xc0 ) {
 				GetEArw;
 				Bit16u mask=1 << (Fetchb() & 15);
@@ -370,23 +388,22 @@
 					E_Exit("CPU:0F:BA:Illegal subfunction %X",rm & 0x38);
 				}
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_W(0xbb)												/* BTC Ew,Gw */
 		{
-			GetRMrw;
+			FillFlags();GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
 				SETFLAGBIT(CF,(*earw & mask));
 				*earw^=mask;
 			} else {
-				GetEAa;Bit16u old=LoadMw(eaa);
+				GetEAa;eaa+=(((Bit16s)*rmrw)>>4)*2;
+				Bit16u old=LoadMw(eaa);
 				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old ^ mask);
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_W(0xbc)												/* BSF Gw,Ew */
@@ -403,7 +420,7 @@
 				SETFLAGBIT(ZF,false);
 				*rmrw = result;
 			}
-			flags.type=t_UNKNOWN;
+			lflags.type=t_UNKNOWN;
 			break;
 		}
 	CASE_0F_W(0xbd)												/* BSR Gw,Ew */
@@ -420,7 +437,7 @@
 				SETFLAGBIT(ZF,false);
 				*rmrw = result;
 			}
-			flags.type=t_UNKNOWN;
+			lflags.type=t_UNKNOWN;
 			break;
 		}
 	CASE_0F_W(0xbe)												/* MOVSX Gw,Eb */

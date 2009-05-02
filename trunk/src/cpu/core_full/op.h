@@ -1,60 +1,62 @@
 /* Do the actual opcode */
 switch (inst.code.op) {
 	case t_ADDb:	case t_ADDw:	case t_ADDd:
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d + flags.var2.d;
-		flags.type=inst.code.op;
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d + lf_var2d;
+		lflags.type=inst.code.op;
 		break;
 	case t_CMPb:	case t_CMPw:	case t_CMPd:
 	case t_SUBb:	case t_SUBw:	case t_SUBd:
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d - flags.var2.d;
-		flags.type=inst.code.op;
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d - lf_var2d;
+		lflags.type=inst.code.op;
 		break;
 	case t_ORb:		case t_ORw:		case t_ORd:
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d | flags.var2.d;
-		flags.type=inst.code.op;
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d | lf_var2d;
+		lflags.type=inst.code.op;
 		break;
 	case t_XORb:	case t_XORw:	case t_XORd:
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d ^ flags.var2.d;
-		flags.type=inst.code.op;
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d ^ lf_var2d;
+		lflags.type=inst.code.op;
 		break;
 	case t_TESTb:	case t_TESTw:	case t_TESTd:
 	case t_ANDb:	case t_ANDw:	case t_ANDd:
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d & flags.var2.d;
-		flags.type=inst.code.op;
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d & lf_var2d;
+		lflags.type=inst.code.op;
 		break;
 	case t_ADCb:	case t_ADCw:	case t_ADCd:
-		flags.oldcf=get_CF();
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d + flags.var2.d + flags.oldcf;
-		flags.type=inst.code.op;
+		lflags.oldcf=(get_CF()!=0);
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d + lf_var2d + lflags.oldcf;
+		lflags.type=inst.code.op;
 		break;
 	case t_SBBb:	case t_SBBw:	case t_SBBd:
-		flags.oldcf=get_CF();
-		flags.var1.d=inst.op1.d;
-		flags.var2.d=inst.op2.d;
-		inst.op1.d=flags.result.d=flags.var1.d - flags.var2.d - flags.oldcf;
-		flags.type=inst.code.op;
+		lflags.oldcf=(get_CF()!=0);
+		lf_var1d=inst.op1.d;
+		lf_var2d=inst.op2.d;
+		inst.op1.d=lf_resd=lf_var1d - lf_var2d - lflags.oldcf;
+		lflags.type=inst.code.op;
 		break;
 	case t_INCb:	case t_INCw:	case t_INCd:
-		SETFLAGBIT(CF,get_CF());
-		inst.op1.d=flags.result.d=inst.op1.d+1;
-		flags.type=inst.code.op;
+		LoadCF;
+		lf_var1d=inst.op1.d;
+		inst.op1.d=lf_resd=inst.op1.d+1;
+		lflags.type=inst.code.op;
 		break;
 	case t_DECb:	case t_DECw:	case t_DECd:
-		SETFLAGBIT(CF,get_CF());
-		inst.op1.d=flags.result.d=inst.op1.d-1;
-		flags.type=inst.code.op;
+		LoadCF;
+		lf_var1d=inst.op1.d;
+		inst.op1.d=lf_resd=inst.op1.d-1;
+		lflags.type=inst.code.op;
 		break;
 /* Using the instructions.h defines */
 	case t_ROLb:
@@ -149,19 +151,19 @@ switch (inst.code.op) {
 		}
 
 	case t_NEGb:
-		flags.var1.b=inst.op1.b;
-		inst.op1.b=flags.result.b=0-inst.op1.b;
-		flags.type=t_NEGb;
+		lf_var1b=inst.op1.b;
+		inst.op1.b=lf_resb=0-inst.op1.b;
+		lflags.type=t_NEGb;
 		break;
 	case t_NEGw:
-		flags.var1.w=inst.op1.w;
-		inst.op1.w=flags.result.w=0-inst.op1.w;
-		flags.type=t_NEGw;
+		lf_var1w=inst.op1.w;
+		inst.op1.w=lf_resw=0-inst.op1.w;
+		lflags.type=t_NEGw;
 		break;
 	case t_NEGd:
-		flags.var1.d=inst.op1.d;
-		inst.op1.d=flags.result.d=0-inst.op1.d;
-		flags.type=t_NEGd;
+		lf_var1d=inst.op1.d;
+		inst.op1.d=lf_resd=0-inst.op1.d;
+		lflags.type=t_NEGd;
 		break;
 	
 	case O_NOT:
@@ -218,22 +220,22 @@ switch (inst.code.op) {
 		AAD(inst.op1.b);
 		goto nextopcode;
 
-	case O_C_O:		inst.cond=get_OF();								break;
-	case O_C_NO:	inst.cond=!get_OF();							break;
-	case O_C_B:		inst.cond=get_CF();								break;
-	case O_C_NB:	inst.cond=!get_CF();							break;
-	case O_C_Z:		inst.cond=get_ZF();								break;
-	case O_C_NZ:	inst.cond=!get_ZF();							break;
-	case O_C_BE:	inst.cond=get_CF() || get_ZF();					break;
-	case O_C_NBE:	inst.cond=!get_CF() && !get_ZF();				break;
-	case O_C_S:		inst.cond=get_SF();								break;
-	case O_C_NS:	inst.cond=!get_SF();							break;
-	case O_C_P:		inst.cond=get_PF();								break;
-	case O_C_NP:	inst.cond=!get_PF();							break;
-	case O_C_L:		inst.cond=get_SF() != get_OF();					break;
-	case O_C_NL:	inst.cond=get_SF() == get_OF();					break;
-	case O_C_LE:	inst.cond=get_ZF() || (get_SF() != get_OF());	break;
-	case O_C_NLE:	inst.cond=(get_SF() == get_OF()) && !get_ZF();	break;
+	case O_C_O:		inst.cond=TFLG_O;	break;
+	case O_C_NO:	inst.cond=TFLG_NO;	break;
+	case O_C_B:		inst.cond=TFLG_B;	break;
+	case O_C_NB:	inst.cond=TFLG_NB;	break;
+	case O_C_Z:		inst.cond=TFLG_Z;	break;
+	case O_C_NZ:	inst.cond=TFLG_NZ;	break;
+	case O_C_BE:	inst.cond=TFLG_BE;	break;
+	case O_C_NBE:	inst.cond=TFLG_NBE;	break;
+	case O_C_S:		inst.cond=TFLG_S;	break;
+	case O_C_NS:	inst.cond=TFLG_NS;	break;
+	case O_C_P:		inst.cond=TFLG_P;	break;
+	case O_C_NP:	inst.cond=TFLG_NP;	break;
+	case O_C_L:		inst.cond=TFLG_L;	break;
+	case O_C_NL:	inst.cond=TFLG_NL;	break;
+	case O_C_LE:	inst.cond=TFLG_LE;	break;
+	case O_C_NLE:	inst.cond=TFLG_NLE;	break;
 
 	case O_ALOP:
 		reg_al=LoadMb(inst.rm_eaa);
@@ -320,66 +322,48 @@ switch (inst.code.op) {
 		Push_32(reg_eip);
 		break;
 	case O_CALLFw:
-		SaveIP();
-		if (!CPU_CALL(false,inst.op2.d,inst.op1.d)) {
-			FillFlags();
-			return CBRET_NONE;
-		} 
-		LoadIP();
-		goto nextopcode;
+		LEAVECORE;
+		CPU_CALL(false,inst.op2.d,inst.op1.d);
+		goto restart_core;
 	case O_CALLFd:
-		SaveIP();
-		if (!CPU_CALL(true,inst.op2.d,inst.op1.d)) {
-			FillFlags();
-			return CBRET_NONE;
-		}
-		LoadIP();
-		goto nextopcode;
+		LEAVECORE;
+		CPU_CALL(true,inst.op2.d,inst.op1.d);
+		goto restart_core;
 	case O_JMPFw:
-		if (!CPU_JMP(false,inst.op2.d,inst.op1.d)){
-			FillFlags();
-			return CBRET_NONE;
-		}
-		LoadIP();
-		goto nextopcode;
+		LEAVECORE;
+		CPU_JMP(false,inst.op2.d,inst.op1.d);
+		goto restart_core;
 	case O_JMPFd:
-		if (!CPU_JMP(true,inst.op2.d,inst.op1.d)) {
-			FillFlags();
-			return CBRET_NONE;
-		}
-		LoadIP();
-		goto nextopcode;
-
+		LEAVECORE;
+		CPU_JMP(true,inst.op2.d,inst.op1.d);
+		goto restart_core;
 	case O_INT:
 		LEAVECORE;
 #if C_DEBUG
-		if (((inst.entry & 0xFF)==0xcc) && DEBUG_Breakpoint()) return debugCallback;
-		else if (DEBUG_IntBreakpoint(inst.op1.b)) return debugCallback;
+		if (((inst.entry & 0xFF)==0xcc) && DEBUG_Breakpoint()) 
+			return debugCallback;
+		else if (DEBUG_IntBreakpoint(inst.op1.b)) 
+			return debugCallback;
 #endif
-		if (!Interrupt(inst.op1.b)) return CBRET_NONE;
-		LoadIP();
-		break;
+		CPU_SW_Interrupt(inst.op1.b,IPPoint-inst.opcode_start);
+		goto restart_core;
 	case O_INb:
-		reg_al=IO_Read(inst.op1.d);
+		reg_al=IO_ReadB(inst.op1.d);
 		goto nextopcode;
 	case O_INw:
-		reg_ax=IO_Read(inst.op1.d) | (IO_Read(inst.op1.d+1) << 8);
+		reg_ax=IO_ReadW(inst.op1.d);
 		goto nextopcode;
 	case O_INd:
-		reg_eax=IO_Read(inst.op1.d) | (IO_Read(inst.op1.d+1) << 8) | (IO_Read(inst.op1.d+2) << 16) | (IO_Read(inst.op1.d+3) << 24);
+		reg_eax=IO_ReadD(inst.op1.d);
 		goto nextopcode;
 	case O_OUTb:
-		IO_Write(inst.op1.d,reg_al);
+		IO_WriteB(inst.op1.d,reg_al);
 		goto nextopcode;
 	case O_OUTw:
-		IO_Write(inst.op1.d+0,(Bit8u)reg_ax);
-		IO_Write(inst.op1.d+1,(Bit8u)(reg_ax >> 8));
+		IO_WriteW(inst.op1.d,reg_ax);
 		goto nextopcode;
 	case O_OUTd:
-		IO_Write(inst.op1.d+0,(Bit8u)reg_eax);
-		IO_Write(inst.op1.d+1,(Bit8u)(reg_eax >> 8));
-		IO_Write(inst.op1.d+2,(Bit8u)(reg_eax >> 16));
-		IO_Write(inst.op1.d+3,(Bit8u)(reg_eax >> 24));
+		IO_WriteD(inst.op1.d,reg_eax);
 		goto nextopcode;
 	case O_CBACK:
 		LEAVECORE;
@@ -458,11 +442,18 @@ switch (inst.code.op) {
 			LOG(LOG_CPU,LOG_ERROR)("Group 7 Illegal subfunction %X",inst.rm_index);
 		}
 		break;
-	case O_M_Cd_Rd:
+	case O_M_CRx_Rd:
 		CPU_SET_CRX(inst.rm_index,inst.op1.d);
 		break;
-	case O_M_Rd_Cd:
+	case O_M_Rd_CRx:
 		inst.op1.d=CPU_GET_CRX(inst.rm_index);
+		break;
+	case O_M_DRx_Rd:
+//		LOG(LOG_CPU,LOG_NORMAL)("MOV DR%d,%X",inst.rm_index,inst.op1.d);
+		break;
+	case O_M_Rd_DRx:
+		inst.op1.d=0;
+//		LOG(LOG_CPU,LOG_NORMAL)("MOV %X,DR%d",inst.op1.d,inst.rm_index);
 		break;
 	case O_LAR:
 		{
@@ -491,11 +482,12 @@ switch (inst.code.op) {
 			FillFlags();
 			if (!inst.op1.w) {
 				SETFLAGBIT(ZF,true);
+				goto nextopcode;
 			} else {
 				Bitu count=0;
-				while (count<16) {
-					if ((inst.op1.w>>count) & 1) break;
-					count++;
+				while (1) {
+					if (inst.op1.w & 0x1) break;
+					count++;inst.op1.w>>=1;
 				}
 				inst.op1.d=count;
 				SETFLAGBIT(ZF,false);
@@ -507,11 +499,12 @@ switch (inst.code.op) {
 			FillFlags();
 			if (!inst.op1.d) {
 				SETFLAGBIT(ZF,true);
+				goto nextopcode;
 			} else {
 				Bitu count=0;
-				while (count<32) {
-					if ((inst.op1.d>>count) & 1) break;
-					count++;
+				while (1) {
+					if (inst.op1.d & 0x1) break;
+					count++;inst.op1.d>>=1;
 				}
 				inst.op1.d=count;
 				SETFLAGBIT(ZF,false);
@@ -523,11 +516,12 @@ switch (inst.code.op) {
 			FillFlags();
 			if (!inst.op1.w) {
 				SETFLAGBIT(ZF,true);
+				goto nextopcode;
 			} else {
-				Bits count=15;
-				while (count>0) {
-					if ((inst.op1.w>>count) & 1) break;
-					count--;
+				Bitu count=15;
+				while (1) {
+					if (inst.op1.w & 0x8000) break;
+					count--;inst.op1.w<<=1;
 				}
 				inst.op1.d=count;
 				SETFLAGBIT(ZF,false);
@@ -539,11 +533,12 @@ switch (inst.code.op) {
 			FillFlags();
 			if (!inst.op1.d) {
 				SETFLAGBIT(ZF,true);
+				goto nextopcode;
 			} else {
-				Bits count=31;
-				while (count>0) {
-					if ((inst.op1.d>>count) & 1) break;
-					count--;
+				Bitu count=31;
+				while (1) {
+					if (inst.op1.d & 0x80000000) break;
+					count--;inst.op1.d<<=1;
 				}
 				inst.op1.d=count;
 				SETFLAGBIT(ZF,false);
@@ -551,56 +546,42 @@ switch (inst.code.op) {
 		}
 		break;
 	case O_BTw:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 15))));
+		break;
 	case O_BTSw:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 15))));
+		inst.op1.d|=(1 << (inst.op2.d & 15));
+		break;
 	case O_BTCw:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 15))));
+		inst.op1.d^=(1 << (inst.op2.d & 15));
+		break;
 	case O_BTRw:
-		{
-			Bitu val;PhysPt read;
-			Bitu mask=1 << (inst.op1.d & 15);
-			FillFlags();
-			if (inst.rm<0xc0) {
-				read=inst.rm_eaa;//+2*(inst.op1.d / 16);
-				val=mem_readw(read);
-			} else {
-				val=reg_16(inst.rm_eai);
-			}
-			SETFLAGBIT(CF,(val&mask)>0);
-			if (inst.code.op==O_BTSw) val|=mask;
-			if (inst.code.op==O_BTRw) val&=~mask;
-			if (inst.code.op==O_BTCw) val^=mask;
-			if (inst.code.op==O_BTw) break;
-			if (inst.rm<0xc0) {
-				mem_writew(read,val);
-			} else {
-				reg_16(inst.rm_eai)=val;
-			}
-		}
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 15))));
+		inst.op1.d&=~(1 << (inst.op2.d & 15));
 		break;
 	case O_BTd:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 31))));
+		break;
 	case O_BTSd:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 31))));
+		inst.op1.d|=(1 << (inst.op2.d & 31));
+		break;
 	case O_BTCd:
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 31))));
+		inst.op1.d^=(1 << (inst.op2.d & 31));
+		break;
 	case O_BTRd:
-		{
-			Bitu val;PhysPt read;
-			Bitu mask=1 << (inst.op1.d & 31);
-			FillFlags();
-			if (inst.rm<0xc0) {
-				read=inst.rm_eaa;//+4*(inst.op1.d / 32);
-				val=mem_readd(read);
-			} else {
-				val=reg_32(inst.rm_eai);
-			}
-			SETFLAGBIT(CF,(val&mask)>0);
-			if (inst.code.op==O_BTSd) val|=mask;
-			if (inst.code.op==O_BTRd) val&=~mask;
-			if (inst.code.op==O_BTCd) val^=mask;
-			if (inst.code.op==O_BTd) break;
-			if (inst.rm<0xc0) {
-				mem_writed(read,val);
-			} else {
-				reg_32(inst.rm_eai)=val;
-			}
-		}
+		FillFlags();
+		SETFLAGBIT(CF,(inst.op1.d & (1 << (inst.op2.d & 31))));
+		inst.op1.d&=~(1 << (inst.op2.d & 31));
 		break;
 	case O_BSWAP:
 		BSWAP(inst.op1.d);

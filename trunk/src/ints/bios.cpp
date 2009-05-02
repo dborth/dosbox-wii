@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,27 +16,30 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios.cpp,v 1.22 2003/09/30 13:49:34 finsterr Exp $ */
+/* $Id: bios.cpp,v 1.28 2004/01/26 14:08:16 qbix79 Exp $ */
 
 #include <time.h>
 #include "dosbox.h"
 #include "bios.h"
 #include "regs.h"
+#include "cpu.h"
 #include "callback.h"
 #include "inout.h"
 #include "mem.h"
 #include "pic.h"
 #include "joystick.h"
+#include "dos_inc.h"
 
 static Bitu call_int1a,call_int11,call_int8,call_int17,call_int12,call_int15,call_int1c;
 static Bitu call_int1,call_int70;
+static Bit16u size_extended;
 
 static Bitu INT70_Handler(void) {
 	/* Acknowledge irq with cmos */
 	IO_Write(0x70,0xc);
 	IO_Read(0x71);
 	if (mem_readb(BIOS_WAIT_FLAG_ACTIVE)) {
-		Bits count=mem_readd(BIOS_WAIT_FLAG_COUNT);
+		Bit32u count=mem_readd(BIOS_WAIT_FLAG_COUNT);
 		if (count>997) {
 			mem_writed(BIOS_WAIT_FLAG_COUNT,count-997);
 		} else {
@@ -78,10 +81,15 @@ static Bitu INT1A_Handler(void) {
 		CALLBACK_SCF(false);
 		break;
 	case 0x04:	/* GET REAL-TIME ClOCK DATA  (AT,XT286,PS) */
-		reg_dx=reg_cx=0;
-		CALLBACK_SCF(false);
-		LOG(LOG_BIOS,LOG_ERROR)("INT1A:04:Faked RTC get date call");
-		break;
+        reg_dx=0;
+        reg_cx=0x2003;
+        CALLBACK_SCF(false);
+        LOG(LOG_BIOS,LOG_ERROR)("INT1A:04:Faked RTC get date call");
+        break;
+//		reg_dx=reg_cx=0;
+//		CALLBACK_SCF(false);
+//		LOG(LOG_BIOS,LOG_ERROR)("INT1A:04:Faked RTC get date call");
+//		break;
 	case 0x80:	/* Pcjr Setup Sound Multiplexer */
 		LOG(LOG_BIOS,LOG_ERROR)("INT1A:80:Setup tandy sound multiplexer to %d",reg_al);
 		break;
@@ -166,20 +174,37 @@ static Bitu INT17_Handler(void) {
 
 
 static Bitu INT15_Handler(void) {
+	static Bitu biosConfigSeg=0;
+	
 	switch (reg_ah) {
 	case 0x06:
 		LOG(LOG_BIOS,LOG_NORMAL)("INT15 Unkown Function 6");
 		break;
 	case 0xC0:	/* Get Configuration*/
-		LOG(LOG_BIOS,LOG_ERROR)("Request BIOS Configuration INT 15 C0");
-		CALLBACK_SCF(true);
-		break;
+		{
+			if (biosConfigSeg==0) biosConfigSeg = DOS_GetMemory(1); //We have 16 bytes
+			PhysPt data	= PhysMake(biosConfigSeg,0);
+			mem_writew(data,8);						// 3 Bytes following
+			mem_writeb(data+2,0xFC);				// Model ID			
+			mem_writeb(data+3,0x00);				// Submodel ID
+			mem_writeb(data+4,0x01);				// Bios Revision
+			mem_writeb(data+5,(1<<6)|(1<<5)|(1<<4));// Feature Byte 1
+			mem_writeb(data+6,(1<<6));				// Feature Byte 2
+			mem_writeb(data+7,0);					// Feature Byte 3
+			mem_writeb(data+8,0);					// Feature Byte 4
+			mem_writeb(data+9,0);					// Feature Byte 4
+			CPU_SetSegGeneral(es,biosConfigSeg);
+			reg_bx = 0;
+			reg_ah = 0;
+			CALLBACK_SCF(false);
+		}; break;
 	case 0x4f:	/* BIOS - Keyboard intercept */
 		/* Carry should be set but let's just set it just in case */
 		CALLBACK_SCF(true);
 		break;
 	case 0x83:	/* BIOS - SET EVENT WAIT INTERVAL */
 		{
+			if(reg_al == 0x01) LOG(LOG_BIOS,LOG_WARN)("Bios set event interval cancelled: not handled");   
 			if (mem_readb(BIOS_WAIT_FLAG_ACTIVE)) {
 				reg_ah=0x80;
 				CALLBACK_SCF(true);
@@ -243,12 +268,27 @@ static Bitu INT15_Handler(void) {
 			break;
 		}	
 	case 0x88:	/* SYSTEM - GET EXTENDED MEMORY SIZE (286+) */
-		IO_Write(0x70,0x30);
-		reg_al=IO_Read(0x71);
-		IO_Write(0x70,0x31);
-		reg_ah=IO_Read(0x71);
+		reg_ax=size_extended;
 		LOG(LOG_BIOS,LOG_NORMAL)("INT15:Function 0x88 Remaining %04X kb",reg_ax);
 		CALLBACK_SCF(false);
+		break;
+	case 0x89:	/* SYSTEM - SWITCH TO PROTECTED MODE */
+		{
+			IO_Write(0x20,0x10);IO_Write(0x21,reg_bh);IO_Write(0x21,0);
+			IO_Write(0xA0,0x10);IO_Write(0xA1,reg_bl);IO_Write(0xA1,0);
+			MEM_A20_Enable(true);
+			PhysPt table=SegPhys(es)+reg_si;
+			CPU_LGDT(mem_readw(table+0x8),mem_readd(table+0x8+0x2) & 0xFFFFFF);
+			CPU_LIDT(mem_readw(table+0x10),mem_readd(table+0x10+0x2) & 0xFFFFFF);
+			CPU_SET_CRX(0,CPU_GET_CRX(0)|1);
+			CPU_SetSegGeneral(ds,0x18);
+			CPU_SetSegGeneral(es,0x20);
+			CPU_SetSegGeneral(ss,0x28);
+			reg_sp+=6;			//Clear stack of interrupt frame
+			CPU_SetFlags(0,FMASK_ALL);
+			reg_ax=0;
+			CPU_JMP(false,0x30,reg_cx);
+		}
 		break;
 	case 0x90:	/* OS HOOK - DEVICE BUSY */
 		CALLBACK_SCF(false);
@@ -258,6 +298,10 @@ static Bitu INT15_Handler(void) {
 		CALLBACK_SCF(false);
 		reg_ah=0;
 		break;
+    case 0xc3:      /* set carry flag so BorlandRTM doesn't assume a VECTRA/PS2 */
+        reg_ah=0x86;
+        CALLBACK_SCF(true);
+        break;
 	case 0xc2:	/* BIOS PS2 Pointing Device Support */
 	case 0xc4:	/* BIOS POS Programma option Select */
 		/* 
@@ -282,6 +326,10 @@ static Bitu INT1_Single_Step(void) {
 		LOG(LOG_CPU,LOG_NORMAL)("INT 1:Single Step called");
 	}
 	return CBRET_NONE;
+}
+
+void BIOS_ZeroExtendedSize(void) {
+	size_extended=0;
 }
 
 void BIOS_SetupKeyboard(void);
@@ -353,6 +401,12 @@ void BIOS_Init(Section* sec) {
 #else 
 	mem_writew(BIOS_CONFIGURATION,0xc821);		//1 Floppy,FPU,2 serial, 1 parallel
 #endif
+	/* Setup extended memory size */
+	IO_Write(0x70,0x30);
+	size_extended=IO_Read(0x71);
+	IO_Write(0x70,0x31);
+	size_extended|=(IO_Read(0x71) << 8);
+
 }
 
 

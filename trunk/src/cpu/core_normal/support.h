@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -37,9 +37,11 @@ static INLINE void ADDIPd(Bits add) {
 	LOADIP;
 }
 
-
 static INLINE void ADDIPFAST(Bits blah) {
-	core.ip_lookup+=blah;
+//	core.ip_lookup+=blah;
+	SAVEIP;
+	reg_eip=(reg_eip+blah);
+	LOADIP;
 }
 
 #define EXCEPTION(blah)										\
@@ -47,9 +49,8 @@ static INLINE void ADDIPFAST(Bits blah) {
 		Bit8u new_num=blah;									\
 		core.ip_lookup=core.op_start;						\
 		LEAVECORE;											\
-		if (Interrupt(new_num)) {							\
-			goto decode_start;								\
-		} else return CBRET_NONE;							\
+		CPU_Exception(new_num);								\
+		goto decode_start;									\
 	}
 
 static INLINE Bit8u Fetchb() {
@@ -80,6 +81,8 @@ static INLINE Bit32s Fetchds() {
 	return Fetchd();
 }
 
+#if 0
+
 static INLINE void Push_16(Bit16u blah)	{
 	reg_esp-=2;
 	SaveMw(SegBase(ss)+(reg_esp & cpu.stack.mask),blah);
@@ -102,14 +105,31 @@ static INLINE Bit32u Pop_32() {
 	return temp;
 };
 
-#define JumpSIb(blah) 										\
+#else 
+
+#define Push_16 CPU_Push16
+#define Push_32 CPU_Push32
+#define Pop_16 CPU_Pop16
+#define Pop_32 CPU_Pop32
+
+#endif
+
+//TODO Could probably make all byte operands fast?
+#define JumpCond16_b(blah) 										\
 	if (blah) {												\
-		ADDIPFAST(Fetchbs());								\
+		ADDIPw(Fetchbs());								\
 	} else {												\
 		ADDIPFAST(1);										\
 	}					
 
-#define JumpSIw(blah) 										\
+#define JumpCond32_b(blah) 										\
+	if (blah) {												\
+		ADDIPd(Fetchbs());								\
+	} else {												\
+		ADDIPFAST(1);										\
+	}					
+
+#define JumpCond16_w(blah) 										\
 	if (blah) {												\
 		ADDIPw(Fetchws());									\
 	} else {												\
@@ -117,7 +137,7 @@ static INLINE Bit32u Pop_32() {
 	}						
 
 
-#define JumpSId(blah) 										\
+#define JumpCond32_d(blah) 										\
 	if (blah) {												\
 		ADDIPd(Fetchds());									\
 	} else {												\

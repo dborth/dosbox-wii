@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: setup.cpp,v 1.19 2004/01/29 09:26:52 qbix79 Exp $ */
+
 #include "dosbox.h"
 #include "cross.h"
 #include "setup.h"
@@ -28,6 +30,10 @@
 
 using namespace std;
 
+void Prop_float::SetValue(char* input){
+	input=trim(input);
+	__value._float= atof(input);
+}
 
 void Prop_int::SetValue(char* input){
 	input=trim(input);
@@ -64,9 +70,19 @@ void Prop_bool::GetValuestring(char* str){
         sprintf(str,"%s",__value._bool?"true":"false");
 }
 
+void Prop_float::GetValuestring(char* str){
+	sprintf(str,"%1.2f",__value._float);
+}
+
 void Prop_hex::GetValuestring(char* str){
         sprintf(str,"%X",__value._hex);
 }
+
+void Section_prop::Add_float(const char* _propname, float _value) {
+	Property* test=new Prop_float(_propname,_value);
+	properties.push_back(test);
+}
+
 
 void Section_prop::Add_int(const char* _propname, int _value) {
 	Property* test=new Prop_int(_propname,_value);
@@ -103,7 +119,14 @@ bool Section_prop::Get_bool(const char* _propname){
 	}
 	return false;
 }
-
+float Section_prop::Get_float(const char* _propname){
+	for(it tel=properties.begin();tel!=properties.end();tel++){
+		if((*tel)->propname==_propname){
+			return ((*tel)->GetValue())._float;
+		}
+	}
+	return false;
+}
 
 const char* Section_prop::Get_string(const char* _propname){
 	for(it tel=properties.begin();tel!=properties.end();tel++){
@@ -226,36 +249,48 @@ Section* Config::GetSection(const char* _sectionname){
 	return NULL;
 }
 
-void Config::ParseConfigFile(const char* configfilename){
+bool Config::ParseConfigFile(const char* configfilename){
 	ifstream in(configfilename);
-	if (!in) {
-		LOG_MSG("CONFIG:Can't find config file %s, using default settings",configfilename);
-		return;
-	}
-	char gegevens[150];
+	if (!in) return false;
+	LOG_MSG("CONFIG:Loading settings from config file %s", configfilename);
+	char gegevens[1024];
 	Section* currentsection = NULL;
 	Section* testsec = NULL;
 	while (in) {
-		in.getline(gegevens,150);
+		in.getline(gegevens,1024);
 		char* temp;
-		switch(gegevens[0]){
+		char* s;
+		int len;
+		s = gegevens;
+		
+		/* strip trailing whitespace */
+		for (len = strlen(s); len > 0 && isspace(s[len - 1]); len--) {
+			/* nothing */
+		}
+		s[len] = 0;
+
+		/* strip leading whitespace */
+		while (isspace(s[0])) {
+			s++;
+		}
+		switch(s[0]){
 		case '%':
 		case '\0':
-		case '\n':
-        case '#':
+		case '#':
 		case ' ':
+		case '\n':
 			continue;
 			break;
 		case '[':
-			temp = strrchr(gegevens,']');
+			temp = strrchr(s,']');
 			*temp=0;
-			testsec = GetSection(&gegevens[1]);
+			testsec = GetSection(&s[1]);
 			if(testsec != NULL ) currentsection = testsec;
 			testsec = NULL;
 			break;
 		default:
 			try{
-				currentsection->HandleInputline(gegevens);
+				currentsection->HandleInputline(s);
 			}catch(const char* message){
 				message=0;
 				//EXIT with message
@@ -263,6 +298,7 @@ void Config::ParseConfigFile(const char* configfilename){
 			break;
 		}
 	}
+	return true;
 }
 
 void Config::ParseEnv(char ** envp) {

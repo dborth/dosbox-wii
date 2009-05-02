@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,7 +36,6 @@
 					Bitu loadval;
 					if (rm >= 0xc0 ) {GetEArw;loadval=*earw;}
 					else {GetEAa;loadval=LoadMw(eaa);}
-					break;
 					switch (which) {
 					case 0x02:CPU_LLDT(loadval);break;
 					case 0x03:CPU_LTR(loadval);break;
@@ -44,6 +43,7 @@
 					case 0x05:CPU_VERW(loadval);break;
 					}
 				}
+				break;
 			default:
 				LOG(LOG_CPU,LOG_ERROR)("GRP6:Illegal call %2X",which);
 			}
@@ -120,59 +120,58 @@
 			} else {
 				GetEAa;CPU_LSL(LoadMw(eaa),limit);
 			}
-			*rmrd=(Bit16u)limit;
+			*rmrd=(Bit32u)limit;
 		}
 		break;
 	CASE_0F_D(0x80)												/* JO */
-		JumpSId(get_OF());break;
+		JumpCond32_d(TFLG_O);break;
 	CASE_0F_D(0x81)												/* JNO */
-		JumpSId(!get_OF());break;
+		JumpCond32_d(TFLG_NO);break;
 	CASE_0F_D(0x82)												/* JB */
-		JumpSId(get_CF());break;
+		JumpCond32_d(TFLG_B);break;
 	CASE_0F_D(0x83)												/* JNB */
-		JumpSId(!get_CF());break;
+		JumpCond32_d(TFLG_NB);break;
 	CASE_0F_D(0x84)												/* JZ */
-		JumpSId(get_ZF());break;
+		JumpCond32_d(TFLG_Z);break;
 	CASE_0F_D(0x85)												/* JNZ */
-		JumpSId(!get_ZF());break;
+		JumpCond32_d(TFLG_NZ);break;
 	CASE_0F_D(0x86)												/* JBE */
-		JumpSId(get_CF() || get_ZF());break;
+		JumpCond32_d(TFLG_BE);break;
 	CASE_0F_D(0x87)												/* JNBE */
-		JumpSId(!get_CF() && !get_ZF());break;
+		JumpCond32_d(TFLG_NBE);break;
 	CASE_0F_D(0x88)												/* JS */
-		JumpSId(get_SF());break;
+		JumpCond32_d(TFLG_S);break;
 	CASE_0F_D(0x89)												/* JNS */
-		JumpSId(!get_SF());break;
+		JumpCond32_d(TFLG_NS);break;
 	CASE_0F_D(0x8a)												/* JP */
-		JumpSId(get_PF());break;
+		JumpCond32_d(TFLG_P);break;
 	CASE_0F_D(0x8b)												/* JNP */
-		JumpSId(!get_PF());break;
+		JumpCond32_d(TFLG_NP);break;
 	CASE_0F_D(0x8c)												/* JL */
-		JumpSId(get_SF() != get_OF());break;
+		JumpCond32_d(TFLG_L);break;
 	CASE_0F_D(0x8d)												/* JNL */
-		JumpSId(get_SF() == get_OF());break;
+		JumpCond32_d(TFLG_NL);break;
 	CASE_0F_D(0x8e)												/* JLE */
-		JumpSId(get_ZF() || (get_SF() != get_OF()));break;
+		JumpCond32_d(TFLG_LE);break;
 	CASE_0F_D(0x8f)												/* JNLE */
-		JumpSId((get_SF() == get_OF()) && !get_ZF());break;
+		JumpCond32_d(TFLG_NLE);break;
 	
 	CASE_0F_D(0xa0)												/* PUSH FS */		
 		Push_32(SegValue(fs));break;
 	CASE_0F_D(0xa1)												/* POP FS */		
-		CPU_SetSegGeneral(fs,(Bit16u)Pop_32());break;
-
+		POPSEG(fs,Pop_32(),4);break;
 	CASE_0F_D(0xa3)												/* BT Ed,Gd */
 		{
-			GetRMrd;
+			FillFlags();GetRMrd;
 			Bit32u mask=1 << (*rmrd & 31);
 			if (rm >= 0xc0 ) {
 				GetEArd;
 				SETFLAGBIT(CF,(*eard & mask));
 			} else {
-				GetEAa;Bit32u old=LoadMd(eaa);
+				GetEAa;eaa+=(((Bit32s)*rmrd)>>5)*4;
+				Bit32u old=LoadMd(eaa);
 				SETFLAGBIT(CF,(old & mask));
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_D(0xa4)												/* SHLD Ed,Gd,Ib */
@@ -184,21 +183,21 @@
 	CASE_0F_D(0xa8)												/* PUSH GS */		
 		Push_32(SegValue(gs));break;
 	CASE_0F_D(0xa9)												/* POP GS */		
-		CPU_SetSegGeneral(gs,(Bit16u)Pop_32());break;
+		POPSEG(gs,Pop_32(),4);break;
 	CASE_0F_D(0xab)												/* BTS Ed,Gd */
 		{
-			GetRMrd;
+			FillFlags();GetRMrd;
 			Bit32u mask=1 << (*rmrd & 31);
 			if (rm >= 0xc0 ) {
 				GetEArd;
 				SETFLAGBIT(CF,(*eard & mask));
 				*eard|=mask;
 			} else {
-				GetEAa;Bit32u old=LoadMd(eaa);
+				GetEAa;eaa+=(((Bit32s)*rmrd)>>5)*4;
+				Bit32u old=LoadMd(eaa);
 				SETFLAGBIT(CF,(old & mask));
 				SaveMd(eaa,old | mask);
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	
@@ -208,25 +207,6 @@
 	CASE_0F_D(0xad)												/* SHRD Ed,Gd,CL */
 		RMEdGdOp3(DSHRD,reg_cl);
 		break;
-	CASE_0F_D(0xb4)												/* LFS Ed */
-		{	
-			GetRMrd;GetEAa;
-			*rmrd=LoadMd(eaa);CPU_SetSegGeneral(fs,LoadMw(eaa+4));
-			break;
-		}
-	CASE_0F_D(0xb5)												/* LGS Ed */
-		{	
-			GetRMrd;GetEAa;
-			*rmrd=LoadMd(eaa);CPU_SetSegGeneral(gs,LoadMw(eaa+4));
-			break;
-		}
-	CASE_0F_D(0xb6)												/* MOVZX Gd,Eb */
-		{
-			GetRMrd;															
-			if (rm >= 0xc0 ) {GetEArb;*rmrd=*earb;}
-			else {GetEAa;*rmrd=LoadMb(eaa);}
-			break;
-		}
 	CASE_0F_D(0xaf)												/* IMUL Gd,Ed */
 		{
 			RMGdEdOp3(DIMULD,*rmrd);
@@ -235,7 +215,45 @@
 	CASE_0F_D(0xb2)												/* LSS Ed */
 		{	
 			GetRMrd;GetEAa;
-			*rmrd=LoadMd(eaa);CPU_SetSegGeneral(ss,LoadMw(eaa+4));
+			LOADSEG(ss,LoadMw(eaa+4));
+			*rmrd=LoadMd(eaa);
+			break;
+		}
+	CASE_0F_D(0xb3)												/* BTR Ed,Gd */
+		{
+			FillFlags();GetRMrd;
+			Bit32u mask=1 << (*rmrd & 31);
+			if (rm >= 0xc0 ) {
+				GetEArd;
+				SETFLAGBIT(CF,(*eard & mask));
+				*eard&= ~mask;
+			} else {
+				GetEAa;eaa+=(((Bit32s)*rmrd)>>5)*4;
+				Bit32u old=LoadMd(eaa);
+				SETFLAGBIT(CF,(old & mask));
+				SaveMd(eaa,old & ~mask);
+			}
+			break;
+		}
+	CASE_0F_D(0xb4)												/* LFS Ed */
+		{	
+			GetRMrd;GetEAa;
+			LOADSEG(fs,LoadMw(eaa+4));
+			*rmrd=LoadMd(eaa);
+			break;
+		}
+	CASE_0F_D(0xb5)												/* LGS Ed */
+		{	
+			GetRMrd;GetEAa;
+			LOADSEG(gs,LoadMw(eaa+4));
+			*rmrd=LoadMd(eaa);
+			break;
+		}
+	CASE_0F_D(0xb6)												/* MOVZX Gd,Eb */
+		{
+			GetRMrd;															
+			if (rm >= 0xc0 ) {GetEArb;*rmrd=*earb;}
+			else {GetEAa;*rmrd=LoadMb(eaa);}
 			break;
 		}
 	CASE_0F_D(0xb7)												/* MOVXZ Gd,Ew */
@@ -247,7 +265,7 @@
 		}
 	CASE_0F_D(0xba)												/* GRP8 Ed,Ib */
 		{
-			GetRM;
+			FillFlags();GetRM;
 			if (rm >= 0xc0 ) {
 				GetEArd;
 				Bit32u mask=1 << (Fetchb() & 31);
@@ -290,24 +308,22 @@
 					E_Exit("CPU:66:0F:BA:Illegal subfunction %X",rm & 0x38);
 				}
 			}
-			if (flags.type!=t_CF) flags.prev_type=flags.type;
-			flags.type=t_CF;
 			break;
 		}
 	CASE_0F_D(0xbb)												/* BTC Ed,Gd */
 		{
-			GetRMrd;
+			FillFlags();GetRMrd;
 			Bit32u mask=1 << (*rmrd & 31);
 			if (rm >= 0xc0 ) {
 				GetEArd;
 				SETFLAGBIT(CF,(*eard & mask));
 				*eard^=mask;
 			} else {
-				GetEAa;Bit32u old=LoadMd(eaa);
+				GetEAa;eaa+=(((Bit32s)*rmrd)>>5)*4;
+				Bit32u old=LoadMd(eaa);
 				SETFLAGBIT(CF,(old & mask));
 				SaveMd(eaa,old ^ mask);
 			}
-			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	CASE_0F_D(0xbc)												/* BSF Gd,Ed */
@@ -324,7 +340,7 @@
 				SETFLAGBIT(ZF,false);
 				*rmrd = result;
 			}
-			flags.type=t_UNKNOWN;
+			lflags.type=t_UNKNOWN;
 			break;
 		}
 	CASE_0F_D(0xbd)												/*  BSR Gd,Ed */
@@ -341,7 +357,7 @@
 				SETFLAGBIT(ZF,false);
 				*rmrd = result;
 			}
-			flags.type=t_UNKNOWN;
+			lflags.type=t_UNKNOWN;
 			break;
 		}
 	CASE_0F_D(0xbe)												/* MOVSX Gd,Eb */

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,18 +33,14 @@ extern Bits CPU_CycleMax;
 typedef Bits (CPU_Decoder)(void);
 extern CPU_Decoder * cpudecoder;
 
+Bits CPU_Core_Normal_Run(void);
+Bits CPU_Core_Normal_Trap_Run(void);
+Bits CPU_Core_Full_Run(void);
+Bits CPU_Core_Dyn_X86_Run(void);
 
 //CPU Stuff
-void SetCPU16bit( );
 
-enum CODE_TYPE {
-	CODE_REAL,
-	CODE_PMODE16,
-	CODE_PMODE32,
-	CODE_INIT,
-};
-
-extern bool parity_lookup[256];
+extern Bit16u parity_lookup[256];
 
 void CPU_LLDT(Bitu selector);
 void CPU_LTR(Bitu selector);
@@ -70,34 +66,38 @@ bool CPU_LMSW(Bitu word);
 void CPU_VERR(Bitu selector);
 void CPU_VERW(Bitu selector);
 
-bool CPU_JMP(bool use32,Bitu selector,Bitu offset);
-bool CPU_CALL(bool use32,Bitu selector,Bitu offset);
-bool CPU_RET(bool use32,Bitu bytes);
+void CPU_JMP(bool use32,Bitu selector,Bitu offset,Bitu opLen=0);
+void CPU_CALL(bool use32,Bitu selector,Bitu offset,Bitu opLen=0);
+void CPU_RET(bool use32,Bitu bytes,Bitu opLen=0);
 
-bool Interrupt(Bitu num);
-bool CPU_IRET(bool use32);
-void CPU_SetSegGeneral(SegNames seg,Bitu value);
+#define CPU_INT_SOFTWARE		0x1
+#define CPU_INT_EXCEPTION		0x2
+#define CPU_INT_HAS_ERROR		0x4
+
+
+void CPU_Interrupt(Bitu num,Bitu type,Bitu opLen=0);
+INLINE void CPU_HW_Interrupt(Bitu num) {
+	CPU_Interrupt(num,0);
+}
+INLINE void CPU_SW_Interrupt(Bitu num,Bitu OpLen) {
+	CPU_Interrupt(num,CPU_INT_SOFTWARE,OpLen);
+}
+
+void CPU_Exception(Bitu which,Bitu error=0);
+void CPU_StartException(void);
+void CPU_SetupException(Bitu which,Bitu error=0);
+
+void CPU_IRET(bool use32);
+bool CPU_SetSegGeneral(SegNames seg,Bitu value);
+void CPU_HLT(Bitu opLen);
 
 void CPU_CPUID(void);
-void CPU_HLT(void);
-
 Bitu CPU_Pop16(void);
 Bitu CPU_Pop32(void);
 void CPU_Push16(Bitu value);
 void CPU_Push32(Bitu value);
 
-void CPU_SetFlags(Bitu word);
-
-
-INLINE void CPU_SetFlagsd(Bit32u word) {
-	CPU_SetFlags(word);
-};
-
-INLINE void CPU_SetFlagsw(Bit16u word) {
-	CPU_SetFlags((flags.word&0xffff0000)|word);
-};
-
-
+void CPU_SetFlags(Bitu word,Bitu mask);
 
 // *********************************************************************
 // Descriptor
@@ -146,33 +146,25 @@ INLINE void CPU_SetFlagsw(Bit16u word) {
 #define DESC_CODE_R_C_A				0x1e
 #define DESC_CODE_R_C_NA			0x1f
 
-#pragma pack(1)
-/* TSS Struct from Bochs - http://bochs.sf.net */
-struct TSS_386 {
-    Bit16u back, RESERVED0;      /* Backlink */
-    Bit32u esp0;                 /* The CK stack pointer */
-    Bit16u ss0,  RESERVED1;      /* The CK stack selector */
-    Bit32u esp1;                 /* The parent KL stack pointer */
-    Bit16u ss1,  RESERVED2;      /* The parent KL stack selector */
-    Bit32u esp2;                 /* Unused */
-    Bit16u ss2,  RESERVED3;      /* Unused */
-    Bit32u cr3;                  /* The page directory pointer */
-    Bit32u eip;                  /* The instruction pointer */
-    Bit32u eflags;               /* The flags */
-    Bit32u eax, ecx, edx, ebx;   /* The general purpose registers */
-    Bit32u esp, ebp, esi, edi;   /* The special purpose registers */
-    Bit16u es,   RESERVED4;      /* The extra selector */
-    Bit16u cs,   RESERVED5;      /* The code selector */
-    Bit16u ss,   RESERVED6;      /* The application stack selector */
-    Bit16u ds,   RESERVED7;      /* The data selector */
-    Bit16u fs,   RESERVED8;      /* And another extra selector */
-    Bit16u gs,   RESERVED9;      /* ... and another one */
-    Bit16u ldt,  RESERVED10;     /* The local descriptor table */
-    Bit16u trap;                 /* The trap flag (for debugging) */
-    Bit16u io;                   /* The I/O Map base address */
-} GCC_ATTRIBUTE(packed);;
+#ifdef _MSC_VER
+#pragma pack (1)
+#endif
 
 struct S_Descriptor {
+#ifdef WORDS_BIGENDIAN
+	Bit32u base_0_15	:16;
+	Bit32u limit_0_15	:16;
+	Bit32u base_24_31	:8;
+	Bit32u g			:1;
+	Bit32u big			:1;
+	Bit32u r			:1;
+	Bit32u avl			:1;
+	Bit32u limit_16_19	:4;
+	Bit32u p			:1;
+	Bit32u dpl			:2;
+	Bit32u type			:5;
+	Bit32u base_16_23	:8;
+#else
 	Bit32u limit_0_15	:16;
 	Bit32u base_0_15	:16;
 	Bit32u base_16_23	:8;
@@ -185,9 +177,20 @@ struct S_Descriptor {
 	Bit32u big			:1;
 	Bit32u g			:1;
 	Bit32u base_24_31	:8;
+#endif
 }GCC_ATTRIBUTE(packed);
 
 struct G_Descriptor {
+#ifdef WORDS_BIGENDIAN
+	Bit32u selector:	16;
+	Bit32u offset_0_15	:16;
+	Bit32u offset_16_31	:16;
+	Bit32u p			:1;
+	Bit32u dpl			:2;
+	Bit32u type			:5;
+	Bit32u reserved		:3;
+	Bit32u paramcount	:5;
+#else
 	Bit32u offset_0_15	:16;
 	Bit32u selector		:16;
 	Bit32u paramcount	:5;
@@ -196,57 +199,53 @@ struct G_Descriptor {
 	Bit32u dpl			:2;
 	Bit32u p			:1;
 	Bit32u offset_16_31	:16;
+#endif
 } GCC_ATTRIBUTE(packed);
 
-#pragma pack()
-
-
-struct TaskSegment_32 {	
-    Bit32u esp0;		         /* The CK stack pointer */
-    Bit32u esp1;                 /* The parent KL stack pointer */
-    Bit32u esp2;                 /* Unused */
-    Bit32u cr3;                  /* The page directory pointer */
-    Bit32u eip;                  /* The instruction pointer */
-    Bit32u eflags;               /* The flags */
-    Bit32u eax, ecx, edx, ebx;   /* The general purpose registers */
-    Bit32u esp, ebp, esi, edi;   /* The special purpose registers */
-    Bit16u back;				 /* Backlink */
+struct TSS_16 {	
+    Bit16u back;                 /* Back link to other task */
+    Bit16u sp0;				     /* The CK stack pointer */
     Bit16u ss0;					 /* The CK stack selector */
+	Bit16u sp1;                  /* The parent KL stack pointer */
     Bit16u ss1;                  /* The parent KL stack selector */
+	Bit16u sp2;                  /* Unused */
     Bit16u ss2;                  /* Unused */
+    Bit16u ip;                   /* The instruction pointer */
+    Bit16u flags;                /* The flags */
+    Bit16u ax, cx, dx, bx;       /* The general purpose registers */
+    Bit16u sp, bp, si, di;       /* The special purpose registers */
     Bit16u es;                   /* The extra selector */
     Bit16u cs;                   /* The code selector */
     Bit16u ss;                   /* The application stack selector */
     Bit16u ds;                   /* The data selector */
-    Bit16u fs;                   /* And another extra selector */
-    Bit16u gs;                   /* ... and another one */
     Bit16u ldt;                  /* The local descriptor table */
-    Bit16u trap;                 /* The trap flag (for debugging) */
-    Bit16u io;                   /* The I/O Map base address */
-};
+} GCC_ATTRIBUTE(packed);
 
-void CPU_ReadTaskSeg32(PhysPt base,TaskSegment_32 * seg);
+struct TSS_32 {	
+    Bit32u back;                /* Back link to other task */
+	Bit32u esp0;		         /* The CK stack pointer */
+    Bit32u ss0;					 /* The CK stack selector */
+	Bit32u esp1;                 /* The parent KL stack pointer */
+    Bit32u ss1;                  /* The parent KL stack selector */
+	Bit32u esp2;                 /* Unused */
+    Bit32u ss2;                  /* Unused */
+	Bit32u cr3;                  /* The page directory pointer */
+    Bit32u eip;                  /* The instruction pointer */
+    Bit32u eflags;               /* The flags */
+    Bit32u eax, ecx, edx, ebx;   /* The general purpose registers */
+    Bit32u esp, ebp, esi, edi;   /* The special purpose registers */
+    Bit32u es;                   /* The extra selector */
+    Bit32u cs;                   /* The code selector */
+    Bit32u ss;                   /* The application stack selector */
+    Bit32u ds;                   /* The data selector */
+    Bit32u fs;                   /* And another extra selector */
+    Bit32u gs;                   /* ... and another one */
+    Bit32u ldt;                  /* The local descriptor table */
+} GCC_ATTRIBUTE(packed);
 
-class TaskStateSegment 
-{
-public:
-	bool Get_ss_esp(Bitu which,Bitu & _ss,Bitu & _esp) {
-		PhysPt reader=seg_base+offsetof(TSS_386,esp0)+which*8;
-		_esp=mem_readd(reader);
-		_ss=mem_readw(reader+4);
-		return true;
-	}
-	bool Get_cr3(Bitu which,Bitu & _cr3) {
-		_cr3=mem_readd(seg_base+offsetof(TSS_386,cr3));;
-		return true;
-	}
-	
-private:
-	PhysPt seg_base;
-	Bitu seg_limit;
-	Bitu seg_value;
-};
-   
+#ifdef _MSC_VER
+#pragma pack()
+#endif
 class Descriptor
 {
 public:
@@ -316,7 +315,7 @@ protected:
 
 class GDTDescriptorTable : public DescriptorTable {
 public:
-	bool GetDescriptor	(Bitu selector, Descriptor& desc) {
+	bool GetDescriptor(Bitu selector, Descriptor& desc) {
 		Bitu address=selector & ~7;
 		if (selector & 4) {
 			if (address>=ldt_limit) return false;
@@ -328,7 +327,18 @@ public:
 			return true;
 		}
 	}
-
+	bool SetDescriptor(Bitu selector, Descriptor& desc) {
+		Bitu address=selector & ~7;
+		if (selector & 4) {
+			if (address>=ldt_limit) return false;
+			desc.Save(ldt_base+address);
+			return true;
+		} else {
+			if (address>=table_limit) return false;
+			desc.Save(table_base+address);
+			return true;
+		}
+	} 
 	Bitu SLDT(void)	{
 		return ldt_value;
 	}
@@ -347,29 +357,55 @@ private:
 	Bitu ldt_value;
 };
 
+class TSS_Descriptor : public Descriptor {
+public:
+	Bitu IsBusy(void) {
+		return saved.seg.type & 2;
+	}
+	Bitu Is386(void) {
+		return saved.seg.type & 8;
+	}
+	void SetBusy(bool busy) {
+		if (busy) saved.seg.type|=2;
+		else saved.seg.type&=~2;
+	}
+};
+
+
 struct CPUBlock {
 	Bitu cpl;							/* Current Privilege */
 	Bitu cr0;
-	bool v86;							/* Are we in a v86 task */
 	bool pmode;							/* Is Protected mode enabled */
 	GDTDescriptorTable gdt;
 	DescriptorTable idt;
-	struct {
-		Bit16u val;
-		PhysPt base;
-		Bitu type;
-	} tr;
 	struct {
 		Bitu mask;
 		bool big;
 	} stack;
 	struct {
-		CODE_TYPE type;					/* What kind of code are we running */
 		bool big;
 	} code;
+	struct {
+		Bitu cs,eip;
+		CPU_Decoder * old_decoder;
+	} hlt;
+	struct {
+		Bitu which,error;
+	} exception;
+	Bits direction;
 };
 
 extern CPUBlock cpu;
+
+INLINE void CPU_SetFlagsd(Bitu word) {
+	Bitu mask=cpu.cpl ? FMASK_NORMAL : FMASK_ALL;
+	CPU_SetFlags(word,mask);
+};
+
+INLINE void CPU_SetFlagsw(Bitu word) {
+	Bitu mask=(cpu.cpl ? FMASK_NORMAL : FMASK_ALL) & 0xffff;
+	CPU_SetFlags(word,mask);
+};
 
 #endif
 

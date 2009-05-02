@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,10 +19,7 @@
 #ifndef __VIDEO_H
 #define __VIDEO_H
 
-
-typedef void (* GFX_ModeCallBack)(Bitu width,Bitu height,Bitu bpp,Bitu pitch,Bitu flags);
-
-typedef void (* GFX_DrawCallBack)(void * data);
+typedef void (* GFX_ResetCallBack)(void);
 
 struct GFX_PalEntry {
 	Bit8u r;
@@ -31,30 +28,21 @@ struct GFX_PalEntry {
 	Bit8u unused;
 };
 
-#define GFX_FIXED_BPP	0x01
-#define GFX_RESIZEABLE	0x02
-#define GFX_SHADOW		0x04
-#define GFX_BLITTING	0x08
-
-
-
-#define MODE_SET 0x01
-#define MODE_FULLSCREEN 0x02
-#define MODE_RESIZE 0x04
+#define GFX_HASSCALING	0x0001
+#define GFX_HASCONVERT	0x0002
 
 void GFX_Events(void);
 void GFX_SetPalette(Bitu start,Bitu count,GFX_PalEntry * entries);
+Bitu GFX_GetBestMode(Bitu bpp,Bitu & gfx_flags);
 
 Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue);
-void GFX_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu flags,GFX_ModeCallBack mode_callback, GFX_DrawCallBack draw_callback);
+void GFX_SetSize(Bitu width,Bitu height,Bitu bpp,double scalex,double scaley,GFX_ResetCallBack cb_reset);
 
 void GFX_Start(void);
 void GFX_Stop(void);
 void GFX_SwitchFullScreen(void);
-
-void GFX_Render_Blit(Bit8u * src,Bitu x,Bitu y,Bitu dx,Bitu dy);
-
-void GFX_DoUpdate(void);
+bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch);
+void GFX_EndUpdate(void);
 
 #endif
 

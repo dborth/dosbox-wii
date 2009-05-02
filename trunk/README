@@ -1,25 +1,25 @@
-DOSBox v0.60
+DOSBox v0.61
 
 =====
 NOTE: 
 =====
 
-While we hope that, one day, DosBox will run virtually all programs
-ever made for the PC...we are not there yet. At present, DosBox run on a 1.7
-Gigahertz PC is roughly the equivalent of a 25MHz 386 PC. While the 0.60
+While we hope that, one day, DOSBox will run virtually all programs
+ever made for the PC...we are not there yet. At present, DOSBox run on a high-
+end machine will roughly be the equivalent of a lowend 486 PC. While the 0.60
 release has added support for "protected mode" allowing for more complex and
 recent programs, but note that this support is early in development and
 nowhere near as complete as the support for 386 real-mode games (or
 earlier). Also note that "protected mode" games need substantially more
 resources and may require a much faster processor for you to run it properly
-in DosBox.
+in DOSBox.
 
 ======
 Usage:
 ======
 
 dosbox [name] [-exit] [-c command] [-fullscreen] [-conf congfigfile] 
-       [-lang languagefile]
+       [-lang languagefile] [-machine machinetype] [-noconsole]
 
   name   
         If "name" is a directory it'll mount that as the C: drive.
@@ -45,6 +45,11 @@ dosbox [name] [-exit] [-c command] [-fullscreen] [-conf congfigfile]
   -noconsole (Windows Only)
         Start dosbox without showing the console window, output will
 	be redirected to stdout.txt and stderr.txt
+	
+  -machine machinetype
+        Setup dosbox to emulate a specific type of machine. Valid choices are:
+        auto,hercules,cga,tandy,vga.
+
 
 Note: If a name/command/configfile/languagefile contains a space in it, put
       the whole name/command/configfile/languagefile between quotes("example").
@@ -63,7 +68,7 @@ In Windows you can also drag directories/files onto the dosbox executable.
 Internal Programs:
 ==================
 
-dosbox supports most of the DOS commands found in command.com. 
+DOSBox supports most of the DOS commands found in command.com. 
 In addition, the following commands are available: 
 
 MOUNT "Emulated Drive letter" "Real Drive or Directory" 
@@ -111,13 +116,13 @@ MOUNT -cd
   Note: It's possible to mount a local directory as cdrom drive. 
         Hardware support is then missing.
 
-  Basically, MOUNT allows you to connect real hardware to DosBox's "emulated"
-  PC. So MOUNT C C:\ tells DosBox to use your real C: drive as drive C: in
+  Basically, MOUNT allows you to connect real hardware to DOSBox's "emulated"
+  PC. So MOUNT C C:\ tells DOSBox to use your real C: drive as drive C: in
   DosBox. It also allows you to change the drive's letter identification for
   programs that demand specific drive letters.
   
   For example: Touche: Adventures of The Fifth Musketeer must be run on your C:
-  drive. Using DosBox and it's mount command, you can trick into thinking it
+  drive. Using DOSBox and it's mount command, you can trick into thinking it
   is on C drive while placing it where you want it. For example, if the game
   were in D:\TOUCHE, you can use the command MOUNT C D:\ would allow you to
   run Touche from the D drive.
@@ -133,7 +138,7 @@ MOUNT -cd
        mount d /media/cdrom -t cdrom -usecd 0
   4. To mount a drive with 870 mb free diskspace (rarely needed! experts only):
        mount c d:\ -size 4025,127,16513,1700
-  5. to mount /home/dos/dosgames as drive C in dosbox:
+  5. To mount /home/dos/dosgames as drive C in DOSBox:
        mount c /home/dos/dosgames
 
 MEM
@@ -143,6 +148,11 @@ CONFIG [-writeconf] [-writelang] localfile
   Write the current configuration or language settings to file.
   "localfile" is located on the local drive !!! 
 
+  Example:
+  To create a configfile in your current directory:
+    config -writeconf dosbox.conf
+    
+    
 LOADFIX [-size] [program] [program-parameters]
 LOADFIX -f
   Program to "eat up" memory. Useful for old programs which don't expect much
@@ -247,6 +257,60 @@ Q: The sound stutters.
 A: You're using too much cpu power to keep dosbox running at the current speed.
    You can either lower the cycles or skip frames or get a faster machine.
 
+Q: I can't type \ in DOSBox.
+A: This is a known problem. It only occurs if your keyboard layout isn't US.
+   Some possible fixes:
+     1. Switch your keyboard layout.
+     2. Use / instead.
+     3. Add the commands you want to execute in dosbox.conf
+
+Q: The game/application can't find its CD-ROM.
+A: Be sure to mount the CD-ROM with -t cdrom switch. Also try adding the cor-
+   rect label (-label LABEL). To enable more low-level cdrom support add
+   the following switch to mount: -usecd #, where # is the number of your 
+   CD-ROM drive reported by mount -cd. If you run Win32 you can specify -ioctl
+   or -aspi. Look at the description elsewhere in this document for their 
+   meaning.
+
+Q: The game/application runs much too slow!
+A: Look at the section "To run resource-demanding games" for more information.
+
+Q: I would like to change the memory size/cpu speed/ems/soundblaster IRQ.
+A: This is possible! Just create a config file: config -writeconf dosbox.conf .
+   Startup your favourite editor and look at all the settings present. To
+   start DOSBox with your new settings: dosbox -conf dosbox.conf
+
+Q: What sound hardware does DosBox presently emulate?
+A: DosBox emulates several legacy sound devices:
+   - Internal PC speaker
+     This emulation includes both the tone generator and several forms of digital
+     sound output through the internal speaker.
+   - Creative CMS/Gameblaster
+     The is the first card released by Creative Labs(R).  The default configuration places
+     it on port 0x220.  It should be noted that enabling this with the Adlib emulation may
+     result in conflicts.
+   - Tandy 3 voice
+     The emulation of this sound hardware is complete with the exception of the noise channel,
+     which is not very well documented and as such is only a best guess as to the sound's accuracy.
+   - Adlib
+     Borrowed from MAME, this emulation is almost perfect and includes the Adlib's ability to almost
+     play digitized sound.
+   - SoundBlaster Pro
+     Coupled with the Adlib, DosBox provides Soundblaster Pro level 8-bit stereo sound.
+   - Disney Soundsource
+     Using the printer port, this sound device outputs digital sound only.
+   - Gravis Ultrasound
+     The emulation of this hardware is nearly complete, though the MIDI capabilities have been left
+     out since an MPU-401 has been emulated in other code.
+   - MPU-401
+     A MIDI passthrough interface is also emulated.  This method of sound output will only work when
+     used with a General Midi or MT-32 device.
+
+
+Q: Great README, but I still don't get it.
+A: While unlikely this seems to happen. Maybe a look at "The Newbie's 
+   pictorial guide to dosbox" located at 
+   http://vogons.zetafleet.com/viewforum.php?f=39 might help you.
 
 For more questions check the site/forum:
 http://dosbox.sourceforge.net
@@ -256,12 +320,21 @@ http://dosbox.sourceforge.net
 The Config File:
 ================
 
-A config file can be generated by CONFIG.COM. Edit it to customize DOSBox.
+A config file can be generated by CONFIG.COM, which can be found on the 
+internal dosbox Z: drive when you start up dosbox. Look in the internal 
+programs section of the readme for usage of CONFIG.COM.
+You can edit the generated configfile to customize DOSBox.
 The file is divided into several sections (the names have [] around it). 
 Some sections have options which you can set.
-# and % indicate commentlines. 
+# and % indicate comment-lines. 
 The generated configfile contains the current settings. You can alter them and
-start dosbox with the -conf switch to load the file and use these settings. 
+start DOSBox with the -conf switch to load the file and use these settings.
+
+DOSBox will if no configfile is specified with the -conf switch look in the
+current directory for dosbox.conf. Then it will look for ~/.dosboxrc (linux),
+~\dosbox.conf (win32) or "~/Library/Preferences/DOSBox Preferences" (MACOSX).
+
+
 
 ==================
 The Language File:
@@ -269,7 +342,7 @@ The Language File:
 
 A language file can be generated by CONFIG.COM. 
 Read it and you will hopefully understand how to change it. 
-Start Dosbox with the -lang switch to use your new language file
+Start DOSBox with the -lang switch to use your new language file
 or you can setup the filename in the config file in the [dosbox] section.
 There's a language= entry that can be changed with the filename.
 
@@ -289,6 +362,8 @@ Vlad R. of the vdmsound project for excellent sound blaster info.
 Tatsuyuki Satoh of the Mame Team for making an excellent FM emulator.
 The Bochs and DOSemu projects which I used for information.
 Freedos for ideas in making my shell.
+Pierre-Yves Gérardy for hosting the old Beta Board.
+Colin Snover for hosting our forum.
 The Beta Testers.
 
 ========

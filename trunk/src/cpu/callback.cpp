@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,11 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: callback.cpp,v 1.16 2003/09/29 21:06:49 qbix79 Exp $ */
+/* $Id: callback.cpp,v 1.19 2004/01/07 20:23:48 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "dosbox.h"
 #include "callback.h"
@@ -34,6 +35,8 @@
 
 
 CallBack_Handler CallBack_Handlers[CB_MAX];
+char* CallBack_Description[CB_MAX];
+
 static Bitu call_stop,call_idle,call_default;
 
 static Bitu illegal_handler(void) {
@@ -95,9 +98,8 @@ void CALLBACK_RunRealFar(Bit16u seg,Bit16u off) {
 void CALLBACK_RunRealInt(Bit8u intnum) {
 	Bit32u oldeip=reg_eip;
 	Bit16u oldcs=SegValue(cs);
-	reg_eip=call_stop<<4;
+	reg_eip=(CB_MAX*16)+(intnum*6);
 	SegSet16(cs,CB_SEG);
-	Interrupt(intnum);
 	DOSBOX_RunMachine();
 	reg_eip=oldeip;
 	SegSet16(cs,oldcs);
@@ -117,9 +119,22 @@ void CALLBACK_SCF(bool val) {
 	mem_writew(SegPhys(ss)+reg_sp+4,(tempf | newCF));
 };
 
+void CALLBACK_SetDescription(Bitu nr, const char* descr)
+{
+	if (descr) {
+		CallBack_Description[nr] = new char[strlen(descr)+1];
+		strcpy(CallBack_Description[nr],descr);
+	} else
+		CallBack_Description[nr] = 0;
+};
 
+const char* CALLBACK_GetDescription(Bitu nr)
+{
+	if (nr>=CB_MAX) return 0;
+	return CallBack_Description[nr];
+};
 
-bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type) {
+bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type,const char* descr) {
 	if (callback>=CB_MAX) return false;
 	switch (type) {
 	case CB_RETF:
@@ -147,10 +162,11 @@ bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type) {
 
 	}
 	CallBack_Handlers[callback]=handler;
+	CALLBACK_SetDescription(callback,descr);
 	return true;
 }
 
-bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress) {
+bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress,const char* descr) {
 	if (callback>=CB_MAX) return false;
 	switch (type) {
 	case CB_RETF:
@@ -176,6 +192,7 @@ bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu line
 		E_Exit("CALLBACK:Setup:Illegal type %d",type);
 	}
 	CallBack_Handlers[callback]=handler;
+	CALLBACK_SetDescription(callback,descr);
 	return true;
 }
 
@@ -205,7 +222,19 @@ void CALLBACK_Init(Section* sec) {
 	for (i=0;i<0x40;i++) {
 		real_writed(0,i*4,CALLBACK_RealPointer(call_default));
 	}
+	/* Setup block of 0xCD 0xxx instructions */
+	PhysPt rint_base=CB_BASE+CB_MAX*16;
+	for (i=0;i<=0xff;i++) {
+		phys_writeb(rint_base,0xCD);
+		phys_writeb(rint_base+1,i);
+		phys_writeb(rint_base+2,0xFE);
+		phys_writeb(rint_base+3,0x38);
+		phys_writew(rint_base+4,call_stop);
+		rint_base+=6;
+
+	}
 	real_writed(0,0x67*4,CALLBACK_RealPointer(call_default));
+	real_writed(0,0x5c*4,CALLBACK_RealPointer(call_default)); //Network stuff
 	//real_writed(0,0xf*4,0); some games don't like it
 }
 

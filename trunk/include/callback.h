@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,9 +47,10 @@ void CALLBACK_Idle(void);
 void CALLBACK_RunRealInt(Bit8u intnum);
 void CALLBACK_RunRealFar(Bit16u seg,Bit16u off);
 
-bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type);
-bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress);
+bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type,const char* description=0);
+bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress, const char* description=0);
 
+const char* CALLBACK_GetDescription(Bitu callback);
 bool CALLBACK_Free(Bitu callback);
 
 void CALLBACK_SCF(bool val);

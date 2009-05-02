@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,40 +21,33 @@
 
 #include <mem.h>
 
-struct Flag_Info {
-    union {
-		Bit8u b;
-		Bit16u w;
-		Bit32u d;
-	} var1,var2,result;
-	Bitu type;
-	Bitu prev_type;
-	Bitu oldcf;
-	Bitu word;
-};
-
-
 #define FLAG_CF		0x00000001
 #define FLAG_PF		0x00000004
 #define FLAG_AF		0x00000010
 #define FLAG_ZF		0x00000040
 #define FLAG_SF		0x00000080
+#define FLAG_OF		0x00000800
+
 #define FLAG_TF		0x00000100
 #define FLAG_IF		0x00000200
 #define FLAG_DF		0x00000400
-#define FLAG_OF		0x00000800
-
-#define FLAG_MASK	(FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF | FLAG_OF)
 
 #define FLAG_IOPL	0x00003000
 #define FLAG_NT		0x00004000
 #define FLAG_VM		0x00020000
+#define FLAG_AC		0x00040000
+#define FLAG_ID		0x00200000
 
+#define FMASK_TEST		(FLAG_CF | FLAG_PF | FLAG_AF | FLAG_ZF | FLAG_SF | FLAG_OF)
+#define FMASK_NORMAL	(FMASK_TEST | FLAG_DF | FLAG_TF | FLAG_IF | FLAG_AC )	
+#define FMASK_ALL		(FMASK_NORMAL | FLAG_IOPL | FLAG_NT)
 
-#define SETFLAGBIT(TYPE,TEST) if (TEST) flags.word|=FLAG_ ## TYPE; else flags.word&=~FLAG_ ## TYPE
+#define SETFLAGBIT(TYPE,TEST) if (TEST) reg_flags|=FLAG_ ## TYPE; else reg_flags&=~FLAG_ ## TYPE
 
-#define GETFLAG(TYPE) (flags.word & FLAG_ ## TYPE)
-#define GETFLAGBOOL(TYPE) ((flags.word & FLAG_ ## TYPE) ? true : false )
+#define GETFLAG(TYPE) (reg_flags & FLAG_ ## TYPE)
+#define GETFLAGBOOL(TYPE) ((reg_flags & FLAG_ ## TYPE) ? true : false )
+
+#define GETFLAG_IOPL ((reg_flags & FLAG_IOPL) >> 12)
 
 struct Segment {
 	Bit16u val;
@@ -91,16 +84,12 @@ union GenReg32 {
 #endif
 
 struct CPU_Regs {
-	 GenReg32 regs[8],ip;
+	GenReg32 regs[8],ip;
+	Bitu flags;
 };
 
 extern Segments Segs;
-extern Flag_Info flags;
 extern CPU_Regs cpu_regs;
-
-
-//#define SegPhys(index) Segs[index].phys
-//#define SegValue(index) Segs[index].val
 
 INLINE PhysPt SegPhys(SegNames index) {
 	return Segs.phys[index];
@@ -109,7 +98,6 @@ INLINE PhysPt SegPhys(SegNames index) {
 INLINE Bit16u SegValue(SegNames index) {
 	return Segs.val[index];
 }
-
 	
 INLINE RealPt RealMakeSeg(SegNames index,Bit16u off) {
 	return RealMake(SegValue(index),off);	
@@ -120,7 +108,6 @@ INLINE void SegSet16(Bitu index,Bit16u val) {
 	Segs.val[index]=val;
 	Segs.phys[index]=val << 4;
 }
-
 
 enum {
 	REGI_AX, REGI_CX, REGI_DX, REGI_BX,
@@ -139,7 +126,6 @@ enum {
 #define reg_8(reg) ((reg) & 4 ? reg_8h((reg) & 3) : reg_8l((reg) & 3))
 #define reg_16(reg) (cpu_regs.regs[(reg)].word[W_INDEX])
 #define reg_32(reg) (cpu_regs.regs[(reg)].dword[DW_INDEX])
-
 
 #define reg_al cpu_regs.regs[REGI_AX].byte[BL_INDEX]
 #define reg_ah cpu_regs.regs[REGI_AX].byte[BH_INDEX]
@@ -175,6 +161,8 @@ enum {
 
 #define reg_ip cpu_regs.ip.word[W_INDEX]
 #define reg_eip cpu_regs.ip.dword[DW_INDEX]
+
+#define reg_flags cpu_regs.flags
 
 #endif
 
