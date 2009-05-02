@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,453 +9,248 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#include <math.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
 #include "mem.h"
 #include "hardware.h"
-#include "setup.h"
-#include "pic.h"
-#include <cstring>
-#include <math.h>
 
-
-#define LEFT	0x00
-#define RIGHT	0x01
-#define CMS_BUFFER_SIZE 128
 #define CMS_RATE 22050
+#define CMS_VOLUME 6000
 
 
-typedef Bit8u UINT8;
-typedef Bit16s INT16;
+#define FREQ_SHIFT 16
 
-/* this structure defines a channel */
-struct saa1099_channel
-{
-	int frequency;			/* frequency (0x00..0xff) */
-	int freq_enable;		/* frequency enable */
-	int noise_enable;		/* noise enable */
-	int octave; 			/* octave (0x00..0x07) */
-	int amplitude[2];		/* amplitude (0x00..0x0f) */
-	int envelope[2];		/* envelope (0x00..0x0f or 0x10 == off) */
+#define SIN_ENT 1024
+#define SIN_MAX (SIN_ENT << FREQ_SHIFT)
 
-	/* vars to simulate the square wave */
-	double counter;
-	double freq;
-	int level;
+#ifndef PI
+#define PI 3.14159265358979323846
+#endif
+
+
+
+struct CMS {
+	struct {
+		Bit32u freq_pos;
+		Bit32u freq_add;
+		Bit16s * vol_left;
+		Bit16s * vol_right;
+		Bit8u octave;
+		Bit8u freq;
+	} chan[6];
+	struct {
+		Bit32u freq_pos;
+		Bit32u freq_add;
+		Bit32u random_val;
+	} noise[2];
+
+	Bit8u voice_enabled;
+	Bit8u noise_enabled;
+	Bit8u reg;
 };
 
-/* this structure defines a noise channel */
-struct saa1099_noise
-{
-	/* vars to simulate the noise generator output */
-	double counter;
-	double freq;
-	int level;						/* noise polynomal shifter */
-};
+static Bit32u freq_table[256][8];
+static Bit32u noise_freq[3];
+static Bit16s vol_table[16];
+static Bit16s sin_table[16][SIN_ENT];
 
-/* this structure defines a SAA1099 chip */
-struct SAA1099
-{
-	int stream;						/* our stream */
-	int noise_params[2];			/* noise generators parameters */
-	int env_enable[2];				/* envelope generators enable */
-	int env_reverse_right[2];		/* envelope reversed for right channel */
-	int env_mode[2];				/* envelope generators mode */
-	int env_bits[2];				/* non zero = 3 bits resolution */
-	int env_clock[2];				/* envelope clock mode (non-zero external) */
-    int env_step[2];                /* current envelope step */
-	int all_ch_enable;				/* all channels enable */
-	int sync_state;					/* sync all channels */
-	int selected_reg;				/* selected register */
-	struct saa1099_channel channels[6];    /* channels */
-	struct saa1099_noise noise[2];	/* noise generators */
-};
+static MIXER_Channel * cms_chan;
+static CMS cms_block[2];
 
-static UINT8 envelope[8][64] = {
-	/* zero amplitude */
-	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-	/* maximum amplitude */
-    {15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,
-	 15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,
-	 15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,
-     15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15, },
-	/* single decay */
-	{15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-	/* repetitive decay */
-	{15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 },
-	/* single triangular */
-	{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-	/* repetitive triangular */
-	{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	 15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 },
-	/* single attack */
-    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-	/* repetitive attack */
-    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
-	  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15 }
-};
-
-
-static int amplitude_lookup[16] = {
-	 0*32767/16,  1*32767/16,  2*32767/16,	3*32767/16,
-	 4*32767/16,  5*32767/16,  6*32767/16,	7*32767/16,
-	 8*32767/16,  9*32767/16, 10*32767/16, 11*32767/16,
-	12*32767/16, 13*32767/16, 14*32767/16, 15*32767/16
-};
-
-/* global parameters */
-static double sample_rate;
-static SAA1099 saa1099[2];
-static MixerChannel * cms_chan;
-static Bit16s cms_buffer[2][2][CMS_BUFFER_SIZE];
-static Bit16s * cms_buf_point[4] = {
-	cms_buffer[0][0],cms_buffer[0][1],cms_buffer[1][0],cms_buffer[1][1] };
-
-static Bitu last_command;
-
-
-static void saa1099_envelope(int chip, int ch)
-{
-	struct SAA1099 *saa = &saa1099[chip];
-	if (saa->env_enable[ch])
-	{
-		int step, mode, mask;
-        mode = saa->env_mode[ch];
-		/* step from 0..63 and then loop in steps 32..63 */
-		step = saa->env_step[ch] =
-			((saa->env_step[ch] + 1) & 0x3f) | (saa->env_step[ch] & 0x20);
-
-		mask = 15;
-        if (saa->env_bits[ch])
-			mask &= ~1; 	/* 3 bit resolution, mask LSB */
-
-        saa->channels[ch*3+0].envelope[ LEFT] =
-		saa->channels[ch*3+1].envelope[ LEFT] =
-		saa->channels[ch*3+2].envelope[ LEFT] = envelope[mode][step] & mask;
-		if (saa->env_reverse_right[ch] & 0x01)
-		{
-			saa->channels[ch*3+0].envelope[RIGHT] =
-			saa->channels[ch*3+1].envelope[RIGHT] =
-			saa->channels[ch*3+2].envelope[RIGHT] = (15 - envelope[mode][step]) & mask;
-		}
-		else
-		{
-			saa->channels[ch*3+0].envelope[RIGHT] =
-			saa->channels[ch*3+1].envelope[RIGHT] =
-			saa->channels[ch*3+2].envelope[RIGHT] = envelope[mode][step] & mask;
-        }
-	}
-	else
-	{
-		/* envelope mode off, set all envelope factors to 16 */
-		saa->channels[ch*3+0].envelope[ LEFT] =
-		saa->channels[ch*3+1].envelope[ LEFT] =
-		saa->channels[ch*3+2].envelope[ LEFT] =
-		saa->channels[ch*3+0].envelope[RIGHT] =
-		saa->channels[ch*3+1].envelope[RIGHT] =
-		saa->channels[ch*3+2].envelope[RIGHT] = 16;
-    }
-}
-
-
-static void saa1099_update(int chip, INT16 **buffer, int length)
-{
-	struct SAA1099 *saa = &saa1099[chip];
-    int j, ch;
-
-	/* if the channels are disabled we're done */
-	if (!saa->all_ch_enable)
-	{
-		/* init output data */
-		memset(buffer[LEFT],0,length*sizeof(INT16));
-		memset(buffer[RIGHT],0,length*sizeof(INT16));
-        return;
-	}
-
-    for (ch = 0; ch < 2; ch++)
-    {
-		switch (saa->noise_params[ch])
-		{
-		case 0: saa->noise[ch].freq = 31250.0 * 2; break;
-		case 1: saa->noise[ch].freq = 15625.0 * 2; break;
-		case 2: saa->noise[ch].freq =  7812.5 * 2; break;
-		case 3: saa->noise[ch].freq = saa->channels[ch * 3].freq; break;
-		}
-	}
-
-    /* fill all data needed */
-	for( j = 0; j < length; j++ )
-	{
-		int output_l = 0, output_r = 0;
-
-		/* for each channel */
-		for (ch = 0; ch < 6; ch++)
-		{
-            if (saa->channels[ch].freq == 0.0)
-                saa->channels[ch].freq = (double)((2 * 15625) << saa->channels[ch].octave) /
-                    (511.0 - (double)saa->channels[ch].frequency);
-
-            /* check the actual position in the square wave */
-            saa->channels[ch].counter -= saa->channels[ch].freq;
-			while (saa->channels[ch].counter < 0)
+static void write_cms(Bit32u port,Bit8u val) {
+	Bit32u sel=(port>>1)&1;
+	CMS * cms=&cms_block[sel];
+	switch (port & 1) {
+	case 1:		/* Register Select */
+		cms->reg=val;
+		break;
+	case 0:		/* Write Register */
+		switch (cms->reg) {
+		case 0x00:	case 0x01:	case 0x02:	/* Volume Select */
+		case 0x03:	case 0x04:	case 0x05:		
+			cms->chan[cms->reg].vol_left=sin_table[val & 0xf];
+			cms->chan[cms->reg].vol_right=sin_table[(val>>4) & 0xf];
+			break;
+		case 0x08:	case 0x09:	case 0x0a:	/* Frequency Select */
+		case 0x0b:	case 0x0c:	case 0x0d:		
 			{
-				/* calculate new frequency now after the half wave is updated */
-				saa->channels[ch].freq = (double)((2 * 15625) << saa->channels[ch].octave) /
-					(511.0 - (double)saa->channels[ch].frequency);
-
-				saa->channels[ch].counter += sample_rate;
-				saa->channels[ch].level ^= 1;
-
-				/* eventually clock the envelope counters */
-				if (ch == 1 && saa->env_clock[0] == 0)
-					saa1099_envelope(chip, 0);
-				if (ch == 4 && saa->env_clock[1] == 0)
-					saa1099_envelope(chip, 1);
+				Bit8u chan=cms->reg-0x08;
+				cms->chan[chan].freq=val;
+				/* Get a new entry in the freq table */
+				cms->chan[chan].freq_add=freq_table[cms->chan[chan].freq][cms->chan[chan].octave];
+				break;
 			}
-
-			/* if the noise is enabled */
-			if (saa->channels[ch].noise_enable)
+		case 0x10:	case 0x11:	case 0x12:	/* Octave Select */
 			{
-				/* if the noise level is high (noise 0: chan 0-2, noise 1: chan 3-5) */
-				if (saa->noise[ch/3].level & 1)
-				{
-					/* subtract to avoid overflows, also use only half amplitude */
-					output_l -= saa->channels[ch].amplitude[ LEFT] * saa->channels[ch].envelope[ LEFT] / 16 / 2;
-					output_r -= saa->channels[ch].amplitude[RIGHT] * saa->channels[ch].envelope[RIGHT] / 16 / 2;
+				Bit8u chan=(cms->reg-0x10)*2;
+				cms->chan[chan].octave=val&7;
+				cms->chan[chan].freq_add=freq_table[cms->chan[chan].freq][cms->chan[chan].octave];
+				chan++;
+				cms->chan[chan].octave=(val>>4)&7;
+				cms->chan[chan].freq_add=freq_table[cms->chan[chan].freq][cms->chan[chan].octave];
+			}
+			break;
+		case 0x14:	/* Frequency enable */
+			cms->voice_enabled=val;
+			//TODO Check for enabling of speaker maybe 
+			break;
+		case 0x15:	/* Noise Enable */
+			cms->noise_enabled=val;
+			//TODO Check for enabling of speaker maybe 
+			break;
+		case 0x16:	/* Noise generator setup */	
+			cms->noise[0].freq_add=noise_freq[val & 3];
+			cms->noise[1].freq_add=noise_freq[(val>>4) & 3];
+			break;
+		default:
+			LOG_ERROR("CMS %d:Illegal register %X2 Selected for write",sel,cms->reg);
+			break;
+		};
+		break;
+	}
+
+};
+
+static void CMS_CallBack(Bit8u * stream,Bit32u len) {
+	/* Generate the CMS wave */
+	/* Generate 12 channels of sound data this could be nice */
+	for (Bit32u l=0;l<len;l++) {
+		register Bit32s left,right;
+		left=right=0;
+		for (int c=0;c<2;c++) {
+			CMS * cms=&cms_block[c];
+			Bit8u use_voice=1;
+			for (int chan=0;chan<6;chan++) {
+				if (cms->noise_enabled & use_voice) {
+
+				} else if (cms->voice_enabled & use_voice) {
+					int pos=cms->chan[chan].freq_pos>>FREQ_SHIFT;
+					left+=cms->chan[chan].vol_left[pos];
+					right+=cms->chan[chan].vol_right[pos];
+					cms->chan[chan].freq_pos+=cms->chan[chan].freq_add;
+					if (cms->chan[chan].freq_pos>=SIN_MAX) 
+						cms->chan[chan].freq_pos-=SIN_MAX;
 				}
-			}
-
-			/* if the square wave is enabled */
-			if (saa->channels[ch].freq_enable)
-			{
-				/* if the channel level is high */
-				if (saa->channels[ch].level & 1)
-				{
-					output_l += saa->channels[ch].amplitude[ LEFT] * saa->channels[ch].envelope[ LEFT] / 16;
-					output_r += saa->channels[ch].amplitude[RIGHT] * saa->channels[ch].envelope[RIGHT] / 16;
-				}
+				use_voice<<=1;
 			}
 		}
+		if (left>MAX_AUDIO) *(Bit16s *)stream=MAX_AUDIO;
+		else if (left<MIN_AUDIO) *(Bit16s *)stream=MIN_AUDIO;
+		else *(Bit16s *)stream=(Bit16s)left;
+		stream+=2;
 
-		for (ch = 0; ch < 2; ch++)
-		{
-			/* check the actual position in noise generator */
-			saa->noise[ch].counter -= saa->noise[ch].freq;
-			while (saa->noise[ch].counter < 0)
-			{
-				saa->noise[ch].counter += sample_rate;
-				if( ((saa->noise[ch].level & 0x4000) == 0) == ((saa->noise[ch].level & 0x0040) == 0) )
-					saa->noise[ch].level = (saa->noise[ch].level << 1) | 1;
-				else
-					saa->noise[ch].level <<= 1;
-			}
-		}
-        /* write sound data to the buffer */
-		buffer[LEFT][j] = output_l / 6;
-		buffer[RIGHT][j] = output_r / 6;
+		if (right>MAX_AUDIO) *(Bit16s *)stream=MAX_AUDIO;
+		else if (right<MIN_AUDIO) *(Bit16s *)stream=MIN_AUDIO;
+		else *(Bit16s *)stream=(Bit16s)right;
+		stream+=2;
+
 	}
+
 }
 
-static void saa1099_write_port_w( int chip, int offset, int data )
-{
-	struct SAA1099 *saa = &saa1099[chip];
-	int reg = saa->selected_reg;
-	int ch;
+static HWBlock hw_cms;
+static bool cms_enabled;
 
-	switch (reg)
-	{
-	/* channel i amplitude */
-	case 0x00:	case 0x01:	case 0x02:	case 0x03:	case 0x04:	case 0x05:
-		ch = reg & 7;
-		saa->channels[ch].amplitude[LEFT] = amplitude_lookup[data & 0x0f];
-		saa->channels[ch].amplitude[RIGHT] = amplitude_lookup[(data >> 4) & 0x0f];
-		break;
-	/* channel i frequency */
-	case 0x08:	case 0x09:	case 0x0a:	case 0x0b:	case 0x0c:	case 0x0d:
-		ch = reg & 7;
-		saa->channels[ch].frequency = data & 0xff;
-		break;
-	/* channel i octave */
-	case 0x10:	case 0x11:	case 0x12:
-		ch = (reg - 0x10) << 1;
-		saa->channels[ch + 0].octave = data & 0x07;
-		saa->channels[ch + 1].octave = (data >> 4) & 0x07;
-		break;
-	/* channel i frequency enable */
-	case 0x14:
-		saa->channels[0].freq_enable = data & 0x01;
-		saa->channels[1].freq_enable = data & 0x02;
-		saa->channels[2].freq_enable = data & 0x04;
-		saa->channels[3].freq_enable = data & 0x08;
-		saa->channels[4].freq_enable = data & 0x10;
-		saa->channels[5].freq_enable = data & 0x20;
-		break;
-	/* channel i noise enable */
-	case 0x15:
-		saa->channels[0].noise_enable = data & 0x01;
-		saa->channels[1].noise_enable = data & 0x02;
-		saa->channels[2].noise_enable = data & 0x04;
-		saa->channels[3].noise_enable = data & 0x08;
-		saa->channels[4].noise_enable = data & 0x10;
-		saa->channels[5].noise_enable = data & 0x20;
-		break;
-	/* noise generators parameters */
-	case 0x16:
-		saa->noise_params[0] = data & 0x03;
-		saa->noise_params[1] = (data >> 4) & 0x03;
-		break;
-	/* envelope generators parameters */
-	case 0x18:	case 0x19:
-		ch = reg - 0x18;
-		saa->env_reverse_right[ch] = data & 0x01;
-		saa->env_mode[ch] = (data >> 1) & 0x07;
-		saa->env_bits[ch] = data & 0x10;
-		saa->env_clock[ch] = data & 0x20;
-		saa->env_enable[ch] = data & 0x80;
-		/* reset the envelope */
-		saa->env_step[ch] = 0;
-		break;
-	/* channels enable & reset generators */
-	case 0x1c:
-		saa->all_ch_enable = data & 0x01;
-		saa->sync_state = data & 0x02;
-		if (data & 0x02)
-		{
-			int i;
-//			logerror("%04x: (SAA1099 #%d) -reg 0x1c- Chip reset\n",activecpu_get_pc(), chip);
-			/* Synch & Reset generators */
-			for (i = 0; i < 6; i++)
-			{
-                saa->channels[i].level = 0;
-				saa->channels[i].counter = 0.0;
-			}
-		}
-		break;
-	default:	/* Error! */
-//		logerror("%04x: (SAA1099 #%d) Unknown operation (reg:%02x, data:%02x)\n",activecpu_get_pc(), chip, reg, data);
-		LOG(LOG_MISC,LOG_ERROR)("CMS Unkown write to reg %x with %x",reg, data);
+static void CMS_Enable(bool enable) {
+	if (enable) {
+		cms_enabled=true;
+		MIXER_Enable(cms_chan,true);
+		IO_RegisterWriteHandler(0x220,write_cms,"CMS");
+		IO_RegisterWriteHandler(0x221,write_cms,"CMS");
+		IO_RegisterWriteHandler(0x222,write_cms,"CMS");
+		IO_RegisterWriteHandler(0x223,write_cms,"CMS");
+	} else {
+		cms_enabled=false;
+		MIXER_Enable(cms_chan,false);
+		IO_FreeWriteHandler(0x220);
+		IO_FreeWriteHandler(0x221);
+		IO_FreeWriteHandler(0x222);
+		IO_FreeWriteHandler(0x223);		
 	}
 }
 
 
-static void write_cms(Bitu port,Bitu val,Bitu iolen) {
-	if (last_command + 1000 < PIC_Ticks) if(cms_chan) cms_chan->Enable(true); 
-	last_command = PIC_Ticks;
-	switch (port) {
-	case 0x0220:
-		saa1099_write_port_w(0,1,val);
-		break;
-	case 0x221:
-		saa1099[0].selected_reg = val & 0x1f;
-		if (saa1099[0].selected_reg == 0x18 || saa1099[0].selected_reg == 0x19) {
-			/* clock the envelope channels */
-			if (saa1099[0].env_clock[0]) saa1099_envelope(0,0);
-			if (saa1099[0].env_clock[1]) saa1099_envelope(0,1);
-		}
-		break;
-	case 0x0222:
-		saa1099_write_port_w(1,1,val);
-		break;
-	case 0x223:
-		saa1099[1].selected_reg = val & 0x1f;
-		if (saa1099[1].selected_reg == 0x18 || saa1099[1].selected_reg == 0x19) {
-			/* clock the envelope channels */
-			if (saa1099[1].env_clock[0]) saa1099_envelope(1,0);
-			if (saa1099[1].env_clock[1]) saa1099_envelope(1,1);
-		}
-		break;
+static void CMS_InputHandler(char * line) {
+	bool s_off=ScanCMDBool(line,"OFF");
+	bool s_on=ScanCMDBool(line,"ON");
+	char * rem=ScanCMDRemain(line);
+	if (rem) {
+		sprintf(line,"Illegal Switch");
+		return;
 	}
+	if (s_on && s_off) {
+		sprintf(line,"Can't use /ON and /OFF at the same time");
+		return;
+	}
+	if (s_on) {
+		CMS_Enable(true);
+		sprintf(line,"Creative Music System has been enabled");
+		return;
+	} 
+	if (s_off) {
+		CMS_Enable(false);
+		sprintf(line,"Creative Music System has been disabled");
+		return;
+	} 
+	return;
 }
 
- static void CMS_CallBack(Bitu len) {
-	if (len > CMS_BUFFER_SIZE) return;
-
-	saa1099_update(0, &cms_buf_point[0], (int)len);
-	saa1099_update(1, &cms_buf_point[2], (int)len);
-
-	 Bit16s * stream=(Bit16s *) MixTemp;
-	/* Mix chip outputs */
-	for (Bitu l=0;l<len;l++) {
-		register Bits left, right;
-		left = cms_buffer[0][LEFT][l] + cms_buffer[1][LEFT][l];
-		right = cms_buffer[0][RIGHT][l] + cms_buffer[1][RIGHT][l];
-
-		if (left>MAX_AUDIO) *stream=MAX_AUDIO;
-		else if (left<MIN_AUDIO) *stream=MIN_AUDIO;
-		else *stream=(Bit16s)left;
-		stream++;
-
-		if (right>MAX_AUDIO) *stream=MAX_AUDIO;
-		else if (right<MIN_AUDIO) *stream=MIN_AUDIO;
-		else *stream=(Bit16s)right;
-		stream++;
-	}
-	if(cms_chan) cms_chan->AddSamples_s16(len,(Bit16s *)MixTemp);
-	if (last_command + 10000 < PIC_Ticks) if(cms_chan) cms_chan->Enable(false);
-}
-
-
-class CMS:public Module_base {
-private:
-	IO_WriteHandleObject WriteHandler;
-	MixerObject MixerChan;
-
-public:
-	CMS(Section* configuration):Module_base(configuration) {
-		Section_prop * section = static_cast<Section_prop *>(configuration);
-		Bitu sample_rate_temp = section->Get_int("oplrate");
-		sample_rate = static_cast<double>(sample_rate_temp);
-		Bitu base = section->Get_hex("sbbase");
-		WriteHandler.Install(base,write_cms,IO_MB,4);
-
-		/* Register the Mixer CallBack */
-		cms_chan = MixerChan.Install(CMS_CallBack,sample_rate_temp,"CMS");
-	
-		last_command = PIC_Ticks;
-	
-		for (int s=0;s<2;s++) {
-			struct SAA1099 *saa = &saa1099[s];
-			memset(saa, 0, sizeof(struct SAA1099));
-		}
-	}
-	~CMS() {
-		cms_chan = 0;
+static void CMS_OutputHandler (char * towrite) {
+	if(cms_enabled) {
+		sprintf(towrite,"IO %X",0x220);
+	} else {
+		sprintf(towrite,"Disabled");
 	}
 };
 
 
-static CMS* test;
-   
-void CMS_Init(Section* sec) {
-	test = new CMS(sec);
+void CMS_Init(void) {
+	Bits i;
+/* Register the Mixer CallBack */
+	cms_chan=MIXER_AddChannel(CMS_CallBack,CMS_RATE,"CMS");
+	MIXER_SetMode(cms_chan,MIXER_16STEREO);
+	MIXER_Enable(cms_chan,false);
+/* Register with the hardware setup tool */
+	hw_cms.dev_name="CMS";
+	hw_cms.full_name="Creative Music System";
+	hw_cms.next=0;
+	hw_cms.help="/ON  Enables CMS\n/OFF Disables CMS\n";	
+	hw_cms.get_input=CMS_InputHandler;
+	hw_cms.show_status=CMS_OutputHandler;
+	HW_Register(&hw_cms);
+	CMS_Enable(false);
+/* Make the frequency/octave table */ 
+	double log_start=log10(27.34375);
+	double log_add=(log10(54.609375)-log10(27.34375))/256;
+	for (i=0;i<256;i++) {
+		double freq=pow(10,log_start);
+		for (int k=0;k<8;k++) {
+			freq_table[i][k]=(Bit32u)((double)SIN_MAX/(CMS_RATE/freq));
+			freq*=2;
+		}
+		log_start+=log_add;
+	}
+//	noise_freq[0]=(Bit32u)(FREQ_MAX/((float)CMS_RATE/(float)28000));
+//	noise_freq[1]=(Bit32u)(FREQ_MAX/((float)CMS_RATE/(float)14000));
+//	noise_freq[2]=(Bit32u)(FREQ_MAX/((float)CMS_RATE/(float)6800));	
+	for (int s=0;s<SIN_ENT;s++) {
+		double out=sin( (2*PI/SIN_ENT)*s)*CMS_VOLUME;	
+		for (i=15;i>=0;i--) {
+			sin_table[i][s]=(Bit16s)out;
+//			out /= (float)1.258925412;	/* = 10 ^ (2/20) = 2dB */
+			out /= 1.1;
+		}
+	}
+
+
 }
-void CMS_ShutDown(Section* sec) {
-	delete test;	       
-}
+

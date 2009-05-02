@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,68 +9,55 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.h,v 1.31 2008/01/09 20:34:21 c2woody Exp $ */
+#if !defined __DOSBOX_H
+#define __DOSBOX_H
 
-#ifndef DOSBOX_DOSBOX_H
-#define DOSBOX_DOSBOX_H
+typedef unsigned char Bit8u;
+typedef signed char Bit8s;
+typedef unsigned short Bit16u;
+typedef signed short Bit16s;
+typedef unsigned long Bit32u;
+typedef signed long Bit32s;
+#if defined(_MSC_VER)
+typedef unsigned __int64 Bit64u;
+typedef signed __int64 Bit64s;
+#else
+typedef unsigned long long int Bit64u;
+typedef signed long long int Bit64s;
+#endif
 
-#include "config.h"
+typedef unsigned int Bitu;
+typedef signed int Bits;
 
-void E_Exit(const char * message,...) GCC_ATTRIBUTE( __format__(__printf__, 1, 2));
+#include <stddef.h>
 
-void MSG_Add(const char*,const char*); //add messages to the internal langaugefile
-const char* MSG_Get(char const *);     //get messages from the internal langaugafile
+void E_Exit(char * message,...);
 
-class Section;
+void S_Warn(char * message,...);
+
+
+#include "../settings.h"								/* General extra setting */
+#if defined (_MSC_VER)
+#include "../src/platform/visualc/config.h"
+#else
+#include "../config.h"
+#define INLINE inline
+#endif
+
 
 typedef Bitu (LoopHandler)(void);
 
 void DOSBOX_RunMachine();
 void DOSBOX_SetLoop(LoopHandler * handler);
-void DOSBOX_SetNormalLoop();
 
-void DOSBOX_Init(void);
+void DOSBOX_Init(int argc, char* argv[]);
+void DOSBOX_StartUp(void);
+#endif
 
-class Config;
-extern Config * control;
-
-enum MachineType {
-	MCH_HERC,
-	MCH_CGA,
-	MCH_TANDY,
-	MCH_PCJR,
-	MCH_EGA,
-	MCH_VGA
-};
-
-enum SVGACards {
-	SVGA_None,
-	SVGA_S3Trio,
-	SVGA_TsengET4K,
-	SVGA_TsengET3K,
-	SVGA_ParadisePVGA1A
-}; 
-
-extern SVGACards svgaCard;
-extern MachineType machine;
-extern bool SDLNetInited;
-
-#define IS_TANDY_ARCH ((machine==MCH_TANDY) || (machine==MCH_PCJR))
-#define IS_EGAVGA_ARCH ((machine==MCH_EGA) || (machine==MCH_VGA))
-#define IS_VGA_ARCH (machine==MCH_VGA)
-#define TANDY_ARCH_CASE MCH_TANDY: case MCH_PCJR
-#define EGAVGA_ARCH_CASE MCH_EGA: case MCH_VGA
-#define VGA_ARCH_CASE MCH_VGA
-
-#ifndef DOSBOX_LOGGING_H
-#include "logging.h"
-#endif // the logging system.
-
-#endif /* DOSBOX_DOSBOX_H */

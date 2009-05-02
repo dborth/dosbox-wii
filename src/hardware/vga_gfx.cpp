@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,37 +9,34 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga_gfx.cpp,v 1.18 2008/01/09 20:34:51 c2woody Exp $ */
-
 #include "dosbox.h"
 #include "inout.h"
 #include "vga.h"
 
+
 #define gfx(blah) vga.gfx.blah
 static bool index9warned=false;
 
-static void write_p3ce(Bitu port,Bitu val,Bitu iolen) {
+void write_p3ce(Bit32u port,Bit8u val) {
 	gfx(index)=val & 0x0f;
 }
 
-static Bitu read_p3ce(Bitu port,Bitu iolen) {
+Bit8u read_p3ce(Bit32u port) {
 	return gfx(index);
 }
 
-static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
+void write_p3cf(Bit32u port,Bit8u val) {
 	switch (gfx(index)) {
 	case 0:	/* Set/Reset Register */
 		gfx(set_reset)=val & 0x0f;
-		vga.config.full_set_reset=FillTable[val & 0x0f];
-		vga.config.full_enable_and_set_reset=vga.config.full_set_reset &
-			vga.config.full_enable_set_reset;
+		vga.config.set_reset=val & 0x0f;
 		/*
 			0	If in Write Mode 0 and bit 0 of 3CEh index 1 is set a write to
 				display memory will set all the bits in plane 0 of the byte to this
@@ -53,11 +50,14 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 1: /* Enable Set/Reset Register */
 		gfx(enable_set_reset)=val & 0x0f;
-		vga.config.full_enable_set_reset=FillTable[val & 0x0f];
-		vga.config.full_not_enable_set_reset=~vga.config.full_enable_set_reset;
-		vga.config.full_enable_and_set_reset=vga.config.full_set_reset &
-			vga.config.full_enable_set_reset;
-//		if (gfx(enable_set_reset)) vga.config.mh_mask|=MH_SETRESET else vga.config.mh_mask&=~MH_SETRESET;
+		vga.config.enable_set_reset=val & 0x0f;
+		/*
+			0  If set enables Set/reset of plane 0 in Write Mode 0.
+			1  Same for plane 1.
+			2  Same for plane 2.
+			3  Same for plane 3.
+		*/
+//		LOG_DEBUG("Enable Set Reset = %2X",val);
 		break;
 	case 2: /* Color Compare Register */
 		gfx(color_compare)=val & 0x0f;
@@ -73,7 +73,6 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 	case 3: /* Data Rotate */
 		gfx(data_rotate)=val;
 		vga.config.data_rotate=val & 7;
-//		if (val) vga.config.mh_mask|=MH_ROTATEOP else vga.config.mh_mask&=~MH_ROTATEOP;
 		vga.config.raster_op=(val>>3) & 3;
 		/* 
 			0-2	Number of positions to rotate data right before it is written to
@@ -86,6 +85,7 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 				2: CPU data is ORed  with the latch data.
 				3: CPU data is XORed with the latched data.
 		*/
+//		if (vga.config.data_rotate || vga.config.raster_op ) LOG_DEBUG("Data Rotate = %2X Raster op %2X",val & 7,(val>>3) & 3 );
 		break;
 	case 4: /* Read Map Select Register */
 		/*	0-1	number of the plane Read Mode 0 will read from */
@@ -93,11 +93,8 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 		vga.config.read_map_select=val & 0x03;
 //		LOG_DEBUG("Read Map %2X",val);
 		break;
-	case 5: /* Mode Register */
-		if ((gfx(mode) ^ val) & 0xf0) {
+	case 5: /* Mode Register */								/* Important one very */
 		gfx(mode)=val;
-			VGA_DetermineMode();
-		} else gfx(mode)=val;
 		vga.config.write_mode=val & 3;
 		vga.config.read_mode=(val >> 3) & 1;
 //		LOG_DEBUG("Write Mode %d Read Mode %d val %d",vga.config.write_mode,vga.config.read_mode,val);
@@ -138,14 +135,11 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 			4	Enables Odd/Even mode if set (See 3C4h index 4 bit 2).
 			5	Enables CGA style 4 color pixels using even/odd bit pairs if set.
 			6	Enables 256 color mode if set.	
+
 		*/
 		break;
 	case 6: /* Miscellaneous Register */
-		if ((gfx(miscellaneous) ^ val) & 0x0c) {
-			gfx(miscellaneous)=val;
-			VGA_DetermineMode();
-		} else gfx(miscellaneous)=val;
-		VGA_SetupHandlers();
+		gfx(miscellaneous)=val;
 		/*
 			0	Indicates Graphics Mode if set, Alphanumeric mode else.
 			1	Enables Odd/Even mode if set.
@@ -176,23 +170,21 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 				display memory.
 		*/
 		break;
-	default:
-		if (svga.write_p3cf) {
-			svga.write_p3cf(gfx(index), val, iolen);
-			break;
-		}
-		if (gfx(index) == 9 && !index9warned) {
-			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index 9",val);
+	case 9:	/* Unknown */
+		/* Crystal Dreams seems to like to write tothis register very weird */
+		if (!index9warned) {
+			LOG_WARN("VGA:3CF:Write %2X to illegal index 9",val);
 			index9warned=true;
-			break;
 		}
-		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index %2X",val,gfx(index));
+		break;
+	default:
+		LOG_WARN("VGA:3CF:Write %2X to illegal index %2X",val,gfx(index));
 		break;
 	}
 }
 
-static Bitu read_p3cf(Bitu port,Bitu iolen) {
-	switch (gfx(index)) {
+Bit8u read_p3cf(Bit32u port) {
+switch (gfx(index)) {
 	case 0:	/* Set/Reset Register */
 		return gfx(set_reset);
 	case 1: /* Enable Set/Reset Register */
@@ -212,10 +204,7 @@ static Bitu read_p3cf(Bitu port,Bitu iolen) {
 	case 8: /* Bit Mask Register */
 		return gfx(bit_mask);
 	default:
-		if (svga.read_p3cf)
-			return svga.read_p3cf(gfx(index), iolen);
-		LOG(LOG_VGAMISC,LOG_NORMAL)("Reading from illegal index %2X in port %4X",static_cast<Bit32u>(gfx(index)),port);
-		break;
+		LOG_WARN("Reading from illegal index %2X in port %4X",gfx(index),port);
 	}
 	return 0;	/* Compiler happy */
 }
@@ -223,14 +212,10 @@ static Bitu read_p3cf(Bitu port,Bitu iolen) {
 
 
 void VGA_SetupGFX(void) {
-	if (IS_EGAVGA_ARCH) {
-		IO_RegisterWriteHandler(0x3ce,write_p3ce,IO_MB);
-		IO_RegisterWriteHandler(0x3cf,write_p3cf,IO_MB);
-		if (IS_VGA_ARCH) {
-			IO_RegisterReadHandler(0x3ce,read_p3ce,IO_MB);
-			IO_RegisterReadHandler(0x3cf,read_p3cf,IO_MB);
-		}
-	}
+	IO_RegisterWriteHandler(0x3ce,write_p3ce,"VGA Graphics Index");
+	IO_RegisterWriteHandler(0x3cf,write_p3cf,"VGA Graphics Data");
+	IO_RegisterReadHandler(0x3ce,read_p3ce,"Vga Graphics Index");
+	IO_RegisterReadHandler(0x3cf,read_p3cf,"Vga Graphics Data");
 }
 
 

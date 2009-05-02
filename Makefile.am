@@ -1,4 +1,7 @@
 # Main Makefile for DOSBox
 
-EXTRA_DIST = autogen.sh
-SUBDIRS = src include docs visualc_net
+EXTRA_DIST = settings.h autogen.sh
+SUBDIRS = src include visualc
+
+
+

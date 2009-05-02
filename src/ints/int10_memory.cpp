@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-/* $Id: int10_memory.cpp,v 1.27 2008/08/09 15:37:15 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -24,6 +22,7 @@
 #include "int10.h"
 
 
+VGAROMAREA int10_romarea;
 static Bit8u static_functionality[0x10]=
 {
  /* 0 */ 0xff,  // All modes supported #1
@@ -34,192 +33,44 @@ static Bit8u static_functionality[0x10]=
  /* 8 */ 0x04,  // total number of character blocks available in text modes
  /* 9 */ 0x02,  // maximum number of active character blocks in text modes
  /* a */ 0xff,  // Misc Flags Everthing supported 
- /* b */ 0x0e,  // Support for Display combination, intensity/blinking and video state saving/restoring
+ /* b */ 0x0c,  // Support for Display combination and intensity/blinking
  /* c */ 0x00,  // reserved
  /* d */ 0x00,  // reserved
  /* e */ 0x00,  // Change to add new functions
  /* f */ 0x00   // reserved
 };
 
-static Bit16u map_offset[8]={
-	0x0000,0x4000,0x8000,0xc000,
-	0x2000,0x6000,0xa000,0xe000
-};
-
-void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu height) {
-	PhysPt ftwhere=PhysMake(0xa000,map_offset[map & 0x7]+offset*32);
-	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x4);	//Enable plane 2
-	IO_Write(0x3ce,0x6);Bitu old_6=IO_Read(0x3cf);
-	IO_Write(0x3cf,0x0);	//Disable odd/even and a0000 adressing
-	for (Bitu i=0;i<count;i++) {
-		MEM_BlockCopy(ftwhere,font,height);
-		ftwhere+=32;
-		font+=height;
-	}
-	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x3);	//Enable textmode planes (0,1)
-	IO_Write(0x3ce,0x6);
-	if (IS_VGA_ARCH) IO_Write(0x3cf,old_6);	//odd/even and b8000 adressing
-	else IO_Write(0x3cf,0x0e);
-	/* Reload tables and registers with new values based on this height */
-	if (reload) {
-		//Max scanline 
-		Bit16u base=real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS);
-		IO_Write(base,0x9);
-		IO_Write(base+1,(IO_Read(base+1) & 0xe0)|(height-1));
-		//Vertical display end bios says, but should stay the same?
-		//Rows setting in bios segment
-		real_writeb(BIOSMEM_SEG,BIOSMEM_NB_ROWS,(CurMode->sheight/height)-1);
-		real_writeb(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT,height);
-		//TODO Reprogram cursor size?
-	}
-}
 
 
 void INT10_SetupRomMemory(void) {
 /* This should fill up certain structures inside the Video Bios Rom Area */
-	PhysPt rom_base=PhysMake(0xc000,0);
-	Bitu i;
-	int10.rom.used=3;
-	if (IS_EGAVGA_ARCH) {
-		// set up the start of the ROM
-		phys_writew(rom_base+0,0xaa55);
-		phys_writeb(rom_base+2,0x40);		// Size of ROM: 64 512-blocks = 32KB
-		if (IS_VGA_ARCH) {
-			phys_writeb(rom_base+0x1e,0x49);	// IBM string
-			phys_writeb(rom_base+0x1f,0x42);
-			phys_writeb(rom_base+0x20,0x4d);
-			phys_writeb(rom_base+0x21,0x00);
-		}
-		int10.rom.used=0x100;
-	}
-	int10.rom.font_8_first=RealMake(0xC000,int10.rom.used);
+	Bit32u i;
+
+	Bit16u segoff=0;
+	int10_romarea.font_8_first=RealMake(0xC000,segoff);
 	for (i=0;i<128*8;i++) {
-		phys_writeb(rom_base+int10.rom.used++,int10_font_08[i]);
+		real_writeb(0xC000,segoff++,int10_font_08[i]);
 	}
-	int10.rom.font_8_second=RealMake(0xC000,int10.rom.used);
+	int10_romarea.font_8_second=RealMake(0xC000,segoff);
 	for (i=0;i<128*8;i++) {
-		phys_writeb(rom_base+int10.rom.used++,int10_font_08[i+128*8]);
+		real_writeb(0xC000,segoff++,int10_font_08[i+128*8]);
 	}
-	int10.rom.font_14=RealMake(0xC000,int10.rom.used);
+	int10_romarea.font_14=RealMake(0xC000,segoff);
 	for (i=0;i<256*14;i++) {
-		phys_writeb(rom_base+int10.rom.used++,int10_font_14[i]);
+		real_writeb(0xC000,segoff++,int10_font_14[i]);
 	}
-	int10.rom.font_16=RealMake(0xC000,int10.rom.used);
+	int10_romarea.font_16=RealMake(0xC000,segoff);
 	for (i=0;i<256*16;i++) {
-		phys_writeb(rom_base+int10.rom.used++,int10_font_16[i]);
+		real_writeb(0xC000,segoff++,int10_font_16[i]);
 	}
-	int10.rom.static_state=RealMake(0xC000,int10.rom.used);
+	int10_romarea.static_state=RealMake(0xC000,segoff);
 	for (i=0;i<0x10;i++) {
-		phys_writeb(rom_base+int10.rom.used++,static_functionality[i]);
-	}
-	for (i=0;i<128*8;i++) {
-		phys_writeb(PhysMake(0xf000,0xfa6e)+i,int10_font_08[i]);
-	}
-	RealSetVec(0x1F,int10.rom.font_8_second);
-	int10.rom.font_14_alternate=RealMake(0xC000,int10.rom.used);
-	int10.rom.font_16_alternate=RealMake(0xC000,int10.rom.used);
-	phys_writeb(rom_base+int10.rom.used++,0x00);	// end of table (empty)
-
-	if (IS_EGAVGA_ARCH) {
-		int10.rom.video_parameter_table=RealMake(0xC000,int10.rom.used);
-		int10.rom.used+=INT10_SetupVideoParameterTable(rom_base+int10.rom.used);
-
-		if (IS_VGA_ARCH) {
-			int10.rom.video_dcc_table=RealMake(0xC000,int10.rom.used);
-			phys_writeb(rom_base+int10.rom.used++,0x10);	// number of entries
-			phys_writeb(rom_base+int10.rom.used++,1);		// version number
-			phys_writeb(rom_base+int10.rom.used++,8);		// maximal display code
-			phys_writeb(rom_base+int10.rom.used++,0);		// reserved
-			// display combination codes
-			phys_writew(rom_base+int10.rom.used,0x0000);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0100);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0200);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0102);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0400);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0104);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0500);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0502);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0600);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0601);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0605);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0800);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0801);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0700);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0702);	int10.rom.used+=2;
-			phys_writew(rom_base+int10.rom.used,0x0706);	int10.rom.used+=2;
-
-			int10.rom.video_save_pointer_table=RealMake(0xC000,int10.rom.used);
-			phys_writew(rom_base+int10.rom.used,0x1a);	// length of table
-			int10.rom.used+=2;
-			phys_writed(rom_base+int10.rom.used,int10.rom.video_dcc_table);
-			int10.rom.used+=4;
-			phys_writed(rom_base+int10.rom.used,0);		// alphanumeric charset override
-			int10.rom.used+=4;
-			phys_writed(rom_base+int10.rom.used,0);		// user palette table
-			int10.rom.used+=4;
-			phys_writed(rom_base+int10.rom.used,0);		int10.rom.used+=4;
-			phys_writed(rom_base+int10.rom.used,0);		int10.rom.used+=4;
-			phys_writed(rom_base+int10.rom.used,0);		int10.rom.used+=4;
-		}
-
-		int10.rom.video_save_pointers=RealMake(0xC000,int10.rom.used);
-		phys_writed(rom_base+int10.rom.used,int10.rom.video_parameter_table);
-		int10.rom.used+=4;
-		phys_writed(rom_base+int10.rom.used,0);		// dynamic save area pointer
-		int10.rom.used+=4;
-		phys_writed(rom_base+int10.rom.used,0);		// alphanumeric character set override
-		int10.rom.used+=4;
-		phys_writed(rom_base+int10.rom.used,0);		// graphics character set override
-		int10.rom.used+=4;
-		if (IS_VGA_ARCH) {
-			phys_writed(rom_base+int10.rom.used,int10.rom.video_save_pointer_table);
-		} else {
-			phys_writed(rom_base+int10.rom.used,0);		// secondary save pointer table
-		}
-		int10.rom.used+=4;
-		phys_writed(rom_base+int10.rom.used,0);		int10.rom.used+=4;
-		phys_writed(rom_base+int10.rom.used,0);		int10.rom.used+=4;
+		real_writeb(0xC000,segoff++,static_functionality[i]);
 	}
 
-	if (IS_TANDY_ARCH) {
-		RealSetVec(0x44,int10.rom.font_8_first);
-	}
-}
+};
 
-void INT10_ReloadRomFonts(void) {
-	// 16x8 font
-	PhysPt font16pt=Real2Phys(int10.rom.font_16);
-	for (Bitu i=0;i<256*16;i++) {
-		phys_writeb(font16pt+i,int10_font_16[i]);
-	}
-	// 14x8 font
-	PhysPt font14pt=Real2Phys(int10.rom.font_14);
-	for (Bitu i=0;i<256*14;i++) {
-		phys_writeb(font14pt+i,int10_font_14[i]);
-	}
-	// 8x8 fonts
-	PhysPt font8pt=Real2Phys(int10.rom.font_8_first);
-	for (Bitu i=0;i<128*8;i++) {
-		phys_writeb(font8pt+i,int10_font_08[i]);
-	}
-	font8pt=Real2Phys(int10.rom.font_8_second);
-	for (Bitu i=0;i<128*8;i++) {
-		phys_writeb(font8pt+i,int10_font_08[i+128*8]);
-	}
-}
 
-void INT10_SetupRomMemoryChecksum(void) {
-	if (IS_EGAVGA_ARCH) { //EGA/VGA. Just to be safe
-		/* Sum of all bytes in rom module 256 should be 0 */
-		Bit8u sum = 0;
-		PhysPt rom_base = PhysMake(0xc000,0);
-		Bitu last_rombyte = 32*1024 - 1;		//32 KB romsize
-		for (Bitu i = 0;i < last_rombyte;i++)
-			sum += phys_readb(rom_base + i);	//OVERFLOW IS OKAY
-		sum = 256 - sum;
-		phys_writeb(rom_base + last_rombyte,sum);
-	}
-}
 
 
 Bit8u int10_font_08[256 * 8] = {
@@ -1446,3 +1297,6 @@ Bit8u int10_font_16[256 * 16] = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+
+
+

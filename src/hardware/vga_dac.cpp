@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -22,6 +22,8 @@
 #include "vga.h"
 
 /*
+//TODO PEL Mask Maybe
+//TODO Find some way to get palette lookups in groups 
 3C6h (R/W):  PEL Mask
 bit 0-7  This register is anded with the palette index sent for each dot.
          Should be set to FFh.
@@ -50,161 +52,94 @@ Note:  Each read or write of this register will cycle through first the
 
 enum {DAC_READ,DAC_WRITE};
 
-static INLINE void VGA_DAC_UpdateColor( Bitu index ) {
-	Bitu maskIndex = index & vga.dac.pel_mask;
-	vga.dac.xlat16[index] = ((vga.dac.rgb[maskIndex].blue>>1)&0x1f) |
-		(((vga.dac.rgb[maskIndex].green)&0x3f)<<5)|
-		(((vga.dac.rgb[maskIndex].red>>1)&0x1f) << 11);
-	RENDER_SetPal( index,
-		vga.dac.rgb[maskIndex].red << 2,
-		vga.dac.rgb[maskIndex].green << 2,
-		vga.dac.rgb[maskIndex].blue << 2
-	);
-}
 
-static void write_p3c6(Bitu port,Bitu val,Bitu iolen) {
-	if ( vga.dac.pel_mask != val ) {
-		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:DCA:Pel Mask set to %X", val);
-		vga.dac.pel_mask = val;
-		for ( Bitu i = 0;i<256;i++) 
-			VGA_DAC_UpdateColor( i );
-	}
+static void write_p3c6(Bit32u port,Bit8u val) {
+	if (val!=0xff) LOG_ERROR("VGA:Pel Mask not 0xff");
 }
 
 
-static Bitu read_p3c6(Bitu port,Bitu iolen) {
-	return vga.dac.pel_mask;
-}
-
-
-static void write_p3c7(Bitu port,Bitu val,Bitu iolen) {
-	vga.dac.read_index=val;
+static void write_p3c7(Bit32u port,Bit8u val) {
+	vga.dac.index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_READ;
-	vga.dac.write_index= val + 1;
 }
 
-static Bitu read_p3c7(Bitu port,Bitu iolen) {
-	if (vga.dac.state==DAC_READ) return 0x3;
-	else return 0x0;
-}
-
-static void write_p3c8(Bitu port,Bitu val,Bitu iolen) {
-	vga.dac.write_index=val;
+static void write_p3c8(Bit32u port,Bit8u val) {
+	vga.dac.index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_WRITE;
 }
 
-static Bitu read_p3c8(Bitu port, Bitu iolen){
-	return vga.dac.write_index;
-}
-
-static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
-	val&=0x3f;
+static void write_p3c9(Bit32u port,Bit8u val) {
 	switch (vga.dac.pel_index) {
 	case 0:
-		vga.dac.rgb[vga.dac.write_index].red=val;
+		vga.dac.rgb[vga.dac.index].red=val;
 		vga.dac.pel_index=1;
 		break;
 	case 1:
-		vga.dac.rgb[vga.dac.write_index].green=val;
+		vga.dac.rgb[vga.dac.index].green=val;
 		vga.dac.pel_index=2;
 		break;
 	case 2:
-		vga.dac.rgb[vga.dac.write_index].blue=val;
+		vga.dac.rgb[vga.dac.index].blue=val;
 		switch (vga.mode) {
-		case M_VGA:
-		case M_LIN8:
-			VGA_DAC_UpdateColor( vga.dac.write_index );
-			if ( GCC_UNLIKELY( vga.dac.pel_mask != 0xff)) {
-				Bitu index = vga.dac.write_index;
-				if ( (index & vga.dac.pel_mask) == index ) {
-					for ( Bitu i = index+1;i<256;i++) 
-						if ( (i & vga.dac.pel_mask) == index )
-							VGA_DAC_UpdateColor( i );
-				}
-			} 
+		case GFX_256C:
+		case GFX_256U:
+				RENDER_SetPal(vga.dac.index,
+					vga.dac.rgb[vga.dac.index].red << 2,
+					vga.dac.rgb[vga.dac.index].green << 2,
+					vga.dac.rgb[vga.dac.index].blue << 2
+				);
 			break;
 		default:
 			/* Check for attributes and DAC entry link */
-			for (Bitu i=0;i<16;i++) {
-				if (vga.dac.combine[i]==vga.dac.write_index) {
-					vga.dac.xlat16[i] = (
-						(vga.dac.rgb[vga.dac.write_index].blue>>1)&0x1f) |
-						(((vga.dac.rgb[vga.dac.write_index].green)&0x3f)<<5)|
-						(((vga.dac.rgb[vga.dac.write_index].red>>1)&0x1f) << 11);
-					RENDER_SetPal(i,
-					vga.dac.rgb[vga.dac.write_index].red << 2,
-					vga.dac.rgb[vga.dac.write_index].green << 2,
-					vga.dac.rgb[vga.dac.write_index].blue << 2);
-				}
+			if (vga.dac.rgb[vga.dac.index].attr_entry>15) return;
+			if (vga.attr.palette[vga.dac.rgb[vga.dac.index].attr_entry]==vga.dac.index) {
+				RENDER_SetPal(vga.dac.rgb[vga.dac.index].attr_entry,
+					vga.dac.rgb[vga.dac.index].red << 2,
+					vga.dac.rgb[vga.dac.index].green << 2,
+					vga.dac.rgb[vga.dac.index].blue << 2
+				);
 			}
 		}
-		vga.dac.write_index++;
-//		vga.dac.read_index = vga.dac.write_index - 1;//disabled as it breaks Wari
+		vga.dac.index++;
 		vga.dac.pel_index=0;
 		break;
 	default:
-		LOG(LOG_VGAGFX,LOG_NORMAL)("VGA:DAC:Illegal Pel Index");			//If this can actually happen that will be the day
-		break;
+		LOG_ERROR("VGA:DAC:Illegal Pel Index");			//If this can actually happen that will be the day
 	};
 }
 
-static Bitu read_p3c9(Bitu port,Bitu iolen) {
+static Bit8u read_p3c9(Bit32u port) {
 	Bit8u ret;
 	switch (vga.dac.pel_index) {
 	case 0:
-		ret=vga.dac.rgb[vga.dac.read_index].red;
+		ret=vga.dac.rgb[vga.dac.index].red;
 		vga.dac.pel_index=1;
 		break;
 	case 1:
-		ret=vga.dac.rgb[vga.dac.read_index].green;
+		ret=vga.dac.rgb[vga.dac.index].green;
 		vga.dac.pel_index=2;
 		break;
 	case 2:
-		ret=vga.dac.rgb[vga.dac.read_index].blue;
-		vga.dac.read_index++;
+		ret=vga.dac.rgb[vga.dac.index].blue;
+		vga.dac.index++;
 		vga.dac.pel_index=0;
-//		vga.dac.write_index=vga.dac.read_index+1;//disabled as it breaks wari
 		break;
 	default:
-		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:DAC:Illegal Pel Index");			//If this can actually happen that will be the day
-		ret=0;
-		break;
+		LOG_ERROR("VGA:DAC:Illegal Pel Index");			//If this can actually happen that will be the day
 	}
 	return ret;
 }
 
 void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	/* Check if this is a new color */
-	vga.dac.combine[attr]=pal;
-	switch (vga.mode) {
-	case M_LIN8:
-		break;
-	case M_VGA:
-		// used by copper demo; almost no video card seems to suport it
-		if(!IS_VGA_ARCH || (svgaCard!=SVGA_None)) break;
-
-	default:
-		vga.dac.xlat16[attr] = ((vga.dac.rgb[pal].blue>>1)&0x1f) |
-		(((vga.dac.rgb[pal].green)&0x3f)<<5)|
-		(((vga.dac.rgb[pal].red>>1)&0x1f) << 11);
-		RENDER_SetPal(attr,
-			vga.dac.rgb[pal].red << 2,
-			vga.dac.rgb[pal].green << 2,
-			vga.dac.rgb[pal].blue << 2
+	vga.dac.rgb[pal].attr_entry=attr;
+	RENDER_SetPal(attr,
+		vga.dac.rgb[pal].red << 2,
+		vga.dac.rgb[pal].green << 2,
+		vga.dac.rgb[pal].blue << 2
 		);
-	}
-}
-
-void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue) {
-	//Should only be called in machine != vga
-	vga.dac.rgb[entry].red=red;
-	vga.dac.rgb[entry].green=green;
-	vga.dac.rgb[entry].blue=blue;
-	for (Bitu i=0;i<16;i++) 
-		if (vga.dac.combine[i]==entry)
-			RENDER_SetPal(i,red << 2,green << 2,blue << 2);
 }
 
 void VGA_SetupDAC(void) {
@@ -213,31 +148,13 @@ void VGA_SetupDAC(void) {
 	vga.dac.pel_mask=0xff;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_READ;
-	vga.dac.read_index=0;
-	vga.dac.write_index=0;
-	if (IS_VGA_ARCH) {
-		/* Setup the DAC IO port Handlers */
-		IO_RegisterWriteHandler(0x3c6,write_p3c6,IO_MB);
-		IO_RegisterReadHandler(0x3c6,read_p3c6,IO_MB);
-		IO_RegisterWriteHandler(0x3c7,write_p3c7,IO_MB);
-		IO_RegisterReadHandler(0x3c7,read_p3c7,IO_MB);
-		IO_RegisterWriteHandler(0x3c8,write_p3c8,IO_MB);
-		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
-		IO_RegisterWriteHandler(0x3c9,write_p3c9,IO_MB);
-		IO_RegisterReadHandler(0x3c9,read_p3c9,IO_MB);
-	} else if (machine==MCH_EGA) {
-		for (Bitu i=0;i<64;i++) {
-			if ((i&4)>0) vga.dac.rgb[i].red=0x2a;
-			else vga.dac.rgb[i].red=0;
-			if ((i&32)>0) vga.dac.rgb[i].red+=0x15;
 
-			if ((i&2)>0) vga.dac.rgb[i].green=0x2a;
-			else vga.dac.rgb[i].green=0;
-			if ((i&16)>0) vga.dac.rgb[i].green+=0x15;
+	/* Setup the DAC IO port Handlers */
+	IO_RegisterWriteHandler(0x3c6,write_p3c6,"PEL Mask");	
+	IO_RegisterWriteHandler(0x3c7,write_p3c7,"PEL Read Mode");
+	IO_RegisterWriteHandler(0x3c8,write_p3c8,"PEL Write Mode");
+	IO_RegisterWriteHandler(0x3c9,write_p3c9,"PEL Data");	
+	IO_RegisterReadHandler(0x3c9,read_p3c9,"PEL Data");
+};
 
-			if ((i&1)>0) vga.dac.rgb[i].blue=0x2a;
-			else vga.dac.rgb[i].blue=0;
-			if ((i&8)>0) vga.dac.rgb[i].blue+=0x15;
-		}
-	}
-}
+

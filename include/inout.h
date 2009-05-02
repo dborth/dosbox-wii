@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,70 +9,40 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: inout.h,v 1.12 2009/04/25 16:25:03 harekiet Exp $ */
+typedef Bit8u (IO_ReadHandler)(Bit32u port);
+typedef void (IO_WriteHandler)(Bit32u port,Bit8u value);
 
-#ifndef DOSBOX_INOUT_H
-#define DOSBOX_INOUT_H
+#define IO_MAX 1024
 
-#define IO_MAX (64*1024+3)
-
-#define IO_MB	0x1
-#define IO_MW	0x2
-#define IO_MD	0x4
-#define IO_MA	(IO_MB | IO_MW | IO_MD )
-
-typedef Bitu IO_ReadHandler(Bitu port,Bitu iolen);
-typedef void IO_WriteHandler(Bitu port,Bitu val,Bitu iolen);
-
-extern IO_WriteHandler * io_writehandlers[3][IO_MAX];
-extern IO_ReadHandler * io_readhandlers[3][IO_MAX];
-
-void IO_RegisterReadHandler(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range=1);
-void IO_RegisterWriteHandler(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range=1);
-
-void IO_FreeReadHandler(Bitu port,Bitu mask,Bitu range=1);
-void IO_FreeWriteHandler(Bitu port,Bitu mask,Bitu range=1);
-
-void IO_WriteB(Bitu port,Bitu val);
-void IO_WriteW(Bitu port,Bitu val);
-void IO_WriteD(Bitu port,Bitu val);
-
-Bitu IO_ReadB(Bitu port);
-Bitu IO_ReadW(Bitu port);
-Bitu IO_ReadD(Bitu port);
-
-/* Classes to manage the IO objects created by the various devices.
- * The io objects will remove itself on destruction.*/
-class IO_Base{
-protected:
-	bool installed;
-	Bitu m_port, m_mask,m_range;
-public:
-	IO_Base():installed(false){};
-};
-class IO_ReadHandleObject: private IO_Base{
-public:
-	void Install(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range=1);
-	~IO_ReadHandleObject();
-};
-class IO_WriteHandleObject: private IO_Base{
-public:
-	void Install(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range=1);
-	~IO_WriteHandleObject();
+struct IO_ReadBlock{
+	IO_ReadHandler * handler;
+	char * name;
 };
 
-static INLINE void IO_Write(Bitu port,Bit8u val) {
-	IO_WriteB(port,val);
-}
-static INLINE Bit8u IO_Read(Bitu port){
-	return (Bit8u)IO_ReadB(port);
-}
+struct IO_WriteBlock{
+	IO_WriteHandler * handler;
+	char * name;
+};
 
-#endif
+extern IO_ReadBlock IO_ReadTable[IO_MAX];
+extern IO_WriteBlock IO_WriteTable[IO_MAX];
+
+
+
+void IO_Write(Bitu num,Bit8u val);
+Bit8u IO_Read(Bitu num);
+
+void IO_RegisterReadHandler(Bit32u port,IO_ReadHandler * handler,char * name);
+void IO_RegisterWriteHandler(Bit32u port,IO_WriteHandler * handler,char * name);
+
+void IO_FreeReadHandler(Bit32u port);
+void IO_FreeWriteHandler(Bit32u port);
+
+

@@ -7,9 +7,6 @@
  */
 
 #include "dirent.h"
-#include "io.h"
-
-#define safe_strncpy_dirent(a,b,n) do { strncpy((a),(b),(n)-1); (a)[(n)-1] = 0; } while (0)
 
 #ifdef WIN32
 
@@ -22,21 +19,20 @@
 DIR * opendir(const char *dirname) {
     
     static DIR dir;
-	size_t len;
 
     /* Stash the directory name */
-    safe_strncpy_dirent(dir.pathName,dirname,260);
-
-	len = strlen(dirname);
-	if ((len>0) && (dirname[len-1]=='\\'))	strcat(dir.pathName,"*.*");
-	else									strcat(dir.pathName,"\\*.*");
+    strcpy(dir.pathName,dirname);
 
     /* set the handle to invalid and set the firstTime flag */
     dir.handle    = INVALID_HANDLE_VALUE;
     dir.firstTime = TRUE;
 
+    if (strcmp(dirname, ".") == 0) {
+        return &dir;
+    }
+
     /* Change the current directory to the one requested */
-    return (access(dirname,0) ? NULL : &dir);
+    return (SetCurrentDirectory(dir.pathName) != 0) ? &dir : NULL;
 }
 
 /** Close the current directory - return 0 if success */
@@ -64,7 +60,7 @@ struct dirent *	readdir(DIR *dirp) {
     if (TRUE == dirp->firstTime)
     {
         /** Get the first entry in the directory */
-        dirp->handle = FindFirstFile(dirp->pathName, &dirp->findFileData);
+        dirp->handle = FindFirstFile("*.*", &dirp->findFileData);
         dirp->firstTime = FALSE;
         if (INVALID_HANDLE_VALUE == dirp->handle)
         {
@@ -82,8 +78,8 @@ struct dirent *	readdir(DIR *dirp) {
     /* we have a valid FIND_FILE_DATA, copy the filename */
     memset(&d,'\0', sizeof(struct dirent));
 
-    safe_strncpy_dirent(d.d_name,dirp->findFileData.cFileName,260);
-    d.d_namlen = (char)strlen(d.d_name);  
+    strcpy(d.d_name,dirp->findFileData.cFileName);
+    d.d_namlen = strlen(d.d_name);  
 
     return &d;
 }

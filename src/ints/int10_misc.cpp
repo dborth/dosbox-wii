@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2008  The DOSBox Team
+ *  Copyright (C) 2002  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -9,14 +9,12 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  GNU Library General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-/* $Id: int10_misc.cpp,v 1.20 2009/04/11 07:58:39 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -70,69 +68,57 @@ struct Dynamic_Functionality {
 									7 reserved
 								*/
 	Bit8u reserved2[13];		/*  33h 13 BYTEs reserved (00h) */
-} GCC_ATTRIBUTE(packed);
+};
 #pragma pack()
 
-void INT10_GetFuncStateInformation(PhysPt save) {
+
+
+
+void INT10_GetFuncStateInformation(Bit16u seg,Bit16u off) {
+
+	PhysOff save=Real2Phys(RealMake(seg,off));
 	/* set static state pointer */
-	mem_writed(save,int10.rom.static_state);
+	mem_writed(save,int10_romarea.static_state);
 	/* Copy BIOS Segment areas */
 	Bit16u i;
 
 	/* First area in Bios Seg */
-	for (i=0;i<0x1e;i++) {
+	for (i=0;i<30;i++) {
 		mem_writeb(save+0x4+i,real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE+i));
 	}
 	/* Second area */
-	mem_writeb(save+0x22,real_readb(BIOSMEM_SEG,BIOSMEM_NB_ROWS)+1);
-	for (i=1;i<3;i++) {
+	for (i=0;i<3;i++) {
 		mem_writeb(save+0x22+i,real_readb(BIOSMEM_SEG,BIOSMEM_NB_ROWS+i));
 	}
 	/* Zero out rest of block */
 	for (i=0x25;i<0x40;i++) mem_writeb(save+i,0);
-	/* DCC */
-//	mem_writeb(save+0x25,real_readb(BIOSMEM_SEG,BIOSMEM_DCC_INDEX));
-	Bit8u dccode = 0x00;
-	RealPt vsavept=real_readd(BIOSMEM_SEG,BIOSMEM_VS_POINTER);
-	RealPt svstable=real_readd(RealSeg(vsavept),RealOff(vsavept)+0x10);
-	if (svstable) {
-		RealPt dcctable=real_readd(RealSeg(svstable),RealOff(svstable)+0x02);
-		Bit8u entries=real_readb(RealSeg(dcctable),RealOff(dcctable)+0x00);
-		Bit8u idx=real_readb(BIOSMEM_SEG,BIOSMEM_DCC_INDEX);
-		// check if index within range
-		if (idx<entries) {
-			Bit16u dccentry=real_readw(RealSeg(dcctable),RealOff(dcctable)+0x04+idx*2);
-			if ((dccentry&0xff)==0) dccode=(Bit8u)((dccentry>>8)&0xff);
-			else dccode=(Bit8u)(dccentry&0xff);
-		}
-	}
-	mem_writeb(save+0x25,dccode);
-
+	/* DCC Index */
+	mem_writeb(save+0x25,real_readb(BIOSMEM_SEG,BIOSMEM_DCC_INDEX));
+	VGAMODES * curmode=GetCurrentMode();
+	if (!curmode) return;
 	Bit16u col_count=0;
-	switch (CurMode->type) {
-	case M_TEXT:
-		if (CurMode->mode==0x7) col_count=1; else col_count=16;break; 
-	case M_CGA2:
+	switch (curmode->memmodel) {
+	case CTEXT:
 		col_count=2;break;
-	case M_CGA4:
+	case MTEXT:
+		col_count=16;break;
+	case CGA:
 		col_count=4;break;
-	case M_EGA:
-		if (CurMode->mode==0x11 || CurMode->mode==0x0f) 
-			col_count=2; 
-		else 
-			col_count=16;
-		break; 
-	case M_VGA:
+	case PLANAR1:
+		col_count=2;break;
+	case PLANAR2:
+		col_count=4;break;
+	case PLANAR4:
+		col_count=16;break;
+	case LINEAR8:
 		col_count=256;break;
-	default:
-		LOG(LOG_INT10,LOG_ERROR)("Get Func State illegal mode type %d",CurMode->type);
 	}
 	/* Colour count */
 	mem_writew(save+0x27,col_count);
 	/* Page count */
-	mem_writeb(save+0x29,CurMode->ptotal);
+	mem_writeb(save+0x29,curmode->nbpages);
 	/* scan lines */
-	switch (CurMode->sheight) {
+	switch (curmode->sheight) {
 	case 200:
 		mem_writeb(save+0x2a,0);break;
 	case 350:
@@ -142,171 +128,8 @@ void INT10_GetFuncStateInformation(PhysPt save) {
 	case 480:
 		mem_writeb(save+0x2a,3);break;
 	};
-	/* misc flags */
-	if (CurMode->type==M_TEXT) mem_writeb(save+0x2d,0x21);
-	else mem_writeb(save+0x2d,0x01);
+	//TODO Maybe misc flags 
 	/* Video Memory available */
 	mem_writeb(save+0x31,3);
 }
 
-RealPt INT10_EGA_RIL_GetVersionPt(void) {
-	/* points to a graphics ROM location at the moment
-	   as checks test for bx!=0 only */
-	return RealMake(0xc000,0x30);
-}
-
-static void EGA_RIL(Bit16u dx, Bitu& port, Bitu& regs) {
-	port = 0;
-	regs = 0; //if nul is returned it's a single register port
-	switch(dx) {
-	case 0x00: /* CRT Controller (25 reg) 3B4h mono modes, 3D4h color modes */
-		port = real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS);
-		regs = 25;
-		break;
-	case 0x08: /* Sequencer (5 registers) 3C4h */
-		port = 0x3C4;
-		regs = 5;
-		break;
-	case 0x10: /* Graphics Controller (9 registers) 3CEh */
-		port = 0x3CE;
-		regs = 9;
-		break;
-	case 0x18: /* Attribute Controller (20 registers) 3C0h */
-		port = 0x3c0;
-		regs = 20;
-		break;
-	case 0x20: /* Miscellaneous Output register 3C2h */
-		port = 0x3C2;
-		break;
-	case 0x28: /* Feature Control register (3BAh mono modes, 3DAh color modes) */
-		port = real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6;
-		break;
-	case 0x30: /* Graphics 1 Position register 3CCh */
-		port = 0x3CC;
-		break;
-	case 0x38: /* Graphics 2 Position register 3CAh */
-		port = 0x3CA;
-		break;
-	default:
-		LOG(LOG_INT10,LOG_ERROR)("unknown RIL port selection %X",dx);
-		break;
-	}
-}
-
-void INT10_EGA_RIL_ReadRegister(Bit8u & bl, Bit16u dx) {
-	Bitu port = 0;
-	Bitu regs = 0;
-	EGA_RIL(dx,port,regs);
-	if(regs == 0) {
-		if(port) bl = IO_Read(port);
-	} else {
-		if(port == 0x3c0) IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-		IO_Write(port,bl);
-		bl = IO_Read(port+1);
-		if(port == 0x3c0) IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-		LOG(LOG_INT10,LOG_NORMAL)("EGA RIL read used with multi-reg");
-	}
-}
-
-void INT10_EGA_RIL_WriteRegister(Bit8u & bl, Bit8u bh, Bit16u dx) {
-	Bitu port = 0;
-	Bitu regs = 0;
-	EGA_RIL(dx,port,regs);
-	if(regs == 0) {
-		if(port) IO_Write(port,bl);
-	} else {
-		if(port == 0x3c0) {
-			IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-			IO_Write(port,bl);
-			IO_Write(port,bh);
-		} else {
-			IO_Write(port,bl);
-			IO_Write(port+1,bh);
-		}
-		bl = bh;//Not sure
-		LOG(LOG_INT10,LOG_NORMAL)("EGA RIL write used with multi-reg");
-	}
-}
-
-void INT10_EGA_RIL_ReadRegisterRange(Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst) {
-	Bitu port = 0;
-	Bitu regs = 0;
-	EGA_RIL(dx,port,regs);
-	if(regs == 0) {
-		LOG(LOG_INT10,LOG_ERROR)("EGA RIL range read with port %x called",port);
-	} else {
-		if(ch<regs) {
-			if ((Bitu)ch+cl>regs) cl=(Bit8u)(regs-ch);
-			for (Bitu i=0; i<cl; i++) {
-				if(port == 0x3c0) IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-				IO_Write(port,ch+i);
-				mem_writeb(dst++,IO_Read(port+1));
-			}
-			if(port == 0x3c0) IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-		} else LOG(LOG_INT10,LOG_ERROR)("EGA RIL range read from %x for invalid register %x",port,ch);
-	}
-}
-
-void INT10_EGA_RIL_WriteRegisterRange(Bit8u ch, Bit8u cl, Bit16u dx, PhysPt src) {
-	Bitu port = 0;
-	Bitu regs = 0;
-	EGA_RIL(dx,port,regs);
-	if(regs == 0) {
-		LOG(LOG_INT10,LOG_ERROR)("EGA RIL range write called with port %x",port);
-	} else {
-		if(ch<regs) {
-			if ((Bitu)ch+cl>regs) cl=(Bit8u)(regs-ch);
-			if(port == 0x3c0) {
-				IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-				for (Bitu i=0; i<cl; i++) {
-					IO_Write(port,ch+i);
-					IO_Write(port,mem_readb(src++));
-				}
-			} else {
-				for (Bitu i=0; i<cl; i++) {
-					IO_Write(port,ch+i);
-					IO_Write(port+1,mem_readb(src++));
-				}
-			}
-		} else LOG(LOG_INT10,LOG_ERROR)("EGA RIL range write to %x with invalid register %x",port,ch);
-	}
-}
-
-/* register sets are of the form
-   offset 0 (word): group index
-   offset 2 (byte): register number (0 for single registers, ignored)
-   offset 3 (byte): register value (return value when reading)
-*/
-void INT10_EGA_RIL_ReadRegisterSet(Bit16u cx, PhysPt tbl) {
-	/* read cx register sets */
-	for (Bitu i=0; i<cx; i++) {
-		Bit8u vl=mem_readb(tbl+2);
-		INT10_EGA_RIL_ReadRegister(vl, mem_readw(tbl));
-		mem_writeb(tbl+3, vl);
-		tbl+=4;
-	}
-}
-
-void INT10_EGA_RIL_WriteRegisterSet(Bit16u cx, PhysPt tbl) {
-	/* write cx register sets */
-	Bitu port = 0;
-	Bitu regs = 0;
-	for (Bitu i=0; i<cx; i++) {
-		EGA_RIL(mem_readw(tbl),port,regs);
-		Bit8u vl=mem_readb(tbl+3);
-		if(regs == 0) {
-			if(port) IO_Write(port,vl);
-		} else {
-			Bit8u idx=mem_readb(tbl+2);
-			if(port == 0x3c0) {
-				IO_Read(real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS) + 6);
-				IO_Write(port,idx);
-				IO_Write(port,vl);
-			} else {
-				IO_Write(port,idx);
-				IO_Write(port+1,vl);
-			}
-		}
-		tbl+=4;
-	}
-}
