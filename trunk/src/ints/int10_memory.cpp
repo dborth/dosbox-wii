@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -72,17 +72,21 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 	}
 }
 
-
-
-
+static Bitu checksumlocation = 0; //Same type as int10.rom.used
 void INT10_SetupRomMemory(void) {
 /* This should fill up certain structures inside the Video Bios Rom Area */
 	PhysPt rom_base=PhysMake(0xc000,0);
 	Bitu i;
-	int10.rom.used=3;  //	int10.rom.used=2; Size of ROM added
+	int10.rom.used=3;
 	if (machine==MCH_VGA) {
+		// set up the start of the ROM
 		phys_writew(rom_base+0,0xaa55);
-		phys_writeb(rom_base+2,0x40); // Size of ROM: 64 512-blocks = 32KB
+		phys_writeb(rom_base+2,0x40);		// Size of ROM: 64 512-blocks = 32KB
+		phys_writeb(rom_base+0x1e,0x49);	// IBM string
+		phys_writeb(rom_base+0x1f,0x42);
+		phys_writeb(rom_base+0x20,0x4d);
+		phys_writeb(rom_base+0x21,0x00);
+		int10.rom.used=0x100;
 	}
 	int10.rom.font_8_first=RealMake(0xC000,int10.rom.used);
 	for (i=0;i<128*8;i++) {
@@ -108,9 +112,24 @@ void INT10_SetupRomMemory(void) {
 		phys_writeb(PhysMake(0xf000,0xfa6e)+i,int10_font_08[i]);
 	}
 	RealSetVec(0x1F,int10.rom.font_8_second);
+
+	if (machine == MCH_VGA) { //EGA/VGA. Just to be safe
+		//Reserve checksum location
+		checksumlocation = int10.rom.used++;
+	}
 };
 
-
+void INT10_SetupRomMemoryChecksum(void) {
+	if (machine == MCH_VGA) { //EGA/VGA. Just to be safe
+		/* Sum of all bytes in rom module 256 should be 0 */
+		Bit8u sum = 0;
+		PhysPt rom_base = PhysMake(0xc000,0);
+		for (Bitu i = 0;i < 32 * 1024;i++) //32 KB romsize
+			sum += phys_readb(rom_base + i); //OVERFLOW IS OKAY
+		sum = 256 - sum;
+		phys_writeb(rom_base + checksumlocation,sum);
+	}
+}
 
 
 Bit8u int10_font_08[256 * 8] = {

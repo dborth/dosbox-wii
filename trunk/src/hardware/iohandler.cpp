@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +16,21 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: iohandler.cpp,v 1.20 2006/02/09 11:47:49 qbix79 Exp $ */
+
+#include <string.h>
 #include "dosbox.h"
 #include "inout.h"
+#include "setup.h"
+#include "cpu.h"
+#include "../src/cpu/lazyflags.h"
+#include "callback.h"
 
 IO_WriteHandler * io_writehandlers[3][IO_MAX];
 IO_ReadHandler * io_readhandlers[3][IO_MAX];
 
 static Bitu IO_ReadBlocked(Bitu port,Bitu iolen) {
-	return (Bitu)-1;
+	return ~0;
 }
 static void IO_WriteBlocked(Bitu port,Bitu val,Bitu iolen) {
 }
@@ -98,11 +105,283 @@ void IO_FreeWriteHandler(Bitu port,Bitu mask,Bitu range) {
 	}
 }
 
-
-void IO_Init(Section * sect) {
-	IO_FreeReadHandler(0,IO_MA,IO_MAX);
-	IO_FreeWriteHandler(0,IO_MA,IO_MAX);
+void IO_ReadHandleObject::Install(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range) {
+	if(!installed) {
+		installed=true;
+		m_port=port;
+		m_mask=mask;
+		m_range=range;
+		IO_RegisterReadHandler(port,handler,mask,range);
+	} else E_Exit("IO_readHandler allready installed port %x",port);
 }
 
+IO_ReadHandleObject::~IO_ReadHandleObject(){
+	if(!installed) return;
+	IO_FreeReadHandler(m_port,m_mask,m_range);
+}
 
+void IO_WriteHandleObject::Install(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range) {
+	if(!installed) {
+		installed=true;
+		m_port=port;
+		m_mask=mask;
+		m_range=range;
+		IO_RegisterWriteHandler(port,handler,mask,range);
+	} else E_Exit("IO_writeHandler allready installed port %x",port);
+}
 
+IO_WriteHandleObject::~IO_WriteHandleObject(){
+	if(!installed) return;
+	IO_FreeWriteHandler(m_port,m_mask,m_range);
+	//LOG_MSG("FreeWritehandler called with port %X",m_port);
+}
+
+struct IOF_Entry {
+	Bitu cs;
+	Bitu eip;
+};
+
+#define IOF_QUEUESIZE 16
+static struct {
+	Bitu used;
+	IOF_Entry entries[IOF_QUEUESIZE];
+} iof_queue;
+
+static Bits IOFaultCore(void) {
+	CPU_CycleLeft+=CPU_Cycles;
+	CPU_Cycles=1;
+	Bitu ret=CPU_Core_Full_Run();
+	CPU_CycleLeft+=CPU_Cycles;
+	if (ret<0) E_Exit("Got a dosbox close machine in IO-fault core?");
+	if (ret) 
+		return ret;
+	if (!iof_queue.used) E_Exit("IO-faul Core without IO-faul");
+	IOF_Entry * entry=&iof_queue.entries[iof_queue.used-1];
+	if (entry->cs == SegValue(cs) && entry->eip==reg_eip)
+		return -1;
+	return 0;
+}
+
+Bitu DEBUG_EnableDebugger();
+
+void IO_WriteB(Bitu port,Bitu val) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,1))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit8u old_al = reg_al;
+		Bit16u old_dx = reg_dx;
+		reg_al = val;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x08;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		reg_al = old_al;
+		reg_dx = old_dx;
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+	}
+	else io_writehandlers[0][port](port,val,1);
+};
+
+void IO_WriteW(Bitu port,Bitu val) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,2))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit16u old_ax = reg_ax;
+		Bit16u old_dx = reg_dx;
+		reg_al = val;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x0a;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		reg_ax = old_ax;
+		reg_dx = old_dx;
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+	}
+	else io_writehandlers[1][port](port,val,2);
+};
+
+void IO_WriteD(Bitu port,Bitu val) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,4))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit32u old_eax = reg_eax;
+		Bit16u old_dx = reg_dx;
+		reg_al = val;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x0c;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		reg_eax = old_eax;
+		reg_dx = old_dx;
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+	}
+	else io_writehandlers[2][port](port,val,4);
+};
+
+Bitu IO_ReadB(Bitu port) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,1))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit16u old_dx = reg_dx;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x00;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		Bitu retval = reg_al;
+
+		reg_dx = old_dx;		
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+		return retval;
+	}
+	else return io_readhandlers[0][port](port,1);
+};
+
+Bitu IO_ReadW(Bitu port) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,2))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit16u old_dx = reg_dx;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x02;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		Bitu retval = reg_ax;
+
+		reg_dx = old_dx;		
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+		return retval;
+	}
+	else return io_readhandlers[1][port](port,2);
+};
+
+Bitu IO_ReadD(Bitu port) {
+	if (GETFLAG(VM) && (CPU_IO_Exception(port,4))) {
+		LazyFlags old_lflags;
+		memcpy(&old_lflags,&lflags,sizeof(LazyFlags));
+		CPU_Decoder * old_cpudecoder;
+		old_cpudecoder=cpudecoder;
+		cpudecoder=&IOFaultCore;
+		IOF_Entry * entry=&iof_queue.entries[iof_queue.used++];
+		entry->cs=SegValue(cs);
+		entry->eip=reg_eip;
+		CPU_Push16(SegValue(cs));
+		CPU_Push16(reg_ip);
+		Bit16u old_dx = reg_dx;
+		reg_dx = port;
+		RealPt icb = CALLBACK_RealPointer(call_priv_io);
+		SegSet16(cs,RealSeg(icb));
+		reg_eip = RealOff(icb)+0x04;
+		FillFlags();
+		CPU_Exception(cpu.exception.which,cpu.exception.error);
+
+		DOSBOX_RunMachine();
+		iof_queue.used--;
+
+		Bitu retval = reg_eax;
+
+		reg_dx = old_dx;		
+		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
+		cpudecoder=old_cpudecoder;
+		return retval;
+	}
+	else return io_readhandlers[2][port](port,4);
+};
+
+class IO :public Module_base {
+public:
+	IO(Section* configuration):Module_base(configuration){
+	iof_queue.used=0;
+	IO_FreeReadHandler(0,IO_MA,IO_MAX);
+	IO_FreeWriteHandler(0,IO_MA,IO_MAX);
+	}
+	~IO()
+	{
+		//Same as the constructor ?
+	}
+};
+
+static IO* test;
+
+void IO_Destroy(Section* sec) {
+	delete test;
+}
+
+void IO_Init(Section * sect) {
+	test = new IO(sect);
+	sect->AddDestroyFunction(&IO_Destroy);
+}

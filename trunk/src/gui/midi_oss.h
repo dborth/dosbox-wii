@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@ public:
 	char * GetName(void) { return "oss";};
 	bool Open(const char * conf) {
 		char devname[512];
-		if (conf && conf[0]) strncpy(devname,conf,512);
+		if (conf && conf[0]) safe_strncpy(devname,conf,512);
 		else strcpy(devname,"/dev/sequencer");
 		char * devfind=(strrchr(devname,','));
 		if (devfind) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: bios_disk.cpp,v 1.27 2006/02/12 23:23:52 harekiet Exp $ */
+
 #include "dosbox.h"
 #include "callback.h"
 #include "bios.h"
@@ -25,13 +27,16 @@
 #include "mapper.h"
 
 #define MAX_SWAPPABLE_DISKS 20
+#define MAX_DISK_IMAGES 4
 
 diskGeo DiskGeometryList[] = {
-	{160,  8, 1, 40, 0},
-	{180,  9, 1, 40, 0},
-	{320,  8, 2, 40, 1},
-	{360,  9, 2, 40, 1},
-	{720,  9, 2, 80, 3},
+	{ 160,  8, 1, 40, 0},
+	{ 180,  9, 1, 40, 0},
+	{ 200, 10, 1, 40, 0},
+	{ 320,  8, 2, 40, 1},
+	{ 360,  9, 2, 40, 1},
+	{ 400, 10, 2, 40, 1},
+	{ 720,  9, 2, 80, 3},
 	{1200, 15, 2, 80, 2},
 	{1440, 18, 2, 80, 4},
 	{2880, 36, 2, 80, 6},
@@ -47,8 +52,10 @@ RealPt imgDTAPtr;
 DOS_DTA *imgDTA;
 bool killRead;
 
+void CMOS_SetRegister(Bitu regNr, Bit8u val); //For setting equipment word
+
 /* 2 floppys and 2 harddrives, max */
-imageDisk *imageDiskList[4];
+imageDisk *imageDiskList[MAX_DISK_IMAGES];
 imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
 Bits swapPosition;
 
@@ -105,7 +112,9 @@ void swapInDisks(void) {
 	}
 }
 
-void swapInNextDisk(void) {
+void swapInNextDisk(bool pressed) {
+	if (!pressed)
+		return;
 	/* Hack/feature: rescan all disks as well */
 	for(Bitu i=0;i<DOS_DRIVES;i++) {
 		if (Drives[i]) Drives[i]->EmptyCache();
@@ -192,6 +201,17 @@ imageDisk::imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHard
 		}
 		if(!founddisk) {
 			active = false;
+		} else {
+			Bit16u equipment=mem_readw(BIOS_CONFIGURATION);
+			if(equipment&1) {
+				Bitu numofdisks = (equipment>>6)&3;
+				numofdisks++;
+				if(numofdisks > 1) numofdisks=1;//max 2 floppies at the moment
+				equipment&=~0x00C0;
+				equipment|=(numofdisks<<6);
+			} else equipment|=1;
+			mem_writew(BIOS_CONFIGURATION,equipment);
+			CMOS_SetRegister(0x14, equipment);
 		}
 	}
 }
@@ -267,7 +287,6 @@ static Bitu INT13_DiskHandler(void) {
 	Bit16u segat, bufptr;
 	Bit8u sectbuf[512];
 	Bitu  drivenum;
-	Bits  readcnt;
 	int i,t;
 	last_drive = reg_dl;
 	drivenum = GetDosDriveNumber(reg_dl);
@@ -275,21 +294,46 @@ static Bitu INT13_DiskHandler(void) {
 	//LOG_MSG("INT13: Function %x called on drive %x (dos drive %d)", reg_ah,  reg_dl, drivenum);
 	switch(reg_ah) {
 	case 0x0: /* Reset disk */
-		if(driveInactive(drivenum)) return CBRET_NONE;
-		last_status = 0x00;
-        CALLBACK_SCF(false);
+		{
+			bool any_images = false;
+			for(Bitu i = 0;i < MAX_DISK_IMAGES;i++) {
+				if(imageDiskList[i]) any_images=true;
+			}
+			/* if there aren't any diskimages (so only localdrives and virtual drives)
+			 * always succeed on reset disk. If there are diskimages then and only then
+			 * do real checks
+			 */
+			if (any_images && driveInactive(drivenum)) {
+				/* driveInactive sets carry flag if the specified drive is not available */
+				if ((machine==MCH_CGA) || (machine==MCH_PCJR)) {
+					/* those bioses call floppy drive reset for invalid drive values */
+					if (((imageDiskList[0]) && (imageDiskList[0]->active)) || ((imageDiskList[1]) && (imageDiskList[1]->active))) {
+						last_status = 0x00;
+						CALLBACK_SCF(false);
+					}
+				}
+				return CBRET_NONE;
+			}
+			last_status = 0x00;
+			CALLBACK_SCF(false);
+		}
         break;
 	case 0x1: /* Get status of last operation */
 
 		if(last_status != 0x00) {
 			reg_ah = last_status;
-		CALLBACK_SCF(true);
+			CALLBACK_SCF(true);
 		} else {
 			reg_ah = 0x00;
 			CALLBACK_SCF(false);
 		}
 		break;
 	case 0x2: /* Read sectors */
+		if (reg_al==0) {
+			reg_ah = 0x01;
+			CALLBACK_SCF(true);
+			return CBRET_NONE;
+		}
 		if(driveInactive(drivenum)) {
 			reg_ah = 0xff;
 			CALLBACK_SCF(true);
@@ -313,7 +357,7 @@ static Bitu INT13_DiskHandler(void) {
 			}
 		}
 		reg_ah = 0x00;
-            CALLBACK_SCF(false);
+        CALLBACK_SCF(false);
 		break;
 	case 0x3: /* Write sectors */
 		
@@ -340,6 +384,11 @@ static Bitu INT13_DiskHandler(void) {
 		CALLBACK_SCF(false);
         break;
 	case 0x04: /* Verify sectors */
+		if (reg_al==0) {
+			reg_ah = 0x01;
+			CALLBACK_SCF(true);
+			return CBRET_NONE;
+		}
 		if(driveInactive(drivenum)) return CBRET_NONE;
 
 		/* TODO: Finish coding this section */
@@ -359,8 +408,9 @@ static Bitu INT13_DiskHandler(void) {
 			}
 		}*/
 		reg_ah = 0x00;
+		//Qbix: The following codes don't match my specs. al should be number of sector verified
 		//reg_al = 0x10; /* CRC verify failed */
-		reg_al = 0x00; /* CRC verify succeeded */
+		//reg_al = 0x00; /* CRC verify succeeded */
 		CALLBACK_SCF(false);
           
 		break;
@@ -375,13 +425,19 @@ static Bitu INT13_DiskHandler(void) {
 		reg_bl = imageDiskList[drivenum]->GetBiosType();
 		Bit32u tmpheads, tmpcyl, tmpsect, tmpsize;
 		imageDiskList[drivenum]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		reg_ch = tmpcyl;
-		reg_cl = tmpsect;
+		reg_ch = tmpcyl & 0xff;
+		reg_cl = (((tmpcyl >> 2) & 0xc0) | (tmpsect & 0x3f)); 
 		reg_dh = tmpheads-1;
 		last_status = 0x00;
-		reg_dl = 0;
-		if(imageDiskList[2] != NULL) reg_dl++;
-		if(imageDiskList[3] != NULL) reg_dl++;
+		if (reg_dl&0x80) {	// harddisks
+			reg_dl = 0;
+			if(imageDiskList[2] != NULL) reg_dl++;
+			if(imageDiskList[3] != NULL) reg_dl++;
+		} else {		// floppy disks
+			reg_dl = 0;
+			if(imageDiskList[0] != NULL) reg_dl++;
+			if(imageDiskList[1] != NULL) reg_dl++;
+		}
 		CALLBACK_SCF(false);
 		break;
 	case 0x11: /* Recalibrate drive */
@@ -406,7 +462,6 @@ static Bitu INT13_DiskHandler(void) {
 void BIOS_SetupDisks(void) {
 /* TODO Start the time correctly */
 	call_int13=CALLBACK_Allocate();	
-	//CALLBACK_Setup(call_int13,&INT13_SmallHandler,CB_IRET);
 	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_IRET,"Int 13 Bios disk");
 	RealSetVec(0x13,CALLBACK_RealPointer(call_int13));
 	int i;
@@ -438,4 +493,3 @@ void BIOS_SetupDisks(void) {
 	MAPPER_AddHandler(swapInNextDisk,MK_f4,MMOD1,"swapimg","Swap Image");
 	killRead = false;
 }
-

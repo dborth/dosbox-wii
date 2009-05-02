@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.cpp,v 1.17 2004/10/23 17:54:36 qbix79 Exp $ */
+/* $Id: programs.cpp,v 1.24 2006/03/02 14:12:49 qbix79 Exp $ */
 
 #include <vector>
 #include <ctype.h>
@@ -30,6 +30,7 @@
 #include "support.h"
 #include "cross.h"
 #include "setup.h"
+#include "shell.h"
 
 Bitu call_program;
 
@@ -51,7 +52,7 @@ static Bit8u exe_block[]={
 static std::vector<PROGRAMS_Main*> internal_progs;
 
 void PROGRAMS_MakeFile(char * name,PROGRAMS_Main * main) {
-	Bit8u * comdata=(Bit8u *)malloc(128);
+	Bit8u * comdata=(Bit8u *)malloc(32); //MEM LEAK
 	memcpy(comdata,&exe_block,sizeof(exe_block));
 	comdata[CB_POS]=call_program&0xff;
 	comdata[CB_POS+1]=(call_program>>8)&0xff;
@@ -127,9 +128,15 @@ bool Program::GetEnvStr(const char * entry,std::string & result) {
 		MEM_StrCopy(env_read,env_string,1024);
 		if (!env_string[0]) return false;
 		env_read+=strlen(env_string)+1;
-		if (!strchr(env_string,'=')) continue;
-		if (strncasecmp(entry,env_string,strlen(entry))!=0) continue;
-		result=env_string;
+		char* equal = strchr(env_string,'=');
+		if (!equal) continue;
+		/* replace the = with \0 to get the length */
+		*equal = 0;
+		if (strlen(env_string) != strlen(entry)) continue;
+		if (strcasecmp(entry,env_string)!=0) continue;
+		/* restore the = to get the original result */
+		*equal = '=';
+		result = env_string;
 		return true;
 	} while (1);
 	return false;
@@ -197,7 +204,8 @@ void MSG_Write(const char *);
 
 void CONFIG::Run(void) {
 	FILE * f;
-	if (cmd->FindString("-writeconf",temp_line,true)) {
+	if (cmd->FindString("-writeconf",temp_line,true) 
+			|| cmd->FindString("-wc",temp_line,true)) {
 		f=fopen(temp_line.c_str(),"wb+");
 		if (!f) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
@@ -207,7 +215,8 @@ void CONFIG::Run(void) {
 		control->PrintConfig(temp_line.c_str());
 		return;
 	}
-	if (cmd->FindString("-writelang",temp_line,true)) {
+	if (cmd->FindString("-writelang",temp_line,true)
+			||cmd->FindString("-wl",temp_line,true)) {
 		f=fopen(temp_line.c_str(),"wb+");
 		if (!f) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
@@ -217,7 +226,101 @@ void CONFIG::Run(void) {
 		MSG_Write(temp_line.c_str());
 		return;
 	}
-	WriteOut(MSG_Get("PROGRAM_CONFIG_USAGE"));
+
+	/* Code for getting the current configuration.           *
+	 * Official format: config -get "section property"       *
+	 * As a bonus it will set %CONFIG% to this value as well */
+	if(cmd->FindString("-get",temp_line,true)) {
+		std::string temp2 = "";
+		cmd->GetStringRemain(temp2);//So -get n1 n2= can be used without quotes
+		if(temp2 != "") temp_line = temp_line + " " + temp2;
+
+		std::string::size_type space = temp_line.find(" ");
+		if(space == std::string::npos) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_GET_SYNTAX"));
+			return;
+		}
+		//Copy the found property to a new string and erase from templine (mind the space)
+		std::string prop = temp_line.substr(space+1); temp_line.erase(space);
+
+		Section* sec = control->GetSection(temp_line.c_str());
+		if(!sec) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_SECTION_ERROR"),temp_line.c_str());
+			return;
+		}
+		char* val = sec->GetPropValue(prop.c_str());
+		if(!val) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_NO_PROPERTY"),prop.c_str(),temp_line.c_str());   
+			return;
+		}
+		WriteOut("%s",val);
+		first_shell->SetEnv("CONFIG",val);
+		return;
+	}
+
+
+
+	/* Code for the configuration changes                                  *
+	 * Official format: config -set "section property=value"               *
+	 * Accepted: without quotes and/or without -set and/or without section *
+	 *           and/or the "=" replaced by a " "                          */
+
+	if (cmd->FindString("-set",temp_line,true)) { //get all arguments
+		std::string temp2 = "";
+		cmd->GetStringRemain(temp2);//So -set n1 n2=n3 can be used without quotes
+		if(temp2!="") temp_line = temp_line + " " + temp2;
+	} else 	if(!cmd->GetStringRemain(temp_line)) {//no set 
+			WriteOut(MSG_Get("PROGRAM_CONFIG_USAGE")); //and no arguments specified
+			return;
+	};
+	//Wanted input: n1 n2=n3
+	char copy[1024];
+	strcpy(copy,temp_line.c_str());
+	//seperate section from property
+	const char* temp = strchr(copy,' ');
+	if((temp && *temp) || (temp=strchr(copy,'=')) ) copy[temp++ - copy]= 0;
+	else {
+		WriteOut(MSG_Get("PROGRAM_CONFIG_USAGE"));
+		return;
+	}
+	//if n1 n2 n3 then replace last space with =
+	const char* sign = strchr(temp,'=');
+	if(!sign) {
+		sign = strchr(temp,' ');
+		if(sign) {
+			copy[sign - copy] = '=';
+		} else {
+			//2 items specified (no space nor = between n2 and n3
+			//assume that they posted: property value
+			//Try to determine the section.
+			Section* sec=control->GetSectionFromProperty(copy);
+			if(!sec){
+				if(control->GetSectionFromProperty(temp)) return; //Weird situation:ignore
+				WriteOut(MSG_Get("PROGRAM_CONFIG_PROPERTY_ERROR"),copy);
+				return;
+			} //Hack to allow config ems true
+			char buffer[1024];strcpy(buffer,copy);strcat(buffer,"=");strcat(buffer,temp);
+			sign = strchr(buffer,' '); 
+			if(sign) buffer[sign - buffer] = '=';
+			strcpy(copy,sec->GetName());
+			temp = buffer;
+		}
+	}
+	
+	/* Input processed. Now the real job starts
+	 * copy contains the likely "sectionname" 
+	 * temp contains "property=value" 
+	 * the section is destroyed and a new input line is given to
+	 * the configuration parser. Then the section is restarted.
+	 */
+	char* inputline = const_cast<char*>(temp);
+	Section* sec = 0;
+	sec = control->GetSection(copy);
+	if(!sec) { WriteOut(MSG_Get("PROGRAM_CONFIG_SECTION_ERROR"),copy);return;}
+	sec->ExecuteDestroy(false);
+	sec->HandleInputline(inputline);
+	sec->ExecuteInit(false);
+	return;
 }
 
 
@@ -234,4 +337,8 @@ void PROGRAMS_Init(Section* sec) {
 
 	MSG_Add("PROGRAM_CONFIG_FILE_ERROR","Can't open file %s\n");
 	MSG_Add("PROGRAM_CONFIG_USAGE","Config tool:\nUse -writeconf filename to write the current config.\nUse -writelang filename to write the current language strings.\n");
+	MSG_Add("PROGRAM_CONFIG_SECTION_ERROR","Section %s doesn't exist.\n");
+	MSG_Add("PROGRAM_CONFIG_PROPERTY_ERROR","No such section or property.\n");
+	MSG_Add("PROGRAM_CONFIG_NO_PROPERTY","There is no property %s in section %s.\n");
+	MSG_Add("PROGRAM_CONFIG_GET_SYNTAX","Correct syntax: config -get \"section property\".\n");
 }

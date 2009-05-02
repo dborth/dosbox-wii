@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,16 +28,31 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 	switch (CurMode->type) {
 	case M_CGA4:
 		{
-				Bit16u off=(y>>1)*80+(x>>2);
-				if (y&1) off+=8*1024;
-				Bit8u old=real_readb(0xb800,off);
-				if (color & 0x80) {
-					color&=3;
-					old^=color << (2*(3-(x&3)));
+				if (real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE)<=5) {
+					Bit16u off=(y>>1)*80+(x>>2);
+					if (y&1) off+=8*1024;
+
+					Bit8u old=real_readb(0xb800,off);
+					if (color & 0x80) {
+						color&=3;
+						old^=color << (2*(3-(x&3)));
+					} else {
+						old=old&cga_masks[x&3]|((color&3) << (2*(3-(x&3))));
+					}
+					real_writeb(0xb800,off,old);
 				} else {
-					old=old&cga_masks[x&3]|((color&3) << (2*(3-(x&3))));
+					Bit16u off=(y>>2)*160+((x>>2)&(~1));
+					off+=(8*1024) * (y & 3);
+
+					Bit16u old=real_readw(0xb800,off);
+					if (color & 0x80) {
+						old^=(color&1) << (7-(x&7));
+						old^=((color&2)>>1) << ((7-(x&7))+8);
+					} else {
+						old=old&(~(0x101<<(7-(x&7)))) | ((color&1) << (7-(x&7))) | (((color&2)>>1) << ((7-(x&7))+8));
+					}
+					real_writew(0xb800,off,old);
 				}
-				real_writeb(0xb800,off,old);
 		}
 		break;
 	case M_CGA2:
@@ -56,8 +71,10 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 		break;
 	case M_TANDY16:
 		{
-			Bit16u off=(y>>2)*160+(x>>1);
-			off+=(8*1024) * (y & 3);
+			IO_Write(0x3d4,0x09);
+			Bit8u scanlines_m1=IO_Read(0x3d5);
+			Bit16u off=(y>>((scanlines_m1==1)?1:2))*(CurMode->swidth>>1)+(x>>1);
+			off+=(8*1024) * (y & scanlines_m1);
 			Bit8u old=real_readb(0xb800,off);
 			Bit8u p[2];
 			p[1] = (old >> 4) & 0xf;
@@ -65,7 +82,7 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 			Bitu ind = 1-(x & 0x1);
 
 			if (color & 0x80) {
-	 			p[ind]^=color;
+	 			p[ind]^=(color & 0x7f);
 			} else {
 				p[ind]=color;
 			}
@@ -73,7 +90,7 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 			real_writeb(0xb800,off,old);
 		}
 		break;
-	case M_EGA16:
+	case M_EGA:
 		{
 			/* Set the correct bitmask for the pixel position */
 			IO_Write(0x3ce,0x8);Bit8u mask=128>>(x&7);IO_Write(0x3cf,mask);
@@ -100,6 +117,11 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 	case M_VGA:
 		mem_writeb(PhysMake(0xa000,y*320+x),color);
 		break;
+	case M_LIN8: {
+			PhysPt off=S3_LFB_BASE+y*CurMode->swidth+x;
+			mem_writeb(off,color);
+			break;
+		}
 	default:
 		LOG(LOG_INT10,LOG_ERROR)("PutPixel unhandled mode type %d",CurMode->type);
 		break;
@@ -124,7 +146,7 @@ void INT10_GetPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u * color) {
 			*color=(val>>(((7-x&7)))) & 1 ;
 		}
 		break;
-	case M_EGA16:
+	case M_EGA:
 		{
 			/* Calculate where the pixel is in video memory */
 			PhysPt off=0xa0000+CurMode->plength*page+((y*CurMode->swidth+x)>>3);
@@ -144,6 +166,11 @@ void INT10_GetPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u * color) {
 	case M_VGA:
 		*color=mem_readb(PhysMake(0xa000,320*y+x));
 		break;
+	case M_LIN8: {
+			PhysPt off=S3_LFB_BASE+y*CurMode->swidth+x;
+			*color = mem_readb(off);
+			break;
+		}
 	default:
 		LOG(LOG_INT10,LOG_ERROR)("GetPixel unhandled mode type %d",CurMode->type);
 		break;

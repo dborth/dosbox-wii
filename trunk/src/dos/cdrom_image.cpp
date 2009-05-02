@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_image.cpp,v 1.4 2004/10/05 19:55:03 qbix79 Exp $ */
+/* $Id: cdrom_image.cpp,v 1.11 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include <cctype>
 #include <cmath>
@@ -29,9 +29,12 @@
 #include <sys/stat.h>
 #include "cdrom.h"
 #include "drives.h"
+#include "support.h"
 
 #if !defined(WIN32)
 #include <libgen.h>
+#else
+#include <string.h>
 #endif
 
 using namespace std;
@@ -256,7 +259,7 @@ bool CDROM_Interface_Image::ReadSectors(PhysPt buffer, bool raw, unsigned long s
 	Bitu buflen = num * sectorSize;
 	Bit8u* buf = new Bit8u[buflen];
 	
-	bool success;
+	bool success = true; //Gobliiins reads 0 sectors
 	for(int i = 0; i < num; i++) {
 		success = ReadSector(&buf[i * sectorSize], raw, sector);
 		if (!success) break;
@@ -387,6 +390,22 @@ bool CDROM_Interface_Image::CanReadPVD(TrackFile *file, int sectorSize, bool mod
 	return (pvd[0] == 1 && !strncmp((char*)(&pvd[1]), "CD001", 5) && pvd[6] == 1);
 }
 
+#if defined(WIN32)
+static string dirname(char * file) {
+	char * sep = strrchr(file, '\\');
+	if (sep == NULL)
+		sep = strrchr(file, '/');
+	if (sep == NULL)
+		return "";
+	else {
+		int len = (int)(sep - file);
+		char tmp[MAX_FILENAME_LENGTH];
+		safe_strncpy(tmp, file, len+1);
+		return tmp;
+	}
+}
+#endif
+
 bool CDROM_Interface_Image::LoadCueSheet(char *cuefile)
 {
 	Track track = {0, 0, 0, 0, 0, 0, false, NULL};
@@ -398,12 +417,8 @@ bool CDROM_Interface_Image::LoadCueSheet(char *cuefile)
 	bool success;
 	bool canAddTrack = false;
 	char tmp[MAX_FILENAME_LENGTH];	// dirname can change its argument
-	strncpy(tmp, cuefile, MAX_FILENAME_LENGTH);
-#if defined(WIN32)
-	string pathname("");
-#else
+	safe_strncpy(tmp, cuefile, MAX_FILENAME_LENGTH);
 	string pathname(dirname(tmp));
-#endif
 	ifstream in;
 	in.open(cuefile, ios::in);
 	if (in.fail()) return false;
@@ -572,17 +587,15 @@ bool CDROM_Interface_Image::GetRealFileName(string &filename, string &pathname)
 	if (stat(filename.c_str(), &test) == 0) return true;
 	
 	// check if file with path relative to cue file exists
-#ifndef WIN32
 	string tmpstr(pathname + "/" + filename);
 	if (stat(tmpstr.c_str(), &test) == 0) {
 		filename = tmpstr;
 		return true;
 	}
-#endif
 	// finally check if file is in a dosbox local drive
 	char fullname[CROSS_LEN];
 	char tmp[CROSS_LEN];
-	strncpy(tmp, filename.c_str(), CROSS_LEN);
+	safe_strncpy(tmp, filename.c_str(), CROSS_LEN);
 	Bit8u drive;
 	if (!DOS_MakeName(tmp, fullname, &drive)) return false;
 	

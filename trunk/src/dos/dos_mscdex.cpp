@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_mscdex.cpp,v 1.26 2004/10/17 14:45:00 qbix79 Exp $ */
+/* $Id: dos_mscdex.cpp,v 1.37 2006/03/26 11:54:44 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -34,7 +34,7 @@
 
 #define MSCDEX_VERSION_HIGH	2
 #define MSCDEX_VERSION_LOW	23
-#define MSCDEX_MAX_DRIVES	5
+#define MSCDEX_MAX_DRIVES	8
 
 // Error Codes
 #define MSCDEX_ERROR_BAD_FORMAT			11
@@ -149,7 +149,7 @@ private:
 		Bit32u	volumeSize;		// for media change
 	} TDriveInfo;
 
-	PhysPt				defaultBuffer;
+	Bit16u				defaultBufSeg;
 	TDriveInfo			dinfo[MSCDEX_MAX_DRIVES];
 	CDROM_Interface*	cdrom[MSCDEX_MAX_DRIVES];
 	
@@ -161,7 +161,7 @@ CMscdex::CMscdex(void)
 {
 	numDrives			= 0;
 	rootDriverHeaderSeg	= 0;
-	defaultBuffer		= 0;
+	defaultBufSeg		= 0;
 
 	memset(dinfo,0,sizeof(dinfo));
 	for (Bit32u i=0; i<MSCDEX_MAX_DRIVES; i++) cdrom[i] = 0;
@@ -169,9 +169,9 @@ CMscdex::CMscdex(void)
 
 CMscdex::~CMscdex(void)
 {
-	if (defaultBuffer!=0) {
-		DOS_FreeMemory(RealSeg(defaultBuffer));
-		defaultBuffer = 0;
+	if (defaultBufSeg!=0) {
+		DOS_FreeMemory(defaultBufSeg);
+		defaultBufSeg = 0;
 	}
 	for (Bit16u i=0; i<GetNumDrives(); i++) {
 		delete (cdrom)[i];
@@ -264,8 +264,8 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 									break;
 								}
 							#endif
-							#if defined (LINUX)
-								// Always use IOCTL in Linux
+							#if defined (LINUX) || defined(OS2)
+								// Always use IOCTL in Linux or OS/2
 //								if (useCdromInterface==CDROM_USE_IOCTL) {
 									cdrom[numDrives] = new CDROM_Interface_Ioctl();
 									LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: IOCTL Interface.");
@@ -305,11 +305,11 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 
 PhysPt CMscdex::GetDefaultBuffer(void)
 {
-	if (defaultBuffer==0) {
+	if (defaultBufSeg==0) {
 		Bit16u size = 128; //Size in block is size in pages ?
-		defaultBuffer = DOS_GetMemory(size);
+		defaultBufSeg = DOS_GetMemory(size);
 	};
-	return defaultBuffer;
+	return PhysMake(defaultBufSeg,0);
 };
 
 void CMscdex::GetDriverInfo	(PhysPt data)
@@ -582,7 +582,13 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 	MEM_StrCopy(pathname+1,searchName,mem_readb(pathname));
 	upcase(searchName);
 	char* searchPos = searchName;
-//	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Find : %s",searchName);
+
+	//strip of tailing . (XCOM APOCALIPSE)
+	int searchlen = strlen(searchName);
+	if(searchlen > 1 && strcmp(searchName,".."))
+		if(searchName[searchlen-1] =='.')  searchName[searchlen-1] = 0;
+
+	//LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Find : %s",searchName);
 	// read vtoc
 	PhysPt defBuffer = GetDefaultBuffer();
 	if (!ReadSectors(GetSubUnit(drive),false,16,1,defBuffer)) return false;
@@ -613,9 +619,21 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 			nameLength  = mem_readb(defBuffer+index+32);
 			MEM_StrCopy(defBuffer+index+33,entryName,nameLength);
 			if (strcmp(entryName,useName)==0) {
-//				LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Found : %s",useName);
+				//LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Found : %s",useName);
 				foundName = true;
 				break;
+			}
+			/* Xcom Apocalipse searches for MUSIC. and expects to find MUSIC;1
+			 * All Files on the CDROM are of the kind blah;1
+			 */
+			char* longername = strchr(entryName,';');
+			if(longername) {
+				*longername = 0;
+				if (strcmp(entryName,useName)==0) {
+					//LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Found : %s",useName);
+					foundName = true;
+					break;
+				}
 			}
 			index += entryLength;
 		} while (index+33<=2048);
@@ -623,15 +641,35 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 		if (foundName) {
 			// TO DO : name gefunden, Daten in den Buffer kopieren
 			if (foundComplete) {
-				if (copyFlag) LOG(LOG_MISC,LOG_ERROR)("MSCDEX: GetDirEntry: Unsupported copyflag. (result structure should be different");
-				// Direct copy
-				MEM_BlockCopy(buffer,defBuffer+index,entryLength);
+				if (copyFlag) {
+					LOG(LOG_MISC,LOG_WARN)("MSCDEX: GetDirEntry: Copyflag structure not entirely accurate maybe");
+					Bit8u readBuf[256];
+					Bit8u writeBuf[256];
+					if (entryLength > 256)
+						return false;
+					MEM_BlockRead( defBuffer+index, readBuf, entryLength );
+					writeBuf[0] = readBuf[1];						// 00h	BYTE	length of XAR in Logical Block Numbers
+					memcpy( &writeBuf[1], &readBuf[0x2], 4);		// 01h	DWORD	Logical Block Number of file start
+					writeBuf[5] = 0;writeBuf[6] = 8;				// 05h	WORD	size of disk in logical blocks
+					memcpy( &writeBuf[7], &readBuf[0xa], 4);		// 07h	DWORD	file length in bytes
+					memcpy( &writeBuf[0xb], &readBuf[0x12], 7);		// 0bh	DWORD	date and time
+					writeBuf[0x12] = readBuf[0x19];					// 12h	BYTE	bit flags
+					writeBuf[0x13] = readBuf[0x1a];					// 13h	BYTE	interleave size
+					writeBuf[0x14] = readBuf[0x1b];					// 14h	BYTE	interleave skip factor
+					memcpy( &writeBuf[0x15], &readBuf[0x1c], 2);	// 15h	WORD	volume set sequence number
+					writeBuf[0x17] = readBuf[0x20];
+					memcpy( &writeBuf[0x18], &readBuf[21], readBuf[0x20] <= 38 ? readBuf[0x20] : 38 );
+					MEM_BlockWrite( buffer, writeBuf, 0x18 + 40 );
+				} else {
+					// Direct copy
+					MEM_BlockCopy(buffer,defBuffer+index,entryLength);
+				}
 				error = iso ? 1:0;
 				return true;
 			}
 			// directory wechseln
-			dirEntrySector	= mem_readd(defBuffer+index+2);
-			dirSize			= mem_readd(defBuffer+index+10);
+			dirEntrySector = mem_readd(defBuffer+index+2);
+			dirSize	= mem_readd(defBuffer+index+10);
 		} else {
 			// continue search in next sector
 			dirSize -= 2048;
@@ -725,8 +763,7 @@ Bit16u CMscdex::GetStatusWord(Bit8u subUnit)
 	return status;
 };
 
-void CMscdex::InitNewMedia(Bit8u subUnit)
-{
+void CMscdex::InitNewMedia(Bit8u subUnit) {
 	if (subUnit<numDrives) {
 		// Reopen new media
 		cdrom[subUnit]->InitNewMedia();
@@ -735,16 +772,12 @@ void CMscdex::InitNewMedia(Bit8u subUnit)
 
 static CMscdex* mscdex = 0;
 
-static Bitu MSCDEX_Strategy_Handler(void) 
-{
-//	LOG("MSCDEX: Device Strategy Routine called.");
+static Bitu MSCDEX_Strategy_Handler(void) {
+//	MSCDEX_LOG("MSCDEX: Device Strategy Routine called.");
 	return CBRET_NONE;
 }
 
-static Bitu MSCDEX_Interrupt_Handler(void) 
-{
-//	LOG("MSCDEX: Device Interrupt Routine called.");
-	
+static Bitu MSCDEX_Interrupt_Handler(void) {
 	Bit8u	subFuncNr	= 0xFF;
 	PhysPt	data		= PhysMake(SegValue(es),reg_bx);
 	Bit8u	subUnit		= mem_readb(data+1);
@@ -752,7 +785,7 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 
 	MSCDEX_LOG("MSCDEX: Driver Function %02X",funcNr);
 
-	switch (funcNr) {
+ 	switch (funcNr) {
 	
 		case 0x03	: {	/* IOCTL INPUT */
 						PhysPt buffer	= PhysMake(mem_readw(data+0x10),mem_readw(data+0x0E));
@@ -765,11 +798,15 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 							case 0x01 :{/* Get current position */
 										TMSF pos;
 										mscdex->GetCurrentPos(subUnit,pos);
-										mem_writeb(buffer+1,0x01); // Red book
+										/*mem_writeb(buffer+1,0x01); // Red book
 										mem_writeb(buffer+2,pos.fr);
 										mem_writeb(buffer+3,pos.sec);
 										mem_writeb(buffer+4,pos.min);
-										mem_writeb(buffer+5,0x00);
+										mem_writeb(buffer+5,0x00);*/
+							//Changed to HSG as default 
+							//(Seems to fix a few broken games which don't test for it)
+										mem_writeb(buffer+1,0x00); //HSG
+										mem_writed(buffer+2,MSF_TO_FRAMES (pos.min, pos.sec, pos.fr));
 									   }break;
 							case 0x06 : /* Get Device status */
 										mem_writed(buffer+1,mscdex->GetDeviceStatus(subUnit)); 
@@ -862,6 +899,10 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 							case 0x01 : // (un)Lock door 
 										// do nothing -> report as success
 										break;
+							case 0x02 : // Reset Drive
+										LOG(LOG_MISC,LOG_WARN)("cdromDrive reset");
+										mscdex->StopAudio(subUnit);
+										break;
 							case 0x05 :	// load media
 										mscdex->LoadUnloadMedia(subUnit,false);
 										break;
@@ -913,12 +954,23 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 	return CBRET_NONE;
 }
 
-static bool MSCDEX_Handler(void)
-{
+static bool MSCDEX_Handler(void) {
+	if(reg_ah == 0x11) {
+		if(reg_al == 0x00) { 
+			reg_al = 0xff;
+			return true;
+		} else {
+			LOG(LOG_MISC,LOG_ERROR)("NETWORK REDIRECTOR USED!!!");
+			reg_ax = 0x49;//NETWERK SOFTWARE NOT INSTALLED
+			CALLBACK_SCF(true);
+			return true;
+		}
+	}
+
 	if (reg_ah!=0x15) return false;
 
 	PhysPt data = PhysMake(SegValue(es),reg_bx);
-	MSCDEX_LOG("MSCDEX: INT 2F %04X BX= %04X CX=%04X",reg_ax,reg_bx,reg_bx);
+	MSCDEX_LOG("MSCDEX: INT 2F %04X BX= %04X CX=%04X",reg_ax,reg_bx,reg_cx);
 	switch (reg_ax) {
 	
 		case 0x1500:	/* Install check */
@@ -1076,4 +1128,3 @@ void MSCDEX_Init(Section* sec)
 	/* Create MSCDEX */
 	mscdex = new CMscdex;
 };
-

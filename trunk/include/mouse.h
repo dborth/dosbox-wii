@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,18 +16,18 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mouse.h,v 1.7 2004/08/04 09:12:51 qbix79 Exp $ */
+/* $Id: mouse.h,v 1.12 2006/02/09 11:47:48 qbix79 Exp $ */
 
-#ifndef _MOUSE_H_
-#define _MOUSE_H_
+#ifndef DOSBOX_MOUSE_H
+#define DOSBOX_MOUSE_H
 
 void Mouse_ShowCursor(void);
 void Mouse_HideCursor(void);
 
-void Mouse_SetPS2State(bool use);
+bool Mouse_SetPS2State(bool use);
 void Mouse_ChangePS2Callback(Bit16u pseg, Bit16u pofs);
 
-void Mouse_CursorMoved(float x,float y);
+void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate);
 void Mouse_CursorSet(float x,float y);
 void Mouse_ButtonPressed(Bit8u button);
 void Mouse_ButtonReleased(Bit8u button);
@@ -36,4 +36,3 @@ void Mouse_AutoLock(bool enable);
 void Mouse_NewVideoMode(void);
 
 #endif
-

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_execute.cpp,v 1.44 2004/08/04 09:12:53 qbix79 Exp $ */
+/* $Id: dos_execute.cpp,v 1.54 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -131,7 +131,9 @@ bool DOS_Terminate(bool tsr) {
 	/* Set the CS:IP stored in int 0x22 back on the stack */
 	mem_writew(SegPhys(ss)+reg_sp+0,RealOff(old22));
 	mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(old22));
-	mem_writew(SegPhys(ss)+reg_sp+4,0x200); //stack isn't preserved
+	/* set IOPL=3 (Strike Commander), nested task set,
+	   interrupts enabled, test flags cleared */
+	mem_writew(SegPhys(ss)+reg_sp+4,0x7202);
 	// Free memory owned by process
 	if (!tsr) DOS_FreeProcessMemory(mempsp);
 	DOS_UpdatePSPName();
@@ -185,8 +187,11 @@ static bool MakeEnv(char * name,Bit16u * segment) {
 bool DOS_NewPSP(Bit16u segment, Bit16u size) {
 	DOS_PSP psp(segment);
 	psp.MakeNew(size);
-	DOS_PSP psp_parent(psp.GetParent());
+	Bit16u parent_psp_seg=psp.GetParent();
+	DOS_PSP psp_parent(parent_psp_seg);
 	psp.CopyFileTable(&psp_parent,false);
+	// copy command line as well (Kings Quest AGI -cga switch)
+	psp.SetCommandTail(RealMake(parent_psp_seg,0x80));
 	return true;
 };
 
@@ -243,19 +248,33 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		DOS_CloseFile(fhandle);
 		return false;
 	}
-	/* Convert the header to correct endian, i hope this works */
-	HostPt endian=(HostPt)&head;
-	for (i=0;i<sizeof(EXE_Header)/2;i++) {
-		*((Bit16u *)endian)=host_readw(endian);
-		endian+=2;
+	if (len<sizeof(EXE_Header)) {
+		if (len==0) {
+			/* Prevent executing zero byte files */
+			DOS_SetError(DOSERR_ACCESS_DENIED);
+			DOS_CloseFile(fhandle);
+			return false;
+		}
+		/* Otherwise must be a .com file */
+		iscom=true;
+	} else {
+		/* Convert the header to correct endian, i hope this works */
+		HostPt endian=(HostPt)&head;
+		for (i=0;i<sizeof(EXE_Header)/2;i++) {
+			*((Bit16u *)endian)=host_readw(endian);
+			endian+=2;
+		}
+		if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
+		else {
+			if(head.pages & ~0x07ff) /* 1 MB dos maximum address limit. Fixes TC3 IDE (kippesoep) */
+				LOG(LOG_EXEC,LOG_NORMAL)("Weird header: head.pages > 1 MB");
+			head.pages&=0x07ff;
+			headersize = head.headersize*16;
+			imagesize = head.pages*512-headersize; 
+			if (imagesize+headersize<512) imagesize = 512-headersize;
+		}
 	}
-	if (len<sizeof(EXE_Header)) iscom=true;	
-	if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
-	else {
-		headersize = head.headersize*16;
-		imagesize = head.pages*512-headersize; 
-		if (imagesize+headersize<512) imagesize = 512-headersize;
-	}
+	Bit8u * loadbuf=(Bit8u *)new Bit8u[0x10000];
 	if (flags!=OVERLAY) {
 		/* Create an environment block */
 		envseg=block.exec.envseg;
@@ -267,6 +286,14 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		Bit16u minsize,maxsize;Bit16u maxfree=0xffff;DOS_AllocateMemory(&pspseg,&maxfree);
 		if (iscom) {
 			minsize=0x1000;maxsize=0xffff;
+			if (machine==MCH_PCJR) {
+				/* try to load file into memory below 96k */ 
+				pos=0;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
+				Bit16u dataread=0x1800;
+				DOS_ReadFile(fhandle,loadbuf,&dataread);
+				if (dataread<0x1800) maxsize=dataread;
+				if (minsize>maxsize) minsize=maxsize;
+			}
 		} else {	/* Exe size calculated from header */
 			minsize=long2para(imagesize+(head.minmemory<<4)+256);
 			if (head.maxmemory!=0) maxsize=long2para(imagesize+(head.maxmemory<<4)+256);
@@ -280,13 +307,27 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		if (maxfree<maxsize) memsize=maxfree;
 		else memsize=maxsize;
 		if (!DOS_AllocateMemory(&pspseg,&memsize)) E_Exit("DOS:Exec error in memory");
+		if (iscom && (machine==MCH_PCJR) && (pspseg<0x2000)) {
+			maxsize=0xffff;
+			/* resize to full extent of memory block */
+			DOS_ResizeMemory(pspseg,&maxsize);
+			/* now try to lock out memory above segment 0x2000 */
+			if ((real_readb(0x2000,0)==0x5a) && (real_readw(0x2000,1)==0) && (real_readw(0x2000,3)==0x7ffe)) {
+				/* MCB after PCJr graphics memory region is still free */
+				if (pspseg+maxsize==0x17ff) {
+					DOS_MCB cmcb((Bit16u)(pspseg-1));
+					cmcb.SetType(0x5a);		// last block
+				}
+			}
+		}
 		loadseg=pspseg+16;
-		if ((!iscom) & (head.minmemory == 0) & (head.maxmemory == 0))
-			loadseg = (0x9e000 - imagesize)/16; //c2woody
-	   
+		if (!iscom) {
+			/* Check if requested to load program into upper part of allocated memory */
+			if ((head.minmemory == 0) && (head.maxmemory == 0))
+				loadseg = ((pspseg+memsize)*0x10-imagesize)/0x10;
+		}
 	} else loadseg=block.overlay.loadseg;
 	/* Load the executable */
-	Bit8u * loadbuf=(Bit8u *)new Bit8u[0x10000];
 	loadaddress=PhysMake(loadseg,0);
 
 	if (iscom) {	/* COM Load 64k - 256 bytes max */
@@ -299,13 +340,13 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		while (imagesize>0x7FFF) {
 			readsize=0x8000;DOS_ReadFile(fhandle,loadbuf,&readsize);
 			MEM_BlockWrite(loadaddress,loadbuf,readsize);
-			if (readsize!=0x8000) LOG(LOG_EXEC,LOG_NORMAL)("Illegal header");
+//			if (readsize!=0x8000) LOG(LOG_EXEC,LOG_NORMAL)("Illegal header");
 			loadaddress+=0x8000;imagesize-=0x8000;
 		}
 		if (imagesize>0) {
 			readsize=(Bit16u)imagesize;DOS_ReadFile(fhandle,loadbuf,&readsize);
 			MEM_BlockWrite(loadaddress,loadbuf,readsize);
-			if (readsize!=imagesize) LOG(LOG_EXEC,LOG_NORMAL)("Illegal header");
+//			if (readsize!=imagesize) LOG(LOG_EXEC,LOG_NORMAL)("Illegal header");
 		}
 		/* Relocate the exe image */
 		Bit16u relocate;
@@ -376,10 +417,16 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		reg_sp-=6;
 		mem_writew(SegPhys(ss)+reg_sp+0,RealOff(csip));
 		mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(csip));
-		mem_writew(SegPhys(ss)+reg_sp+4,0x200);
+		/* DOS starts programs with a RETF, so our IRET
+		   should not modify critical flags (IOPL in v86 mode);
+		   interrupt flag is set explicitly, test flags cleared */
+		mem_writew(SegPhys(ss)+reg_sp+4,(reg_flags&(~FMASK_TEST))|FLAG_IF);
 		/* Setup the rest of the registers */
-		reg_ax=0;reg_si=0x100;
-		reg_cx=reg_dx=reg_bx=reg_di=reg_bp=0;
+		reg_ax=reg_bx=0;reg_cx=0xff;
+		reg_dx=pspseg;
+		reg_si=RealOff(csip);
+		reg_di=RealOff(sssp);
+		reg_bp=0x91c;	/* DOS internal stack begin relict */
 		SegSet16(ds,pspseg);SegSet16(es,pspseg);
 #if C_DEBUG		
 		/* Started from debug.com, then set breakpoint at start */
@@ -407,9 +454,3 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	}
 	return false;
 }
-
-
-
-
-
-

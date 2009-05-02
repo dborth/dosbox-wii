@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,19 +16,19 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_batch.cpp,v 1.14 2004/08/04 09:12:57 qbix79 Exp $ */
+/* $Id: shell_batch.cpp,v 1.20 2006/02/23 08:13:14 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "shell.h"
-
+#include "support.h"
 
 BatchFile::BatchFile(DOS_Shell * host,char * name, char * cmd_line) {
 	prev=host->bf;
 	echo=host->echo;
 	shell=host;
-	cmd=new CommandLine(0,cmd_line);
+	cmd=new CommandLine(name,cmd_line);
 	if (!DOS_OpenFile(name,128,&file_handle)) {
 		//TODO Come up with something better
 		E_Exit("SHELL:Can't open BatchFile");
@@ -51,7 +51,11 @@ emptyline:
 		n=1;
 		DOS_ReadFile(file_handle,&c,&n);
 		if (n>0) {
-			if (c>31 || c==0x1b || c=='\t')
+			/* Why are we filtering this ?
+			 * Exclusion list: tab for batch files 
+			 * escape for ansi
+			 * backspace for alien odyssey */
+			if (c>31 || c==0x1b || c=='\t' || c==8)
 				*cmd_write++=c;
 		}
 	} while (c!='\n' && n);
@@ -70,12 +74,19 @@ emptyline:
 		env_write=env_name;
 		if (*cmd_read=='%') {
 			cmd_read++;
-			if (cmd_read[0]=='%') {
+			if (cmd_read[0] == '%') {
 				cmd_read++;
 				*cmd_write++='%';
 			}
-			size_t len=strspn(cmd_read,"0123456789");
-			if (len) {
+			if (cmd_read[0] == '0') {  /* Handle %0 */
+				const char *file_name = cmd->GetFileName();
+				cmd_read++;
+				strcpy(cmd_write,file_name);
+				cmd_write+=strlen(file_name);
+				continue;
+			}
+			size_t len=strspn(cmd_read,"123456789");
+			if (len) {  /* Handle %1 %2 .. %9 */
 				memcpy(env_name,cmd_read,len);
 				env_name[len]=0;cmd_read+=len;
 				len=atoi(env_name);
@@ -126,9 +137,10 @@ again:
 		}
 	} while (c!='\n' && n);
 	*cmd_write++=0;
-	if (cmd[0]==':') {
-		char *nospace = trim(cmd+1);   
-		if (strcasecmp(nospace,where)==0) return true;
+	char *nospace = trim(cmd);
+	if (nospace[0] == ':') {
+		char* nonospace = trim(nospace+1);
+		if (strcasecmp(nonospace,where)==0) return true;
 	}
 	if (!n) {
 		delete this;

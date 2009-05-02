@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef _KEYBOARD_H_
-#define _KEYBOARD_H_
+#ifndef DOSBOX_KEYBOARD_H
+#define DOSBOX_KEYBOARD_H
 
 enum KBD_KEYS {
 	KBD_NONE,
@@ -34,7 +34,7 @@ enum KBD_KEYS {
 	KBD_capslock,KBD_scrolllock,KBD_numlock,
 	
 	KBD_grave,KBD_minus,KBD_equals,KBD_backslash,KBD_leftbracket,KBD_rightbracket,
-	KBD_semicolon,KBD_quote,KBD_period,KBD_comma,KBD_slash,
+	KBD_semicolon,KBD_quote,KBD_period,KBD_comma,KBD_slash,KBD_extra_lt_gt,
 
 	KBD_printscreen,KBD_pause,
 	KBD_insert,KBD_home,KBD_pageup,KBD_delete,KBD_end,KBD_pagedown,
@@ -47,6 +47,7 @@ enum KBD_KEYS {
 	KBD_LAST
 };
 
+void KEYBOARD_ClrBuffer(void);
 void KEYBOARD_AddKey(KBD_KEYS keytype,bool pressed);
 
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef _IPXSERVER_H_
-#define _IPXSERVER_H_
+#ifndef DOSBOX_IPXSERVER_H_
+#define DOSBOX_IPXSERVER_H_
 
 #if C_IPX
 
@@ -33,7 +33,6 @@ struct packetBuffer {
 };
 
 #define SOCKETTABLESIZE 16
-#define IPXBUFFERSIZE 1024
 #define CONVIP(hostvar) hostvar & 0xff, (hostvar >> 8) & 0xff, (hostvar >> 16) & 0xff, (hostvar >> 24) & 0xff
 #define CONVIPX(hostvar) hostvar[0], hostvar[1], hostvar[2], hostvar[3], hostvar[4], hostvar[5]
 
@@ -47,4 +46,3 @@ Bit8u packetCRC(Bit8u *buffer, Bit16u bufSize);
 #endif
 
 #endif
-

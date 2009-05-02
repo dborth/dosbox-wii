@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,17 +16,16 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+/* $Id: memory.cpp,v 1.44 2006/02/09 11:47:49 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
 #include "inout.h"
 #include "setup.h"
 #include "paging.h"
-#include "vga.h"
+#include "regs.h"
+
+#include <string.h>
 
 #define PAGES_IN_BLOCK	((1024*1024)/MEM_PAGE_SIZE)
 #define MAX_MEMORY	64
@@ -48,7 +47,7 @@ static struct MemoryBlock {
 		Bitu		start_page;
 		Bitu		end_page;
 		Bitu		pages;
-		HostPt		address;
+		PageHandler *handler;
 	} lfb;
 	struct {
 		bool enabled;
@@ -64,14 +63,11 @@ public:
 		flags=PFLAG_INIT|PFLAG_NOCODE;
 	}
 	Bitu readb(PhysPt addr) {
-		LOG_MSG("Illegal read from %x",addr);
+		LOG_MSG("Illegal read from %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
 		return 0;
 	} 
 	void writeb(PhysPt addr,Bitu val) {
-		LOG_MSG("Illegal write to %x",addr);
-	}
-	HostPt GetHostPt(Bitu phys_page) {
-		return 0;
+		LOG_MSG("Illegal write to %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
 	}
 };
 
@@ -80,7 +76,10 @@ public:
 	RAMPageHandler() {
 		flags=PFLAG_READABLE|PFLAG_WRITEABLE;
 	}
-	HostPt GetHostPt(Bitu phys_page) {
+	HostPt GetHostReadPt(Bitu phys_page) {
+		return MemBase+phys_page*MEM_PAGESIZE;
+	}
+	HostPt GetHostWritePt(Bitu phys_page) {
 		return MemBase+phys_page*MEM_PAGESIZE;
 	}
 };
@@ -91,34 +90,24 @@ public:
 		flags=PFLAG_READABLE|PFLAG_HASROM;
 	}
 	void writeb(PhysPt addr,Bitu val){
-		LOG_MSG("Write %x to rom at %x",val,addr);
+		LOG(LOG_CPU,LOG_ERROR)("Write %x to rom at %x",val,addr);
 	}
 	void writew(PhysPt addr,Bitu val){
-		LOG_MSG("Write %x to rom at %x",val,addr);
+		LOG(LOG_CPU,LOG_ERROR)("Write %x to rom at %x",val,addr);
 	}
 	void writed(PhysPt addr,Bitu val){
-		LOG_MSG("Write %x to rom at %x",val,addr);
+		LOG(LOG_CPU,LOG_ERROR)("Write %x to rom at %x",val,addr);
 	}
 };
 
-class LFBPageHandler : public RAMPageHandler {
-public:
-	LFBPageHandler() {
-		flags=PFLAG_READABLE|PFLAG_WRITEABLE|PFLAG_NOCODE;
-	}
-	HostPt GetHostPt(Bitu phys_page) {
-		return memory.lfb.address+(phys_page-memory.lfb.start_page)*4096;
-	}
-};
 
 
 static IllegalPageHandler illegal_page_handler;
 static RAMPageHandler ram_page_handler;
 static ROMPageHandler rom_page_handler;
-static LFBPageHandler lfb_page_handler;
 
-void MEM_SetLFB(Bitu page,Bitu pages,HostPt pt) {
-	memory.lfb.address=pt;
+void MEM_SetLFB(Bitu page, Bitu pages, PageHandler *handler) {
+	memory.lfb.handler=handler;
 	memory.lfb.start_page=page;
 	memory.lfb.end_page=page+pages;
 	memory.lfb.pages=pages;
@@ -129,7 +118,7 @@ PageHandler * MEM_GetPageHandler(Bitu phys_page) {
 	if (phys_page<memory.pages) {
 		return memory.phandlers[phys_page];
 	} else if ((phys_page>=memory.lfb.start_page) && (phys_page<memory.lfb.end_page)) {
-		return &lfb_page_handler;
+		return memory.lfb.handler;
 	}
 	return &illegal_page_handler;
 }
@@ -438,6 +427,38 @@ void mem_unalignedwrited(PhysPt address,Bit32u val) {
 }
 
 
+bool mem_unalignedreadw_checked_x86(PhysPt address, Bit16u * val) {
+	Bit8u rval1,rval2;
+	if (mem_readb_checked_x86(address+0, &rval1)) return true;
+	if (mem_readb_checked_x86(address+1, &rval2)) return true;
+	*val=(Bit16u)(((Bit8u)rval1) | (((Bit8u)rval2) << 8));
+	return false;
+}
+
+bool mem_unalignedreadd_checked_x86(PhysPt address, Bit32u * val) {
+	Bit8u rval1,rval2,rval3,rval4;
+	if (mem_readb_checked_x86(address+0, &rval1)) return true;
+	if (mem_readb_checked_x86(address+1, &rval2)) return true;
+	if (mem_readb_checked_x86(address+2, &rval3)) return true;
+	if (mem_readb_checked_x86(address+3, &rval4)) return true;
+	*val=(Bit32u)(((Bit8u)rval1) | (((Bit8u)rval2) << 8) | (((Bit8u)rval3) << 16) | (((Bit8u)rval4) << 24));
+	return false;
+}
+
+bool mem_unalignedwritew_checked_x86(PhysPt address,Bit16u val) {
+	if (mem_writeb_checked_x86(address,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked_x86(address+1,(Bit8u)(val & 0xff))) return true;
+	return false;
+}
+
+bool mem_unalignedwrited_checked_x86(PhysPt address,Bit32u val) {
+	if (mem_writeb_checked_x86(address,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked_x86(address+1,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked_x86(address+2,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked_x86(address+3,(Bit8u)(val & 0xff))) return true;
+	return false;
+}
+
 Bit8u mem_readb(PhysPt address) {
 	return mem_readb_inline(address);
 }
@@ -473,50 +494,76 @@ static Bitu read_p92(Bitu port,Bitu iolen) {
 	return memory.a20.controlport | (memory.a20.enabled ? 0x02 : 0);
 }
 
+HostPt GetMemBase(void) { return MemBase; }
 
+class MEMORY:public Module_base{
+private:
+	IO_ReadHandleObject ReadHandler;
+	IO_WriteHandleObject WriteHandler;
+public:	
+	MEMORY(Section* configuration):Module_base(configuration){
+		Bitu i;
+		Section_prop * section=static_cast<Section_prop *>(configuration);
+	
+		/* Setup the Physical Page Links */
+		Bitu memsize=section->Get_int("memsize");
+	
+		if (memsize < 1) memsize = 1;
+		/* max 63 to solve problems with certain xms handlers */
+		if (memsize > MAX_MEMORY-1) {
+			LOG_MSG("Maximum memory size is %d MB",MAX_MEMORY - 1);
+			memsize = MAX_MEMORY-1;
+		}
+		MemBase = new Bit8u[memsize*1024*1024];
+		if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);
+		/* Clear the memory, as new doesn't always give zeroed memory
+		 * (Visual C debug mode). We want zeroed memory though. */
+		memset((void*)MemBase,0,memsize*1024*1024);
+		memory.pages = (memsize*1024*1024)/4096;
+		/* Allocate the data for the different page information blocks */
+		memory.phandlers=new  PageHandler * [memory.pages];
+		memory.mhandles=new MemHandle [memory.pages];
+		for (i = 0;i < memory.pages;i++) {
+			memory.phandlers[i] = &ram_page_handler;
+			memory.mhandles[i] = 0;				//Set to 0 for memory allocation
+		}
+		/* Setup rom at 0xc0000-0xc8000 */
+		for (i=0xc0;i<0xc8;i++) {
+			memory.phandlers[i] = &rom_page_handler;
+		}
+		/* Setup rom at 0xf0000-0x100000 */
+		for (i=0xf0;i<0x100;i++) {
+			memory.phandlers[i] = &rom_page_handler;
+		}
+		if (machine==MCH_PCJR) {
+			/* Setup cartridge rom at 0xe0000-0xf0000 */
+			for (i=0xe0;i<0xf0;i++) {
+				memory.phandlers[i] = &rom_page_handler;
+			}
+		}
+		/* Reset some links */
+		memory.links.used = 0;
+		// A20 Line - PS/2 system control port A
+		WriteHandler.Install(0x92,write_p92,IO_MB);
+		ReadHandler.Install(0x92,read_p92,IO_MB);
+		MEM_A20_Enable(false);
+	}
+	~MEMORY(){
+		delete [] MemBase;
+		delete [] memory.phandlers;
+		delete [] memory.mhandles;
+	}
+};	
+
+	
+static MEMORY* test;	
+	
 static void MEM_ShutDown(Section * sec) {
-	free(MemBase);
+	delete test;
 }
 
 void MEM_Init(Section * sec) {
-	Bitu i;
-	Section_prop * section=static_cast<Section_prop *>(sec);
-
-	/* Setup the Physical Page Links */
-	Bitu memsize=section->Get_int("memsize");
-
-	if (memsize<1) memsize=1;
-	/* max 63 to solve problems with certain xms handlers */
-	if (memsize>MAX_MEMORY - 1) {
-		LOG_MSG("Maximum memory size is %d MB",MAX_MEMORY - 1);
-		memsize=MAX_MEMORY - 1;
-	}
-	MemBase=(HostPt)malloc(memsize*1024*1024);
-	if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);
-	memory.pages=(memsize*1024*1024)/4096;
-	/* Allocate the data for the different page information blocks */
-	memory.phandlers=new  PageHandler * [memory.pages];
-	memory.mhandles=new MemHandle [memory.pages];
-	for (i=0;i<memory.pages;i++) {
-		memory.phandlers[i]=&ram_page_handler;
-		memory.mhandles[i]=0;				//Set to 0 for memory allocation
-	}
-	/* Setup rom at 0xc0000-0xc8000 */
-	for (i=0xc0;i<0xc8;i++) {
-		memory.phandlers[i]=&rom_page_handler;
-	}
-	/* Setup rom at 0xf0000-0x0x100000 */
-	for (i=0xf0;i<0x100;i++) {
-		memory.phandlers[i]=&rom_page_handler;
-	}
-	/* Reset some links */
-	memory.links.used=0;
-	// A20 Line - PS/2 system control port A
-	IO_RegisterWriteHandler(0x92,write_p92,IO_MB);
-	IO_RegisterReadHandler(0x92,read_p92,IO_MB);
-	MEM_A20_Enable(false);
 	/* shutdown function */
+	test = new MEMORY(sec);
 	sec->AddDestroyFunction(&MEM_ShutDown);
 }
-
-

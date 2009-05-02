@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,17 +16,21 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef __CALLBACK_H
-#define __CALLBACK_H
+/* $Id: callback.h,v 1.16 2006/02/09 11:47:47 qbix79 Exp $ */
 
-#include <mem.h>
+#ifndef DOSBOX_CALLBACK_H
+#define DOSBOX_CALLBACK_H
+
+#ifndef DOSBOX_MEM_H
+#include "mem.h"
+#endif 
 
 typedef Bitu (*CallBack_Handler)(void);
 extern CallBack_Handler CallBack_Handlers[];
 
-enum { CB_RETF,CB_IRET,CB_IRET_STI };
+enum { CB_RETN, CB_RETF,CB_IRET,CB_IRET_STI };
 
-#define CB_MAX 1024
+#define CB_MAX 144
 #define CB_SEG 0xC800
 #define CB_BASE (CB_SEG << 4)
 
@@ -48,12 +52,37 @@ void CALLBACK_RunRealInt(Bit8u intnum);
 void CALLBACK_RunRealFar(Bit16u seg,Bit16u off);
 
 bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type,const char* description=0);
-bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress, const char* description=0);
+/* Returns with the size of the extra callback */
+Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress);
 
 const char* CALLBACK_GetDescription(Bitu callback);
 bool CALLBACK_Free(Bitu callback);
 
 void CALLBACK_SCF(bool val);
 void CALLBACK_SZF(bool val);
-#endif
 
+extern Bitu call_priv_io;
+
+
+class CALLBACK_HandlerObject{
+private:
+	bool installed;
+	Bit16u m_callback;
+	enum {NONE,SETUP,SETUPAT} m_type;
+    struct {	
+		RealPt old_vector;
+		Bit8u interrupt;
+		bool installed;
+	} vectorhandler;
+public:
+	CALLBACK_HandlerObject():installed(false),m_type(NONE){vectorhandler.installed=false;}
+	~CALLBACK_HandlerObject();
+	//Install and allocate a callback.
+	void Install(CallBack_Handler handler,Bitu type,const char* description=0);
+	//Only allocate a callback number
+	void Allocate(CallBack_Handler handler,const char* description=0);
+	Bit16u Get_callback(){return m_callback;}
+	RealPt Get_RealPointer(){ return RealMake(CB_SEG,m_callback << 4);}
+	void Set_RealVec(Bit8u vec);
+};
+#endif

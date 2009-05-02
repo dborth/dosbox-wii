@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_cmds.cpp,v 1.50 2004/11/13 12:06:39 qbix79 Exp $ */
+/* $Id: shell_cmds.cpp,v 1.62 2006/02/24 11:50:11 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -25,6 +25,7 @@
 #include "callback.h"
 #include "regs.h"
 #include "../dos/drives.h"
+#include "support.h"
 
 static SHELL_Cmd cmd_list[]={
 {	"CHDIR",	0,			&DOS_Shell::CMD_CHDIR,		"SHELL_CMD_CHDIR_HELP"},
@@ -59,6 +60,20 @@ static SHELL_Cmd cmd_list[]={
 {	"PATH",		1,			&DOS_Shell::CMD_PATH,		"SHELL_CMD_PATH_HELP"},
 {0,0,0,0}
 };
+bool DOS_Shell::CheckConfig(char* cmd,char*line) {
+	Section* test = control->GetSectionFromProperty(cmd);
+	if(!test) return false;
+	if(line && !line[0]) {
+		char* val = test->GetPropValue(cmd);
+		if(val) WriteOut("%s\n",val);
+		return true;
+	}
+	char newcom[1024]; newcom[0] = 0; strcpy(newcom,"z:\\config ");
+	strcat(newcom,test->GetName());	strcat(newcom," ");
+	strcat(newcom,cmd);strcat(newcom,line);
+	DoCommand(newcom);
+	return true;
+}
 
 void DOS_Shell::DoCommand(char * line) {
 /* First split the line into command and arguments */
@@ -95,7 +110,9 @@ void DOS_Shell::DoCommand(char * line) {
 		cmd_index++;
 	}
 /* This isn't an internal command execute it */
-	Execute(cmd,line);
+	if(Execute(cmd,line)) return;
+	if(CheckConfig(cmd,line)) return;
+	WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),cmd);
 }
 
 
@@ -159,7 +176,32 @@ void DOS_Shell::CMD_RENAME(char * args){
 	if(!*args) {SyntaxError();return;}
 	if((strchr(args,'*')!=NULL) || (strchr(args,'?')!=NULL) ) { WriteOut(MSG_Get("SHELL_CMD_NO_WILD"));return;}
 	char * arg1=StripWord(args);
-	DOS_Rename(arg1,args);
+	char* slash = strrchr(arg1,'\\');
+	if(slash) { 
+		slash++;
+		//If directory specified (crystal caves installer)
+		// rename from c:\X : rename c:\abc.exe abc.shr. File must appear in C:\ 
+		
+		char dir_source[DOS_PATHLENGTH]={0};
+		//Copy first and then modify, makes GCC happy
+		strcpy(dir_source,arg1);
+		char* dummy = strrchr(dir_source,'\\');
+		*dummy=0;
+
+		if((strlen(dir_source) == 2) && (dir_source[1] == ':')) 
+			strcat(dir_source,"\\"); //X: add slash
+
+		char dir_current[DOS_PATHLENGTH];
+		DOS_GetCurrentDir(0,dir_current);
+		if(!DOS_ChangeDir(dir_source)) {
+			WriteOut(MSG_Get("SHELL_ILLEGAL_PATH"));
+			return;
+		}
+		DOS_Rename(slash,args);
+		DOS_ChangeDir(dir_current);
+	} else {
+		DOS_Rename(arg1,args);
+	}
 }
 
 void DOS_Shell::CMD_ECHO(char * args){
@@ -196,6 +238,8 @@ void DOS_Shell::CMD_CHDIR(char * args) {
 		char dir[DOS_PATHLENGTH];
 		DOS_GetCurrentDir(0,dir);
 		WriteOut("%c:\\%s\n",drive,dir);
+	} else if(strlen(args) == 2 && args[1]==':') {
+		WriteOut(MSG_Get("SHELL_CMD_CHDIR_HINT"),toupper(*reinterpret_cast<unsigned char*>(&args[0])));
 	} else 	if (!DOS_ChangeDir(args)) {
 		WriteOut(MSG_Get("SHELL_CMD_CHDIR_ERROR"),args);
 	}
@@ -226,12 +270,18 @@ void DOS_Shell::CMD_RMDIR(char * args) {
 };
 
 static void FormatNumber(Bitu num,char * buf) {
-	Bitu numm,numk,numb;
+	Bitu numm,numk,numb,numg;
 	numb=num % 1000;
 	num/=1000;
 	numk=num % 1000;
 	num/=1000;
-	numm=num;
+	numm=num % 1000;
+	num/=1000;
+	numg=num;
+	if (numg) {
+		sprintf(buf,"%d,%03d,%03d,%03d",numg,numm,numk,numb);
+		return;
+	};
 	if (numm) {
 		sprintf(buf,"%d,%03d,%03d",numm,numk,numb);
 		return;
@@ -474,7 +524,7 @@ void DOS_Shell::CMD_COPY(char * args) {
 				
 				if (DOS_CreateFile(nameTarget,0,&targetHandle)) {
 					// Copy 
-					Bit8u	buffer[0x8000];
+					static Bit8u buffer[0x8000]; // static, otherwise stack overflow possible.
 					bool	failed = false;
 					Bit16u	toread = 0x8000;
 					do {
@@ -514,21 +564,52 @@ void DOS_Shell::CMD_SET(char * args) {
 		WriteOut("%s\n",line.c_str());
 	} else {
 		*p++=0;
-		if (!SetEnv(args,p)) {
+		/* parse p for envirionment variables */
+		char parsed[CMD_MAXLINE];
+		char* p_parsed = parsed;
+		while(*p) {
+			if(*p != '%') *p_parsed++ = *p++; //Just add it (most likely path)
+			else if( *(p+1) == '%') {
+				*p_parsed++ = '%'; p += 2; //%% => % 
+			} else {
+				char * second = strchr(++p,'%');
+				if(!second) continue; *second++ = 0;
+				std::string temp;
+				if (GetEnvStr(p,temp)) {
+					std::string::size_type equals = temp.find('=');
+					if (equals == std::string::npos) continue;
+					strcpy(p_parsed,temp.substr(equals+1).c_str());
+					p_parsed += strlen(p_parsed);
+				}
+				p = second;
+			}
+		}
+		*p_parsed = 0;
+		/* Try setting the variable */
+		if (!SetEnv(args,parsed)) {
 			WriteOut(MSG_Get("SHELL_CMD_SET_OUT_OF_SPACE"));
 		}
 	}
 }
-
 
 void DOS_Shell::CMD_IF(char * args) {
 	StripSpaces(args);
 	bool has_not=false;
 	char * comp=strchr(args,'=');
 	if (comp) {
-		if (comp[1]!='=') {SyntaxError();return;}
-		*comp++=' ';
-		*comp++=' ';
+		if (comp[1] == '=') {
+			*comp++ = ' ';
+			*comp++ = ' ';
+		} else if(strncasecmp(args,"ERRORLEVEL",10) == 0) {
+			/* this is in general a syntax error except for errorlevel */
+			*comp++ = ' ';
+			while(*comp++ == ' ') 
+				;	/*nothing */
+		} else if(strncasecmp(args," set ",5) !=0) {
+			/* if cond set a=b is allowed as well */
+			SyntaxError();
+			return;
+		}
 	};
 	char * word=StripWord(args);
 	if (strcasecmp(word,"NOT")==0) {
@@ -685,7 +766,17 @@ void DOS_Shell::CMD_SUBST (char * args) {
 }
 
 void DOS_Shell::CMD_LOADHIGH(char *args){
-	this->ParseLine(args);
+	Bit16u umb_start=dos_infoblock.GetStartOfUMBChain();
+	Bit8u umb_flag=dos_infoblock.GetUMBChainState();
+	Bit8u old_memstrat=DOS_GetMemAllocStrategy()&0xff;
+	if (umb_start==0x9fff) {
+		if ((umb_flag&1)==0) DOS_LinkUMBsToMemChain(1);
+		DOS_SetMemAllocStrategy(0x80);	// search in UMBs first
+		this->ParseLine(args);
+		Bit8u current_umb_flag=dos_infoblock.GetUMBChainState();
+		if ((current_umb_flag&1)!=(umb_flag&1)) DOS_LinkUMBsToMemChain(umb_flag);
+		DOS_SetMemAllocStrategy(old_memstrat);	// restore strategy
+	} else this->ParseLine(args);
 }
 
 void DOS_Shell::CMD_CHOICE(char * args){

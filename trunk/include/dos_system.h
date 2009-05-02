@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,15 +16,19 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.28 2004/11/13 12:08:42 qbix79 Exp $ */
+/* $Id: dos_system.h,v 1.31 2006/02/09 11:47:47 qbix79 Exp $ */
 
-#ifndef DOSSYSTEM_H_
-#define DOSSYSTEM_H_
+#ifndef DOSBOX_DOS_SYSTEM_H
+#define DOSBOX_DOS_SYSTEM_H
 
-#include <string.h>
+
 #include <vector>
+#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
+#endif
+#ifndef DOSBOX_CROSS_H
 #include "cross.h"
+#endif
 
 #define DOS_NAMELENGTH 12
 #define DOS_NAMELENGTH_ASCII (DOS_NAMELENGTH+1)
@@ -247,7 +251,8 @@ public:
 	char * GetInfo(void);
 	char curdir[DOS_PATHLENGTH];
 	char info[256];
-
+	/* Can be overridden for example in iso images */
+	virtual char const * GetLabel(){return dirCache.GetLabel();};
 	DOS_Drive_Cache dirCache;
 };
 
@@ -262,8 +267,12 @@ enum { DOS_SEEK_SET=0,DOS_SEEK_CUR=1,DOS_SEEK_END=2};
 
 typedef bool (MultiplexHandler)(void);
 void DOS_AddMultiplexHandler(MultiplexHandler * handler);
+void DOS_DelMultiplexHandler(MultiplexHandler * handler);
 
+/* AddDevice stores the pointer to a created device */
 void DOS_AddDevice(DOS_Device * adddev);
+/* DelDevice destroys the device that is pointed to. */
+void DOS_DelDevice(DOS_Device * dev);
+
 void VFILE_Register(const char * name,Bit8u * data,Bit32u size);
 #endif
-

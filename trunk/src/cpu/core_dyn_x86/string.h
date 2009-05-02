@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ static void dyn_string(STRING_OP op) {
 	case STR_INSB:	case STR_INSW:	case STR_INSD:
 		tmp_reg=DREG(TMPB);usesi=false;usedi=true;break;
 	default:
-		IllegalOption();
+		IllegalOption("dyn_string op");
 	}
 	gen_load_host(&cpu.direction,DREG(TMPW),4);
 	switch (op & 3) {
@@ -59,7 +59,7 @@ static void dyn_string(STRING_OP op) {
 	case 1:gen_shift_word_imm(SHIFT_SHL,true,DREG(TMPW),1);break;
 	case 2:gen_shift_word_imm(SHIFT_SHL,true,DREG(TMPW),2);break;
 	default:
-		IllegalOption();
+		IllegalOption("dyn_string shift");
 
 	}
 	if (usesi) {
@@ -80,13 +80,10 @@ static void dyn_string(STRING_OP op) {
 	dyn_savestate(&rep_state);
 	Bit8u * rep_start=cache.pos;
 	Bit8u * rep_ecx_jmp;
-	/* Check if ECX!=zero and decrease it */
+	/* Check if ECX!=zero */
 	if (decode.rep) {
 		gen_dop_word(DOP_OR,decode.big_addr,DREG(ECX),DREG(ECX));
-		Bit8u * branch_ecx=gen_create_branch(BR_NZ);
-		rep_ecx_jmp=gen_create_jump();
-		gen_fill_branch(branch_ecx);
-		gen_sop_word(SOP_DEC,decode.big_addr,DREG(ECX));
+		rep_ecx_jmp=gen_create_branch_long(BR_Z);
 	}
 	if (usesi) {
 		if (!decode.big_addr) {
@@ -95,7 +92,6 @@ static void dyn_string(STRING_OP op) {
 		} else {
 			gen_lea(DREG(EA),si_base,DREG(ESI),0,0);
 		}
-		gen_dop_word(DOP_ADD,decode.big_addr,DREG(ESI),DREG(TMPW));
 		switch (op&3) {
 		case 0:dyn_read_byte(DREG(EA),tmp_reg,false);break;
 		case 1:dyn_read_word(DREG(EA),tmp_reg,false);break;
@@ -117,7 +113,6 @@ static void dyn_string(STRING_OP op) {
 		} else {
 			gen_lea(DREG(EA),di_base,DREG(EDI),0,0);
 		}
-		gen_dop_word(DOP_ADD,decode.big_addr,DREG(EDI),DREG(TMPW));
 		/* Maybe something special to be done to fill the value */
 		switch (op) {
 		case STR_INSB:
@@ -139,25 +134,31 @@ static void dyn_string(STRING_OP op) {
 			dyn_write_word(DREG(EA),tmp_reg,true);
 			break;
 		default:
-			IllegalOption();
+			IllegalOption("dyn_string op");
 		}
 	}
 	gen_releasereg(DREG(EA));gen_releasereg(DREG(TMPB));
+
+	/* update registers */
+	if (usesi) gen_dop_word(DOP_ADD,decode.big_addr,DREG(ESI),DREG(TMPW));
+	if (usedi) gen_dop_word(DOP_ADD,decode.big_addr,DREG(EDI),DREG(TMPW));
+
 	if (decode.rep) {
-		DynState cycle_state;
+		gen_sop_word(SOP_DEC,decode.big_addr,DREG(ECX));
 		gen_sop_word(SOP_DEC,true,DREG(CYCLES));
 		gen_releasereg(DREG(CYCLES));
-		dyn_savestate(&cycle_state);
-		Bit8u * cycle_branch=gen_create_branch(BR_NLE);
-		gen_dop_word_imm(DOP_ADD,decode.big_op,DREG(EIP),decode.op_start-decode.code_start);
-		dyn_save_critical_regs();
-		gen_return(BR_Cycles);
-		gen_fill_branch(cycle_branch);
-		dyn_loadstate(&cycle_state);
-		dyn_synchstate(&rep_state);
+		dyn_savestate(&save_info[used_save_info].state);
+		save_info[used_save_info].branch_pos=gen_create_branch_long(BR_LE);
+		save_info[used_save_info].eip_change=decode.op_start-decode.code_start;
+		save_info[used_save_info].type=normal;
+		used_save_info++;
+
 		/* Jump back to start of ECX check */
+		dyn_synchstate(&rep_state);
 		gen_create_jump(rep_start);
-		gen_fill_jump(rep_ecx_jmp);
+
+		dyn_loadstate(&rep_state);
+		gen_fill_branch_long(rep_ecx_jmp);
 	}
 	gen_releasereg(DREG(TMPW));
 }

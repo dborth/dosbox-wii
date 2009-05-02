@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,9 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.77 2004/11/16 14:24:52 qbix79 Exp $ */
+/* $Id: dos.cpp,v 1.93 2006/03/08 15:57:23 qbix79 Exp $ */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -30,12 +29,13 @@
 #include "regs.h"
 #include "dos_inc.h"
 #include "setup.h"
+#include "support.h"
 
 DOS_Block dos;
 DOS_InfoBlock dos_infoblock;
 
-Bit8u dos_copybuf[0x10000];
-static Bitu call_20,call_21,call_25,call_26,call_27,call_28,call_29;
+#define DOS_COPYBUFSIZE 0x10000
+Bit8u dos_copybuf[DOS_COPYBUFSIZE];
 
 void DOS_SetError(Bit16u code) {
 	dos.errorcode=code;
@@ -89,8 +89,9 @@ static Bitu DOS_21Handler(void) {
 			}
 		default:
 			{
-				Bit8u c=reg_dl;Bit16u n=1;
+				Bit8u c = reg_dl;Bit16u n = 1;
 				DOS_WriteFile(STDOUT,&c,&n);
+				reg_al = reg_dl;
 			}
 			break;
 		};
@@ -125,8 +126,23 @@ static Bitu DOS_21Handler(void) {
 			Bit8u free=mem_readb(data);
 			Bit8u read=0;Bit8u c;Bit16u n=1;
 			if (!free) break;
-			while (read<free) {
+			for(;;) {
 				DOS_ReadFile(STDIN,&c,&n);
+				if (c == 8) {			// Backspace
+					if (read) {	//Something to backspace.
+						// STDOUT treats backspace as non-destructive.
+						         DOS_WriteFile(STDOUT,&c,&n);
+						c = ' '; DOS_WriteFile(STDOUT,&c,&n);
+						c = 8;   DOS_WriteFile(STDOUT,&c,&n);
+						--read;
+					}
+					continue;
+				}
+				if (read >= free) {		// Keyboard buffer full
+					Bit8u bell = 7;
+					DOS_WriteFile(STDOUT, &bell, &n);
+					continue;
+				}
 				DOS_WriteFile(STDOUT,&c,&n);
 				mem_writeb(data+read+2,c);
 				if (c==13) 
@@ -143,6 +159,13 @@ static Bitu DOS_21Handler(void) {
 	case 0x0c:		/* Flush Buffer and read STDIN call */
 		{
 			switch (reg_al) {
+			case 0x0:
+				/* flush STDIN-buffer */
+				Bit8u c;Bit16u n;
+				while (DOS_GetSTDINStatus()) {
+					n=1;	DOS_ReadFile(STDIN,&c,&n);
+				}
+				break;
 			case 0x1:
 			case 0x6:
 			case 0x7:
@@ -251,7 +274,7 @@ static Bitu DOS_21Handler(void) {
 		{   
 			Bit8u difference;
 			char string[1024];
-			MEM_StrCopy(SegPhys(ds)+reg_si,string,1024);
+			MEM_StrCopy(SegPhys(ds)+reg_si,string,1023); // 1024 toasts the stack
 			reg_al=FCB_Parsename(SegValue(es),reg_di,reg_al ,string, &difference);
 			reg_si+=difference;
 		}
@@ -346,6 +369,11 @@ static Bitu DOS_21Handler(void) {
 			case 0:reg_dl=dos.breakcheck;break;			/* Get the breakcheck flag */
 			case 1:dos.breakcheck=(reg_dl>0);break;		/* Set the breakcheck flag */
 			case 2:{bool old=dos.breakcheck;dos.breakcheck=(reg_dl>0);reg_dl=old;}break;
+			case 3: /* Get cpsw */
+				/* Fallthrough */
+			case 4: /* Set cpsw */
+				LOG(LOG_DOSMISC,LOG_ERROR)("Someone playing with cpsw %x",reg_ax);
+				break;
 			case 5:reg_dl=3;break;//TODO should be z						/* Always boot from c: :) */
 			case 6:											/* Get true version number */
 				reg_bl=dos.version.major;
@@ -396,8 +424,8 @@ static Bitu DOS_21Handler(void) {
 	case 0x38:					/* Set Country Code */	
 		if (reg_al==0) {		/* Get country specidic information */
 			PhysPt dest = SegPhys(ds)+reg_dx;
-			MEM_BlockWrite(dest,dos.tables.country,0x22);
-			reg_bx = 0x01;
+			MEM_BlockWrite(dest,dos.tables.country,0x18);
+			reg_ax = reg_bx = 0x01;
 			CALLBACK_SCF(false);
 			break;
 		} else {				/* Set country code */
@@ -554,7 +582,8 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x46:					/* DUP2,FORCEDUP Force duplicate file handle */
-		if (DOS_ForceDuplicateEntry(reg_bx,reg_ax)) {
+		if (DOS_ForceDuplicateEntry(reg_bx,reg_cx)) {
+			reg_ax=reg_cx; //Not all sources agree on it.
 			CALLBACK_SCF(false);
 		} else {
 			reg_ax=dos.errorcode;
@@ -706,15 +735,22 @@ static Bitu DOS_21Handler(void) {
 			reg_ax=DOS_GetMemAllocStrategy();
 			break;
 		case 1:					/* Set Strategy */
-			DOS_SetMemAllocStrategy(reg_bx);
+			if (DOS_SetMemAllocStrategy(reg_bx)) CALLBACK_SCF(false);
+			else {
+				reg_ax=1;
+				CALLBACK_SCF(true);
+			}
 			break;
 		case 2:					/* Get UMB Link Status */
-			reg_ax=1;	// no UMB support 
-			CALLBACK_SCF(true);
+			reg_al=dos_infoblock.GetUMBChainState()&1;
+			CALLBACK_SCF(false);
 			break;
 		case 3:					/* Set UMB Link Status */
-			reg_ax=1;	// failure, no support
-			CALLBACK_SCF(true);
+			if (DOS_LinkUMBsToMemChain(reg_bx)) CALLBACK_SCF(false);
+			else {
+				reg_ax=1;
+				CALLBACK_SCF(true);
+			}
 			break;
 		default:
 			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:58:Not Supported Set//Get memory allocation call %X",reg_al);
@@ -746,7 +782,7 @@ static Bitu DOS_21Handler(void) {
 			Bit16u handle;
 			if (DOS_OpenFile(name1,0,&handle)) {
 				DOS_CloseFile(handle);
-				DOS_SetError(DOSERR_ACCESS_DENIED);
+				DOS_SetError(DOSERR_FILE_ALREADY_EXISTS);
 				reg_ax=dos.errorcode;
 				CALLBACK_SCF(true);
 				break;
@@ -795,19 +831,20 @@ static Bitu DOS_21Handler(void) {
 		} else reg_al = 0xff; //Doesn't officially touch carry flag
 		break;
 	case 0x64:					/* Set device driver lookahead flag */
-		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+		LOG(LOG_DOSMISC,LOG_NORMAL)("set driver look ahead flag");
 		break;
 	case 0x65:					/* Get extented country information and a lot of other useless shit*/
 		{ /* Todo maybe fully support this for now we set it standard for USA */ 
 			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:65:Extended country information call %X",reg_ax);
-			if(reg_cx < 0x05 ) {
+			if((reg_al <=  0x07) && (reg_cx < 0x05)) {
 				DOS_SetError(DOSERR_FUNCTION_NUMBER_INVALID);
 				CALLBACK_SCF(true);
 				break;
 			}
+			Bitu len = 0; /* For 0x21 and 0x22 */
 			PhysPt data=SegPhys(es)+reg_di;
 			switch (reg_al) {
-			case 1:
+			case 0x01:
 				mem_writeb(data + 0x00,reg_al);
 				mem_writew(data + 0x01,0x26);
 				mem_writew(data + 0x03,1);
@@ -819,15 +856,40 @@ static Bitu DOS_21Handler(void) {
 				}
 				CALLBACK_SCF(false);
 				break;
-			case 2:	// Get pointer to uppercase table
-			case 3: // Get pointer to lowercase table
-			case 4: // Get pointer to filename uppercase table
-			case 5: // Get pointer to filename terminator table
-			case 6: // Get pointer to collating sequence table
-			case 7: // Get pointer to double byte char set table
-				mem_writeb(data,reg_al);
-				mem_writed(data+1,dos.tables.dcbs); //used to be 0
-				reg_cx=5;
+			case 0x02: // Get pointer to uppercase table
+			case 0x03: // Get pointer to lowercase table
+			case 0x04: // Get pointer to filename uppercase table
+			case 0x05: // Get pointer to filename terminator table
+			case 0x06: // Get pointer to collating sequence table
+			case 0x07: // Get pointer to double byte char set table
+				mem_writeb(data + 0x00, reg_al);
+				mem_writed(data + 0x01, dos.tables.dcbs); //used to be 0
+				reg_cx = 5;
+				CALLBACK_SCF(false);
+				break;
+			case 0x20: /* Capitalize Character */
+				{
+					int in  = reg_dl;
+					int out = toupper(in);
+					reg_dl  = out;
+				}
+				CALLBACK_SCF(false);
+				break;
+			case 0x21: /* Capitalize String (cx=length) */
+			case 0x22: /* Capatilize ASCIZ string */
+				data = SegPhys(ds) + reg_dx;
+				if(reg_al == 0x21) len = reg_cx; 
+				else len = mem_strlen(data); /* Is limited to 1024 */
+
+				if(len > DOS_COPYBUFSIZE - 1) E_Exit("DOS:0x65 Buffer overflow");
+				if(len) {
+					MEM_BlockRead(data,dos_copybuf,len);
+					dos_copybuf[len] = 0;
+					//No upcase as String(0x21) might be multiple asciz strings
+					for(Bitu count = 0; count < len;count++)
+						dos_copybuf[count] = toupper(*reinterpret_cast<unsigned char*>(dos_copybuf+count));
+					MEM_BlockWrite(data,dos_copybuf,len);
+				}
 				CALLBACK_SCF(false);
 				break;
 			default:
@@ -960,64 +1022,66 @@ static Bitu DOS_29Handler(void) {
 }
 
 
-void DOS_ShutDown(Section* sec)
-{	
-	for (Bit16u i=0;i<DOS_DRIVES;i++) delete Drives[i];
+class DOS:public Module_base{
+private:
+	CALLBACK_HandlerObject callback[7];
+public:
+	DOS(Section* configuration):Module_base(configuration){
+		callback[0].Install(DOS_20Handler,CB_IRET,"DOS Int 20");
+		callback[0].Set_RealVec(0x20);
+
+		callback[1].Install(DOS_21Handler,CB_IRET_STI,"DOS Int 21");
+		callback[1].Set_RealVec(0x21);
+
+		callback[2].Install(DOS_25Handler,CB_RETF,"DOS Int 25");
+		callback[2].Set_RealVec(0x25);
+
+		callback[3].Install(DOS_26Handler,CB_RETF,"DOS Int 26");
+		callback[3].Set_RealVec(0x26);
+
+		callback[4].Install(DOS_27Handler,CB_IRET,"DOS Int 27");
+		callback[4].Set_RealVec(0x27);
+
+		callback[5].Install(DOS_28Handler,CB_IRET,"DOS Int 28");
+		callback[5].Set_RealVec(0x28);
+
+		callback[6].Install(DOS_29Handler,CB_IRET,"CON Output Int 29");
+		callback[6].Set_RealVec(0x29);
+
+		DOS_SetupFiles();								/* Setup system File tables */
+		DOS_SetupDevices();							/* Setup dos devices */
+		DOS_SetupTables();
+		DOS_SetupMemory();								/* Setup first MCB */
+		DOS_SetupPrograms();
+		DOS_SetupMisc();							/* Some additional dos interrupts */
+		DOS_SetDefaultDrive(25);
+	
+		dos.version.major=5;
+		dos.version.minor=0;
+	
+		/* Setup time and date */
+		time_t curtime;struct tm *loctime;
+		curtime = time (NULL);loctime = localtime (&curtime);
+	
+		dos.date.day=(Bit8u)loctime->tm_mday;
+		dos.date.month=(Bit8u)loctime->tm_mon+1;
+		dos.date.year=(Bit16u)loctime->tm_year+1900;
+		Bit32u ticks=(Bit32u)((loctime->tm_hour*3600+loctime->tm_min*60+loctime->tm_sec)*18.2);
+		mem_writed(BIOS_TIMER,ticks);
+	}
+	~DOS(){
+		for (Bit16u i=0;i<DOS_DRIVES;i++) delete Drives[i];
+	}
 };
 
+static DOS* test;
 
-void DOS_Init(Section* sec) {
-	call_20=CALLBACK_Allocate();
-	CALLBACK_Setup(call_20,DOS_20Handler,CB_IRET,"DOS Int 20");
-	RealSetVec(0x20,CALLBACK_RealPointer(call_20));
-
-	call_21=CALLBACK_Allocate();
-	CALLBACK_Setup(call_21,DOS_21Handler,CB_IRET_STI,"DOS Int 21");
-	RealSetVec(0x21,CALLBACK_RealPointer(call_21));
-
-	call_25=CALLBACK_Allocate();
-	CALLBACK_Setup(call_25,DOS_25Handler,CB_RETF,"DOS Int 25");
-	RealSetVec(0x25,CALLBACK_RealPointer(call_25));
-	
-	call_26=CALLBACK_Allocate();
-	CALLBACK_Setup(call_26,DOS_26Handler,CB_RETF,"DOS Int 26");
-	RealSetVec(0x26,CALLBACK_RealPointer(call_26));
-	
-	call_27=CALLBACK_Allocate();
-	CALLBACK_Setup(call_27,DOS_27Handler,CB_IRET,"DOS Int 27");
-	RealSetVec(0x27,CALLBACK_RealPointer(call_27));
-
-	call_28=CALLBACK_Allocate();
-	CALLBACK_Setup(call_28,DOS_28Handler,CB_IRET,"DOS Int 28");
-	RealSetVec(0x28,CALLBACK_RealPointer(call_28));
-
-	call_29=CALLBACK_Allocate();
-	CALLBACK_Setup(call_29,DOS_29Handler,CB_IRET,"CON Output Int 29");
-	RealSetVec(0x29,CALLBACK_RealPointer(call_29));
-
-	DOS_SetupFiles();								/* Setup system File tables */
-	DOS_SetupDevices();							/* Setup dos devices */
-	DOS_SetupTables();
-	DOS_SetupMemory();								/* Setup first MCB */
-	DOS_SetupPrograms();
-	DOS_SetupMisc();							/* Some additional dos interrupts */
-	DOS_SetDefaultDrive(25);
-
-	dos.version.major=5;
-	dos.version.minor=0;
-
-	/* Setup time and date */
-	time_t curtime;struct tm *loctime;
-	curtime = time (NULL);loctime = localtime (&curtime);
-
-	dos.date.day=(Bit8u)loctime->tm_mday;
-	dos.date.month=(Bit8u)loctime->tm_mon+1;
-	dos.date.year=(Bit16u)loctime->tm_year+1900;
-	Bit32u ticks=(Bit32u)((loctime->tm_hour*3600+loctime->tm_min*60+loctime->tm_sec)*18.2);
-	mem_writed(BIOS_TIMER,ticks);
-
-	/* shutdown function */
-	sec->AddDestroyFunction(&DOS_ShutDown);	
-
+void DOS_ShutDown(Section* sec) {
+	delete test;
 }
 
+void DOS_Init(Section* sec) {
+	test = new DOS(sec);
+	/* shutdown function */
+	sec->AddDestroyFunction(&DOS_ShutDown,false);
+}

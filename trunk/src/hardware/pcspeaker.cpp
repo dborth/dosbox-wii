@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+ 
+ /* $Id: pcspeaker.cpp,v 1.22 2006/02/09 11:47:49 qbix79 Exp $ */
 
 #include <math.h>
 #include "dosbox.h"
@@ -158,7 +160,7 @@ static void ForwardPIT(float newindex) {
 
 void PCSPEAKER_SetCounter(Bitu cntr,Bitu mode) {
 	if (!spkr.last_ticks) {
-		spkr.chan->Enable(true);
+		if(spkr.chan) spkr.chan->Enable(true);
 		spkr.last_index=0;
 	}
 	spkr.last_ticks=PIC_Ticks;
@@ -213,7 +215,7 @@ void PCSPEAKER_SetCounter(Bitu cntr,Bitu mode) {
 
 void PCSPEAKER_SetType(Bitu mode) {
 	if (!spkr.last_ticks) {
-		spkr.chan->Enable(true);
+		if(spkr.chan) spkr.chan->Enable(true);
 		spkr.last_index=0;
 	}
 	spkr.last_ticks=PIC_Ticks;
@@ -221,7 +223,7 @@ void PCSPEAKER_SetType(Bitu mode) {
 	ForwardPIT(newindex);
 	switch (mode) {
 	case 0:
-    	spkr.mode=SPKR_OFF;
+		spkr.mode=SPKR_OFF;
 		AddDelayEntry(newindex,-SPKR_VOLUME);
 		break;
 	case 1:
@@ -296,26 +298,52 @@ static void PCSPEAKER_CallBack(Bitu len) {
 		}
 		*stream++=(Bit16s)(value/sample_add);
 	}
-	spkr.chan->AddSamples_m16(len,(Bit16s*)MixTemp);
-	if ((spkr.last_ticks+10000)<PIC_Ticks) {
+	if(spkr.chan) spkr.chan->AddSamples_m16(len,(Bit16s*)MixTemp);
+
+	//Turn off speaker after 10 seconds of idle or one second idle when in off mode
+	Bitu test_ticks = PIC_Ticks;
+	if ((spkr.last_ticks+10000)<test_ticks) {
 		spkr.last_ticks=0;
-		spkr.chan->Enable(false);
+		if(spkr.chan) spkr.chan->Enable(false);
+	} 
+	if((spkr.mode == SPKR_OFF) && ((spkr.last_ticks+1000) <test_ticks)) {
+		spkr.last_ticks=0;
+		if(spkr.chan) spkr.chan->Enable(false);
 	}
+}
+class PCSPEAKER:public Module_base {
+private:
+	MixerObject MixerChan;
+public:
+	PCSPEAKER(Section* configuration):Module_base(configuration){
+		spkr.chan=0;
+		Section_prop * section=static_cast<Section_prop *>(configuration);
+		if(!section->Get_bool("pcspeaker")) return;
+		spkr.mode=SPKR_OFF;
+		spkr.last_ticks=0;
+		spkr.last_index=0;
+		spkr.rate=section->Get_int("pcrate");
+		spkr.pit_max=(1000.0f/PIT_TICK_RATE)*65535;
+		spkr.pit_half=spkr.pit_max/2;
+		spkr.pit_new_max=spkr.pit_max;
+		spkr.pit_new_half=spkr.pit_half;
+		spkr.pit_index=0;
+		spkr.used=0;
+		/* Register the sound channel */
+		spkr.chan=MixerChan.Install(&PCSPEAKER_CallBack,spkr.rate,"SPKR");
+	}
+	~PCSPEAKER(){
+		Section_prop * section=static_cast<Section_prop *>(m_configuration);
+		if(!section->Get_bool("pcspeaker")) return;
+	}
+};
+static PCSPEAKER* test;
+
+void PCSPEAKER_ShutDown(Section* sec){
+	delete test;
 }
 
 void PCSPEAKER_Init(Section* sec) {
-	Section_prop * section=static_cast<Section_prop *>(sec);
-	if(!section->Get_bool("pcspeaker")) return;
-	spkr.mode=SPKR_OFF;
-	spkr.last_ticks=0;
-	spkr.last_index=0;
-	spkr.rate=section->Get_int("pcrate");
-	spkr.pit_max=(1000.0f/PIT_TICK_RATE)*65535;
-	spkr.pit_half=spkr.pit_max/2;
-	spkr.pit_new_max=spkr.pit_max;
-	spkr.pit_new_half=spkr.pit_half;
-	spkr.pit_index=0;
-	spkr.used=0;
-	/* Register the sound channel */
-	spkr.chan=MIXER_AddChannel(&PCSPEAKER_CallBack,spkr.rate,"SPKR");
+	test = new PCSPEAKER(sec);
+	sec->AddDestroyFunction(&PCSPEAKER_ShutDown,true);
 }

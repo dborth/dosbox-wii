@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: midi_alsa.h,v 1.9 2004/08/04 09:12:54 qbix79 Exp $ */
+/* $Id: midi_alsa.h,v 1.13 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #define ALSA_PCM_OLD_HW_PARAMS_API
 #define ALSA_PCM_OLD_SW_PARAMS_API
@@ -112,7 +112,7 @@ public:
 			}
 			break;
 		default:
-			LOG(LOG_MISC,LOG_WARN)("ALSA:Unknown Command: %08x", (int)msg);
+			LOG(LOG_MISC,LOG_WARN)("ALSA:Unknown Command: %08lx", (long)msg);
 			send_event(1);
 			break;
 		}
@@ -129,7 +129,7 @@ public:
 		
 		// try to use port specified in config file
 		if (conf && conf[0]) { 
-			strncpy(var, conf, 10);
+			safe_strncpy(var, conf, 10);
 			if (parse_addr(var, &seq_client, &seq_port) < 0) {
 				LOG_MSG("ALSA:Invalid alsa port %s", var);
 				return false;

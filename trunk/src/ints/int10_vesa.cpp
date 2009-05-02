@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_vesa.cpp,v 1.12 2004/09/10 22:09:54 harekiet Exp $ */
+/* $Id: int10_vesa.cpp,v 1.23 2006/02/12 23:06:15 harekiet Exp $ */
 
 #include <string.h>
 #include <stddef.h>
@@ -31,6 +31,9 @@
 
 static struct {
 	Bitu setwindow;
+	Bitu pmStart;
+	Bitu pmWindow;
+	Bitu pmPalette;
 } callback;
 
 static char string_oem[]="S3 Incorporated. Trio64";
@@ -87,7 +90,8 @@ Bit8u VESA_GetSVGAInformation(Bit16u seg,Bit16u off) {
 	PhysPt buffer=PhysMake(seg,off);
 	Bitu i;
 	bool vbe2=false;Bit16u vbe2_pos=256+off;
-	if (mem_readd(buffer)==0x32454256) vbe2=true;
+	Bitu id=mem_readd(buffer);
+	if ((id==0x56424532)||(id==0x32454256)) vbe2=true;
 	if (vbe2) {
 		for (i=0;i<0x200;i++) mem_writeb(buffer+i,0);		
 	} else {
@@ -95,8 +99,8 @@ Bit8u VESA_GetSVGAInformation(Bit16u seg,Bit16u off) {
 	}
 	/* Fill common data */
 	MEM_BlockWrite(buffer,(void *)"VESA",4);			//Identification
+	mem_writew(buffer+0x04,0x200);					//Vesa version 0x200
 	if (vbe2) {
-		mem_writew(buffer+0x04,0x200);					//Vesa version 0x200
 		mem_writed(buffer+0x06,RealMake(seg,vbe2_pos));
 		for (i=0;i<sizeof(string_oem);i++) real_writeb(seg,vbe2_pos++,string_oem[i]);
 		mem_writew(buffer+0x14,0x200);					//VBE 2 software revision
@@ -107,7 +111,6 @@ Bit8u VESA_GetSVGAInformation(Bit16u seg,Bit16u off) {
 		mem_writed(buffer+0x1e,RealMake(seg,vbe2_pos));
 		for (i=0;i<sizeof(string_productrev);i++) real_writeb(seg,vbe2_pos++,string_productrev[i]);
 	} else {
-		mem_writew(buffer+0x04,0x102);					//Vesa version 0x102
 		mem_writed(buffer+0x06,int10.rom.oemstring);	//Oemstring
 	}
 	mem_writed(buffer+0x0a,0x0);					//Capabilities and flags
@@ -116,15 +119,15 @@ Bit8u VESA_GetSVGAInformation(Bit16u seg,Bit16u off) {
 	return 0x00;
 }
 
-
-
 Bit8u VESA_GetSVGAModeInformation(Bit16u mode,Bit16u seg,Bit16u off) {
 	MODE_INFO minfo;
 	memset(&minfo,0,sizeof(minfo));
 	PhysPt buf=PhysMake(seg,off);
-	
+	Bitu pageSize;
 	Bitu i=0;
+
 	if (mode<0x100) return 0x01;
+	mode&=0xfff;
 	while (ModeList_VGA[i].mode!=0xffff) {
 		if (mode==ModeList_VGA[i].mode) goto foundit; else i++;
 	}
@@ -132,28 +135,87 @@ Bit8u VESA_GetSVGAModeInformation(Bit16u mode,Bit16u seg,Bit16u off) {
 foundit:
 	VideoModeBlock * mblock=&ModeList_VGA[i];
 	switch (mblock->type) {
-	case M_LIN8:		//Linear 8-bit
-		WLE(minfo.ModeAttributes,0x9b);
-		WLE(minfo.WinAAttributes,0x7);	//Exists/readable/writable
-		WLE(minfo.WinGranularity,64);
-		WLE(minfo.WinSize,64);
-		WLE(minfo.WinASegment,0xa000);
-//		WLE(minfo.WinBSegment,0xa000);
-		WLE(minfo.WinFuncPtr,CALLBACK_RealPointer(callback.setwindow));
-		WLE(minfo.BytesPerScanLine,mblock->swidth);
-		WLE(minfo.NumberOfPlanes,0x1);
-		WLE(minfo.BitsPerPixel,0x08);
-		WLE(minfo.NumberOfBanks,0x1);
-		WLE(minfo.MemoryModel,0x04);	//packed pixel
-		WLE(minfo.NumberOfImagePages,0x05);
-		WLE(minfo.Reserved_page,0x1);
+	case M_LIN4:
+		pageSize = mblock->sheight * mblock->swidth/2;
+		pageSize = (pageSize | 15) & ~ 15;
+		var_write(&minfo.NumberOfImagePages,(512*1024 / pageSize)-1);
+		var_write(&minfo.BytesPerScanLine,mblock->swidth/8);
+		var_write(&minfo.BitsPerPixel,4);
+		var_write(&minfo.MemoryModel,3);	//ega planar mode
+		var_write(&minfo.ModeAttributes,0x1b);	//Color, graphics, no linear buffer
 		break;
+	case M_LIN8:
+		pageSize = mblock->sheight * mblock->swidth;
+		pageSize = (pageSize | 15) & ~ 15;
+		var_write(&minfo.NumberOfImagePages,(2*1024*1024 / pageSize)-1);
+		var_write(&minfo.BytesPerScanLine,mblock->swidth);
+		var_write(&minfo.BitsPerPixel,8);
+		var_write(&minfo.MemoryModel,4);		//packed pixel
+		var_write(&minfo.ModeAttributes,0x9b);	//Color, graphics, linear buffer
+		break;
+	case M_LIN15:
+		pageSize = mblock->sheight * mblock->swidth*2;
+		pageSize = (pageSize | 15) & ~ 15;
+		var_write(&minfo.NumberOfImagePages,(2*1024*1024 / pageSize)-1);
+		var_write(&minfo.BytesPerScanLine,mblock->swidth*2);
+		var_write(&minfo.BitsPerPixel,15);
+		var_write(&minfo.MemoryModel,6);	//HiColour
+		var_write(&minfo.RedMaskSize,5);
+		var_write(&minfo.RedMaskPos,10);
+		var_write(&minfo.GreenMaskSize,5);
+		var_write(&minfo.GreenMaskPos,5);
+		var_write(&minfo.BlueMaskSize,5);
+		var_write(&minfo.BlueMaskPos,0);
+		var_write(&minfo.ModeAttributes,0x9b);	//Color, graphics, linear buffer
+		break;
+	case M_LIN16:
+		pageSize = mblock->sheight * mblock->swidth*2;
+		pageSize = (pageSize | 15) & ~ 15;
+		var_write(&minfo.NumberOfImagePages,(2*1024*1024 / pageSize)-1);
+		var_write(&minfo.BytesPerScanLine,mblock->swidth*2);
+		var_write(&minfo.BitsPerPixel,16);
+		var_write(&minfo.MemoryModel,6);	//HiColour
+		var_write(&minfo.RedMaskSize,5);
+		var_write(&minfo.RedMaskPos,11);
+		var_write(&minfo.GreenMaskSize,6);
+		var_write(&minfo.GreenMaskPos,5);
+		var_write(&minfo.BlueMaskSize,5);
+		var_write(&minfo.BlueMaskPos,0);
+		var_write(&minfo.ModeAttributes,0x9b);	//Color, graphics, linear buffer
+		break;
+	case M_LIN32:
+		pageSize = mblock->sheight * mblock->swidth*4;
+		pageSize = (pageSize | 15) & ~ 15;
+		var_write(&minfo.NumberOfImagePages,(2*1024*1024 / pageSize)-1);
+		var_write(&minfo.BytesPerScanLine,mblock->swidth*4);
+		var_write(&minfo.BitsPerPixel,32);
+		var_write(&minfo.MemoryModel,6);	//HiColour
+		var_write(&minfo.RedMaskSize,8);
+		var_write(&minfo.RedMaskPos,0x10);
+		var_write(&minfo.GreenMaskSize,0x8);
+		var_write(&minfo.GreenMaskPos,0x8);
+		var_write(&minfo.BlueMaskSize,0x8);
+		var_write(&minfo.BlueMaskPos,0x0);
+		var_write(&minfo.ReservedMaskSize,0x8);
+		var_write(&minfo.ReservedMaskPos,0x18);
+		var_write(&minfo.ModeAttributes,0x9b);	//Color, graphics, linear buffer
+		break;
+	default:
+		return 0x1;
 	}
-	WLE(minfo.XResolution,mblock->swidth);
-	WLE(minfo.YResolution,mblock->sheight);
-	WLE(minfo.XCharSize,mblock->cwidth);
-	WLE(minfo.YCharSize,mblock->cheight);
-	WLE(minfo.PhysBasePtr,S3_LFB_BASE);
+	var_write(&minfo.WinAAttributes,0x7);	//Exists/readable/writable
+	var_write(&minfo.WinGranularity,64);
+	var_write(&minfo.WinSize,64);
+	var_write(&minfo.WinASegment,0xa000);
+	var_write(&minfo.WinFuncPtr,CALLBACK_RealPointer(callback.setwindow));
+	var_write(&minfo.NumberOfPlanes,0x1);
+	var_write(&minfo.NumberOfBanks,0x1);
+	var_write(&minfo.Reserved_page,0x1);
+	var_write(&minfo.XResolution,mblock->swidth);
+	var_write(&minfo.YResolution,mblock->sheight);
+	var_write(&minfo.XCharSize,mblock->cwidth);
+	var_write(&minfo.YCharSize,mblock->cheight);
+	var_write(&minfo.PhysBasePtr,S3_LFB_BASE);
 
 	MEM_BlockWrite(buf,&minfo,sizeof(MODE_INFO));
 	return 0x00;
@@ -161,7 +223,7 @@ foundit:
 
 
 Bit8u VESA_SetSVGAMode(Bit16u mode) {
-	if (INT10_SetVideoMode(mode & 0xfff)) return 0x00;
+	if (INT10_SetVideoMode(mode)) return 0x00;
 	return 0x01;
 };
 
@@ -188,14 +250,19 @@ Bit8u VESA_GetCPUWindow(Bit8u window,Bit16u & address) {
 
 
 Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count) {
+//Structure is (vesa 3.0 doc): blue,green,red,alignment
+	Bit8u r,g,b;
 	if (index>255) return 0x1;
 	if (index+count>256) return 0x1;
 	IO_Write(0x3c8,index);
 	while (count) {
-		IO_Write(0x3c9,mem_readb(data++));
-		IO_Write(0x3c9,mem_readb(data++));
-		IO_Write(0x3c9,mem_readb(data++));
+		b = mem_readb(data++);
+		g = mem_readb(data++);
+		r = mem_readb(data++);
 		data++;
+		IO_Write(0x3c9,r);
+		IO_Write(0x3c9,g);
+		IO_Write(0x3c9,b);
 		count--;
 	}
 	return 0x00;
@@ -203,13 +270,17 @@ Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count) {
 
 
 Bit8u VESA_GetPalette(PhysPt data,Bitu index,Bitu count) {
+	Bit8u r,g,b;
 	if (index>255) return 0x1;
 	if (index+count>256) return 0x1;
 	IO_Write(0x3c7,index);
 	while (count) {
-		mem_writeb(data++,IO_Read(0x3c9));
-		mem_writeb(data++,IO_Read(0x3c9));
-		mem_writeb(data++,IO_Read(0x3c9));
+		r = IO_Read(0x3c9);
+		g = IO_Read(0x3c9);
+		b = IO_Read(0x3c9);
+		mem_writeb(data++,b);
+		mem_writeb(data++,g);
+		mem_writeb(data++,r);
 		data++;
 		count--;
 	}
@@ -217,64 +288,80 @@ Bit8u VESA_GetPalette(PhysPt data,Bitu index,Bitu count) {
 }
 
 
-Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u & bytes,Bit16u & pixels,Bit16u & lines) {
+Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u val, Bit16u & bytes,Bit16u & pixels,Bit16u & lines) {
 	Bit8u bpp;
 	switch (CurMode->type) {
+	case M_LIN4:
+		break;
 	case M_LIN8:
-		bpp=1;break;
+		bpp=1;
+		break;
+	case M_LIN15:
+	case M_LIN16:
+		bpp=2;
+		break;
+	case M_LIN32:
+		bpp=4;
+		break;
 	default:
 		return 0x1;
 	}
-	Bitu scan_len;
-	lines=0xfff;		//Does anyone care?
 	switch (subcall) {
 	case 0x00:	/* Set in pixels */
-		bytes=(pixels*bpp);
+		vga.config.scan_len = (val * bpp);
+		break;
 	case 0x02:	/* Set in bytes */
-		scan_len=bytes/8;
-		if (bytes % 8) scan_len++;
-		vga.config.scan_len=scan_len;
-		VGA_StartResize();
+		vga.config.scan_len = val;
 		break;
 	case 0x03:	/* Get maximum */
 		bytes=0x400*4;
 		pixels=bytes/bpp;
+		lines = 2*1024*1024 / bytes;
 		return 0x00;
 	case 0x01:	/* Get lengths */
 		break;
 	default:
 		return 0x1;			//Illegal call
 	}
-	/* Write the scan line to video card the simple way */
+	if (subcall!=0x01) {
+		/* Write the scan line to video card the simple way */
+		if (vga.config.scan_len & 7)
+			vga.config.scan_len += 8;
+		vga.config.scan_len /= 8;
+	}
 	pixels=(vga.config.scan_len*8)/bpp;
 	bytes=vga.config.scan_len*8;
+	lines = 2*1024*1024 / bytes;
+	VGA_StartResize();
 	return 0x0;
 }
-
-
-/* Based of the s3 univbe driver */
-static Bit8u PmodeInterface[]={
-	0x08,0x00,0x19,0x00,0x57,0x00,0x00,0x00,0x50,0x52,0x8b,0xc2,0x8a,0xe0,0xb0,0x6a,
-	0x66,0xba,0xd4,0x03,0x66,0xef,0x5a,0x58,0xc3,0x52,0x66,0xba,0xda,0x03,0xec,0xa8,
-	0x01,0x75,0xfb,0x5a,0x53,0x8a,0xf9,0xb3,0x0d,0xb1,0x0c,0x66,0x8b,0xf2,0x66,0xba,
-	0xd4,0x03,0x66,0x8b,0xc3,0x66,0xef,0x66,0x8b,0xc1,0x66,0xef,0x66,0x8b,0xde,0x8a,
-	0xe3,0xb0,0x69,0x66,0xef,0x5b,0x52,0xf6,0xc3,0x80,0x74,0x09,0x66,0xba,0xda,0x03,
-	0xec,0xa8,0x08,0x74,0xfb,0x5a,0xc3,0xf6,0xc3,0x80,0x74,0x10,0x52,0x66,0xba,0xda,
-	0x03,0xec,0xa8,0x08,0x75,0xfb,0xec,0xa8,0x08,0x74,0xfb,0x5a,0x1e,0x06,0x1f,0x0f,
-	0xb7,0xc9,0x8b,0xc2,0x66,0xba,0xc8,0x03,0xee,0x42,0xfc,0x8a,0x47,0x02,0xee,0x8a,
-	0x47,0x01,0xee,0x8a,0x07,0xee,0x83,0xc7,0x04,0x49,0x75,0xef,0x1f,0xc3
-};
 
 Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y) {
 	//TODO Maybe do things differently with lowres double line modes?	
 	Bitu start;
 	switch (CurMode->type) {
+	case M_LIN4:
+		start=vga.config.scan_len*8*y+x;
+		vga.config.display_start=start/8;
+		IO_Read(0x3da);
+		IO_Write(0x3c0,0x13+32);
+		IO_Write(0x3c0,start % 8);
+		break;
 	case M_LIN8:
 		start=vga.config.scan_len*8*y+x;
 		vga.config.display_start=start/4;
 		IO_Read(0x3da);
 		IO_Write(0x3c0,0x13+32);
 		IO_Write(0x3c0,(start % 4)*2);
+		break;
+	case M_LIN16:
+	case M_LIN15:
+		start=vga.config.scan_len*8*y+x;
+		vga.config.display_start=start/4;
+		break;
+	case M_LIN32:
+		start=vga.config.scan_len*8*y+x;
+		vga.config.display_start=start/4;
 		break;
 	default:
 		return 0x1;
@@ -289,7 +376,7 @@ Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y) {
 	switch (CurMode->type) {
 	case M_LIN8:
 		y=times;
-		x=rem*4+pan;
+		x=rem+pan;
 		break;
 	default:
 		return 0x1;
@@ -297,12 +384,29 @@ Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y) {
 	return 0x00;
 }
 
-static Bitu SetWindowPositionHandler(void) {
+static Bitu VESA_SetWindow(void) {
 	if (reg_bh) reg_ah=VESA_GetCPUWindow(reg_bl,reg_dx);
 	else reg_ah=VESA_SetCPUWindow(reg_bl,(Bit8u)reg_dx);
 	reg_al=0x4f;
 	return 0;
 }
+
+static Bitu VESA_PMSetWindow(void) {
+	VESA_SetCPUWindow(reg_bl,(Bit8u)reg_dx);
+	return 0;
+}
+static Bitu VESA_PMSetPalette(void) {
+	VESA_SetPalette(SegPhys(es) +  reg_edi, reg_dx, reg_cx );
+	return 0;
+}
+static Bitu VESA_PMSetStart(void) {
+	Bit32u start = (reg_dx << 16) | reg_cx;
+	vga.config.display_start = start;
+	return 0;
+}
+
+
+
 
 void INT10_SetupVESA(void) {
 	/* Put the mode list somewhere in memory */
@@ -324,14 +428,37 @@ void INT10_SetupVESA(void) {
 	for (i=0;i<len;i++) {
 		phys_writeb(0xc0000+int10.rom.used++,string_oem[i]);
 	}
-	/* Copy the pmode interface block */
-	int10.rom.pmode_interface=RealMake(0xc000,int10.rom.used);
-	int10.rom.pmode_interface_size=sizeof(PmodeInterface);
-	for (i=0;i<sizeof(PmodeInterface);i++) {
-		phys_writeb(0xc0000+int10.rom.used++,PmodeInterface[i]);
+	switch (svgaCard) {
+	case SVGA_S3Trio:
+		break;
 	}
-
 	callback.setwindow=CALLBACK_Allocate();
-	CALLBACK_Setup(callback.setwindow,SetWindowPositionHandler,CB_RETF);
+	callback.pmPalette=CALLBACK_Allocate();
+	callback.pmStart=CALLBACK_Allocate();
+	CALLBACK_Setup(callback.setwindow,VESA_SetWindow,CB_RETF, "VESA Real Set Window");
+	/* Prepare the pmode interface */
+	int10.rom.pmode_interface=RealMake(0xc000,int10.rom.used);
+	int10.rom.used += 8;		//Skip the byte later used for offsets
+	/* PM Set Window call */
+	int10.rom.pmode_interface_window = int10.rom.used - RealOff( int10.rom.pmode_interface );
+	phys_writew( Real2Phys(int10.rom.pmode_interface) + 0, int10.rom.pmode_interface_window );
+	callback.pmWindow=CALLBACK_Allocate();
+	CALLBACK_Setup(callback.pmWindow, VESA_PMSetWindow, CB_RETF, "VESA PM Set Window");
+	int10.rom.used += CALLBACK_SetupExtra( callback.pmWindow, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	/* PM Set start call */
+	int10.rom.pmode_interface_start = int10.rom.used - RealOff( int10.rom.pmode_interface );
+	phys_writew( Real2Phys(int10.rom.pmode_interface) + 2, int10.rom.pmode_interface_start);
+	callback.pmStart=CALLBACK_Allocate();
+	CALLBACK_Setup(callback.pmStart, VESA_PMSetStart, CB_RETF, "VESA PM Set Start");
+	int10.rom.used += CALLBACK_SetupExtra( callback.pmStart, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	/* PM Set Palette call */
+	int10.rom.pmode_interface_palette = int10.rom.used - RealOff( int10.rom.pmode_interface );
+	phys_writew( Real2Phys(int10.rom.pmode_interface) + 4, int10.rom.pmode_interface_palette);
+	callback.pmPalette=CALLBACK_Allocate();
+	CALLBACK_Setup(callback.pmPalette, VESA_PMSetPalette, CB_RETF, "VESA PM Set Palette");
+	int10.rom.used += CALLBACK_SetupExtra( callback.pmPalette, CB_RETN, PhysMake(0xc000,int10.rom.used));
+	/* Finalize the size and clear the required ports pointer */
+	phys_writew( Real2Phys(int10.rom.pmode_interface) + 6, 0);
+	int10.rom.pmode_interface_size=int10.rom.used - RealOff( int10.rom.pmode_interface );
 }
 

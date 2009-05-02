@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: messages.cpp,v 1.18 2006/02/09 11:47:57 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,9 +58,7 @@ void MSG_Replace(const char * _name, const char* _val) {
 	/* Find the message */
 	for(itmb tel=Lang.begin();tel!=Lang.end();tel++) {
 		if((*tel).name==_name) { 
-			itmb teln=tel;
-			teln++;
-			Lang.erase(tel,teln);
+			Lang.erase(tel);
 			break;
 		}
 	}

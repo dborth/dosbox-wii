@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -78,6 +78,10 @@
 #define VGAREG_MDA_WRITE_FEATURE_CTL   0x3ba
 #define VGAREG_VGA_WRITE_FEATURE_CTL   0x3da
 #define VGAREG_ACTL_RESET              0x3da
+#define VGAREG_TDY_RESET               0x3da
+#define VGAREG_TDY_ADDRESS             0x3da
+#define VGAREG_TDY_DATA                0x3de
+#define VGAREG_PCJR_DATA               0x3da
 
 #define VGAREG_MDA_MODECTL             0x3b8
 #define VGAREG_CGA_MODECTL             0x3d8
@@ -122,6 +126,9 @@ typedef struct {
 		RealPt vesa_modes;
 		RealPt pmode_interface;
 		Bit16u pmode_interface_size;
+		Bit16u pmode_interface_start;
+		Bit16u pmode_interface_window;
+		Bit16u pmode_interface_palette;
 		Bitu used;
 	} rom;
 } Int10Data;
@@ -173,9 +180,10 @@ void INT10_GetSingleDacRegister(Bit8u index,Bit8u * red,Bit8u * green,Bit8u * bl
 void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysPt data);
 void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysPt data);
 void INT10_SelectDACPage(Bit8u function,Bit8u mode);
+void INT10_GetDACPage(Bit8u* mode,Bit8u* page);
 void INT10_SetPelMask(Bit8u mask);
 void INT10_GetPelMask(Bit8u & mask);
-
+void INT10_PerformGrayScaleSumming(Bit16u start_reg,Bit16u count);
 
 
 /* Vesa Group */
@@ -185,7 +193,7 @@ Bit8u VESA_SetSVGAMode(Bit16u mode);
 Bit8u VESA_GetSVGAMode(Bit16u & mode);
 Bit8u VESA_SetCPUWindow(Bit8u window,Bit8u address);
 Bit8u VESA_GetCPUWindow(Bit8u window,Bit16u & address);
-Bit8u VESA_ScanLineLength(Bit8u subcall,Bit16u & bytes,Bit16u & pixels,Bit16u & lines);
+Bit8u VESA_ScanLineLength(Bit8u subcall, Bit16u val, Bit16u & bytes,Bit16u & pixels,Bit16u & lines);
 Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y);
 Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y);
 Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count);
@@ -193,6 +201,14 @@ Bit8u VESA_GetPalette(PhysPt data,Bitu index,Bitu count);
 
 /* Sup Groups */
 void INT10_SetupRomMemory(void);
+void INT10_SetupRomMemoryChecksum(void);
 void INT10_SetupVESA(void);
 
-
+/* EGA RIL */
+RealPt INT10_EGA_RIL_GetVersionPt(void);
+void INT10_EGA_RIL_ReadRegister(Bit8u & bl, Bit16u dx);
+void INT10_EGA_RIL_WriteRegister(Bit8u & bl, Bit8u bh, Bit16u dx);
+void INT10_EGA_RIL_ReadRegisterRange(Bit8u & bl, Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
+void INT10_EGA_RIL_WriteRegisterRange(Bit8u & bl, Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
+void INT10_EGA_RIL_ReadRegisterSet(Bit16u cx, PhysPt tbl);
+void INT10_EGA_RIL_WriteRegisterSet(Bit16u cx, PhysPt tbl);

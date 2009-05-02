@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -69,6 +69,7 @@ static void ResizeConsole( HANDLE hConsole, SHORT xSize, SHORT ySize ) {
 
 void WIN32_Console() {
 	AllocConsole();
+	SetConsoleTitle("DOSBox Debugger");
 	ResizeConsole(GetStdHandle(STD_OUTPUT_HANDLE),80,50);
 }
 #endif

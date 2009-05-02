@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -49,6 +49,20 @@ void VFILE_Register(const char * name,Bit8u * data,Bit32u size) {
 	first_file=new_file;
 }
 
+void VFILE_Remove(const char *name) {
+	VFILE_Block * chan=first_file;
+	VFILE_Block * * where=&first_file;
+	while (chan) {
+		if (strcmp(name,chan->name) == 0) {
+			*where = chan->next;
+			if(chan == first_file) first_file = chan->next;
+			delete chan;
+			return;
+		}
+		where=&chan->next;
+		chan=chan->next;
+	}
+}
 
 class Virtual_File : public DOS_File {
 public:
@@ -212,6 +226,14 @@ bool Virtual_Drive::FindNext(DOS_DTA & dta) {
 }
 
 bool Virtual_Drive::GetFileAttr(char * name,Bit16u * attr) {
+	VFILE_Block * cur_file=first_file;
+	while (cur_file) {
+		if (strcasecmp(name,cur_file->name)==0) { 
+			*attr = DOS_ATTR_ARCHIVE;	//Maybe readonly ?
+			return true;
+		}
+		cur_file=cur_file->next;
+	}
 	return false;
 }
 

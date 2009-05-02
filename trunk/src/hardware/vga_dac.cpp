@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -66,7 +66,7 @@ static void write_p3c7(Bitu port,Bitu val,Bitu iolen) {
 	vga.dac.read_index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_READ;
-
+	vga.dac.write_index= val + 1;
 }
 
 static Bitu read_p3c7(Bitu port,Bitu iolen) {
@@ -78,6 +78,10 @@ static void write_p3c8(Bitu port,Bitu val,Bitu iolen) {
 	vga.dac.write_index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_WRITE;
+}
+
+static Bitu read_p3c8(Bitu port, Bitu iolen){
+	return vga.dac.write_index;
 }
 
 static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
@@ -96,6 +100,7 @@ static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
 		switch (vga.mode) {
 		case M_VGA:
 		case M_LIN8:
+		case M_LIN16:
 				RENDER_SetPal(vga.dac.write_index,
 					vga.dac.rgb[vga.dac.write_index].red << 2,
 					vga.dac.rgb[vga.dac.write_index].green << 2,
@@ -114,6 +119,7 @@ static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
 			}
 		}
 		vga.dac.write_index++;
+//		vga.dac.read_index = vga.dac.write_index - 1;//disabled as it breaks Wari
 		vga.dac.pel_index=0;
 		break;
 	default:
@@ -136,6 +142,7 @@ static Bitu read_p3c9(Bitu port,Bitu iolen) {
 		ret=vga.dac.rgb[vga.dac.read_index].blue;
 		vga.dac.read_index++;
 		vga.dac.pel_index=0;
+//		vga.dac.write_index=vga.dac.read_index+1;//disabled as it breaks wari
 		break;
 	default:
 		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:DAC:Illegal Pel Index");			//If this can actually happen that will be the day
@@ -149,6 +156,7 @@ void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	switch (vga.mode) {
 	case M_VGA:
 	case M_LIN8:
+	case M_LIN16:
 		break;
 	default:
 		RENDER_SetPal(attr,
@@ -166,6 +174,7 @@ void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue) {
 	switch (vga.mode) {
 	case M_VGA:
 	case M_LIN8:
+	case M_LIN16:
 		return;
 	}
 	for (Bitu i=0;i<16;i++) 
@@ -187,10 +196,9 @@ void VGA_SetupDAC(void) {
 		IO_RegisterReadHandler(0x3c6,read_p3c6,IO_MB);
 		IO_RegisterWriteHandler(0x3c7,write_p3c7,IO_MB);
 		IO_RegisterReadHandler(0x3c7,read_p3c7,IO_MB);
+		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c8,write_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c9,write_p3c9,IO_MB);
 		IO_RegisterReadHandler(0x3c9,read_p3c9,IO_MB);
 	}
 };
-
-

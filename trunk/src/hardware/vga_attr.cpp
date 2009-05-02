@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,11 @@ void VGA_ATTR_SetPalette(Bit8u index,Bit8u val) {
 	else val=(val & 63) | (vga.attr.color_select & 0xc) << 4;
 	VGA_DAC_CombineColor(index,val);
 }
-
+Bitu read_p3c0(Bitu port,Bitu iolen) {
+//Wcharts
+	return 0x0;
+}
+ 
 void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 	if (!vga.internal.attrindex) {
 		attr(index)=val & 0x1F;
@@ -117,6 +121,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			case M_LIN8:
 				vga.config.pel_panning=(val & 0x7)/2;
 				break;
+			case M_LIN16:
 			default:
 				vga.config.pel_panning=(val & 0x7);
 			}
@@ -157,7 +162,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 }
 
 Bitu read_p3c1(Bitu port,Bitu iolen) {
-	vga.internal.attrindex=false;
+//	vga.internal.attrindex=false;
 	switch (attr(index)) {
 			/* Palette */
 	case 0x00:		case 0x01:		case 0x02:		case 0x03:
@@ -188,6 +193,7 @@ Bitu read_p3c1(Bitu port,Bitu iolen) {
 
 void VGA_SetupAttr(void) {
 	if (machine==MCH_VGA) {
+		IO_RegisterReadHandler(0x3c0,read_p3c0,IO_MB);
 		IO_RegisterWriteHandler(0x3c0,write_p3c0,IO_MB);
 		IO_RegisterReadHandler(0x3c1,read_p3c1,IO_MB);
 	}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,17 +16,24 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef __CPU_H
-#define __CPU_H
+#ifndef DOSBOX_CPU_H
+#define DOSBOX_CPU_H
 
+#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h" 
+#endif
+#ifndef DOSBOX_REGS_H
 #include "regs.h"
+#endif
+#ifndef DOSBOX_MEM_H
 #include "mem.h"
+#endif
 
 /* CPU Cycle Timing */
 extern Bits CPU_Cycles;
 extern Bits CPU_CycleLeft;
 extern Bits CPU_CycleMax;
+extern bool CPU_CycleAuto;
 
 /* Some common Defines */
 /* A CPU Handler */
@@ -43,8 +50,8 @@ Bits CPU_Core_Dyn_X86_Run(void);
 
 extern Bit16u parity_lookup[256];
 
-void CPU_LLDT(Bitu selector);
-void CPU_LTR(Bitu selector);
+bool CPU_LLDT(Bitu selector);
+bool CPU_LTR(Bitu selector);
 void CPU_LIDT(Bitu limit,Bitu base);
 void CPU_LGDT(Bitu limit,Bitu base);
 
@@ -57,8 +64,13 @@ void CPU_ARPL(Bitu & dest_sel,Bitu src_sel);
 void CPU_LAR(Bitu selector,Bitu & ar);
 void CPU_LSL(Bitu selector,Bitu & limit);
 
-bool CPU_SET_CRX(Bitu cr,Bitu value);
+void CPU_SET_CRX(Bitu cr,Bitu value);
+bool CPU_WRITE_CRX(Bitu cr,Bitu value);
 Bitu CPU_GET_CRX(Bitu cr);
+bool CPU_READ_CRX(Bitu cr,Bit32u & retvalue);
+
+bool CPU_WRITE_DRX(Bitu dr,Bitu value);
+bool CPU_READ_DRX(Bitu dr,Bit32u & retvalue);
 
 void CPU_SMSW(Bitu & word);
 Bitu CPU_LMSW(Bitu word);
@@ -85,6 +97,7 @@ void CPU_ENTER(bool use32,Bitu bytes,Bitu level);
 #define CPU_INT_SOFTWARE		0x1
 #define CPU_INT_EXCEPTION		0x2
 #define CPU_INT_HAS_ERROR		0x4
+#define CPU_INT_NOIOPLCHECK		0x8
 
 void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip);
 INLINE void CPU_HW_Interrupt(Bitu num) {
@@ -92,6 +105,9 @@ INLINE void CPU_HW_Interrupt(Bitu num) {
 }
 INLINE void CPU_SW_Interrupt(Bitu num,Bitu oldeip) {
 	CPU_Interrupt(num,CPU_INT_SOFTWARE,oldeip);
+}
+INLINE void CPU_SW_Interrupt_NoIOPLCheck(Bitu num,Bitu oldeip) {
+	CPU_Interrupt(num,CPU_INT_SOFTWARE|CPU_INT_NOIOPLCHECK,oldeip);
 }
 
 bool CPU_PrepareException(Bitu which,Bitu error);
@@ -108,17 +124,24 @@ void CPU_Push32(Bitu value);
 
 void CPU_SetFlags(Bitu word,Bitu mask);
 
+
+#define EXCEPTION_UD			6
+#define EXCEPTION_TS			10
+#define EXCEPTION_NP			11
+#define EXCEPTION_SS			12
+#define EXCEPTION_GP			13
+
+#define CR0_PROTECTION			0x00000001
+#define CR0_MONITORPROCESSOR	0x00000002
+#define CR0_FPUEMULATION		0x00000004
+#define CR0_TASKSWITCH			0x00000008
+#define CR0_FPUPRESENT			0x00000010
+#define CR0_PAGING				0x80000000
+
+
 // *********************************************************************
 // Descriptor
 // *********************************************************************
-
-#define CR0_PROTECTION		0x00000001
-#define CR0_FPUENABLED		0x00000002
-#define CR0_FPUMONITOR		0x00000004
-#define CR0_TASKSWITCH		0x00000008
-#define CR0_FPUPRESENT		0x00000010
-#define CR0_PAGING			0x80000000
-
 
 #define DESC_INVALID				0x00
 #define DESC_286_TSS_A				0x01
@@ -352,9 +375,16 @@ public:
 		return ldt_value;
 	}
 	bool LLDT(Bitu value)	{
-//TODO checking
+		if ((value&0xfffc)==0) {
+			ldt_value=0;
+			ldt_base=0;
+			ldt_limit=0;
+			return true;
+		}
 		Descriptor desc;
-		GetDescriptor(value,desc);
+		if (!GetDescriptor(value,desc)) return !CPU_PrepareException(EXCEPTION_GP,value);
+		if (desc.Type()!=DESC_LDT) return !CPU_PrepareException(EXCEPTION_GP,value);
+		if (!desc.saved.seg.p) return !CPU_PrepareException(EXCEPTION_NP,value);
 		ldt_base=desc.GetBase();
 		ldt_limit=desc.GetLimit();
 		ldt_value=value;
@@ -402,6 +432,7 @@ struct CPUBlock {
 		Bitu which,error;
 	} exception;
 	Bits direction;
+	Bit32u drx[8];
 };
 
 extern CPUBlock cpu;
@@ -418,4 +449,3 @@ INLINE void CPU_SetFlagsw(Bitu word) {
 
 
 #endif
-

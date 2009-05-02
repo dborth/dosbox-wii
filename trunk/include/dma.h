@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,10 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dma.h,v 1.12 2004/08/04 09:12:50 qbix79 Exp $ */
+/* $Id: dma.h,v 1.16 2006/02/09 11:47:47 qbix79 Exp $ */
 
-#ifndef __DMA_H
-#define __DMA_H
+#ifndef DOSBOX_DMA_H
+#define DOSBOX_DMA_H
 
 enum DMAEvent {
 	DMA_REACHED_TC,
@@ -30,19 +30,6 @@ enum DMAEvent {
 
 class DmaChannel;
 typedef void (* DMA_CallBack)(DmaChannel * chan,DMAEvent event);
-
-class DmaController {
-public:
-	bool flipflop;
-	Bit8u ctrlnum;
-	Bit8u chanbase;
-public:
-	DmaController(Bit8u num) {
-		flipflop = false;
-		ctrlnum = num;
-		chanbase = num * 4;
-	}
-};
 
 class DmaChannel {
 public:
@@ -85,9 +72,37 @@ public:
 	Bitu Write(Bitu size, Bit8u * buffer);
 };
 
-extern DmaChannel *DmaChannels[8];
-extern DmaController *DmaControllers[2];
+class DmaController {
+private:
+	Bit8u ctrlnum;
+	bool flipflop;
+	DmaChannel *DmaChannels[4];
+public:
+	IO_ReadHandleObject DMA_ReadHandler[0x11];
+	IO_WriteHandleObject DMA_WriteHandler[0x11];
+	DmaController(Bit8u num) {
+		flipflop = false;
+		ctrlnum = num;		/* first or second DMA controller */
+		for(Bit8u i=0;i<4;i++) {
+			DmaChannels[i] = new DmaChannel(i+ctrlnum*4,ctrlnum==1);
+		}
+	}
+	~DmaController(void) {
+		for(Bit8u i=0;i<4;i++) {
+			delete DmaChannels[i];
+		}
+	}
+	DmaChannel * GetChannel(Bit8u chan) {
+		if (chan<4) return DmaChannels[chan];
+		else return NULL;
+	}
+	void WriteControllerReg(Bitu reg,Bitu val,Bitu len);
+	Bitu ReadControllerReg(Bitu reg,Bitu len);
+};
+
+DmaChannel * GetDMAChannel(Bit8u chan);
+
+void CloseSecondDMAController(void);
+bool SecondDMAControllerAvailable(void);
 
 #endif
-
-

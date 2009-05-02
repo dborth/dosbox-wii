@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_local.cpp,v 1.54 2004/11/16 14:13:46 qbix79 Exp $ */
+/* $Id: drive_local.cpp,v 1.64 2006/03/13 19:58:09 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +29,7 @@
 #include "drives.h"
 #include "support.h"
 #include "cross.h"
-
+#include "inout.h"
 
 class localFile : public DOS_File {
 public:
@@ -53,13 +53,24 @@ bool localDrive::FileCreate(DOS_File * * file,char * name,Bit16u attributes) {
 	strcpy(newname,basedir);
 	strcat(newname,name);
 	CROSS_FILENAME(newname);
-	FILE * hand=fopen(dirCache.GetExpandName(newname),"wb+");
+	char* temp_name = dirCache.GetExpandName(newname); //Can only be used in till a new drive_cache action is preformed */
+	/* Test if file exists (so we need to truncate it). don't add to dirCache then */
+	bool existing_file=false;
+	
+	FILE * test=fopen(temp_name,"rb+");
+	if(test) {
+		fclose(test);
+		existing_file=true;
+
+	}
+	
+	FILE * hand=fopen(temp_name,"wb+");
 	if (!hand){
 		LOG_MSG("Warning: file creation failed: %s",newname);
 		return false;
 	}
    
-	dirCache.AddEntry(newname, true);
+	if(!existing_file) dirCache.AddEntry(newname, true);
 	/* Make the 16 bit device information */
 	*file=new localFile(name,hand,0x202);
 
@@ -161,17 +172,24 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 	
 	Bit8u sAttr;
 	dta.GetSearchParams(sAttr,tempDir);
-	if ( (sAttr & DOS_ATTR_VOLUME) && ( (*_dir==0) || fcb_findfirst ) ) {
-	// Get Volume Label (DOS_ATTR_VOLUME) and only in basedir
-	// or it's a fcb findfirst as that always returns label
+
+	if (sAttr == DOS_ATTR_VOLUME) {
 		if ( strcmp(dirCache.GetLabel(), "") == 0 ) {
-			LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
-			dta.SetResult("NO_LABEL",0,0,0,DOS_ATTR_VOLUME);
-			return true;
+//			LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
+//			dta.SetResult("NO_LABEL",0,0,0,DOS_ATTR_VOLUME);
+//			return true;
+			DOS_SetError(DOSERR_NO_MORE_FILES);
+			return false;
 		}
-		// Get Volume Label && ignore search string (pandora)
 		dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
 		return true;
+	} else if ((sAttr & DOS_ATTR_VOLUME)  && (*_dir == 0) && !fcb_findfirst) { 
+	//should check for a valid leading directory instead of 0
+	//exists==true if the volume label matches the searchmask and the path is valid
+		if (WildFileCmp(dirCache.GetLabel(),tempDir)) {
+			dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
+			return true;
+		}
 	}
 	return FindNext(dta);
 }
@@ -187,7 +205,6 @@ bool localDrive::FindNext(DOS_DTA & dta) {
 	Bit8u find_attr;
 
 	dta.GetSearchParams(srch_attr,srch_pattern);
-	
 	Bitu id = dta.GetDirID();
 
 again:
@@ -195,7 +212,6 @@ again:
 		DOS_SetError(DOSERR_NO_MORE_FILES);
 		return false;
 	}
-
 	if(!WildFileCmp(dir_ent,srch_pattern)) goto again;
 
 	strcpy(full_name,srchInfo[id].srch_dir);
@@ -262,8 +278,8 @@ bool localDrive::MakeDir(char * dir) {
 	int temp=mkdir(dirCache.GetExpandName(newdir),0700);
 #endif
 	if (temp==0) dirCache.CacheOut(newdir,true);
-	// if dir already exists, return success too.
-	return (temp==0) || ((temp!=0) && (errno==EEXIST));
+
+	return (temp==0);// || ((temp!=0) && (errno==EEXIST));
 }
 
 bool localDrive::RemoveDir(char * dir) {
@@ -283,11 +299,11 @@ bool localDrive::TestDir(char * dir) {
 	CROSS_FILENAME(newdir);
 	dirCache.ExpandName(newdir);
 	// Skip directory test, if "\"
-	Bit16u len = strlen(newdir);
-	if ((len>0) && (newdir[len-1]!='\\')) {
+	size_t len = strlen(newdir);
+	if (len && (newdir[len-1]!='\\')) {
 		// It has to be a directory !
 		struct stat test;
-		if (stat(newdir,&test)==-1)			return false;
+		if (stat(newdir,&test))			return false;
 		if ((test.st_mode & S_IFDIR)==0)	return false;
 	};
 	int temp=access(newdir,F_OK);
@@ -384,6 +400,11 @@ bool localFile::Read(Bit8u * data,Bit16u * size) {
 	if (last_action==WRITE) fseek(fhandle,ftell(fhandle),SEEK_SET);
 	last_action=READ;
 	*size=fread(data,1,*size,fhandle);
+	/* Fake harddrive motion. Inspector Gadget with soundblaster compatible */
+	/* Same for Igor */
+	/* hardrive motion => unmask irq 2. Only do it when it's masked as unmasking is realitively heavy to emulate */
+	Bit8u mask = IO_Read(0x21);
+	if(mask & 0x4 ) IO_Write(0x21,mask&0xfb);
 	return true;
 };
 
@@ -409,7 +430,7 @@ bool localFile::Seek(Bit32u * pos,Bit32u type) {
 	//TODO Give some doserrorcode;
 		return false;//ERROR
 	}
-	int ret=fseek(fhandle,*pos,seektype);
+	int ret=fseek(fhandle,*reinterpret_cast<Bit32s*>(pos),seektype);
 	if (ret!=0) {
 		// Out of file range, pretend everythings ok 
 		// and move file pointer top end of file... ?! (Black Thorne)

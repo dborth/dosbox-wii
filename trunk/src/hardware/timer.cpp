@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,17 +16,16 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: timer.cpp,v 1.30 2004/11/13 11:59:46 qbix79 Exp $ */
+/* $Id: timer.cpp,v 1.35 2006/02/27 20:16:49 qbix79 Exp $ */
 
+#include <math.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "pic.h"
-#include "bios.h"
 #include "mem.h"
-#include "dosbox.h"
 #include "mixer.h"
 #include "timer.h"
-#include "math.h"
+#include "setup.h"
 
 static INLINE void BIN2BCD(Bit16u& val) {
 	Bit16u temp=val%10 + (((val/10)%10)<<4)+ (((val/100)%10)<<8) + (((val/1000)%10)<<12);
@@ -122,6 +121,7 @@ static void counter_latch(Bitu counter) {
 
 
 static void write_latch(Bitu port,Bitu val,Bitu iolen) {
+//LOG(LOG_PIT,LOG_ERROR)("port %X write:%X state:%X",port,val,pit[port-0x40].write_state);
 	Bitu counter=port-0x40;
 	PIT_Block * p=&pit[counter];
 	if(p->bcd == true) BIN2BCD(p->write_latch);
@@ -153,7 +153,7 @@ static void write_latch(Bitu port,Bitu val,Bitu iolen) {
 		switch (counter) {
 		case 0x00:			/* Timer hooked to IRQ 0 */
 			if (p->new_mode || p->mode == 0 ) {
-				p->new_mode=false;			
+				p->new_mode=false;
 				PIC_AddEvent(PIT0_Event,p->delay);
 			} else LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer set without new control word");
 			LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer at %.2f Hz mode %d",1000.0/p->delay,p->mode);
@@ -169,6 +169,7 @@ static void write_latch(Bitu port,Bitu val,Bitu iolen) {
 }
 
 static Bitu read_latch(Bitu port,Bitu iolen) {
+//LOG(LOG_PIT,LOG_ERROR)("port read %X",port);
 	Bit32u counter=port-0x40;
 	if (pit[counter].go_read_latch == true) 
 		counter_latch(counter);
@@ -205,6 +206,7 @@ static Bitu read_latch(Bitu port,Bitu iolen) {
 }
 
 static void write_p43(Bitu port,Bitu val,Bitu iolen) {
+//LOG(LOG_PIT,LOG_ERROR)("port 43 %X",val);
 	Bitu latch=(val >> 6) & 0x03;
 	switch (latch) {
 	case 0:
@@ -221,15 +223,31 @@ static void write_p43(Bitu port,Bitu val,Bitu iolen) {
 		} else {
 			pit[latch].read_state  = (val >> 4) & 0x03;
 			pit[latch].write_state = (val >> 4) & 0x03;
-			pit[latch].mode        = (val >> 1) & 0x07;
-			if (pit[latch].mode>5)
-				pit[latch].mode-=4; //6,7 become 2 and 3
-			if (latch==0) {
+			Bit8u mode             = (val >> 1) & 0x07;
+			if (mode > 5)
+				mode -= 4; //6,7 become 2 and 3
+
+			/* Don't set it directly so counter_output uses the old mode */
+			/* That's theory. It breaks panic. So set it here again */
+			if(!pit[latch].mode) pit[latch].mode     = mode;
+
+			/* If the line goes from low to up => generate irq. 
+			 *      ( BUT needs to stay up until acknowlegded by the cpu!!! therefore: )
+			 * If the line goes to low => disable irq.
+			 * Mode 0 starts with a low line. (so always disable irq)
+			 * Mode 2,3 start with a high line.
+			 * counter_output tells if the current counter is high or low 
+			 * So actually a mode 2 timer enables and disables irq al the time. (not handled) */
+
+			if (latch == 0) {
 				PIC_RemoveEvents(PIT0_Event);
-				if (!counter_output(0) && pit[latch].mode)
+				if (!counter_output(0) && mode)
 					PIC_ActivateIRQ(0);
+				if(!mode)
+					PIC_DeActivateIRQ(0);
 			}
-			pit[latch].new_mode	   = true;
+			pit[latch].new_mode = true;
+			pit[latch].mode     = mode; //Set the correct mode (here)
 		}
 		break;
     case 3:
@@ -245,44 +263,61 @@ static void write_p43(Bitu port,Bitu val,Bitu iolen) {
 }
 
 
-void TIMER_Init(Section* sect) {
-	IO_RegisterWriteHandler(0x40,write_latch,IO_MB);
-//	IO_RegisterWriteHandler(0x41,write_latch,IO_MB);
-	IO_RegisterWriteHandler(0x42,write_latch,IO_MB);
-	IO_RegisterWriteHandler(0x43,write_p43,IO_MB);
-	IO_RegisterReadHandler(0x40,read_latch,IO_MB);
-	IO_RegisterReadHandler(0x41,read_latch,IO_MB);
-	IO_RegisterReadHandler(0x42,read_latch,IO_MB);
-	/* Setup Timer 0 */
-	pit[0].cntr=0x10000;
-	pit[0].write_state = 3;
-	pit[0].read_state = 3;
-	pit[0].read_latch=0;
-	pit[0].write_latch=0;
-	pit[0].mode=3;
-	pit[0].bcd = false;
-	pit[0].go_read_latch = true;
+class TIMER:public Module_base{
+private:
+	IO_ReadHandleObject ReadHandler[4];
+	IO_WriteHandleObject WriteHandler[4];
+public:
+	TIMER(Section* configuration):Module_base(configuration){
+		WriteHandler[0].Install(0x40,write_latch,IO_MB);
+	//	WriteHandler[1].Install(0x41,write_latch,IO_MB);
+		WriteHandler[2].Install(0x42,write_latch,IO_MB);
+		WriteHandler[3].Install(0x43,write_p43,IO_MB);
+		ReadHandler[0].Install(0x40,read_latch,IO_MB);
+		ReadHandler[1].Install(0x41,read_latch,IO_MB);
+		ReadHandler[2].Install(0x42,read_latch,IO_MB);
+		/* Setup Timer 0 */
+		pit[0].cntr=0x10000;
+		pit[0].write_state = 3;
+		pit[0].read_state = 3;
+		pit[0].read_latch=0;
+		pit[0].write_latch=0;
+		pit[0].mode=3;
+		pit[0].bcd = false;
+		pit[0].go_read_latch = true;
+	
+		pit[1].bcd = false;
+		pit[1].write_state = 1;
+		pit[1].read_state = 1;
+		pit[1].go_read_latch = true;
+		pit[1].cntr = 18;
+		pit[1].mode = 2;
+		pit[1].write_state = 3;   
+	
+		pit[2].read_latch=0;	/* MadTv1 */
+		pit[2].write_state = 3; /* Chuck Yeager */
+		pit[2].read_state = 3;
+		pit[2].mode=3;
+		pit[2].bcd=false;   
+		pit[2].cntr=1320;
+		pit[2].go_read_latch=true;
+	
+		pit[0].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[0].cntr));
+		pit[1].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[1].cntr));
+		pit[2].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[2].cntr));
+	
+		PIC_AddEvent(PIT0_Event,pit[0].delay);
+	}
+	~TIMER(){
+		PIC_RemoveEvents(PIT0_Event);
+	}
+};
+static TIMER* test;
 
-	pit[1].bcd = false;
-	pit[1].write_state = 1;
-	pit[1].read_state = 1;
-	pit[1].go_read_latch = true;
-	pit[1].cntr = 18;
-	pit[1].mode = 2;
-	pit[1].write_state = 3;   
-
-	pit[2].read_latch=0;	/* MadTv1 */
-	pit[2].write_state = 3; /* Chuck Yeager */
-	pit[2].read_state = 3;
-	pit[2].mode=3;
-	pit[2].bcd=false;   
-	pit[2].cntr=1320;
-	pit[2].go_read_latch=true;
-
-	pit[0].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[0].cntr));
-	pit[1].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[1].cntr));
-	pit[2].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[2].cntr));
-
-	PIC_AddEvent(PIT0_Event,pit[0].delay);
+void TIMER_Destroy(Section* sec){
+	delete test;
 }
-
+void TIMER_Init(Section* sec) {
+	test = new TIMER(sec);
+	sec->AddDestroyFunction(&TIMER_Destroy);
+}

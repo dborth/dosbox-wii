@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,9 +16,12 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#if !defined __MEM_H
-#define __MEM_H
-#include <dosbox.h>
+#ifndef DOSBOX_MEM_H
+#define DOSBOX_MEM_H
+
+#ifndef DOSBOX_DOSBOX_H
+#include "dosbox.h"
+#endif
 
 typedef Bit32u PhysPt;
 typedef Bit8u * HostPt;
@@ -29,6 +32,7 @@ typedef Bit32s MemHandle;
 #define MEM_PAGESIZE 4096
 
 extern HostPt MemBase;
+HostPt GetMemBase(void);
 
 bool MEM_A20_Enabled(void);
 void MEM_A20_Enable(bool enable);
@@ -52,7 +56,7 @@ MemHandle MEM_NextHandleAt(MemHandle handle,Bitu where);
 	Working on big or little endian machines 
 */
 
-#ifdef WORDS_BIGENDIAN
+#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
 
 INLINE Bit8u host_readb(HostPt off) {
 	return off[0];
@@ -77,10 +81,6 @@ INLINE void host_writed(HostPt off,Bit32u val) {
 	off[3]=(Bit8u)(val >> 24);
 };
 
-#define MLEB(_MLE_VAL_) (_MLE_VAL_)
-#define MLEW(_MLE_VAL_) ((_MLE_VAL_ >> 8) | (_MLE_VAL_ << 8))
-#define MLED(_MLE_VAL_) ((_MLE_VAL_ >> 24)|((_MLE_VAL_ >> 8)&0xFF00)|((_MLE_VAL_ << 8)&0xFF0000)|((_MLE_VAL_ << 24)&0xFF000000))
-
 #else
 
 INLINE Bit8u host_readb(HostPt off) {
@@ -102,16 +102,20 @@ INLINE void host_writed(HostPt off,Bit32u val) {
 	*(Bit32u *)(off)=val;
 };
 
-#define MLEB(_MLE_VAL_) (_MLE_VAL_)
-#define MLEW(_MLE_VAL_) (_MLE_VAL_)
-#define MLED(_MLE_VAL_) (_MLE_VAL_)
-
 #endif
 
-#define WLE(VAR_,VAL_)						\
-	if (sizeof(VAR_)==1) VAR_=MLEB(VAL_);	\
-	if (sizeof(VAR_)==2) VAR_=MLEW(VAL_);	\
-	if (sizeof(VAR_)==4) VAR_=MLED(VAL_);
+
+INLINE void var_write(Bit8u * var, Bit8u val) {
+	host_writeb((HostPt)var, val);
+}
+
+INLINE void var_write(Bit16u * var, Bit16u val) {
+	host_writew((HostPt)var, val);
+}
+
+INLINE void var_write(Bit32u * var, Bit32u val) {
+	host_writed((HostPt)var, val);
+}
 
 /* The Folowing six functions are slower but they recognize the paged memory system */
 
@@ -199,7 +203,12 @@ INLINE RealPt RealMake(Bit16u seg,Bit16u off) {
 
 INLINE void RealSetVec(Bit8u vec,RealPt pt) {
 	mem_writed(vec<<2,pt);
-}	
+}
+
+INLINE void RealSetVec(Bit8u vec,RealPt pt,RealPt &old) {
+	old = mem_readd(vec<<2);
+	mem_writed(vec<<2,pt);
+}
 
 INLINE RealPt RealGetVec(Bit8u vec) {
 	return mem_readd(vec<<2);

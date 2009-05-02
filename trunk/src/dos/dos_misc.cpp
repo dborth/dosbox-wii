@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,37 +16,39 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_misc.cpp,v 1.12 2004/08/04 09:12:53 qbix79 Exp $ */
+/* $Id: dos_misc.cpp,v 1.16 2006/02/09 11:47:48 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"
 #include "mem.h"
 #include "regs.h"
 #include "dos_inc.h"
+#include <list>
 
 
 static Bitu call_int2f,call_int2a;
-struct MultiplexBlock {
-	MultiplexHandler * handler;
-	MultiplexBlock * next;
-};
 
-static MultiplexBlock * first_multiplex;
+static std::list<MultiplexHandler*> Multiplex;
+typedef std::list<MultiplexHandler*>::iterator Multiplex_it;
 
 void DOS_AddMultiplexHandler(MultiplexHandler * handler) {
-	MultiplexBlock * new_multiplex=new(MultiplexBlock);
-	new_multiplex->next=first_multiplex;
-	new_multiplex->handler=handler;
-	first_multiplex=new_multiplex;
+	Multiplex.push_front(handler);
+}
+
+void DOS_DelMultiplexHandler(MultiplexHandler * handler) {
+	for(Multiplex_it it =Multiplex.begin();it != Multiplex.end();it++) {
+		if(*it == handler) {
+			Multiplex.erase(it);
+			return;
+		}
+	}
 }
 
 static Bitu INT2F_Handler(void) {
-	MultiplexBlock * loop_multiplex=first_multiplex;
-	while (loop_multiplex) {
-		if ((*loop_multiplex->handler)()) return CBRET_NONE;
-		loop_multiplex=loop_multiplex->next;
-	}
-	LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Multiplex Unhandled call %4X",reg_ax);	
+	for(Multiplex_it it = Multiplex.begin();it != Multiplex.end();it++)
+		if( (*it)() ) return CBRET_NONE;
+   
+	LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Multiplex Unhandled call %4X",reg_ax);
 	return CBRET_NONE;
 };
 
@@ -58,6 +60,12 @@ static Bitu INT2A_Handler(void) {
 
 static bool DOS_MultiplexFunctions(void) {
 	switch (reg_ax) {
+	case 0x1216:	/* GET ADDRESS OF SYSTEM FILE TABLE ENTRY */
+		/* Should do a lot more. Let's see if we can get away with it */
+		LOG(LOG_DOSMISC,LOG_ERROR)("Some BAD filetable call used bx=%X",reg_bx);
+		if(reg_bx <= DOS_FILES) CALLBACK_SCF(false);
+		else CALLBACK_SCF(true);
+		return true;
 	case 0x1607:
 		if (reg_bx == 0x15) {
 			switch (reg_cx) {
@@ -116,7 +124,6 @@ static bool DOS_MultiplexFunctions(void) {
 
 void DOS_SetupMisc(void) {
 	/* Setup the dos multiplex interrupt */
-	first_multiplex=0;
 	call_int2f=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int2f,&INT2F_Handler,CB_IRET,"DOS Int 2f");
 	RealSetVec(0x2f,CALLBACK_RealPointer(call_int2f));
@@ -126,4 +133,3 @@ void DOS_SetupMisc(void) {
 	CALLBACK_Setup(call_int2a,&INT2A_Handler,CB_IRET,"DOS Int 2a");
 	RealSetVec(0x2A,CALLBACK_RealPointer(call_int2a));
 };
-

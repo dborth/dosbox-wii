@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2004  The DOSBox Team
+ *  Copyright (C) 2002-2006  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mouse.cpp,v 1.42 2004/08/04 09:12:56 qbix79 Exp $ */
+/* $Id: mouse.cpp,v 1.61 2006/02/13 07:48:25 qbix79 Exp $ */
 
 #include <string.h>
 #include <math.h>
@@ -36,7 +36,7 @@
 
 static Bitu call_int33,call_int74;
 static Bit16u ps2cbseg,ps2cbofs;
-static bool useps2callback;
+static bool useps2callback,ps2callbackinit;
 static Bit16u call_ps2;
 static RealPt ps2_callback;
 static Bit16s oldmouseX, oldmouseY;
@@ -113,26 +113,37 @@ static struct {
 	float	senv_y;
 	Bit16u  updateRegion_x[2];
 	Bit16u  updateRegion_y[2];
-	Bit16u  page;
 	Bit16u  doubleSpeedThreshold;
 	Bit16u  language;
 	Bit16u  cursorType;
+	Bit16s	oldshown;
+	Bit8u  page;
 	bool enabled;
-	Bit16s oldshown;
+
 } mouse;
 
-void Mouse_SetPS2State(bool use) {
-	if ((SegValue(es)!=0) && (reg_bx!=0)) useps2callback = use;
-	else useps2callback = false;
+bool Mouse_SetPS2State(bool use) {
+	if (use && (!ps2callbackinit)) {
+		useps2callback = false;
+		PIC_SetIRQMask(MOUSE_IRQ,true);
+		return false;
+	}
+	useps2callback = use;
 	Mouse_AutoLock(useps2callback);
+	PIC_SetIRQMask(MOUSE_IRQ,!useps2callback);
+	return true;
 }
 
 void Mouse_ChangePS2Callback(Bit16u pseg, Bit16u pofs) {
-	if ((pseg==0) && (pofs==0)) useps2callback = false;
-	else useps2callback = true;
-	ps2cbseg = pseg;
-	ps2cbofs = pofs;
-	Mouse_AutoLock(useps2callback);
+	if ((pseg==0) && (pofs==0)) {
+		ps2callbackinit = false;
+		Mouse_AutoLock(false);
+	} else {
+		ps2callbackinit = true;
+		ps2cbseg = pseg;
+		ps2cbofs = pofs;
+	}
+	Mouse_AutoLock(ps2callbackinit);
 }
 
 void DoPS2Callback(Bit16u data, Bit16s mouseX, Bit16s mouseY) {
@@ -166,7 +177,7 @@ void DoPS2Callback(Bit16u data, Bit16s mouseX, Bit16s mouseY) {
 }
 
 Bitu PS2_Handler(void) {
-	reg_sp += 8;	// remove the 4 words
+	CPU_Pop16();CPU_Pop16();CPU_Pop16();CPU_Pop16();// remove the 4 words
 	return CBRET_NONE;
 }
 
@@ -199,20 +210,16 @@ INLINE void Mouse_AddEvent(Bit16u type) {
 // ***************************************************************************
 // Mouse cursor - text mode
 // ***************************************************************************
+/* Write and read directly to the screen. Do no use int_setcursorpos (LOTUS123) */
+extern void WriteChar(Bit16u col,Bit16u row,Bit8u page,Bit8u chr,Bit8u attr,bool useattr);
+extern void ReadCharAttr(Bit16u col,Bit16u row,Bit8u page,Bit16u * result);
 
 void RestoreCursorBackgroundText()
 {
 	if (mouse.shown<0) return;
 
 	if (mouse.background) {
-		// Save old Cursorposition
-		Bit8u oldx = CURSOR_POS_ROW(0);
-		Bit8u oldy = CURSOR_POS_COL(0);
-		// Restore background
-		INT10_SetCursorPos	((Bit8u)mouse.backposy,(Bit8u)mouse.backposx,0);
-		INT10_WriteChar		(mouse.backData[0],mouse.backData[1],0,1,true);
-		// Restore old cursor position
-		INT10_SetCursorPos	(oldx,oldy,0);
+		WriteChar(mouse.backposx,mouse.backposy,0,mouse.backData[0],mouse.backData[1],true);
 		mouse.background = false;
 	}
 };
@@ -222,51 +229,52 @@ void DrawCursorText()
 	// Restore Background
 	RestoreCursorBackgroundText();
 
-	// Save old Cursorposition
-	Bit8u oldx = CURSOR_POS_ROW(0);
-	Bit8u oldy = CURSOR_POS_COL(0);
 
 	// Save Background
-	Bit16u result;
-	INT10_SetCursorPos	(POS_Y>>3,POS_X>>3,0);
-	INT10_ReadCharAttr	(&result,0);
-	mouse.backData[0]	= result & 0xFF;
-	mouse.backData[1]	= result>>8;
 	mouse.backposx		= POS_X>>3;
 	mouse.backposy		= POS_Y>>3;
-	mouse.background	= true;
 
+	Bit16u result;
+	ReadCharAttr(mouse.backposx,mouse.backposy,0,&result);
+	mouse.backData[0]	= result & 0xFF;
+	mouse.backData[1]	= result>>8;
+	mouse.background	= true;
 	// Write Cursor
 	result = (result & mouse.textAndMask) ^ mouse.textXorMask;
-	INT10_WriteChar	(result&0xFF,result>>8,0,1,true);
-
-	// Restore old cursor position
-	INT10_SetCursorPos (oldx,oldy,0);
+	WriteChar(mouse.backposx,mouse.backposy,0,result&0xFF,result>>8,true);
 };
 
 // ***************************************************************************
 // Mouse cursor - graphic mode
 // ***************************************************************************
 
-static Bit8u gfxReg[9];
-
+static Bit8u gfxReg3CE[9];
+static Bit8u index3C4,gfxReg3C5;
 void SaveVgaRegisters()
 {
 	for (int i=0; i<9; i++) {
 		IO_Write	(0x3CE,i);
-		gfxReg[i] = IO_Read(0x3CF);
+		gfxReg3CE[i] = IO_Read(0x3CF);
 	}
 	/* Setup some default values in GFX regs that should work */
-	IO_Write	(0x3CE,3);IO_Write(0x3Cf,0);		//disable rotate and operation
-	IO_Write	(0x3CE,5);IO_Write(0x3Cf,0);		//Force read/write mode 0
+	IO_Write(0x3CE,3); IO_Write(0x3Cf,0);				//disable rotate and operation
+	IO_Write(0x3CE,5); IO_Write(0x3Cf,gfxReg3CE[5]&0xf0);	//Force read/write mode 0
+
+	//Set Map to all planes. Celtic Tales
+	index3C4 = IO_Read(0x3c4);  IO_Write(0x3C4,2);
+	gfxReg3C5 = IO_Read(0x3C5); IO_Write(0x3C5,0xF); 
 }
 
 void RestoreVgaRegisters()
 {
 	for (int i=0; i<9; i++) {
 		IO_Write(0x3CE,i);
-		IO_Write(0x3CF,gfxReg[i]);
+		IO_Write(0x3CF,gfxReg3CE[i]);
 	}
+
+	IO_Write(0x3C4,2);
+	IO_Write(0x3C5,gfxReg3C5);
+	IO_Write(0x3C4,index3C4);
 }
 
 void ClipCursorArea(Bit16s& x1, Bit16s& x2, Bit16s& y1, Bit16s& y2, Bit16u& addx1, Bit16u& addx2, Bit16u& addy)
@@ -314,7 +322,7 @@ void RestoreCursorBackground()
 		for (y=y1; y<=y2; y++) {
 			dataPos += addx1;
 			for (x=x1; x<=x2; x++) {
-				INT10_PutPixel(x,y,0,mouse.backData[dataPos++]);
+				INT10_PutPixel(x,y,mouse.page,mouse.backData[dataPos++]);
 			};
 			dataPos += addx2;
 		};
@@ -324,11 +332,9 @@ void RestoreCursorBackground()
 };
 
 void DrawCursor() {
-	
 	if (mouse.shown<0) return;
 // Check video page
 	if (real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAGE)!=mouse.page) return;
-
 // Check if cursor in update region
 /*	if ((POS_X >= mouse.updateRegion_x[0]) && (POS_X <= mouse.updateRegion_x[1]) &&
 	    (POS_Y >= mouse.updateRegion_y[0]) && (POS_Y <= mouse.updateRegion_y[1])) {
@@ -351,8 +357,8 @@ void DrawCursor() {
 
 	mouse.clipx = CurMode->swidth-1;	/* Get from bios ? */
 	mouse.clipy = CurMode->sheight-1;
-	Bit16s xratio = 640 / CurMode->swidth;  /* might be mouse.max_x-.mouse.min_x+1/swidth */
-											/* might even be vidmode == 0x13?2:1 */
+	Bit16s xratio = 640 / CurMode->swidth;/* might be vidmode == 0x13?2:1 */
+	if(xratio==0) xratio = 1;
 	
 	RestoreCursorBackground();
 
@@ -373,7 +379,7 @@ void DrawCursor() {
 	for (y=y1; y<=y2; y++) {
 		dataPos += addx1;
 		for (x=x1; x<=x2; x++) {
-			INT10_GetPixel(x,y,0,&mouse.backData[dataPos++]);
+			INT10_GetPixel(x,y,mouse.page,&mouse.backData[dataPos++]);
 		};
 		dataPos += addx2;
 	};
@@ -396,7 +402,7 @@ void DrawCursor() {
 			if (cuMask & HIGHESTBIT) pixel = pixel ^ 0x0F;
 			cuMask<<=1;
 			// Set Pixel
-			INT10_PutPixel(x,y,0,pixel);
+			INT10_PutPixel(x,y,mouse.page,pixel);
 			dataPos++;
 		};
 		dataPos += addx2;
@@ -404,18 +410,32 @@ void DrawCursor() {
 	RestoreVgaRegisters();
 }
 
-void Mouse_CursorMoved(float x,float y) {
-	float dx = x * mouse.pixelPerMickey_x;
-	float dy = y * mouse.pixelPerMickey_y;
-	if((fabs(x) > 1.0) || (mouse.senv_y < 1.0)) dx *= mouse.senv_x;
+void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate) {
+	float dx = xrel * mouse.pixelPerMickey_x;
+	float dy = yrel * mouse.pixelPerMickey_y;
 
+	if((fabs(x) > 1.0) || (mouse.senv_x < 1.0)) dx *= mouse.senv_x;
 	if((fabs(y) > 1.0) || (mouse.senv_y < 1.0)) dy *= mouse.senv_y;
-
+	if (useps2callback) dy *= 2;	
 
 	mouse.mickey_x += dx;
 	mouse.mickey_y += dy;
-	mouse.x += dx;
-	mouse.y += dy;
+	if (emulate) {
+		mouse.x += dx;
+		mouse.y += dy;
+	} else {
+		if (CurMode->type == M_TEXT) {
+			mouse.x = x*CurMode->swidth;
+			mouse.y = y*CurMode->sheight * 8 / CurMode->cheight;
+		} else if (mouse.max_x < 2048 || mouse.max_y < 2048 || mouse.max_x != mouse.max_y) {
+			mouse.x = x*mouse.max_x;
+			mouse.y = y*mouse.max_y;
+		} else { // Games faking relative movement through absolute coordinates. Quite surprising that this actually works..
+			mouse.x += xrel;
+			mouse.y += yrel;
+		}
+	}
+
 	/* ignore constraints if using PS2 mouse callback in the bios */
 
 	if (!useps2callback) {		
@@ -475,7 +495,6 @@ void Mouse_ButtonReleased(Bit8u button) {
 }
 
 static void SetMickeyPixelRate(Bit16s px, Bit16s py){
-
 	if ((px!=0) && (py!=0)) {
 		mouse.mickeysPerPixel_x	 = (float)px/X_MICKEY;
 		mouse.mickeysPerPixel_y  = (float)py/Y_MICKEY;
@@ -484,6 +503,8 @@ static void SetMickeyPixelRate(Bit16s px, Bit16s py){
 	}
 };
 static void SetSensitivity(Bit16s px, Bit16s py){
+	if(px>100) px=100;
+	if(py>100) py=100;
 	if ((px!=0) && (py!=0)) {
 		px--;  //Inspired by cutemouse 
 		py--;  //Although their cursor update routine is far more complex then ours
@@ -499,14 +520,12 @@ static void mouse_reset_hardware(void){
 
 void Mouse_NewVideoMode(void)
 { //Does way to much. Many of this stuff should be moved to mouse_reset one day
-	WriteMouseIntVector();
-   
 	if(MOUSE_IRQ > 7) {
 		real_writed(0,((0x70+MOUSE_IRQ-8)<<2),CALLBACK_RealPointer(call_int74));
 	} else {
 		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
 	}
-	mouse.shown=-1;
+//	mouse.shown=-1;//Disabled as ida doesn't have mousecursor anymore
 	/* Get the correct resolution from the current video mode */
 	Bitu mode=mem_readb(BIOS_VIDEO_MODE);
 	switch (mode) {
@@ -537,14 +556,16 @@ void Mouse_NewVideoMode(void)
 	default:
 		mouse.max_y=199;
 		LOG(LOG_MOUSE,LOG_ERROR)("Unhandled videomode %X on reset",mode);
+		// Hide mouse cursor on non supported modi. Pirates Gold
+		mouse.shown = -1;
 		break;
 	} 
 	mouse.max_x = 639;
 	mouse.min_x = 0;
 	mouse.min_y = 0;
 	// Dont set max coordinates here. it is done by SetResolution!
-	mouse.x = static_cast<float>(mouse.max_x / 2);
-	mouse.y = static_cast<float>(mouse.max_y / 2);
+	mouse.x = static_cast<float>((mouse.max_x + 1)/ 2);
+	mouse.y = static_cast<float>((mouse.max_y + 1)/ 2);
 	mouse.events = 0;
 	mouse.mickey_x = 0;
 	mouse.mickey_y = 0;
@@ -569,17 +590,17 @@ void Mouse_NewVideoMode(void)
 
 	SetMickeyPixelRate(8,16);
 	oldmouseX = static_cast<Bit16s>(mouse.x);
-
 	oldmouseY = static_cast<Bit16s>(mouse.y);
-
-   
-
 }
-
-
 
 static void mouse_reset(void) {
 //Much to empty Mouse_NewVideoMode contains stuff that should be in here
+
+	/* Remove drawn mouse Legends of Valor */
+	if (CurMode->type!=M_TEXT) RestoreCursorBackground();
+	else RestoreCursorBackgroundText();
+	mouse.shown = -1;
+
 	Mouse_NewVideoMode();
 
    	mouse.sub_mask=0;
@@ -589,13 +610,11 @@ static void mouse_reset(void) {
 
 	mouse.senv_y=1.0;
 
-
-	//Added this for cd-v19
 }
 
 static Bitu INT33_Handler(void) {
 
-//	LOG(LOG_MOUSE,LOG_NORMAL)("MOUSE: %04X",reg_ax);
+//	LOG(LOG_MOUSE,LOG_NORMAL)("MOUSE: %04X %X %X %d %d",reg_ax,reg_bx,reg_cx,POS_X,POS_Y);
 	switch (reg_ax) {
 	case 0x00:	/* Reset Driver and Read Status */
 		mouse_reset_hardware(); /* fallthrough */
@@ -613,8 +632,8 @@ static Bitu INT33_Handler(void) {
 		break;
 	case 0x02:	/* Hide Mouse */
 		{
-			if (CurMode->type!=M_TEXT)		RestoreCursorBackground();
-			else							RestoreCursorBackgroundText();
+			if (CurMode->type!=M_TEXT) RestoreCursorBackground();
+			else RestoreCursorBackgroundText();
 			mouse.shown--;
 		}
 		break;
@@ -624,14 +643,23 @@ static Bitu INT33_Handler(void) {
 		reg_dx=POS_Y;
 		break;
 	case 0x04:	/* Position Mouse */
-		mouse.x = static_cast<float>(((reg_cx > mouse.max_x) ? mouse.max_x : reg_cx));
-		mouse.y = static_cast<float>(((reg_dx > mouse.max_y) ? mouse.max_y : reg_dx));
+		/* If position isn't different from current position
+		 * don't change it then. (as position is rounded so numbers get
+		 * lost when the rounded number is set) (arena/simulation Wolf) */
+		if(reg_cx >= mouse.max_x) mouse.x = static_cast<float>(mouse.max_x);
+		else if (mouse.min_x >= reg_cx) mouse.x = static_cast<float>(mouse.min_x); 
+		else if (reg_cx != POS_X) mouse.x = static_cast<float>(reg_cx);
+
+		if(reg_dx >= mouse.max_y) mouse.y = static_cast<float>(mouse.max_y);
+		else if (mouse.min_y >= reg_dx) mouse.y = static_cast<float>(mouse.min_y); 
+		else if (reg_dx != POS_Y) mouse.y = static_cast<float>(reg_dx);
 		DrawCursor();
 		break;
 	case 0x05:	/* Return Button Press Data */
 		{
 			Bit16u but=reg_bx;
 			reg_ax=mouse.buttons;
+			reg_bx++;
 			if (but>=MOUSE_BUTTONS) break;
 			reg_cx=mouse.last_pressed_x[but];
 			reg_dx=mouse.last_pressed_y[but];
@@ -643,6 +671,7 @@ static Bitu INT33_Handler(void) {
 		{
 			Bit16u but=reg_bx;
 			reg_ax=mouse.buttons;
+			reg_bx++;
 			if (but>=MOUSE_BUTTONS) break;
 			reg_cx=mouse.last_released_x[but];
 			reg_dx=mouse.last_released_y[but];
@@ -659,6 +688,11 @@ static Bitu INT33_Handler(void) {
 			else { min=(Bit16s)reg_dx;max=(Bit16s)reg_cx;}
 			mouse.min_x=min;
 			mouse.max_x=max;
+			/* Battlechess wants this */
+			if(mouse.x > mouse.max_x) mouse.x = mouse.max_x;
+			if(mouse.x < mouse.min_x) mouse.x = mouse.min_x;
+			/* Or alternatively this: 
+			mouse.x = (mouse.max_x - mouse.min_x + 1)/2;*/
 			LOG(LOG_MOUSE,LOG_NORMAL)("Define Hortizontal range min:%d max:%d",min,max);
 		}
 		break;
@@ -671,6 +705,11 @@ static Bitu INT33_Handler(void) {
 			else { min=(Bit16s)reg_dx;max=(Bit16s)reg_cx;}
 			mouse.min_y=min;
 			mouse.max_y=max;
+			/* Battlechess wants this */
+			if(mouse.y > mouse.max_y) mouse.y = mouse.max_y;
+			if(mouse.y < mouse.min_y) mouse.y = mouse.min_y;
+			/* Or alternatively this: 
+			mouse.y = (mouse.max_y - mouse.min_y + 1)/2;*/
 			LOG(LOG_MOUSE,LOG_NORMAL)("Define Vertical range min:%d max:%d",min,max);
 		}
 		break;
@@ -696,6 +735,7 @@ static Bitu INT33_Handler(void) {
 		mouse.sub_mask=reg_cx;
 		mouse.sub_seg=SegValue(es);
 		mouse.sub_ofs=reg_dx;
+		Mouse_AutoLock(true); //Some games don't seem to reset the mouse before using
 		break;
 	case 0x0f:	/* Define mickey/pixel rate */
 		SetMickeyPixelRate(reg_cx,reg_dx);
@@ -772,7 +812,7 @@ static Bitu INT33_Handler(void) {
 		/* Can't really set a rate this is host determined */
 		break;
 	case 0x1d:      /* Set display page number */
-		mouse.page=reg_bx;
+		mouse.page=reg_bl;
 		break;
 	case 0x1e:      /* Get display page number */
 		reg_bx=mouse.page;
@@ -891,7 +931,7 @@ void CreateMouseCallback(void)
 };
 
 void MOUSE_Init(Section* sec) {
-	
+
 	// Callback 0x33
 	CreateMouseCallback();
 	call_int74=CALLBACK_Allocate();
@@ -901,12 +941,12 @@ void MOUSE_Init(Section* sec) {
 	} else {
 		real_writed(0,((0x8+MOUSE_IRQ)<<2),CALLBACK_RealPointer(call_int74));
 	}
-	useps2callback = false;
+	useps2callback = false; ps2callbackinit = false;
  	call_ps2=CALLBACK_Allocate();
 	CALLBACK_Setup(call_ps2,&PS2_Handler,CB_IRET,"ps2 bios callback");
 	ps2_callback=CALLBACK_RealPointer(call_ps2);
 	memset(&mouse,0,sizeof(mouse));
+	mouse.shown=-1; //Hide mouse on startup
 	mouse_reset_hardware();
 	mouse_reset();
 }
-
