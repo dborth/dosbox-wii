@@ -137,7 +137,7 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
-/* Compiling on GNU/Linux or *BSD */
+/* Compiling on GNU/Linux */
 #undef LINUX
 
 /* Compiling on Mac OS X */

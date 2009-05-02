@@ -26,7 +26,7 @@
 // try to use non-flags generating functions if possible
 #define DRC_FLAGS_INVALIDATION
 // try to replace _simple functions by code
-// #define DRC_FLAGS_INVALIDATION_DCODE
+#define DRC_FLAGS_INVALIDATION_DCODE
 
 // type with the same size as a pointer
 #define DRC_PTR_SIZE_IM Bit64u
@@ -593,6 +593,81 @@ static void gen_return_function(void) {
 // called when a call to a function can be replaced by a
 // call to a simpler function
 static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
+#ifdef DRC_FLAGS_INVALIDATION_DCODE
+	// try to avoid function calls but rather directly fill in code
+	switch (flags_type) {
+		case t_ADDb:
+		case t_ADDw:
+		case t_ADDd:
+			*(Bit32u*)(pos+0)=0xf001f889;	// mov eax,edi; add eax,esi
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_ORb:
+		case t_ORw:
+		case t_ORd:
+			*(Bit32u*)(pos+0)=0xf009f889;	// mov eax,edi; or eax,esi
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_ANDb:
+		case t_ANDw:
+		case t_ANDd:
+			*(Bit32u*)(pos+0)=0xf021f889;	// mov eax,edi; and eax,esi
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_SUBb:
+		case t_SUBw:
+		case t_SUBd:
+			*(Bit32u*)(pos+0)=0xf029f889;	// mov eax,edi; sub eax,esi
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_XORb:
+		case t_XORw:
+		case t_XORd:
+			*(Bit32u*)(pos+0)=0xf031f889;	// mov eax,edi; xor eax,esi
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_CMPb:
+		case t_CMPw:
+		case t_CMPd:
+		case t_TESTb:
+		case t_TESTw:
+		case t_TESTd:
+			*(Bit32u*)(pos+0)=0x90900aeb;	// skip
+			*(Bit32u*)(pos+4)=0x90909090;
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_INCb:
+		case t_INCw:
+		case t_INCd:
+			*(Bit32u*)(pos+0)=0xc0fff889;	// mov eax,edi; inc eax
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_DECb:
+		case t_DECw:
+		case t_DECd:
+			*(Bit32u*)(pos+0)=0xc8fff889;	// mov eax,edi; dec eax
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		case t_NEGb:
+		case t_NEGw:
+		case t_NEGd:
+			*(Bit32u*)(pos+0)=0xd8f7f889;	// mov eax,edi; neg eax
+			*(Bit32u*)(pos+4)=0x909006eb;	// skip
+			*(Bit32u*)(pos+8)=0x90909090;
+			break;
+		default:
+			*(Bit64u*)(pos+2)=(Bit64u)fct_ptr;		// fill function pointer
+			break;
+	}
+#else
 	*(Bit64u*)(pos+2)=(Bit64u)fct_ptr;
+#endif
 }
 #endif

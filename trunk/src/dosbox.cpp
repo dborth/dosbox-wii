@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.118 2007/07/02 20:06:59 c2woody Exp $ */
+/* $Id: dosbox.cpp,v 1.121 2007/08/16 07:50:31 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -221,10 +221,22 @@ void DOSBOX_RunMachine(void){
 }
 
 static void DOSBOX_UnlockSpeed( bool pressed ) {
-	if (pressed)
+	static bool autoadjust = false;
+	if (pressed) {
 		ticksLocked = true;
-	else 
+		if (CPU_CycleAutoAdjust) {
+			autoadjust = true;
+			CPU_CycleAutoAdjust = false;
+			CPU_CycleMax /= 3;
+			if (CPU_CycleMax<1000) CPU_CycleMax=1000;
+		}
+	} else { 
 		ticksLocked = false;
+		if (autoadjust) {
+			autoadjust = false;
+			CPU_CycleAutoAdjust = true;
+		}
+	}
 }
 
 static void DOSBOX_RealInit(Section * sec) {
@@ -287,7 +299,7 @@ void DOSBOX_Init(void) {
 		
 	MSG_Add("DOSBOX_CONFIGFILE_HELP",
 		"language -- Select another language file.\n"
-		"memsize -- Amount of memory dosbox has in megabytes.\n"
+		"memsize -- Amount of memory DOSBox has in megabytes.\n"
 		"machine -- The type of machine tries to emulate:hercules,cga,tandy,pcjr,vga.\n"
 		"captures -- Directory where things like wave,midi,screenshot get captured.\n"
 	);
@@ -297,7 +309,7 @@ void DOSBOX_Init(void) {
 	secprop->Add_bool("aspect",false);
 	secprop->Add_string("scaler","normal2x");
 	MSG_Add("RENDER_CONFIGFILE_HELP",
-		"frameskip -- How many frames dosbox skips before drawing one.\n"
+		"frameskip -- How many frames DOSBox skips before drawing one.\n"
 		"aspect -- Do aspect correction, if your output method doesn't support scaling this can slow things down!.\n"
 		"scaler -- Scaler used to enlarge/enhance low resolution modes.\n"
 		"          Supported are none,normal2x,normal3x,advmame2x,advmame3x,hq2x,hq3x,\n"
@@ -308,7 +320,7 @@ void DOSBOX_Init(void) {
 	);
 
 	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
-#if (C_DYNAMIC_X86)
+#if (C_DYNAMIC_X86) || (C_DYNREC)
 	secprop->Add_string("core","auto");
 #else
 	secprop->Add_string("core","normal");
@@ -318,12 +330,12 @@ void DOSBOX_Init(void) {
 	secprop->Add_int("cycledown",20);
 	MSG_Add("CPU_CONFIGFILE_HELP",
 		"core -- CPU Core used in emulation: normal,simple"
-#if (C_DYNAMIC_X86)
+#if (C_DYNAMIC_X86) || (C_DYNREC)
 		",dynamic,auto.\n"
 		"        auto switches from normal to dynamic if appropriate"
 #endif
 		".\n"
-		"cycles -- Amount of instructions dosbox tries to emulate each millisecond.\n"
+		"cycles -- Amount of instructions DOSBox tries to emulate each millisecond.\n"
 		"          Setting this value too high results in sound dropouts and lags.\n"
 		"          You can also let DOSBox guess the correct value by setting it to max.\n"
 		"          The default setting (auto) switches to max if appropriate.\n"
@@ -383,12 +395,12 @@ void DOSBOX_Init(void) {
 	MSG_Add("SBLASTER_CONFIGFILE_HELP",
 		"sbtype -- Type of sblaster to emulate:none,sb1,sb2,sbpro1,sbpro2,sb16.\n"
 		"sbbase,irq,dma,hdma -- The IO/IRQ/DMA/High DMA address of the soundblaster.\n"
-		"mixer -- Allow the soundblaster mixer to modify the dosbox mixer.\n"
+		"mixer -- Allow the soundblaster mixer to modify the DOSBox mixer.\n"
 		"oplmode -- Type of OPL emulation: auto,cms,opl2,dualopl2,opl3.\n"
 		"           On auto the mode is determined by sblaster type.\n"
 		"           All OPL modes are 'Adlib', except for CMS.\n"
 		"oplrate -- Sample rate of OPL music emulation.\n"
-		);
+	);
 
 	secprop=control->AddSection_prop("gus",&GUS_Init,true); //done
 	secprop->Add_bool("gus",true); 	
@@ -431,15 +443,17 @@ void DOSBOX_Init(void) {
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
 	MSG_Add("JOYSTICK_CONFIGFILE_HELP",
-	        "joysticktype -- Type of joystick to emulate: auto (default), none,\n"
-	        "                2axis (supports two joysticks), 4axis,\n"
-	        "                fcs (Thrustmaster), ch (CH Flightstick).\n"
-	        "                none disables joystick emulation.\n"
-	        "                auto chooses emulation depending on real joystick(s).\n"
-	        "timed -- enable timed intervals for axis. (false is old style behaviour).\n"
-	        "autofire -- continuously fires as long as you keep the button pressed.\n"
-	        "swap34 -- swap the 3rd and the 4th axis. can be useful for certain joysticks.\n"
-	        "buttonwrap -- enable button wrapping at the number of emulated buttons.\n"
+		"joysticktype -- Type of joystick to emulate: auto (default), none,\n"
+		"                2axis (supports two joysticks,\n"
+		"                4axis (supports one joystick, first joystick used),\n"
+		"                4axis_2 (supports one joystick, second joystick used),\n"
+		"                fcs (Thrustmaster), ch (CH Flightstick).\n"
+		"                none disables joystick emulation.\n"
+		"                auto chooses emulation depending on real joystick(s).\n"
+		"timed -- enable timed intervals for axis. (false is old style behaviour).\n"
+		"autofire -- continuously fires as long as you keep the button pressed.\n"
+		"swap34 -- swap the 3rd and the 4th axis. can be useful for certain joysticks.\n"
+		"buttonwrap -- enable button wrapping at the number of emulated buttons.\n"
 	);
 
 	secprop->AddInitFunction(&INT10_Init);
@@ -458,15 +472,15 @@ void DOSBOX_Init(void) {
 	secprop->Add_string("serial3","disabled");
 	secprop->Add_string("serial4","disabled");
 	MSG_Add("SERIAL_CONFIGFILE_HELP",
-	        "serial1-4 -- set type of device connected to com port.\n"
-	        "             Can be disabled, dummy, modem, nullmodem, directserial.\n"
-	        "             Additional parameters must be in the same line in the form of\n"
-	        "             parameter:value. Parameter for all types is irq.\n"
-	        "             for directserial: realport (required), rxdelay (optional).\n"
-	        "             for modem: listenport (optional).\n"
-	        "             for nullmodem: server, rxdelay, txdelay, telnet, usedtr,\n"
-	        "                            transparent, port, inhsocket (all optional).\n"
-	        "             Example: serial1=modem listenport:5000\n"
+		"serial1-4 -- set type of device connected to com port.\n"
+		"             Can be disabled, dummy, modem, nullmodem, directserial.\n"
+		"             Additional parameters must be in the same line in the form of\n"
+		"             parameter:value. Parameter for all types is irq.\n"
+		"             for directserial: realport (required), rxdelay (optional).\n"
+		"             for modem: listenport (optional).\n"
+		"             for nullmodem: server, rxdelay, txdelay, telnet, usedtr,\n"
+		"                            transparent, port, inhsocket (all optional).\n"
+		"             Example: serial1=modem listenport:5000\n"
 	);
 
 	/* All the DOS Related stuff, which will eventually start up in the shell */
