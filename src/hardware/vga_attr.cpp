@@ -40,6 +40,7 @@ void write_p3c0(Bit32u port,Bit8u val) {
 		case 0x04:		case 0x05:		case 0x06:		case 0x07:
 		case 0x08:		case 0x09:		case 0x0a:		case 0x0b:
 		case 0x0c:		case 0x0d:		case 0x0e:		case 0x0f:
+			val&=0x3f;
 			attr(palette[attr(index)])=val;
 			VGA_DAC_CombineColor(attr(index),val);
 			/*
@@ -48,10 +49,12 @@ void write_p3c0(Bit32u port,Bit8u val) {
 			*/
 			break;
 		case 0x10: /* Mode Control Register */
-			attr(mode_control)=val;
-			vga.config.gfxmode=val&1;
-			vga.config.vga_enabled=(val & 64)>0;
-			VGA_FindSettings();
+			if (val != attr(mode_control)) {
+				attr(mode_control)=val;
+				vga.config.gfxmode=val&1;
+				vga.config.vga_enabled=(val & 0x40)>0;
+				VGA_FindSettings();
+			}
 			//TODO Monochrome mode
 			//TODO 9 bit characters
 			//TODO line wrapping split screen shit see bit 5

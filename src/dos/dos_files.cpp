@@ -78,6 +78,7 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 		case '\\':	case '$':	case '#':	case '@':	case '(':	case ')':
 		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
 		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
+		case '\'':
 			upname[w++]=c;
 			break;
 		default:
@@ -150,8 +151,10 @@ bool DOS_GetCurrentDir(Bit8u drive,char * buffer) {
 }
 
 bool DOS_ChangeDir(char * dir) {
+	
 	Bit8u drive;char fulldir[DOS_PATHLENGTH];
 	if (!DOS_MakeName(dir,fulldir,&drive)) return false;
+	
 	if (Drives[drive]->TestDir(fulldir)) {
 		strcpy(Drives[drive]->curdir,fulldir);
 		return true;
@@ -202,14 +205,14 @@ bool DOS_FindFirst(char * search,Bit16u attr) {
 	}		
 	dta.SetupSearch(drive,(Bit8u)attr,pattern);
 	if (Drives[drive]->FindFirst(dir,dta)) return true;
-	DOS_SetError(DOSERR_FILE_NOT_FOUND);
+	DOS_SetError(DOSERR_NO_MORE_FILES);
 	return false;
 }
 
 bool DOS_FindNext(void) {
 	DOS_DTA dta(dos.dta);
 	if (Drives[dta.GetSearchDrive()]->FindNext(dta)) return true;
-	DOS_SetError(DOSERR_FILE_NOT_FOUND);
+	DOS_SetError(DOSERR_NO_MORE_FILES);
 	return false;
 }
 
@@ -397,7 +400,7 @@ bool DOS_Canonicalize(char * name,char * big) {
 	return true;
 }
 
-bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit16u * sectors,Bit16u * clusters,Bit16u * free) {
+bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit8u * sectors,Bit16u * clusters,Bit16u * free) {
 	if (drive==0) drive=DOS_GetDefaultDrive();
 	else drive--;
 	if ((drive>DOS_DRIVES) || (!Drives[drive])) {
@@ -473,7 +476,6 @@ bool DOS_CreateTempFile(char * name,Bit16u * entry) {
 }
 
 
-#if 1
 
 static bool FCB_MakeName2 (DOS_FCB & fcb, char* outname, Bit8u* outdrive){
 	char short_name[DOS_FCBNAME];
@@ -626,7 +628,16 @@ static void SaveFindResult(DOS_FCB & find_fcb) {
 	fcb.SetSizeDateTime(size,date,time);
 }
 
-bool DOS_FCBOpenCreate(Bit16u seg,Bit16u offset) { 
+bool DOS_FCBCreate(Bit16u seg,Bit16u offset) { 
+	DOS_FCB fcb(seg,offset);
+	char shortname[DOS_FCBNAME];Bit16u handle;
+	fcb.GetName(shortname);
+	if (!DOS_CreateFile(shortname,2,&handle)) return false;
+	fcb.FileOpen((Bit8u)handle);
+	return true;
+}
+
+bool DOS_FCBOpen(Bit16u seg,Bit16u offset) { 
 	DOS_FCB fcb(seg,offset);
 	char shortname[DOS_FCBNAME];Bit16u handle;
 	fcb.GetName(shortname);
@@ -687,7 +698,7 @@ Bit8u DOS_FCBRead(Bit16u seg,Bit16u offset,Bit16u recno) {
 	return FCB_READ_PARTIAL;
 }
 
-bool DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u recno)
+Bit8u DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u recno)
 {
 	DOS_FCB fcb(seg,offset);
 	Bit8u fhandle,cur_rec;Bit16u cur_block,rec_size;
@@ -709,13 +720,19 @@ bool DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u recno)
 }
 
 Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
+/* if restore is true :random read else random blok read. 
+ * random read updates old block and old record to reflect the random data
+ * before the read!!!!!!!!! and the random data is not updated! (user must do this)
+ * Random block read updates these fields to reflect the state after the read!
+ */
 
 	DOS_FCB fcb(seg,offset);
 	Bit32u random;Bit16u old_block;Bit8u old_rec;Bit8u error;
+
 	/* Set the correct record from the random data */
 	fcb.GetRandom(random);
-	if (restore) fcb.GetRecord(old_block,old_rec);
 	fcb.SetRecord((Bit16u)(random / 128),(Bit8u)(random & 127));
+    if (restore) fcb.GetRecord(old_block,old_rec);//store this for after the read.
 	// Read records
 	for (int i=0; i<numRec; i++) {
 		error = DOS_FCBRead(seg,offset,i);
@@ -724,30 +741,31 @@ Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
 	Bit16u new_block;Bit8u new_rec;
 	fcb.GetRecord(new_block,new_rec);
 	if (restore) fcb.SetRecord(old_block,old_rec);
-	/* Update the random record pointer with new position */
-	fcb.SetRandom(new_block*128+new_rec);
-	return error;
+	/* Update the random record pointer with new position only when restore is false*/
+    if(!restore) fcb.SetRandom(new_block*128+new_rec); 
+    return error;
 }
 
-bool DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
+Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
+/* see FCB_RandomRead */
 	DOS_FCB fcb(seg,offset);
-	Bit32u random;Bit16u old_block;Bit8u old_rec;bool noerror;
+	Bit32u random;Bit16u old_block;Bit8u old_rec;Bit8u error;
 
 	/* Set the correct record from the random data */
 	fcb.GetRandom(random);
-	if (restore) fcb.GetRecord(old_block,old_rec);
 	fcb.SetRecord((Bit16u)(random / 128),(Bit8u)(random & 127));
+    if (restore) fcb.GetRecord(old_block,old_rec);
 	/* Write records */
 	for (int i=0; i<numRec; i++) {
-		noerror = DOS_FCBWrite(seg,offset,i);
-		if (!noerror) break;
+		error = DOS_FCBWrite(seg,offset,i);// dos_fcbwrite return 0 false when true...
+		if (error!=0x00) break;
 	}
 	Bit16u new_block;Bit8u new_rec;
 	fcb.GetRecord(new_block,new_rec);
 	if (restore) fcb.SetRecord(old_block,old_rec);
-	/* Update the random record pointer with new position */
-	fcb.SetRandom(new_block*128+new_rec);
-	return noerror;
+	/* Update the random record pointer with new position only when restore is false */
+    if(!restore) fcb.SetRandom(new_block*128+new_rec); 
+	return error;
 }
 
 bool DOS_FCBGetFileSize(Bit16u seg,Bit16u offset,Bit16u numRec) {
@@ -787,7 +805,6 @@ void DOS_FCBSetRandomRecord(Bit16u seg, Bit16u offset) {
 	fcb.SetRandom(block*128+rec);
 }
 
-#endif
 
 bool DOS_FileExists(char * name) {
 	char fullname[DOS_PATHLENGTH];Bit8u drive;
@@ -795,7 +812,7 @@ bool DOS_FileExists(char * name) {
 	return Drives[drive]->FileExists(fullname);
 }
 
-bool DOS_GetAllocationInfo(Bit8u drive,Bit16u * _bytes_sector,Bit16u * _sectors_cluster,Bit16u * _total_clusters) {
+bool DOS_GetAllocationInfo(Bit8u drive,Bit16u * _bytes_sector,Bit8u * _sectors_cluster,Bit16u * _total_clusters) {
 	if (!drive) drive=dos.current_drive;
 	else drive--;
 	if (!Drives[drive]) return false;

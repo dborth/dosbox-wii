@@ -59,6 +59,12 @@ switch(Fetchb()) {
 	/* 0x21 MOV Rd,DRx (386) */
 	/* 0x22 MOV CRx,Rd (386) */
 	/* 0x23 MOV DRx,Rd (386) */
+	case 0x23:												/* MOV DRx,Rd */
+		{
+			GetRM;
+			LOG_DEBUG("CPU:0F:23 does nothing");
+		}
+		break;
 	/* 0x24 MOV Rd,TRx (386) */
 	/* 0x26 MOV TRx,Rd (386) */
 	/* 0x30 WRMSR (P5) */
@@ -251,7 +257,12 @@ switch(Fetchb()) {
 		}
 	/* 0xb0 CMPXCHG Eb,Gb */
 	/* 0xb1 CMPXCHG Ew,Gw */
-	/* 0xb2 LSS */
+	case 0xb2:												/* LSS */
+		{	
+			GetRMrw;GetEAa;
+			*rmrw=LoadMw(eaa);SegSet16(ss,LoadMw(eaa+2));
+			break;
+		}
 	case 0xb3:												/* BTR Ew,Gw */
 		{
 			GetRMrw;
@@ -389,7 +400,6 @@ switch(Fetchb()) {
 			flags.type=t_UNKNOWN;
 			break;
 		}
-	/* 0xbd BSR Gw,Ew */
 	case 0xbe:												/* MOVSX Gw,Eb */
 		{
 			GetRMrw;															

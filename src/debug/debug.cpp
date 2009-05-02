@@ -34,7 +34,7 @@
 #include "mixer.h"
 #include "debug_inc.h"
 #include "timer.h"
-#include "..\shell\shell_inc.h"
+#include "../shell/shell_inc.h"
 
 #ifdef WIN32
 void WIN32_Console();
@@ -48,6 +48,7 @@ class DEBUG;
 
 DEBUG*	pDebugcom	= 0;
 bool	exitLoop	= false;
+bool	logHeavy	= false;
 
 static struct  {
 	Bit32u eax,ebx,ecx,edx,esi,edi,ebp,esp,eip;
@@ -91,7 +92,7 @@ static Bit16u dataSeg,dataOfs;
 
 bool skipFirstInstruction = false;
 
-enum EBreakpoint { BKPNT_UNKNOWN, BKPNT_PHYSICAL, BKPNT_INTERRUPT };
+enum EBreakpoint { BKPNT_UNKNOWN, BKPNT_PHYSICAL, BKPNT_INTERRUPT, BKPNT_MEMORY };
 
 #define BPINT_ALL 0x100
 
@@ -104,21 +105,24 @@ public:
 	void					SetAddress		(PhysPt adr)				{ location = adr;				type = BKPNT_PHYSICAL; };
 	void					SetInt			(Bit8u _intNr, Bit16u ah)	{ intNr = _intNr, ahValue = ah; type = BKPNT_INTERRUPT; };
 	void					SetOnce			(bool _once)				{ once = _once; };
-	
+	void					SetType			(EBreakpoint _type)			{ type = _type; };
+	void					SetValue		(Bit8u value)				{ ahValue = value; };
+
 	bool					IsActive		(void)						{ return active; };
 	void					Activate		(bool _active);
 
 	EBreakpoint				GetType			(void)						{ return type; };
 	bool					GetOnce			(void)						{ return once; };
-	PhysPt					GetLocation		(void)						{ if (GetType()==BKPNT_PHYSICAL)  return location;	else return 0; };
+	PhysPt					GetLocation		(void)						{ if (GetType()!=BKPNT_INTERRUPT)	return location;	else return 0; };
 	Bit16u					GetSegment		(void)						{ return segment; };
 	Bit32u					GetOffset		(void)						{ return offset; };
-	Bit8u					GetIntNr		(void)						{ if (GetType()==BKPNT_INTERRUPT) return intNr;		else return 0; };
-	Bit16u					GetValue		(void)						{ if (GetType()==BKPNT_INTERRUPT) return ahValue;	else return 0; };
+	Bit8u					GetIntNr		(void)						{ if (GetType()==BKPNT_INTERRUPT)	return intNr;		else return 0; };
+	Bit16u					GetValue		(void)						{ if (GetType()!=BKPNT_PHYSICAL)	return ahValue;		else return 0; };
 
 	// statics
 	static CBreakpoint*		AddBreakpoint		(Bit16u seg, Bit32u off, bool once);
 	static CBreakpoint*		AddIntBreakpoint	(Bit8u intNum, Bit16u ah, bool once);
+	static CBreakpoint*		AddMemBreakpoint	(Bit16u seg, Bit32u off);
 	static void				ActivateBreakpoints	(PhysPt adr, bool activate);
 	static bool				CheckBreakpoint		(PhysPt adr);
 	static bool				CheckIntBreakpoint	(PhysPt adr, Bit8u intNr, Bit16u ahValue);
@@ -145,6 +149,7 @@ private:
 	bool		once;
 
 	static std::list<CBreakpoint*>	BPoints;
+public:
 	static CBreakpoint*				ignoreOnce;
 };
 
@@ -192,9 +197,18 @@ CBreakpoint* CBreakpoint::AddIntBreakpoint(Bit8u intNum, Bit16u ah, bool once)
 	return bp;
 };
 
+CBreakpoint* CBreakpoint::AddMemBreakpoint(Bit16u seg, Bit32u off)
+{
+	CBreakpoint* bp = new CBreakpoint();
+	bp->SetAddress		(seg,off);
+	bp->SetOnce			(false);
+	bp->SetType			(BKPNT_MEMORY);
+	BPoints.push_front	(bp);
+	return bp;
+};
+
 void CBreakpoint::ActivateBreakpoints(PhysPt adr, bool activate)
 {
-	ignoreOnce = 0;
 	// activate all breakpoints
 	std::list<CBreakpoint*>::iterator i;
 	CBreakpoint* bp;
@@ -202,7 +216,7 @@ void CBreakpoint::ActivateBreakpoints(PhysPt adr, bool activate)
 		bp = static_cast<CBreakpoint*>(*i);
 		// Do not activate, when bp is an actual adress
 		if (activate && (bp->GetType()==BKPNT_PHYSICAL) && (bp->GetLocation()==adr)) {
-			ignoreOnce = bp;
+			// Do not activate :)
 			continue;
 		}
 		bp->Activate(activate);	
@@ -212,26 +226,45 @@ void CBreakpoint::ActivateBreakpoints(PhysPt adr, bool activate)
 bool CBreakpoint::CheckBreakpoint(PhysPt adr)
 // Checks if breakpoint is valid an should stop execution
 {
-	// if breakpoint is same address as started, it's not valid...
-	if (ignoreOnce) {
-		ignoreOnce->Activate(true);
-		ignoreOnce = 0;
-	}
 	// Search matching breakpoint
 	std::list<CBreakpoint*>::iterator i;
 	CBreakpoint* bp;
 	for(i=BPoints.begin(); i != BPoints.end(); i++) {
 		bp = static_cast<CBreakpoint*>(*i);
 		if ((bp->GetType()==BKPNT_PHYSICAL) && bp->IsActive() && (bp->GetLocation()==adr)) {
+			// Ignore Once ?
+			if (ignoreOnce==bp) {
+				ignoreOnce=0;
+				bp->Activate(true);
+				return false;
+			};
 			// Found, 
 			if (bp->GetOnce()) {
 				// delete it, if it should only be used once
 				(BPoints.erase)(i);
 				bp->Activate(false);
 				delete bp;
-			}
+			} else {
+				ignoreOnce = bp;
+			};
 			return true;
+		} 
+#if C_HEAVY_DEBUG
+		// Memory breakpoint support
+		else if ((bp->GetType()==BKPNT_MEMORY) && bp->IsActive()) {
+			
+			Bit8u value = mem_readb(bp->GetLocation());
+			if (bp->GetValue() != value) {
+				// Yup, memory value changed
+				char buffer[200];
+				sprintf(buffer,"DEBUG: Memory breakpoint: %04X:%04X - %02X -> %02X",bp->GetSegment(),bp->GetOffset(),bp->GetValue(),value);
+				LOG_DEBUG(buffer);
+				bp->SetValue(value);
+				return true;
+			};
+		
 		};
+#endif
 	};
 	return false;
 };
@@ -239,11 +272,6 @@ bool CBreakpoint::CheckBreakpoint(PhysPt adr)
 bool CBreakpoint::CheckIntBreakpoint(PhysPt adr, Bit8u intNr, Bit16u ahValue)
 // Checks if interrupt breakpoint is valid an should stop execution
 {
-	// if breakpoint is same address as started, it's not valid...
-	if (ignoreOnce) {
-		ignoreOnce->Activate(true);
-		ignoreOnce = 0;
-	}
 	// Search matching breakpoint
 	std::list<CBreakpoint*>::iterator i;
 	CBreakpoint* bp;
@@ -251,13 +279,21 @@ bool CBreakpoint::CheckIntBreakpoint(PhysPt adr, Bit8u intNr, Bit16u ahValue)
 		bp = static_cast<CBreakpoint*>(*i);
 		if ((bp->GetType()==BKPNT_INTERRUPT) && bp->IsActive() && (bp->GetIntNr()==intNr)) {
 			if ((bp->GetValue()==BPINT_ALL) || (bp->GetValue()==ahValue)) {
+				// Ignoie it once ?
+				if (ignoreOnce==bp) {
+					ignoreOnce=0;
+					bp->Activate(true);
+					return false;
+				};
 				// Found
 				if (bp->GetOnce()) {
 					// delete it, if it should only be used once
 					(BPoints.erase)(i);
 					bp->Activate(false);
 					delete bp;
-				}				
+				} else {
+					ignoreOnce = bp;
+				}
 				return true;
 			}
 		};
@@ -292,6 +328,7 @@ bool CBreakpoint::DeleteByIndex(Bit16u index)
 			delete bp;
 			return true;
 		}
+		nr++;
 	};
 	return false;
 };
@@ -353,13 +390,14 @@ void CBreakpoint::ShowList(void)
 	for(i=BPoints.begin(); i != BPoints.end(); i++) {
 		CBreakpoint* bp = static_cast<CBreakpoint*>(*i);
 		if (bp->GetType()==BKPNT_PHYSICAL) {
-			PhysPt adr = bp->GetLocation();
-
-			wprintw(dbg.win_out,"%02X. BP %04X:%04X\n",nr,bp->GetSegment(),bp->GetOffset);
+			wprintw(dbg.win_out,"%02X. BP %04X:%04X\n",nr,bp->GetSegment(),bp->GetOffset());
 			nr++;
 		} else if (bp->GetType()==BKPNT_INTERRUPT) {
 			if (bp->GetValue()==BPINT_ALL)	wprintw(dbg.win_out,"%02X. BPINT %02X\n",nr,bp->GetIntNr());					
 			else							wprintw(dbg.win_out,"%02X. BPINT %02X AH=%02X\n",nr,bp->GetIntNr(),bp->GetValue());
+			nr++;
+		} else if (bp->GetType()==BKPNT_MEMORY) {
+			wprintw(dbg.win_out,"%02X. BPMEM %04X:%04X (%02X)\n",nr,bp->GetSegment(),bp->GetOffset(),bp->GetValue());
 			nr++;
 		};
 	}
@@ -591,6 +629,47 @@ Bit32u GetHexValue(char* str, char*& hex)
 	return value;
 };
 
+bool ChangeRegister(char* str)
+{
+	Bit32u	value = 0;
+
+	char* hex = str;
+	while (*hex==' ') hex++;
+	if (strstr(hex,"AX")==hex) { hex+=2; reg_ax = GetHexValue(hex,hex); } else
+	if (strstr(hex,"BX")==hex) { hex+=2; reg_bx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"CX")==hex) { hex+=2; reg_cx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"DX")==hex) { hex+=2; reg_dx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"SI")==hex) { hex+=2; reg_si = GetHexValue(hex,hex); } else
+	if (strstr(hex,"DI")==hex) { hex+=2; reg_di = GetHexValue(hex,hex); } else
+	if (strstr(hex,"BP")==hex) { hex+=2; reg_bp = GetHexValue(hex,hex); } else
+	if (strstr(hex,"SP")==hex) { hex+=2; reg_sp = GetHexValue(hex,hex); } else
+	if (strstr(hex,"IP")==hex) { hex+=2; reg_ip = GetHexValue(hex,hex); } else
+	if (strstr(hex,"CS")==hex) { hex+=2; SegSet16(cs,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"DS")==hex) { hex+=2; SegSet16(ds,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"ES")==hex) { hex+=2; SegSet16(es,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"FS")==hex) { hex+=2; SegSet16(fs,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"GS")==hex) { hex+=2; SegSet16(gs,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"SS")==hex) { hex+=2; SegSet16(ss,GetHexValue(hex,hex)); } else
+	if (strstr(hex,"EAX")==hex) { hex+=3; reg_eax = GetHexValue(hex,hex); } else
+	if (strstr(hex,"EBX")==hex) { hex+=3; reg_ebx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"ECX")==hex) { hex+=3; reg_ecx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"EDX")==hex) { hex+=3; reg_edx = GetHexValue(hex,hex); } else
+	if (strstr(hex,"ESI")==hex) { hex+=3; reg_esi = GetHexValue(hex,hex); } else
+	if (strstr(hex,"EDI")==hex) { hex+=3; reg_edi = GetHexValue(hex,hex); } else
+	if (strstr(hex,"EBP")==hex) { hex+=3; reg_ebp = GetHexValue(hex,hex); } else
+	if (strstr(hex,"ESP")==hex) { hex+=3; reg_esp = GetHexValue(hex,hex); } else
+	if (strstr(hex,"EIP")==hex) { hex+=3; reg_eip = GetHexValue(hex,hex); } else
+	if (strstr(hex,"AF")==hex) { hex+=2; flags.af = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"CF")==hex) { hex+=2; flags.cf = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"DF")==hex) { hex+=2; flags.df = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"IF")==hex) { hex+=2; flags.intf = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"OF")==hex) { hex+=3; flags.of = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"ZF")==hex) { hex+=3; flags.zf = (GetHexValue(hex,hex)!=0); } else
+	if (strstr(hex,"PF")==hex) { hex+=3; flags.pf = (GetHexValue(hex,hex)!=0); } else
+								{ return false; };
+	return true;
+};
+
 bool ParseCommand(char* str)
 {
 	char* found = str;
@@ -604,6 +683,17 @@ bool ParseCommand(char* str)
 		LOG_DEBUG("DEBUG: Set breakpoint at %04X:%04X",seg,ofs);
 		return true;
 	}
+#if C_HEAVY_DEBUG
+	found = strstr(str,"BPM ");
+	if (found) { // Add new breakpoint
+		found+=3;
+		Bit16u seg = GetHexValue(found,found);found++; // skip ":"
+		Bit32u ofs = GetHexValue(found,found);
+		CBreakpoint::AddMemBreakpoint(seg,ofs);
+		LOG_DEBUG("DEBUG: Set memory breakpoint at %04X:%04X",seg,ofs);
+		return true;
+	}
+#endif
 	found = strstr(str,"BPINT");
 	if (found) { // Add Interrupt Breakpoint
 		found+=5;
@@ -666,6 +756,30 @@ bool ParseCommand(char* str)
 		LOG_DEBUG("DEBUG: Logfile LOGCPU.TXT created.");
 		return true;
 	}
+	found = strstr(str,"SR ");
+	if (found) { // Set register value
+		found+=2;
+		if (ChangeRegister(found))	LOG_DEBUG("DEBUG: Set Register success.");
+		else						LOG_DEBUG("DEBUG: Set Register failure.");
+		return true;
+	}	
+	found = strstr(str,"SM ");
+	if (found) { // Set memory with following values
+		found+=3;
+		Bit16u seg = GetHexValue(found,found); found++;
+		Bit32u ofs = GetHexValue(found,found); found++;
+		Bit16u count = 0;
+		while (*found) {
+			while (*found==' ') found++;
+			if (*found) {
+				Bit8u value = GetHexValue(found,found); found++;
+				mem_writeb(PhysMake(seg,ofs+count),value);
+				count++;
+			}
+		};
+		LOG_DEBUG("DEBUG: Memory changed.");
+		return true;
+	}
 	found = strstr(str,"INTT ");
 	if (found) { // Create Cpu log file
 		found+=4;
@@ -688,6 +802,15 @@ bool ParseCommand(char* str)
 		Interrupt(intNr);
 		return true;
 	}
+#if C_HEAVY_DEBUG
+	found = strstr(str,"HEAVYLOG");
+	if (found) { // Create Cpu log file
+		logHeavy = !logHeavy;
+		if (logHeavy)	LOG_DEBUG("DEBUG: Heavy cpu logging on.");
+		else			LOG_DEBUG("DEBUG: Heavy cpu logging off.");
+		return true;
+	}
+#endif
 	if ((*str=='H') || (*str=='?')) {
 		wprintw(dbg.win_out,"Debugger keys:\n");
 		wprintw(dbg.win_out,"--------------------------------------------------------------------------\n");
@@ -703,11 +826,19 @@ bool ParseCommand(char* str)
 		wprintw(dbg.win_out,"BP     [segment]:[offset] - Set breakpoint\n");
 		wprintw(dbg.win_out,"BPINT  [intNr] *          - Set interrupt breakpoint\n");
 		wprintw(dbg.win_out,"BPINT  [intNr] [ah]       - Set interrupt breakpoint with ah\n");
+#if C_HEAVY_DEBUG
+		wprintw(dbg.win_out,"BPM    [segment]:[offset] - Set memory breakpoint (memory change)\n");
+#endif
 		wprintw(dbg.win_out,"BPLIST                    - List breakpoints\n");		
 		wprintw(dbg.win_out,"BPDEL  [bpNr] / *         - Delete breakpoint nr / all\n");
 		wprintw(dbg.win_out,"C / D  [segment]:[offset] - Set code / data view address\n");
 		wprintw(dbg.win_out,"INT [nr] / INTT [nr]      - Execute / Trace into Iinterrupt\n");
 		wprintw(dbg.win_out,"LOG [num]                 - Write cpu log file\n");
+#if C_HEAVY_DEBUG
+		wprintw(dbg.win_out,"HEAVYLOG                  - Enable/Disable automatic cpu log for INT CD\n");
+#endif
+		wprintw(dbg.win_out,"SR [reg] [value]          - Set register value\n");
+		wprintw(dbg.win_out,"SM [seg]:[off] [val] [.]..- Set memory with following values\n");	
 		wprintw(dbg.win_out,"H                         - Help\n");
 		wrefresh(dbg.win_out);
 		return TRUE;
@@ -744,22 +875,28 @@ Bit32u DEBUG_CheckKeys(void) {
 	if (key>0) {
 		switch (toupper(key)) {
 		case '1':
-			ret=(*cpudecoder)(100);
+			CPU_Cycles = 100;
+			ret=(*cpudecoder)();
 			break;
 		case '2':
-			ret=(*cpudecoder)(500);
+			CPU_Cycles = 500;
+			ret=(*cpudecoder)();
 			break;
 		case '3':
-			ret=(*cpudecoder)(1000);
+			CPU_Cycles = 1000;
+			ret=(*cpudecoder)();
 			break;
 		case '4':
-			ret=(*cpudecoder)(5000);
+			CPU_Cycles = 5000;
+			ret=(*cpudecoder)();
 			break;
 		case '5':
-			ret=(*cpudecoder)(10000);
+			CPU_Cycles = 10000;
+			ret=(*cpudecoder)();
 			break;
 		case 'q':
-			ret=(*cpudecoder)(5);
+			CPU_Cycles = 5;
+			ret=(*cpudecoder)();
 			break;
 		case 'D':	dataSeg = SegValue(ds);
 					dataOfs = reg_si;
@@ -813,14 +950,18 @@ Bit32u DEBUG_CheckKeys(void) {
 						if (StepOver()) return 0;
 						else {
 							skipFirstInstruction = true; // for heavy debugger
-							Bitu ret=(*cpudecoder)(1);
+							CPU_Cycles = 1;
+							Bitu ret=(*cpudecoder)();
 							SetCodeWinStart();
+							CBreakpoint::ignoreOnce = 0;
 						}
 						break;
 		case KEY_F(11):	// trace into
 						skipFirstInstruction = true; // for heavy debugger
-						ret = (*cpudecoder)(1);
+						CPU_Cycles = 1;
+						ret = (*cpudecoder)();
 						SetCodeWinStart();
+						CBreakpoint::ignoreOnce = 0;
 						break;
 
 //		default:
@@ -868,10 +1009,20 @@ static void DEBUG_RaiseTimerIrq(void) {
 	PIC_ActivateIRQ(0);
 }
 
+static void LogInstruction(Bit16u segValue, Bit32u eipValue, char* buffer) 
+{
+	PhysPt start = PhysMake(segValue,eipValue);
+	char dline[200];Bitu size;
+	size = DasmI386(dline, start, reg_eip, false);
+	Bitu len = strlen(dline);
+	if (len<30) for (Bitu i=0; i<30-len; i++) strcat(dline," ");	
+	// Get register values
+	sprintf(buffer,"%04X:%08X   %s EAX:%08X EBX:%08X ECX:%08X EDX:%08X ESI:%08X EDI:%08X EBP:%08X ESP:%08X DS:%04X ES:%04X FS:%04X GS:%04X SS:%04X CF:%01X ZF:%01X SF:%01X OF:%01X AF:%01X PF:%01X\n",segValue,eipValue,dline,reg_eax,reg_ebx,reg_ecx,reg_edx,reg_esi,reg_edi,reg_ebp,reg_esp,SegValue(ds),SegValue(es),SegValue(fs),SegValue(gs),SegValue(ss),get_CF(),get_ZF(),get_SF(),get_OF(),get_AF(),get_PF());
+};
+
 static bool DEBUG_Log_Loop(int count) {
 
 	char buffer[512];	
-	getcwd(buffer,512);
 	
 	FILE* f = fopen("LOGCPU.TXT","wt");
 	if (!f) return false;
@@ -884,23 +1035,17 @@ static bool DEBUG_Log_Loop(int count) {
 			// Get disasm
 			Bit16u csValue	= SegValue(cs);
 			Bit32u eipValue = reg_eip;
-			PhysPt start=Segs[cs].phys+reg_eip;
-			char dline[200];Bitu size;
-			size = DasmI386(dline, start, reg_eip, false);
-			Bitu len = strlen(dline);
-			if (len<30) for (Bitu i=0; i<30-len; i++) strcat(dline," ");
 			
-			PIC_IRQAgain=false;
-			ret=(*cpudecoder)(1);
-		
-			// Get register values
-			char buffer[512];
-			sprintf(buffer,"%04X:%08X   %s EAX:%08X EBX:%08X ECX:%08X EDX:%08X ESI:%08X EDI:%08X EBP:%08X ESP:%08X DS:%04X ES:%04X FS:%04X GS:%04X SS:%04X CF:%01X ZF:%01X SF:%01X OF:%01X AF:%01X PF:%01X\n",csValue,eipValue,dline,reg_eax,reg_ebx,reg_ecx,reg_edx,reg_esi,reg_edi,reg_ebp,reg_esp,SegValue(ds),SegValue(ds),SegValue(es),SegValue(fs),SegValue(gs),SegValue(ss),get_CF(),get_ZF(),get_SF(),get_OF(),get_AF(),get_PF());
+			LogInstruction(csValue,eipValue,buffer);
 			fprintf(f,"%s",buffer);
+						
+			CPU_Cycles = 1;
+			ret=(*cpudecoder)();
+		
 			count--;
 			if (count==0) break;
 
-		} while (!ret && PIC_IRQAgain);
+		} while (!ret);
 		if (ret) break;
 	} while (count>0);
 	
@@ -920,15 +1065,42 @@ public:
 	void Run(void)
 	{
 		char filename[128];
-		char args[128];
+		char args[256];
 		cmd->FindCommand(1,temp_line);
 		strncpy(filename,temp_line.c_str(),128);
-		cmd->FindCommand(2,temp_line);
-		strncpy(args,temp_line.c_str(),128);
+		// Read commandline
+		Bit16u i	=2;
+		bool ok		= false; 
+		args[0]		= 0;
+		do {
+			ok = cmd->FindCommand(i++,temp_line);
+			strncat(args,temp_line.c_str(),256);
+			strncat(args," ",256);
+		} while (ok);
 		// Start new shell and execute prog		
 		active = true;
-		DOS_Shell shell;
-		shell.Execute(filename,args);		
+		// Save cpu state....
+		Bit16u oldcs	= SegValue(cs);
+		Bit32u oldeip	= reg_eip;	
+		Bit16u oldss	= SegValue(ss);
+		Bit32u oldesp	= reg_esp;
+
+		// Workaround : Allocate Stack Space
+		Bit16u segment;
+		Bit16u size = 0x200 / 0x10;
+		if (DOS_AllocateMemory(&segment,&size)) {
+			SegSet16(ss,segment);
+			reg_sp = 0x200;
+			// Start shell
+			DOS_Shell shell;
+			shell.Execute(filename,args);
+			DOS_FreeMemory(segment);
+		}
+		// set old reg values
+		SegSet16(ss,oldss);
+		reg_esp = oldesp;
+		SegSet16(cs,oldcs);
+		reg_eip = oldeip;
 	};
 
 private:
@@ -954,6 +1126,9 @@ void DEBUG_SetupConsole(void)
 {
 	#ifdef WIN32
 	WIN32_Console();
+    #else
+    printf("\e[8;50;80t"); //resize terminal
+    fflush(NULL);
 	#endif	
 	memset((void *)&dbg,0,sizeof(dbg));
 	debugging=false;
@@ -987,8 +1162,53 @@ void DEBUG_Init(Section* sec) {
 
 #if C_HEAVY_DEBUG
 
+const Bit16u LOGCPUMAX = 200;
+
+static Bit16u logCpuCS [LOGCPUMAX];
+static Bit32u logCpuEIP[LOGCPUMAX];
+static Bit32u logCount = 0;
+
+typedef struct SLogInst {
+	char buffer[256];
+} TLogInst;
+
+TLogInst logInst[LOGCPUMAX];
+
+void DEBUG_HeavyLogInstruction(void)
+{
+	LogInstruction(SegValue(cs),reg_eip,logInst[logCount++].buffer);
+	if (logCount>=LOGCPUMAX) logCount = 0;
+};
+
+void DEBUG_HeavyWriteLogInstruction(void)
+{
+	if (!logHeavy) return;
+	
+	LOG_DEBUG("DEBUG: Creating cpu log LOGCPU_INT_CD.TXT");
+
+	FILE* f = fopen("LOGCPU_INT_CD.TXT","wt");
+	if (!f) {
+		LOG_DEBUG("DEBUG: Failed.");	
+		return;
+	}
+
+	Bit16u startLog = logCount;
+	do {
+		// Write Intructions
+		fprintf(f,"%s",logInst[startLog++].buffer);
+		if (startLog>=LOGCPUMAX) startLog = 0;
+	} while (startLog!=logCount);
+	
+	fclose(f);
+
+	LOG_DEBUG("DEBUG: Done.");	
+};
+
 bool DEBUG_HeavyIsBreakpoint(void)
 {
+	// LogInstruction
+	if (logHeavy) DEBUG_HeavyLogInstruction();
+
 	if (skipFirstInstruction) {
 		skipFirstInstruction = false;
 		return false;

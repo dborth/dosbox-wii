@@ -66,7 +66,8 @@ restart:
 	case 0x16:												/* PUSH SS */		
 		Push_16(SegValue(ss));break;
 	case 0x17:												/* POP SS */		
-		SegSet16(ss,Pop_16());break;
+		SegSet16(ss,Pop_16());
+		goto restart;
 	case 0x18:												/* SBB Eb,Gb */
 		RMEbGb(SBBB);break;
 	case 0x19:												/* SBB Ew,Gw */
@@ -292,7 +293,16 @@ restart:
 			#include "prefix_66.h"
 			break;
 		case 0x67:												/* Address Size Prefix */
+#ifdef CPU_PREFIX_67
+			prefix.mark|=PREFIX_ADDR;
+#ifdef CPU_PREFIX_COUNT
+			prefix.count++;
+#endif  			
+			lookupEATable=EAPrefixTable[prefix.mark];
+			goto restart;
+#else
 			NOTDONE;
+#endif
 			break;
 #endif
 		case 0x68:												/* PUSH Iw */
@@ -538,7 +548,7 @@ restart:
 				case 0x28:					/* MOV Ew,GS */
 					val=SegValue(gs);break;
 				default:
-				        val=0;
+					val=0;
 					E_Exit("CPU:8c:Illegal RM Byte");
 				}
 				if (rm >= 0xc0 ) {GetEArw;*earw=val;}
@@ -566,7 +576,9 @@ restart:
 					E_Exit("CPU:Illegal MOV CS Call");
 					break;
 				case 0x10:					/* MOV SS,Ew */
-					SegSet16(ss,val);break;
+					SegSet16(ss,val);
+					goto restart;
+					break;
 				case 0x18:					/* MOV DS,Ew */
 					SegSet16(ds,val);break;
 				case 0x20:					/* MOV FS,Ew */
@@ -654,26 +666,22 @@ restart:
 			}
 		case 0xa0:												/* MOV AL,Ob */
 			{
-				GetEADirect;
-				reg_al=LoadMb(eaa);
+				reg_al=LoadMb(GetEADirect[prefix.mark]());
 			}
 			break;
 		case 0xa1:												/* MOV AX,Ow */
 			{
-				GetEADirect;
-				reg_ax=LoadMw(eaa);
+				reg_ax=LoadMw(GetEADirect[prefix.mark]());
 			}
 			break;
 		case 0xa2:												/* MOV Ob,AL */
 			{
-				GetEADirect;
-				SaveMb(eaa,reg_al);
+				SaveMb(GetEADirect[prefix.mark](),reg_al);
 			}
 			break;
 		case 0xa3:												/* MOV Ow,AX */
 			{
-				GetEADirect;
-				SaveMw(eaa,reg_ax);
+				SaveMw(GetEADirect[prefix.mark](),reg_ax);
 			}
 			break;
 		case 0xa4:												/* MOVSB */
@@ -856,10 +864,15 @@ restart:
 			}
 			break;
 		case 0xcc:												/* INT3 */
+#if C_DEBUG	
+			SAVEIP;
+			if (DEBUG_Breakpoint()) {
+				LOADIP;
+				return 1;
+			}
+			LOADIP;
+#endif			
 			INTERRUPT(3);
-#if C_DEBUG 
-			return 1; 
-#endif
 			break;
 		case 0xcd:												/* INT Ib */	
 			{
@@ -948,6 +961,7 @@ restart:
 		case 0xde:												/* FPU ESC 6 */
 		case 0xdf:												/* FPU ESC 7 */
 			{
+				LOG_WARN("FPU used");
 				Bit8u rm=Fetchb();
 				if (rm<0xc0) GetEAa;
 			}
@@ -966,9 +980,15 @@ restart:
 			else ADDIPFAST(1);
 			break;
 		case 0xe3:												/* JCXZ */
-			if (!reg_cx) ADDIPFAST(Fetchbs());
-			else ADDIPFAST(1);
-			break;
+			{ 
+				Bitu test;
+				if (prefix.mark & PREFIX_ADDR) {
+					test=reg_ecx;PrefixReset;
+				} else test=reg_cx;
+				if (!test) ADDIPFAST(Fetchbs());
+				else ADDIPFAST(1);
+				break;
+			}
 		case 0xe4:												/* IN AL,Ib */
 			{ Bit16u port=Fetchb();reg_al=IO_Read(port);}
 			break;
@@ -1024,11 +1044,11 @@ restart:
 			E_Exit("CPU:F1:Not Handled");
 			break;
 		case 0xf2:												/* REPNZ */
-			count-=Repeat_Normal(false,false,count);
-			break;
+			Repeat_Normal(false,false);
+			continue;
 		case 0xf3:												/* REPZ */
-			count-=Repeat_Normal(true,false,count);
-			break;
+			Repeat_Normal(true,false);
+			continue;
 		case 0xf4:												/* HLT */
 			break;
 		case 0xf5:												/* CMC */
@@ -1318,6 +1338,5 @@ restart:
 		default:	
 			NOTDONE;
 			break;
-
 	}
-
+	

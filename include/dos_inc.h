@@ -63,6 +63,7 @@ struct DOS_Block {
 	Bit8u current_drive;
 	bool verify;
 	bool breakcheck;
+	bool echo;          // if set to true dev_con::read will echo input 
 	struct  {
 		RealPt indosflag;
 		RealPt mediaid;
@@ -119,7 +120,7 @@ bool DOS_ChangeDir(char * dir);
 bool DOS_MakeDir(char * dir);
 bool DOS_RemoveDir(char * dir);
 bool DOS_Rename(char * oldname,char * newname);
-bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit16u * sectors,Bit16u * clusters,Bit16u * free);
+bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit8u * sectors,Bit16u * clusters,Bit16u * free);
 bool DOS_GetFileAttr(char * name,Bit16u * attr);
 
 /* IOCTL Stuff */
@@ -140,22 +141,25 @@ bool DOS_ResizeMemory(Bit16u segment,Bit16u * blocks);
 bool DOS_FreeMemory(Bit16u segment);
 void DOS_FreeProcessMemory(Bit16u pspseg);
 Bit16u DOS_GetMemory(Bit16u pages);
+void DOS_SetMemAllocStrategy(Bit16u strat);
+Bit16u DOS_GetMemAllocStrategy(void);
 
 /* FCB stuff */
-bool DOS_FCBOpenCreate(Bit16u seg,Bit16u offset);
+bool DOS_FCBOpen(Bit16u seg,Bit16u offset);
+bool DOS_FCBCreate(Bit16u seg,Bit16u offset);
 bool DOS_FCBClose(Bit16u seg,Bit16u offset);
 bool DOS_FCBFindFirst(Bit16u seg,Bit16u offset);
 bool DOS_FCBFindNext(Bit16u seg,Bit16u offset);
 Bit8u DOS_FCBRead(Bit16u seg,Bit16u offset, Bit16u numBlocks);
-bool DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u numBlocks);
+Bit8u DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u numBlocks);
 Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore);
-bool DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore);
+Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore);
 bool DOS_FCBGetFileSize(Bit16u seg,Bit16u offset,Bit16u numRec);
 bool DOS_FCBDeleteFile(Bit16u seg,Bit16u offset);
 bool DOS_FCBRenameFile(Bit16u seg, Bit16u offset);
 void DOS_FCBSetRandomRecord(Bit16u seg, Bit16u offset);
 Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *change);
-bool DOS_GetAllocationInfo(Bit8u drive,Bit16u * _bytes_sector,Bit16u * _sectors_cluster,Bit16u * _total_clusters);
+bool DOS_GetAllocationInfo(Bit8u drive,Bit16u * _bytes_sector,Bit8u * _sectors_cluster,Bit16u * _total_clusters);
 
 /* Extra DOS Interrupts */
 void DOS_SetupMisc(void);
@@ -418,8 +422,9 @@ private:
 extern DOS_InfoBlock dos_infoblock;;
 
 INLINE Bit8u RealHandle(Bit16u handle) {
+	
 	DOS_PSP psp(dos.psp);	
-	return psp.GetFileHandle((Bit8u)handle);
+	return psp.GetFileHandle(handle);
 }
 
 #endif

@@ -20,6 +20,7 @@
 #include "mem.h"
 #include "inout.h"
 #include "int10.h"
+#include "mouse.h"
 
 //TODO Maybe also add PCJR Video Modes could be nice :)
 //TODO include some credits to bochs/plex86 bios i used for info/tables
@@ -387,8 +388,7 @@ void INT10_SetVideoMode(Bit8u mode) {
 	real_writeb(BIOSMEM_SEG,BIOSMEM_NB_ROWS,theight-1);
 	real_writew(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT,cheight);
 	real_writeb(BIOSMEM_SEG,BIOSMEM_VIDEO_CTL,(0x60|(clearmem << 7)));
-	real_writeb(BIOSMEM_SEG,BIOSMEM_SWITCHES,0xF9);
-	real_writeb(BIOSMEM_SEG,BIOSMEM_SWITCHES,0);
+	real_writeb(BIOSMEM_SEG,BIOSMEM_SWITCHES,0x09);
 	real_writeb(BIOSMEM_SEG,BIOSMEM_MODESET_CTL,real_readb(BIOSMEM_SEG,BIOSMEM_MODESET_CTL)&0x7f);
 
 	// FIXME We nearly have the good tables. to be reworked
@@ -410,4 +410,18 @@ void INT10_SetVideoMode(Bit8u mode) {
 	INT10_SetActivePage(0);
 	/* Set some interrupt vectors */
 	RealSetVec(0x43,int10_romarea.font_8_first);
+	/* Tell mouse resolution change */
+	Mouse_SetResolution(vga_modes[line].swidth,vga_modes[line].sheight);
+};
+
+void INT10_SetGfxControllerToDefault()
+// reset gfx controller to default values
+// needed for drawing mouse pointer
+{
+	Bit8u line=FindVideoMode(real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE)&127);
+	// Set Grafx Ctl
+	for(Bit8u i=0;i<=GRDC_MAX_REG;i++) {
+		IO_Write(VGAREG_GRDC_ADDRESS,(Bit8u)i);
+		IO_Write(VGAREG_GRDC_DATA,grdc_regs[vga_modes[line].grdcmodel][i]);
+	}	
 };

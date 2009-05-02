@@ -22,9 +22,10 @@
 #include "callback.h"
 #include "inout.h"
 #include "mem.h"
-#include "timer.h"
+#include "pic.h"
 
 static Bitu call_int1a,call_int11,call_int8,call_int17,call_int12,call_int15,call_int1c;
+static Bitu call_int1;
 
 static Bitu INT1A_Handler(void) {
 	switch (reg_ah) {
@@ -104,9 +105,19 @@ static Bitu INT8_Handler(void) {
 	/* decrease floppy motor timer */
 	Bit8u val = mem_readb(BIOS_DISK_MOTOR_TIMEOUT);
 	if (val>0) mem_writeb(BIOS_DISK_MOTOR_TIMEOUT,val-1);
-	
+	/* and running drive */
+	mem_writeb(BIOS_DRIVE_RUNNING,mem_readb(BIOS_DRIVE_RUNNING) & 0xF0);
+	// Save ds,dx,ax
+	Bit16u oldds = SegValue(ds);
+	Bit16u olddx = reg_dx;
+	Bit16u oldax = reg_ax;
+	// run int 1c	
 	CALLBACK_RunRealInt(0x1c);
 	IO_Write(0x20,0x20);
+	// restore old values
+	SegSet16(ds,oldds);
+	reg_dx = olddx;
+	reg_ax = oldax;
 	return CBRET_NONE;
 };
 
@@ -159,7 +170,8 @@ static Bitu INT15_Handler(void) {
 		mem_writed(BIOS_WAIT_FLAG_POINTER,RealMake(SegValue(es),reg_bx));
 		mem_writed(BIOS_WAIT_FLAG_COUNT,reg_cx<<16|reg_dx);
 		mem_writeb(BIOS_WAIT_FLAG_ACTIVE,1);
-		TIMER_RegisterDelayHandler(&WaitFlagEvent,reg_cx<<16|reg_dx);
+		PIC_RemoveEvents(&WaitFlagEvent);
+		PIC_AddEvent(&WaitFlagEvent,reg_cx<<16|reg_dx);
 		break;
 	case 0x84:	/* BIOS - JOYSTICK SUPPORT (XT after 11/8/82,AT,XT286,PS) */
 		//Does anyone even use this?
@@ -177,7 +189,11 @@ static Bitu INT15_Handler(void) {
 		CALLBACK_SCF(false);
 		break;
 	case 0x90:	/* OS HOOK - DEVICE BUSY */
-		CALLBACK_SCF(true);
+		CALLBACK_SCF(false);
+		reg_ah=0;
+		break;
+	case 0x91:	/* OS HOOK - DEVICE POST */
+		CALLBACK_SCF(false);
 		reg_ah=0;
 		break;
 	case 0xc2:	/* BIOS PS2 Pointing Device Support */
@@ -197,12 +213,16 @@ static Bitu INT15_Handler(void) {
 		CALLBACK_SCF(false);
 	}
 	return CBRET_NONE;
-};
+}
 
-static void INT15_StartUp(void) {
-/* TODO Start the time correctly */
-};
-
+static Bitu INT1_Single_Step(void) {
+	static bool warned=false;
+	if (!warned) {
+		warned=true;
+		LOG_WARN("INT 1:Single Step called");
+	}
+	return CBRET_NONE;
+}
 
 void BIOS_SetupKeyboard(void);
 void BIOS_SetupDisks(void);
@@ -244,13 +264,20 @@ void BIOS_Init(Section* sec) {
 	RealSetVec(0x17,CALLBACK_RealPointer(call_int17));
 	/* INT 1A TIME and some other functions */
 	call_int1a=CALLBACK_Allocate();	
-	CALLBACK_Setup(call_int1a,&INT1A_Handler,CB_IRET);
+	CALLBACK_Setup(call_int1a,&INT1A_Handler,CB_IRET_STI);
 	RealSetVec(0x1A,CALLBACK_RealPointer(call_int1a));
 	/* INT 1C System Timer tick called from INT 8 */
-	call_int1c=CALLBACK_Allocate();	
+	call_int1c=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int1c,&INT1C_Handler,CB_IRET);
 	RealSetVec(0x1C,CALLBACK_RealPointer(call_int1c));
 
+	/* Some defeault CPU error interrupt handlers */
+	call_int1=CALLBACK_Allocate();
+	CALLBACK_Setup(call_int1,&INT1_Single_Step,CB_IRET);
+	RealSetVec(0x1,CALLBACK_RealPointer(call_int1));
+
+	/* Test for some hardware */
+	if (IO_Read(0x378)!=0xff) real_writed(0x40,0x08,0x378);
 }
 
 

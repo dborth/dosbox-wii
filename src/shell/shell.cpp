@@ -79,7 +79,7 @@ void DOS_Shell::ParseLine(char * line) {
 	char * fname1=0;
 
 	/* Check for a leading @ */
-	if (line[0]=='@') line[0]=' ';
+ 	if (line[0]=='@') line[0]=' ';
 	line=trim(line);
 	Bit32u num=0;		/* Number of commands in this line */
 
@@ -96,9 +96,10 @@ void DOS_Shell::ParseLine(char * line) {
 void DOS_Shell::Run(void) {
 	char input_line[CMD_MAXLINE];
 	std::string line;
-	if (cmd->FindString("/C",line,true)) {
+
+	if (cmd->FindStringRemain("/C",line)) {
 		strcpy(input_line,line.c_str());
-		line.erase();
+		ParseLine(input_line);
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
@@ -179,13 +180,15 @@ static char * init_line="/INIT AUTOEXEC.BAT";
 
 void SHELL_Init() {
 	/* Add messages */
+	MSG_Add("SHELL_ILLEGAL_PATH","Illegal Path\n");
 	MSG_Add("SHELL_CMD_HELP","supported commands are:\n");
 	MSG_Add("SHELL_CMD_ECHO_ON","ECHO is on\n");
 	MSG_Add("SHELL_CMD_ECHO_OFF","ECHO is off\n");
 	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s\n");
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s\n");
-	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %\n");
+	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s\n");
+    MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s\n");
 	MSG_Add("SHELL_SYNTAXERROR","The syntax of the command is incorrect.\n");
 	MSG_Add("SHELL_CMD_SET_NOT_SET","Environment variable %s not defined\n");
 	MSG_Add("SHELL_CMD_SET_OUT_OF_SPACE","Not enough environment space left.\n");
@@ -197,12 +200,22 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_FILE_NOT_FOUND","File %s not found.\n");
 	MSG_Add("SHELL_CMD_FILE_EXISTS","File %s already exists.\n");
 	MSG_Add("SHELL_CMD_DIR_INTRO","Directory of %s.\n");
-	MSG_Add("SHELL_CMD_DIR_PATH_ERROR","Illegal Path\n");
 	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%5d File(s) %17s Bytes\n");
 	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free\n");
 	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\n");
 	MSG_Add("SHELL_EXECUTE_ILLEGAL_COMMAND","Illegal command: %s.\n");
-	MSG_Add("SHELL_STARTUP","DOSBox Shell v" VERSION "\nFor Help and supported commands type: HELP\n\nHAVE FUN!\nThe DOSBox Team\n\n");
+
+	MSG_Add("SHELL_STARTUP","DOSBox Shell v" VERSION "\n"
+	   "DOSBox doesn't not run protected mode games!\n"
+	   "For supported shell commands type: HELP\n"
+#if! defined (WIN32)
+		"DOSBox only works with upcase filenames as dos is case-insensitive.\n"
+		"You can use the UPCASE command for this, but please be careful.\n" 
+#endif
+	   "For more information read the README file in DOSBox directory.\n"
+	   "\nHAVE FUN!\nThe DOSBox Team\n\n"
+	);
+
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Change Directory.\n");
     MSG_Add("SHELL_CMD_CLS_HELP","Clear screen.\n");
     MSG_Add("SHELL_CMD_DIR_HELP","Directory View.\n");
@@ -216,9 +229,15 @@ void SHELL_Init() {
     MSG_Add("SHELL_CMD_GOTO_HELP","Jump to a labeled line in a batch script.\n");
     MSG_Add("SHELL_CMD_TYPE_HELP","Display the contents of a text-file.\n");
     MSG_Add("SHELL_CMD_REM_HELP","Add comments in a batch file.\n");
-
+	MSG_Add("SHELL_CMD_NO_WILD","This is a simple version of the command, no wildcards allowed!\n");
+	MSG_Add("SHELL_CMD_RENAME_HELP","Renames files.\n");
+    MSG_Add("SHELL_CMD_DELETE_HELP","Removes files.\n");
     /* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
+	/* Setup the startup CS:IP to kill the last running machine when exitted */
+	RealPt newcsip=CALLBACK_RealPointer(call_shellstop);
+	SegSet16(cs,RealSeg(newcsip));
+	reg_ip=RealOff(newcsip);
 
 	CALLBACK_Setup(call_shellstop,shellstop_handler,CB_IRET);
 	PROGRAMS_MakeFile("COMMAND.COM",SHELL_ProgramStart);

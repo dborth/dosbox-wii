@@ -48,6 +48,7 @@ struct KeyBlock {
 	KeyCommands command;
 	bool read_active;
 	bool enabled;
+	bool active;
 };
 
 static KeyBlock keyb;
@@ -87,7 +88,7 @@ void KEYBOARD_AddCode(Bit8u code) {
 		keyb.buf[start]=code;
 		keyb.read_active=true;
 	}
-	if (keyb.buf_used>0) PIC_ActivateIRQ(1);
+	if (keyb.buf_used==1) PIC_AddIRQ(1,0);
 }
 
 static Bit8u read_p60(Bit32u port) {
@@ -151,7 +152,12 @@ static void write_p61(Bit32u port,Bit8u val) {
 
 static void write_p64(Bit32u port,Bit8u val) {
 	switch (val) {
-	case 0:
+	case 0xad:		/* Activate keyboard */
+		keyb.active=true;
+		break;
+	case 0xae:		/* Deactivate keyboard */
+		keyb.active=false;
+		break;
 	default:
 		LOG_DEBUG("Port 64 write with val %d",val);
 		break;
