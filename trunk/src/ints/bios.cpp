@@ -101,6 +101,10 @@ static Bitu INT11_Handler(void) {
 static Bitu INT8_Handler(void) {
 	/* Increase the bios tick counter */
 	mem_writed(BIOS_TIMER,mem_readd(BIOS_TIMER)+1);
+	/* decrease floppy motor timer */
+	Bit8u val = mem_readb(BIOS_DISK_MOTOR_TIMEOUT);
+	if (val>0) mem_writeb(BIOS_DISK_MOTOR_TIMEOUT,val-1);
+	
 	CALLBACK_RunRealInt(0x1c);
 	IO_Write(0x20,0x20);
 	return CBRET_NONE;
@@ -139,6 +143,10 @@ static Bitu INT15_Handler(void) {
 		break;
 	case 0xC0:	/* Get Configuration*/
 		LOG_WARN("Request BIOS Configuration INT 15 C0");
+		CALLBACK_SCF(true);
+		break;
+	case 0x4f:	/* BIOS - Keyboard intercept */
+		/* Carry should be set but let's just set it just in case */
 		CALLBACK_SCF(true);
 		break;
 	case 0x84:	/* BIOS - JOYSTICK SUPPORT (XT after 11/8/82,AT,XT286,PS) */

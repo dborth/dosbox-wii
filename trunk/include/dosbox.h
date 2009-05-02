@@ -19,45 +19,43 @@
 #if !defined __DOSBOX_H
 #define __DOSBOX_H
 
-typedef unsigned char Bit8u;
-typedef signed char Bit8s;
-typedef unsigned short Bit16u;
-typedef signed short Bit16s;
-typedef unsigned long Bit32u;
-typedef signed long Bit32s;
+
+void E_Exit(char * message,...);
+
+void S_Warn(char * message,...);
+
+/* The internal types */
+typedef  unsigned char     Bit8u;
+typedef    signed char     Bit8s;
+typedef unsigned short     Bit16u;
+typedef   signed short     Bit16s;
+typedef  unsigned long     Bit32u;
+typedef    signed long     Bit32s;
+typedef         double     Real64;
 #if defined(_MSC_VER)
-typedef unsigned __int64 Bit64u;
-typedef signed __int64 Bit64s;
+typedef unsigned __int64   Bit64u;
+typedef   signed __int64   Bit64s;
 #else
-typedef unsigned long long int Bit64u;
-typedef signed long long int Bit64s;
+typedef unsigned long long Bit64u;
+typedef   signed long long Bit64s;
 #endif
 
 typedef unsigned int Bitu;
 typedef signed int Bits;
 
 #include <stddef.h>
-
-void E_Exit(char * message,...);
-
-void S_Warn(char * message,...);
-
-
-#include "../settings.h"								/* General extra setting */
-#if defined (_MSC_VER)
-#include "../src/platform/visualc/config.h"
-#else
-#include "../config.h"
-#define INLINE inline
-#endif
-
+#include "config.h"
+#include "../settings.h"
 
 typedef Bitu (LoopHandler)(void);
 
 void DOSBOX_RunMachine();
 void DOSBOX_SetLoop(LoopHandler * handler);
+void DOSBOX_SetNormalLoop();
 
 void DOSBOX_Init(int argc, char* argv[]);
 void DOSBOX_StartUp(void);
+
+
 #endif
 

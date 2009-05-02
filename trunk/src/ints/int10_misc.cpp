@@ -23,7 +23,9 @@
 
 
 
+#if defined (_MSC_VER)
 #pragma pack(1)
+#endif
 struct Dynamic_Functionality {
 	RealPt static_table;		/* 00h   DWORD  address of static functionality table */
 	Bit8u cur_mode;				/* 04h   BYTE   video mode in effect */
@@ -68,15 +70,19 @@ struct Dynamic_Functionality {
 									7 reserved
 								*/
 	Bit8u reserved2[13];		/*  33h 13 BYTEs reserved (00h) */
-};
+}
+#if defined (_MSC_VER)
+;
 #pragma pack()
+#else
+__attribute__ ((packed));
+#endif
 
 
 
+void INT10_GetFuncStateInformation(PhysPt save) {
 
-void INT10_GetFuncStateInformation(Bit16u seg,Bit16u off) {
-
-	PhysOff save=Real2Phys(RealMake(seg,off));
+	
 	/* set static state pointer */
 	mem_writed(save,int10_romarea.static_state);
 	/* Copy BIOS Segment areas */

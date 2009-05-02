@@ -42,7 +42,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
-# ADD CPP /nologo /G6 /MD /W3 /GX /O1 /Op /Ob2 /I "../include" /I "../src/platform/visualc" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /FAs /FD /QxMi /bQipo /c
+# ADD CPP /nologo /G6 /MD /W3 /GX /O1 /Op /Ob2 /I "../include" /I "../src/platform/visualc" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /FAs /FR /FD /QxMi /bQipo /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -507,7 +507,11 @@ SOURCE=..\src\fpu\fpu.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\fpu\fpu_load.h
+SOURCE=..\src\fpu\fpu_instructions.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\fpu\fpu_types.h
 # End Source File
 # End Group
 # Begin Group "visualc"
@@ -576,6 +580,10 @@ SOURCE=..\include\dosbox.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\include\fpu.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\include\hardware.h
 # End Source File
 # Begin Source File
@@ -631,9 +639,5 @@ SOURCE=..\include\support.h
 SOURCE=..\include\timer.h
 # End Source File
 # End Group
-# Begin Source File
-
-SOURCE=.\shit.txt
-# End Source File
 # End Target
 # End Project

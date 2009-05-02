@@ -102,11 +102,15 @@
 #define PLANAR4    0x05
 #define LINEAR8    0x06
 
-// for SVGA
-#define LINEAR15   0x07
-#define LINEAR16   0x08
-#define LINEAR24   0x09
-#define LINEAR32   0x0
+// for Tandy
+
+#define TANDY16    0x0A
+	
+
+#define LINEAR15   0x10
+#define LINEAR16   0x11
+#define LINEAR24   0x12
+#define LINEAR32   0x13
 
 
 #define SCREEN_SIZE(x,y) (((x*y*2)|0x00ff)+1)
@@ -167,19 +171,16 @@ inline Bit8u CURSOR_POS_ROW(Bit8u page) {
 
 void INT10_SetVideoMode(Bit8u mode);
 
-void INT10_ScrollUpWindow(Bit8u rul,Bit8u cul,Bit8u rlr,Bit8u clr,Bit8u nlines,Bit8u attr,Bit8u page);
-void INT10_ScrollDownWindow(Bit8u rul,Bit8u cul,Bit8u rlr,Bit8u clr,Bit8u nlines,Bit8u attr,Bit8u page);
-
+void INT10_ScrollWindow(Bit8u rul,Bit8u cul,Bit8u rlr,Bit8u clr,Bit8s nlines,Bit8u attr,Bit8u page);
 
 void INT10_SetActivePage(Bit8u page);
-void INT10_GetFuncStateInformation(Bit16u seg,Bit16u off);
-
+void INT10_GetFuncStateInformation(PhysPt save);
 
 void INT10_SetCursorPos(Bit8u row,Bit8u col,Bit8u page);
 void INT10_TeletypeOutput(Bit8u chr,Bit8u attr,bool showattr, Bit8u page);
 void INT10_ReadCharAttr(Bit16u * result,Bit8u page);
 void INT10_WriteChar(Bit8u chr,Bit8u attr,Bit8u page,Bit16u count,bool showattr);
-void INT10_WriteString(Bit8u row,Bit8u col,Bit8u flag,Bit8u attr,PhysOff string,Bit16u count,Bit8u page);
+void INT10_WriteString(Bit8u row,Bit8u col,Bit8u flag,Bit8u attr,PhysPt string,Bit16u count,Bit8u page);
 
 /* Graphics Stuff */
 void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color);
@@ -189,15 +190,15 @@ VGAMODES * GetCurrentMode(void);
 /* Palette Group */
 void INT10_SetSinglePaletteRegister(Bit8u reg,Bit8u val);
 void INT10_SetOverscanBorderColor(Bit8u val);
-void INT10_SetAllPaletteRegisters(PhysOff data);
+void INT10_SetAllPaletteRegisters(PhysPt data);
 void INT10_ToggleBlinkingBit(Bit8u state);
 void INT10_GetSinglePaletteRegister(Bit8u reg,Bit8u * val);
 void INT10_GetOverscanBorderColor(Bit8u * val);
-void INT10_GetAllPaletteRegisters(PhysOff data);
+void INT10_GetAllPaletteRegisters(PhysPt data);
 void INT10_SetSingleDacRegister(Bit8u index,Bit8u red,Bit8u green,Bit8u blue);
 void INT10_GetSingleDacRegister(Bit8u index,Bit8u * red,Bit8u * green,Bit8u * blue);
-void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysOff data);
-void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysOff data);
+void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysPt data);
+void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysPt data);
 
 
 /* Sup Groups */

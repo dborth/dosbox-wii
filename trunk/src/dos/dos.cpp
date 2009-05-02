@@ -29,6 +29,8 @@
 #include "dos_inc.h"
 
 DOS_Block dos;
+DOS_InfoBlock dosInfoBlock;
+
 static Bit8u dos_copybuf[0x10000];
 static Bitu call_20,call_21,call_theend;
 
@@ -105,7 +107,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x09:		/* Write string to STDOUT */
 		{	
 			Bit8u c;Bit16u n=1;
-			PhysOff buf=real_phys(Segs[ds].value,reg_dx);
+			PhysPt buf=SegPhys(ds)+reg_dx;
 			while ((c=mem_readb(buf++))!='$') {
 				DOS_WriteFile(STDOUT,&c,&n);
 			}
@@ -114,18 +116,16 @@ static Bitu DOS_21Handler(void) {
 	case 0x0a:		/* Buffered Input */
 		{
 			//TODO ADD Break checkin in STDIN but can't care that much for it
-			PhysOff data=real_phys(Segs[ds].value,reg_dx);
+			PhysPt data=SegPhys(ds)+reg_dx;
 			Bit8u free=mem_readb(data);
 			Bit8u read=0;Bit8u c;Bit16u n=1;
 			if (!free) break;
 			while (read<free) {
 				DOS_ReadFile(STDIN,&c,&n);
 				DOS_WriteFile(STDOUT,&c,&n);
-				if (c==13) {
-					DOS_ReadFile(STDIN,&c,&n);
-					break; 
-				}
 				mem_writeb(data+read+2,c);
+				if (c==13) 
+					break;
 				read++;
 			};
 			mem_writeb(data+1,read);
@@ -166,9 +166,41 @@ static Bitu DOS_21Handler(void) {
 		reg_al=26;
 		break;
 	case 0x0f:		/* Open File using FCB */
+		if(DOS_FCBOpen(SegValue(ds),reg_dx)){
+			reg_al=0;
+		}else{
+			reg_al=0xff;
+		}
+		LOG_DEBUG("DOS:0x0f FCB-fileopen used, result:al=%d",reg_al);
+		break;
+
 	case 0x10:		/* Close File using FCB */
+		if(DOS_FCBClose(SegValue(ds),reg_dx)){
+		reg_al=0;
+		}else{
+			reg_al=0xff;
+		}
+		LOG_DEBUG("DOS:0x10 FCB-fileclose used, result:al=%d",reg_al);
+		break;
+
 	case 0x11:		/* Find First Matching File using FCB */
+		if(DOS_FCBFindFirst(SegValue(ds),reg_dx)){
+		reg_al=0;
+		}else{
+			reg_al=0xff;
+		}
+		LOG_DEBUG("DOS:0x11 FCB-FindFirst used, result:al=%d",reg_al);
+		break;
+
 	case 0x12:		/* Find Next Matching File using FCB */
+		if(DOS_FCBFindNext(SegValue(ds),reg_dx)){
+		reg_al=0;
+		}else{
+			reg_al=0xff;
+		}
+		LOG_DEBUG("DOS:0x12 FCB-FindNext used, result:al=%d",reg_al);
+		break;
+
 	case 0x13:		/* Delete File using FCB */
 	case 0x14:		/* Sequential read from FCB */
 	case 0x15:		/* Sequential write to FCB */
@@ -182,23 +214,19 @@ static Bitu DOS_21Handler(void) {
 	case 0x28:		/* Random Block read to FCB */
 		LOG_ERROR("DOS:Unhandled call %02X, FCB Stuff",reg_ah);
 		reg_al=0xff;		/* FCB Calls FAIL */
-		CALLBACK_SCF(true);
+		//CALLBACK_SCF(true); not needed.
 		break;
+
 	case 0x29:		/* Parse filename into FCB */
-//TODO Give errors for unsupported functions
-		{
-			MEM_StrCopy(real_phys(Segs[ds].value,reg_si),name1,DOSNAMEBUF);
-/* only detect the call program use to detect the existence of a harddisk */
-			if ((strlen((char *)name1)==2) && (name1[1]==':')) {
-				Bit8u drive=toupper(name1[0])-'A';
-				if (Drives[drive]) reg_al=0;
-				else reg_al=0xff;
-				break;
-			}
-			LOG_DEBUG("DOS:29:FCB Parse Filename:%s",name1);
-		};
-		reg_al=0xff;		/* FCB Calls FAIL */
-		break;
+        {   Bit8u difference;
+            char string[1024];
+            MEM_StrCopy(SegPhys(ds)+reg_si,string,1024);
+            reg_al=FCB_Parsename(SegValue(es),reg_di,reg_al ,string, &difference);
+            reg_di+=difference;
+        }
+		LOG_DEBUG("DOS:29:FCB Parse Filename, result:al=%d",reg_al);
+        break;
+
 	case 0x18:		/* NULL Function for CP/M compatibility or Extended rename FCB */
 	case 0x1d:		/* NULL Function for CP/M compatibility or Extended rename FCB */
 	case 0x1e:		/* NULL Function for CP/M compatibility or Extended rename FCB */
@@ -211,12 +239,12 @@ static Bitu DOS_21Handler(void) {
 		reg_al=DOS_GetDefaultDrive();
 		break;
 	case 0x1a:		/* Set Disk Transfer Area Address */
-//TODO find out what a DTA does
-		dos.dta=RealMake(Segs[ds].value,reg_dx);
+		dos.dta=RealMakeSeg(ds,reg_dx);
 		break;
+
 	case 0x1c:		/* Get allocation info for specific drive */
 		LOG_DEBUG("DOS: Allocation Info call not supported correctly");
-		SetSegment_16(ds,0xf000);
+		SegSet16(ds,0xf000);
 		reg_bx=0;
 		real_writeb(0xf000,0,0);
 		reg_al=0x7f;
@@ -225,7 +253,7 @@ static Bitu DOS_21Handler(void) {
 		break;		/* TODO maybe but hardly think a game needs this */
 	case 0x1b:		/* Get allocation info for default drive */	
 		LOG_DEBUG("DOS: Allocation Info call not supported correctly");
-		SetSegment_16(ds,0xf000);
+		SegSet16(ds,0xf000);
 		reg_bx=0;
 		real_writeb(0xf000,0,0);
 		reg_al=0x7f;
@@ -237,7 +265,7 @@ static Bitu DOS_21Handler(void) {
 		E_Exit("DOS:Unhandled call %02X",reg_ah);
 		break;		/* TODO maybe but hardly think a game needs this */
 	case 0x25:		/* Set Interrupt Vector */
-		RealSetVec(reg_al,RealMake(Segs[ds].value,reg_dx));
+		RealSetVec(reg_al,RealMakeSeg(ds,reg_dx));
 		break;
 	case 0x26:		/* Create new PSP */
 		DOS_NewPSP(reg_dx);
@@ -277,7 +305,7 @@ static Bitu DOS_21Handler(void) {
 		dos.verify=(reg_al==1);
 		break;
 	case 0x2f:		/* Get Disk Transfer Area */
-		SetSegment_16(es,RealSeg(dos.dta));
+		SegSet16(es,RealSeg(dos.dta));
 		reg_bx=RealOff(dos.dta);
 		break;
 	case 0x30:		/* Get DOS Version */
@@ -315,12 +343,12 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x34:		/* Get INDos Flag */
-		SetSegment_16(es,RealSeg(dos.tables.indosflag));
+		SegSet16(es,RealSeg(dos.tables.indosflag));
 		reg_bx=RealOff(dos.tables.indosflag);
 		break;
 	case 0x35:		/* Get interrupt vector */
 		reg_bx=real_readw(0,((Bit16u)reg_al)*4);
-		SetSegment_16(es,real_readw(0,((Bit16u)reg_al)*4+2));
+		SegSet16(es,real_readw(0,((Bit16u)reg_al)*4+2));
 		break;
 	case 0x36:		/* Get Free Disk Space */
 		{
@@ -361,7 +389,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x39:		/* MKDIR Create directory */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_MakeDir(name1)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -370,7 +398,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x3a:		/* RMDIR Remove directory */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if  (DOS_RemoveDir(name1)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -379,7 +407,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x3b:		/* CHDIR Set current directory */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if  (DOS_ChangeDir(name1)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -388,7 +416,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x3c:		/* CREATE Create of truncate file */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_CreateFile(name1,reg_cx,&reg_ax)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -397,7 +425,7 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x3d:		/* OPEN Open existing file */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_OpenFile(name1,reg_al,&reg_ax)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -417,7 +445,7 @@ static Bitu DOS_21Handler(void) {
 		{ 
 			Bit16u toread=reg_cx;
 			if (DOS_ReadFile(reg_bx,dos_copybuf,&toread)) {
-				MEM_BlockWrite(real_phys(Segs[ds].value,reg_dx),dos_copybuf,toread);
+				MEM_BlockWrite(SegPhys(ds)+reg_dx,dos_copybuf,toread);
 				reg_ax=toread;
 				CALLBACK_SCF(false);
 			} else {
@@ -429,7 +457,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x40:					/* WRITE Write to file or device */
 		{
 			Bit16u towrite=reg_cx;
-			MEM_BlockRead(real_phys(Segs[ds].value,reg_dx),dos_copybuf,towrite);
+			MEM_BlockRead(SegPhys(ds)+reg_dx,dos_copybuf,towrite);
 			if (DOS_WriteFile(reg_bx,dos_copybuf,&towrite)) {
 				reg_ax=towrite;
 	   			CALLBACK_SCF(false);
@@ -440,7 +468,7 @@ static Bitu DOS_21Handler(void) {
 			break;
 		};
 	case 0x41:					/* UNLINK Delete file */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_UnlinkFile(name1)) {
 			CALLBACK_SCF(false);
 		} else {
@@ -463,7 +491,7 @@ static Bitu DOS_21Handler(void) {
 		}
 	case 0x43:					/* Get/Set file attributes */
 //TODO FIX THIS HACK
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		switch (reg_al)
 		case 0x00:				/* Get */
 		{
@@ -499,11 +527,17 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x46:					/* DUP2,FORCEDUP Force duplicate file handle */
-		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+		if (DOS_ForceDuplicateEntry(reg_bx,reg_ax)) {
+			CALLBACK_SCF(false);
+		} else {
+			reg_ax=dos.errorcode;
+			CALLBACK_SCF(true);
+		}
 		break;
 	case 0x47:					/* CWD Get current directory */
 		//TODO Memory
-		if (DOS_GetCurrentDir(reg_dl,real_off(Segs[ds].value,reg_si))) {
+		if (DOS_GetCurrentDir(reg_dl,name1)) {
+			MEM_BlockWrite(SegPhys(ds)+reg_si,name1,strlen(name1)+1);	
 			reg_ax=0x0100;
 			CALLBACK_SCF(false);
 		} else {
@@ -525,7 +559,7 @@ static Bitu DOS_21Handler(void) {
 			break;
 		}
 	case 0x49:					/* Free memory */
-		if (DOS_FreeMemory(Segs[es].value)) {
+		if (DOS_FreeMemory(SegValue(es))) {
 			CALLBACK_SCF(false);
 		} else {            
 			reg_ax=dos.errorcode;
@@ -535,7 +569,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x4a:					/* Resize memory block */
 		{
 			Bit16u size=reg_bx;
-			if (DOS_ResizeMemory(Segs[es].value,&size)) {
+			if (DOS_ResizeMemory(SegValue(es),&size)) {
 				CALLBACK_SCF(false);
 			} else {            
 				reg_ax=dos.errorcode;
@@ -546,8 +580,8 @@ static Bitu DOS_21Handler(void) {
 		}
 	case 0x4b:					/* EXEC Load and/or execute program */
 		{ 
-			MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
-			if (DOS_Execute(name1,(ParamBlock *)real_off(Segs[es].value,reg_bx),reg_al)) {
+			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
+			if (DOS_Execute(name1,(ParamBlock *)Phys2Host(SegPhys(es)+reg_bx),reg_al)) {
 				CALLBACK_SCF(false);
 			} else {
 				reg_ax=dos.errorcode;
@@ -573,7 +607,7 @@ static Bitu DOS_21Handler(void) {
 		reg_ah=dos.return_mode;
 		break;
 	case 0x4e:					/* FINDFIRST Find first matching file */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 		if (DOS_FindFirst(name1,reg_cx)) {
 			CALLBACK_SCF(false);			
 		} else {
@@ -595,11 +629,12 @@ static Bitu DOS_21Handler(void) {
 	case 0x51:					/* Get current PSP */
 		reg_bx=dos.psp;
 		break;
-	case 0x52:					/* Get list of lists */
-		SetSegment_16(es,0);
-		reg_bx=0;
-		LOG_ERROR("Call is made for list of lists not supported let's hope for the best");
-		break;
+	case 0x52: {				/* Get list of lists */
+		Bit16u seg;
+		dosInfoBlock.GetDIBPointer(seg,reg_bx);
+		SegSet16(es,seg);
+		LOG_DEBUG("Call is made for list of lists - let's hope for the best");
+		break; }
 //TODO Think hard how shit this is gonna be
 //And will any game ever use this :)
 	case 0x53:					/* Translate BIOS parameter block to drive parameter block */
@@ -609,8 +644,8 @@ static Bitu DOS_21Handler(void) {
 		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
 		break;
 	case 0x56:					/* RENAME Rename file */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
-		MEM_StrCopy(real_phys(Segs[es].value,reg_di),name2,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
+		MEM_StrCopy(SegPhys(es)+reg_di,name2,DOSNAMEBUF);
 		if (DOS_Rename(name1,name2)) {
 			CALLBACK_SCF(false);			
 		} else {
@@ -627,12 +662,15 @@ static Bitu DOS_21Handler(void) {
 		LOG_DEBUG("DOS:58:Not Supported Set//Get memory allocation");
 		break;
 	case 0x59:					/* Get Extended error information */
-		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+		reg_ax=dos.errorcode;
+		reg_bh=0;	//Unkown error class
+		reg_bl=1;	//Retry retry retry
+		reg_ch=0;	//Unkown error locus
 		break;
 	case 0x5a:					/* Create temporary file */
 		{
 			Bit16u handle;
-			MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 			if (DOS_CreateTempFile(name1,&handle)) {
 				reg_ax=handle;
 				CALLBACK_SCF(false);
@@ -644,7 +682,7 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x5b:					/* Create new file */
 		{
-			MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
+			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 			Bit16u handle;
 			if (DOS_OpenFile(name1,0,&handle)) {
 				DOS_CloseFile(handle);
@@ -669,8 +707,9 @@ static Bitu DOS_21Handler(void) {
 		E_Exit("DOS:Unhandled call %02X",reg_ah);
 		break;
 	case 0x60:					/* Canonicalize filename or path */
-		MEM_StrCopy(real_phys(Segs[ds].value,reg_dx),name1,DOSNAMEBUF);
-		if (DOS_Canonicalize(name1,real_off(Segs[es].value,reg_di))) {
+		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
+		if (DOS_Canonicalize(name1,name2)) {
+				MEM_BlockWrite(SegPhys(es)+reg_di,name2,strlen(name2)+1);	
 				CALLBACK_SCF(false);
 			} else {
 				reg_ax=dos.errorcode;
@@ -691,13 +730,13 @@ static Bitu DOS_21Handler(void) {
 		/* Todo maybe fully support this for now we set it standard for USA */
 		{
 			LOG_DEBUG("DOS:65:Extended country information call");
-			Bit8u * data=real_off(Segs[es].value,reg_di);
+			PhysPt data=SegPhys(es)+reg_di;
 			switch (reg_al) {
 			case 1:
-				real_writeb(Segs[es].value,reg_di,reg_al);
-				real_writew(Segs[es].value,reg_di+1,4);
-				real_writew(Segs[es].value,reg_di+3,1);				
-				real_writew(Segs[es].value,reg_di+5,37);
+				mem_writeb(data,reg_al);
+				mem_writew(data+1,4);
+				mem_writew(data+3,1);				
+				mem_writew(data+5,37);
 				reg_cx=4;
 				CALLBACK_SCF(false);
 				break;
@@ -725,7 +764,6 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x69:					/* Get/Set disk serial number */
 		{
-			Bit8u * temp=real_off(Segs[ds].value,reg_dx);
 			switch(reg_al)		{
 			case 0x00:				/* Get */
 				LOG_DEBUG("DOS:Get Disk serial number");

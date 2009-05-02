@@ -54,7 +54,7 @@ void INT10_PutPixel(Bit16u x,Bit16u y,Bit8u page,Bit8u color) {
 			//Perhaps also set mode 1 
 			/* Calculate where the pixel is in video memory */
 			Bit16u base_address=((((curmode->sheight*curmode->swidth)>>3)|0xff)+1)*page;	
-			PhysOff off=0xa0000+base_address+((y*curmode->swidth+x)>>3);
+			PhysPt off=0xa0000+base_address+((y*curmode->swidth+x)>>3);
 			/* Bitmask and set/reset should do the rest */
 			mem_readb(off);
 			mem_writeb(off,0xff);

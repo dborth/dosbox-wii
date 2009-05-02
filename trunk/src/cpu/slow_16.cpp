@@ -16,6 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+
 #include "dosbox.h"
 #include "mem.h"
 #include "cpu.h"
@@ -24,11 +25,12 @@
 #include "pic.h"
 #include "fpu.h"
 
+#if C_DEBUG
+#include "debug.h"
+#endif
 
-typedef PhysOff EAPoint;
-
-#define SegBase(seg) Segs[seg].phys
-
+typedef PhysPt EAPoint;
+#define SegBase(c)	SegPhys(c)
 #define LoadMb(off) mem_readb(off)
 #define LoadMw(off) mem_readw(off)
 #define LoadMd(off) mem_readd(off)
@@ -41,27 +43,6 @@ typedef PhysOff EAPoint;
 #define SaveMw(off,val)	mem_writew(off,val)
 #define SaveMd(off,val)	mem_writed(off,val)
 
-
-/*
-typedef HostOff EAPoint;
-
-#define SegBase(seg) Segs[seg].host
-
-#define LoadMb(off) readb(off)
-#define LoadMw(off) readw(off)
-#define LoadMd(off) readd(off)
-
-#define LoadMbs(off) (Bit8s)(LoadMb(off))
-#define LoadMws(off) (Bit16s)(LoadMw(off))
-#define LoadMds(off) (Bit32s)(LoadMd(off))
-
-#define SaveMb(off,val)	writeb(off,val)
-#define SaveMw(off,val)	writew(off,val)
-#define SaveMd(off,val)	writed(off,val)
-
-*/
-
-
 #define LoadRb(reg) reg
 #define LoadRw(reg) reg
 #define LoadRd(reg) reg
@@ -72,17 +53,18 @@ typedef HostOff EAPoint;
 
 extern Bitu cycle_count;
 
-#define CPU_386
-//TODO Change name
-#define FULLFLAGS
-
+/* Enable parts of the cpu emulation */
+#define CPU_386							//Enable 386 instructions
+#if C_FPU
+#define CPU_FPU							//Enable FPU escape instructions
+#endif
 
 #include "core_16/support.h"
 static Bitu CPU_Real_16_Slow_Decode_Special(Bitu count);
 static Bitu CPU_Real_16_Slow_Decode(Bitu count) {
 #include "core_16/start.h"		
 	while (count) {
-#ifdef C_DEBUG
+#if C_DEBUG
 		cycle_count++;		
 #endif
 		count--;
@@ -112,9 +94,10 @@ static Bitu CPU_Real_16_Slow_Decode_Special(Bitu count) {
 
 void CPU_Real_16_Slow_Start(void) {
 
-	lookupEATable=&GetEA_16_n;
-	segprefix_base=0;
-	segprefix_on=false;
 	cpudecoder=&CPU_Real_16_Slow_Decode;
-
+	EAPrefixTable[0]=&GetEA_16_n;
+	EAPrefixTable[1]=&GetEA_16_s;
+	EAPrefixTable[2]=&GetEA_32_n;
+	EAPrefixTable[3]=&GetEA_32_s;
+	PrefixReset;
 };

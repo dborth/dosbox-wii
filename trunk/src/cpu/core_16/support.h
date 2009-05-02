@@ -18,34 +18,19 @@
 
 EAPoint IPPoint;
 
-
 #define SUBIP(a)	IPPoint-=a
 #define SETIP(a)	IPPoint=SegBase(cs)+a
 #define GETIP		(Bit16u)(IPPoint-SegBase(cs)) 
 #define SAVEIP		reg_ip=GETIP
 #define LOADIP		IPPoint=SegBase(cs)+reg_ip
-/*
-#define ADDIP(a)	{							\
-	Bit16u add_ip=(Bit16u)(IPPoint-SegBase(cs));	\
-	add_ip+=a;									\
-	IPPoint=SegBase(cs)+add_ip;					\
-	}
-*/
 
 static INLINE void ADDIP(Bit16u add) {
-	
-//	Bit16u oldip=(IPPoint-SegBase(cs));
-//	oldip+=add;
-//	IPPoint=SegBase(cs)+oldip;
 	IPPoint=SegBase(cs)+((Bit16u)(((Bit16u)(IPPoint-SegBase(cs)))+(Bit16u)add));
 }
 
 static INLINE void ADDIPFAST(Bit16s blah) {
 	IPPoint+=blah;
 }
-
-#define ERRORRETURN(a) { error_ret=a;goto errorreturn; }
-
 
 static INLINE Bit8u Fetchb() {
 	Bit8u temp=LoadMb(IPPoint);
@@ -75,7 +60,6 @@ static INLINE Bit32s Fetchds() {
 	return Fetchd();
 }
 
-
 static INLINE void Push_16(Bit16u blah)	{
 	reg_sp-=2;
 	SaveMw(SegBase(ss)+reg_sp,blah);
@@ -98,21 +82,15 @@ static INLINE Bit32u Pop_32() {
 	return temp;
 };
 
-
-
-
-
-
-
 #define stringDI											\
 	EAPoint to;												\
 	to=SegBase(es)+reg_di							
 
 #define stringSI											\
 	EAPoint from;											\
-	if (segprefix_on) {										\
+	if (prefixes & PREFIX_SEG) {										\
 		from=(segprefix_base+reg_si);						\
-		SegPrefixReset;										\
+		PrefixReset;										\
 	} else {												\
 		from=SegBase(ds)+reg_si;							\
 	}
@@ -185,7 +163,3 @@ static INLINE void Rep_66(Bit16s direct,EAPoint from,EAPoint to) {
 }
 
 
-//	if (flags.tf) {													\
-//		cpudecoder=CPU_Real_16_Slow_Decode_Special;					\
-//		return CBRET_NONE;											\
-//	}																\

@@ -63,7 +63,7 @@ Any comments/updates/bug reports to:
 
 */
 #include "dosbox.h"
-#ifdef C_DEBUG
+#if C_DEBUG
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -456,7 +456,7 @@ static char *addr_to_hex(UINT32 addr, int splitup) {
   return buffer;
 }
 
-static PhysOff getbyte_mac;
+static PhysPt getbyte_mac;
 
 
 static UINT8 getbyte(void) {
@@ -1070,7 +1070,7 @@ static void ua_str(char *str)
 }
 
 
-Bitu DasmI386(char* buffer, PhysOff pc, Bitu cur_ip, bool bit32)
+Bitu DasmI386(char* buffer, PhysPt pc, Bitu cur_ip, bool bit32)
 {
   	Bitu c;
 

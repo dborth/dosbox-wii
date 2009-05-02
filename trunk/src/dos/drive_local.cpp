@@ -148,10 +148,14 @@ bool localDrive::FindNext(DTA_FindBlock * dta) {
 	dta->attr=tempattr;
 	dta->size=(Bit32u) stat_block.st_size;
 	struct tm *time;
-	time=localtime(&stat_block.st_mtime);
-
-	dta->time=(time->tm_hour<<11)+(time->tm_min<<5)+(time->tm_sec/2); /* standard way. */
-	dta->date=((time->tm_year-80)<<9)+((time->tm_mon+1)<<5)+(time->tm_mday);
+    if((time=localtime(&stat_block.st_mtime))!=0){
+    
+	    dta->time=(time->tm_hour<<11)+(time->tm_min<<5)+(time->tm_sec/2); /* standard way. */
+	    dta->date=((time->tm_year-80)<<9)+((time->tm_mon+1)<<5)+(time->tm_mday);
+    }else {
+        dta->time=6; 
+        dta->date=4;
+    }
 	return true;
 }
 
@@ -178,15 +182,17 @@ bool localDrive::MakeDir(char * dir) {
 #if defined (WIN32)						/* MS Visual C++ */
 	int temp=mkdir(newdir);
 #else
-	int temp=mkdir(newdir,0);
+	int temp=mkdir(newdir,0700);
 #endif
-	return (temp==0);
+	// if dir already exists, return success too.
+	return (temp==0) || ((temp!=0) && (errno==EEXIST));
 }
 
 bool localDrive::RemoveDir(char * dir) {
 	char newdir[512];
 	strcpy(newdir,basedir);
 	strcat(newdir,dir);
+	CROSS_FILENAME(newdir);
 	int temp=rmdir(newdir);
 	return (temp==0);
 }
@@ -195,6 +201,7 @@ bool localDrive::TestDir(char * dir) {
 	char newdir[512];
 	strcpy(newdir,basedir);
 	strcat(newdir,dir);
+	CROSS_FILENAME(newdir);
 	int temp=access(newdir,F_OK);
 	return (temp==0);
 }
@@ -206,8 +213,8 @@ bool localDrive::Rename(char * oldname,char * newname) {
 	CROSS_FILENAME(newold);
 	char newnew[512];
 	strcpy(newnew,basedir);
-	strcat(newnew,newnew);
-	CROSS_FILENAME(newname);
+	strcat(newnew,newname);
+	CROSS_FILENAME(newnew);
 	int temp=rename(newold,newnew);
 	return (temp==0);
 
@@ -223,6 +230,28 @@ bool localDrive::FreeSpace(Bit16u * bytes,Bit16u * sectors,Bit16u * clusters,Bit
 	return true;
 };
 
+bool localDrive::FileExists(const char* name) const {
+	char newname[512];
+	strcpy(newname,basedir);
+	strcat(newname,name);
+	CROSS_FILENAME(newname);
+	FILE* Temp=fopen(newname,"rb");
+	if(Temp==NULL) return false;
+	fclose(Temp);
+	return true;
+}
+
+bool localDrive::FileStat(const char* name, struct stat* const stat_block) const {
+	char newname[512];
+	strcpy(newname,basedir);
+	strcat(newname,name);
+	CROSS_FILENAME(newname);
+	if(stat(newname,stat_block)!=0) return false;
+	return true;
+
+}
+
+
 
 localDrive::localDrive(char * startdir) {
 	strcpy(basedir,startdir);
@@ -237,10 +266,15 @@ bool localFile::Read(Bit8u * data,Bit16u * size) {
 };
 
 bool localFile::Write(Bit8u * data,Bit16u * size) {
-	*size=fwrite(data,1,*size,fhandle);
+    if(*size==0){  
+        return (!ftruncate(fileno(fhandle),ftell(fhandle)));
+    }
+    else 
+    {
+    	*size=fwrite(data,1,*size,fhandle);
 	return true;
+    }
 }
-
 bool localFile::Seek(Bit32u * pos,Bit32u type) {
 	int seektype;
 	switch (type) {
@@ -274,4 +308,5 @@ localFile::localFile(FILE * handle,Bit16u devinfo) {
 	fhandle=handle;
 	info=devinfo;
 }
+
 

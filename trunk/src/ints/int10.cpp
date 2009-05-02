@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-
 #include <string.h>
 #include "dosbox.h"
 #include "bios.h"
@@ -54,14 +53,15 @@ static Bitu INT10_Handler(void) {
 		LOG_WARN("INT10:04:Ligthpen not supported");
 		break;
 	case 0x05:								/* Set Active Page */
-		INT10_SetActivePage(reg_al);
+		if (reg_al & 0x80) LOG_DEBUG("Func %x",reg_al);
+		else INT10_SetActivePage(reg_al);
 		break;	
 	case 0x06:								/* Scroll Up */
 //TODO Graphics mode scroll
-		INT10_ScrollUpWindow(reg_ch,reg_cl,reg_dh,reg_dl,reg_al,reg_bh,0xFF);
+		INT10_ScrollWindow(reg_ch,reg_cl,reg_dh,reg_dl,-reg_al,reg_bh,0xFF);
 		break;
 	case 0x07:								/* Scroll Down */
-		INT10_ScrollDownWindow(reg_ch,reg_cl,reg_dh,reg_dl,reg_al,reg_bh,0xFF);
+		INT10_ScrollWindow(reg_ch,reg_cl,reg_dh,reg_dl,reg_al,reg_bh,0xFF);
 		break;
 	case 0x08:								/* Read character & attribute at cursor */
 //TODO Check for GRAPH and then just return 
@@ -84,9 +84,7 @@ static Bitu INT10_Handler(void) {
 		INT10_GetPixel(reg_cx,reg_dx,reg_bh,&reg_al);
 		break;
 	case 0x0E:								/* Teletype OutPut */
-		//TODO FIX
-		INT10_TeletypeOutput(reg_al,reg_bl,false,0);
-//		INT10_TeletypeOutput(reg_al,reg_bl,false,reg_bh);
+		INT10_TeletypeOutput(reg_al,reg_bl,false,reg_bh);
 		break;
 	case 0x0F:								/* Get videomode */
 		reg_bh=real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAGE);
@@ -102,7 +100,7 @@ static Bitu INT10_Handler(void) {
 			INT10_SetOverscanBorderColor(reg_bh);
 			break;
 		case 0x02:							/* SET ALL PALETTE REGISTERS */
-			INT10_SetAllPaletteRegisters(real_phys(Segs[es].value,reg_dx));
+			INT10_SetAllPaletteRegisters(SegPhys(es)+reg_dx);
 			break;
 		case 0x03:							/* TOGGLE INTENSITY/BLINKING BIT */
 			INT10_ToggleBlinkingBit(reg_bl);
@@ -114,19 +112,19 @@ static Bitu INT10_Handler(void) {
 			INT10_GetOverscanBorderColor(&reg_bh);
 			break;
 		case 0x09:							/* READ ALL PALETTE REGISTERS AND OVERSCAN REGISTER */
-			INT10_GetAllPaletteRegisters(real_phys(Segs[es].value,reg_dx));
+			INT10_GetAllPaletteRegisters(SegPhys(es)+reg_dx);
 			break;
 		case 0x10:							/* SET INDIVIDUAL DAC REGISTER */
 			INT10_SetSingleDacRegister(reg_bl,reg_dh,reg_ch,reg_cl);
 			break;
 		case 0x12:							/* SET BLOCK OF DAC REGISTERS */
-			INT10_SetDACBlock(reg_bx,reg_cx,real_phys(Segs[es].value,reg_dx));
+			INT10_SetDACBlock(reg_bx,reg_cx,SegPhys(es)+reg_dx);
 			break;
 		case 0x15:							/* GET INDIVIDUAL DAC REGISTER */
 			INT10_GetSingleDacRegister(reg_bl,&reg_dh,&reg_ch,&reg_cl);
 			break;
 		case 0x17:							/* GET BLOCK OF DAC REGISTER */
-			INT10_GetDACBlock(reg_bx,reg_cx,real_phys(Segs[es].value,reg_dx));
+			INT10_GetDACBlock(reg_bx,reg_cx,SegPhys(es)+reg_dx);
 			break;
 		default:
 			LOG_WARN("INT10:10:Unhandled EGA/VGA Palette Function %2X",reg_al);
@@ -139,7 +137,7 @@ static Bitu INT10_Handler(void) {
 			case 0x00:	/* interupt 0x1f vector */
 				{
 					RealPt int_1f=RealGetVec(0x1f);
-					SetSegment_16(es,RealSeg(int_1f));
+					SegSet16(es,RealSeg(int_1f));
 					reg_bp=RealOff(int_1f);
 					reg_cx=8;
 				}
@@ -147,28 +145,28 @@ static Bitu INT10_Handler(void) {
 			case 0x01:	/* interupt 0x43 vector */
 				{
 					RealPt int_43=RealGetVec(0x43);
-					SetSegment_16(es,RealSeg(int_43));
+					SegSet16(es,RealSeg(int_43));
 					reg_bp=RealOff(int_43);
 					reg_cx=8;
 				}
 				break;
 			case 0x02:	/* font 8x14 */
-				SetSegment_16(es,RealSeg(int10_romarea.font_14));
+				SegSet16(es,RealSeg(int10_romarea.font_14));
 				reg_bp=RealOff(int10_romarea.font_14);
 				reg_cx=14;
 				break;
 			case 0x03:	/* font 8x8 first 128 */
-				SetSegment_16(es,RealSeg(int10_romarea.font_8_first));
+				SegSet16(es,RealSeg(int10_romarea.font_8_first));
 				reg_bp=RealOff(int10_romarea.font_8_first);
 				reg_cx=8;
 				break;
 			case 0x04:	/* font 8x8 second 128 */
-				SetSegment_16(es,RealSeg(int10_romarea.font_8_second));
+				SegSet16(es,RealSeg(int10_romarea.font_8_second));
 				reg_bp=RealOff(int10_romarea.font_8_second);
 				reg_cx=8;
 				break;
 			case 0x06:	/* font 8x16 */
-				SetSegment_16(es,RealSeg(int10_romarea.font_16));
+				SegSet16(es,RealSeg(int10_romarea.font_16));
 				reg_bp=RealOff(int10_romarea.font_16);
 				reg_cx=16;
 				break;
@@ -196,7 +194,7 @@ static Bitu INT10_Handler(void) {
 		}
 		break;
 	case 0x13:								/* Write String */
-		INT10_WriteString(reg_dh,reg_dl,reg_al,reg_bl,real_phys(Segs[es].value,reg_bp),reg_cx,reg_bh);
+		INT10_WriteString(reg_dh,reg_dl,reg_al,reg_bl,SegPhys(es)+reg_bp,reg_cx,reg_bh);
 		break;
 	case 0x1A:								/* Display Combination */
 		if (reg_al==0) {
@@ -214,7 +212,7 @@ static Bitu INT10_Handler(void) {
 	case 0x1B:								/* functionality State Information */
 		switch (reg_bx) {
 		case 0x0000:
-			INT10_GetFuncStateInformation(Segs[es].value,reg_di);
+			INT10_GetFuncStateInformation(SegPhys(es)+reg_di);
 			reg_al=0x1B;
 			break;
 		default:
@@ -262,7 +260,6 @@ static void INT10_InitVGA(void) {
 };
 
 void INT10_StartUp(void) {
-
 	INT10_InitVGA();
 	/* Setup the INT 10 vector */
 	call_10=CALLBACK_Allocate();	
