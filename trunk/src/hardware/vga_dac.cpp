@@ -52,6 +52,9 @@ enum {DAC_READ,DAC_WRITE};
 
 static INLINE void VGA_DAC_UpdateColor( Bitu index ) {
 	Bitu maskIndex = index & vga.dac.pel_mask;
+	vga.dac.xlat16[index] = ((vga.dac.rgb[maskIndex].blue>>1)&0x1f) |
+		(((vga.dac.rgb[maskIndex].green)&0x3f)<<5)|
+		(((vga.dac.rgb[maskIndex].red>>1)&0x1f) << 11);
 	RENDER_SetPal( index,
 		vga.dac.rgb[maskIndex].red << 2,
 		vga.dac.rgb[maskIndex].green << 2,
@@ -126,6 +129,10 @@ static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
 			/* Check for attributes and DAC entry link */
 			for (Bitu i=0;i<16;i++) {
 				if (vga.dac.combine[i]==vga.dac.write_index) {
+					vga.dac.xlat16[i] = (
+						(vga.dac.rgb[vga.dac.write_index].blue>>1)&0x1f) |
+						(((vga.dac.rgb[vga.dac.write_index].green)&0x3f)<<5)|
+						(((vga.dac.rgb[vga.dac.write_index].red>>1)&0x1f) << 11);
 					RENDER_SetPal(i,
 					vga.dac.rgb[vga.dac.write_index].red << 2,
 					vga.dac.rgb[vga.dac.write_index].green << 2,
@@ -172,10 +179,16 @@ void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	/* Check if this is a new color */
 	vga.dac.combine[attr]=pal;
 	switch (vga.mode) {
-	case M_VGA:
 	case M_LIN8:
 		break;
+	case M_VGA:
+		// used by copper demo; almost no video card seems to suport it
+		if(!IS_VGA_ARCH || (svgaCard!=SVGA_None)) break;
+
 	default:
+		vga.dac.xlat16[attr] = ((vga.dac.rgb[pal].blue>>1)&0x1f) |
+		(((vga.dac.rgb[pal].green)&0x3f)<<5)|
+		(((vga.dac.rgb[pal].red>>1)&0x1f) << 11);
 		RENDER_SetPal(attr,
 			vga.dac.rgb[pal].red << 2,
 			vga.dac.rgb[pal].green << 2,
@@ -202,15 +215,29 @@ void VGA_SetupDAC(void) {
 	vga.dac.state=DAC_READ;
 	vga.dac.read_index=0;
 	vga.dac.write_index=0;
-	if (machine==MCH_VGA) {
+	if (IS_VGA_ARCH) {
 		/* Setup the DAC IO port Handlers */
 		IO_RegisterWriteHandler(0x3c6,write_p3c6,IO_MB);
 		IO_RegisterReadHandler(0x3c6,read_p3c6,IO_MB);
 		IO_RegisterWriteHandler(0x3c7,write_p3c7,IO_MB);
 		IO_RegisterReadHandler(0x3c7,read_p3c7,IO_MB);
-		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c8,write_p3c8,IO_MB);
+		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c9,write_p3c9,IO_MB);
 		IO_RegisterReadHandler(0x3c9,read_p3c9,IO_MB);
+	} else if (machine==MCH_EGA) {
+		for (Bitu i=0;i<64;i++) {
+			if ((i&4)>0) vga.dac.rgb[i].red=0x2a;
+			else vga.dac.rgb[i].red=0;
+			if ((i&32)>0) vga.dac.rgb[i].red+=0x15;
+
+			if ((i&2)>0) vga.dac.rgb[i].green=0x2a;
+			else vga.dac.rgb[i].green=0;
+			if ((i&16)>0) vga.dac.rgb[i].green+=0x15;
+
+			if ((i&1)>0) vga.dac.rgb[i].blue=0x2a;
+			else vga.dac.rgb[i].blue=0;
+			if ((i&8)>0) vga.dac.rgb[i].blue+=0x15;
+		}
 	}
-};
+}

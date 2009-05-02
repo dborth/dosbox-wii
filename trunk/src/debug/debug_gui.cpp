@@ -16,12 +16,12 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug_gui.cpp,v 1.32 2007/05/09 14:35:51 c2woody Exp $ */
+/* $Id: debug_gui.cpp,v 1.37 2009/02/01 19:28:58 qbix79 Exp $ */
 
 #include "dosbox.h"
 
 #if C_DEBUG
-#include "setup.h"
+#include "control.h"
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ void DEBUG_ShowMsg(char const* format,...) {
 	if (logBuffPos!=logBuff.end()) {
 		logBuffPos=logBuff.end();
 		DEBUG_RefreshPage(0);
-		mvwprintw(dbg.win_out,dbg.win_out->_maxy-1, 0, "");
+//		mvwprintw(dbg.win_out,dbg.win_out->_maxy-1, 0, "");
 	}
 	logBuff.push_back(buf);
 	if (logBuff.size() > MAX_LOG_BUFFER)
@@ -85,15 +85,19 @@ void DEBUG_RefreshPage(char scroll) {
 	else if (scroll==1 && logBuffPos!=logBuff.end()) logBuffPos++;
 
 	list<string>::iterator i = logBuffPos;
-	int rem_lines = dbg.win_out->_maxy;
+	int maxy, maxx; getmaxyx(dbg.win_out,maxy,maxx);
+	int rem_lines = maxy;
 
 	wclear(dbg.win_out);
 
 	while (rem_lines > 0 && i!=logBuff.begin()) {
-		rem_lines -= (int) ((*--i).size() / dbg.win_out->_maxx) + 1;
+		--i;
+		for (string::size_type posf=0, posl; (posl=(*i).find('\n',posf)) != string::npos ;posf=posl+1)
+			rem_lines -= (int) ((posl-posf) / maxx) + 1; // len=(posl+1)-posf-1
 		/* Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe) */
 		mvwprintw(dbg.win_out,rem_lines-1, 0, const_cast<char*>((*i).c_str()));
 	}
+	mvwprintw(dbg.win_out,maxy-1, 0, "");
 	wrefresh(dbg.win_out);
 }
 
@@ -159,22 +163,23 @@ static void DrawBars(void) {
 static void MakeSubWindows(void) {
 	/* The Std output win should go in bottem */
 	/* Make all the subwindows */
+	int win_main_maxy, win_main_maxx; getmaxyx(dbg.win_main,win_main_maxy,win_main_maxx);
 	int outy=1;
 	/* The Register window  */
-	dbg.win_reg=subwin(dbg.win_main,4,dbg.win_main->_maxx,outy,0);
+	dbg.win_reg=subwin(dbg.win_main,4,win_main_maxx,outy,0);
 	outy+=5;
 	/* The Data Window */
-	dbg.win_data=subwin(dbg.win_main,10,dbg.win_main->_maxx,outy,0);
+	dbg.win_data=subwin(dbg.win_main,10,win_main_maxx,outy,0);
 	outy+=11;
 	/* The Code Window */
-	dbg.win_code=subwin(dbg.win_main,11,dbg.win_main->_maxx,outy,0);
+	dbg.win_code=subwin(dbg.win_main,11,win_main_maxx,outy,0);
 	outy+=12;
 	/* The Variable Window */
-	dbg.win_var=subwin(dbg.win_main,4,dbg.win_main->_maxx,outy,0);
+	dbg.win_var=subwin(dbg.win_main,4,win_main_maxx,outy,0);
 	outy+=5;
 	/* The Output Window */	
-	dbg.win_out=subwin(dbg.win_main,dbg.win_main->_maxy-outy-1,dbg.win_main->_maxx,outy,0);
-	dbg.input_y=dbg.win_main->_maxy-1;
+	dbg.win_out=subwin(dbg.win_main,win_main_maxy-outy-1,win_main_maxx,outy,0);
+	dbg.input_y=win_main_maxy-1;
 	scrollok(dbg.win_out,TRUE);
 	DrawBars();
 	Draw_RegisterLayout();
@@ -218,7 +223,7 @@ void LOG_StartUp(void) {
 	loggrp[LOG_VGAMISC].front="VGAMISC";
 	loggrp[LOG_INT10].front="INT10";
 	loggrp[LOG_SB].front="SBLASTER";
-	loggrp[LOG_DMA].front="DMA";
+	loggrp[LOG_DMACONTROL].front="DMA_CONTROL";
 	
 	loggrp[LOG_FPU].front="FPU";
 	loggrp[LOG_CPU].front="CPU";
@@ -243,12 +248,14 @@ void LOG_StartUp(void) {
 	
 	/* Register the log section */
 	Section_prop * sect=control->AddSection_prop("log",LOG_Init);
-	sect->Add_string("logfile","");
+	Prop_string* Pstring = sect->Add_string("logfile",Property::Changeable::Always,"");
+	Pstring->Set_help("file where the log messages will be saved to");
 	char buf[1024];
 	for (Bitu i=1;i<LOG_MAX;i++) {
 		strcpy(buf,loggrp[i].front);
 		lowcase(buf);
-		sect->Add_bool(buf,true);
+		Prop_bool* Pbool = sect->Add_bool(buf,Property::Changeable::Always,true);
+		Pbool->Set_help("Enable/Disable logging of this type.");
 	}
 	MSG_Add("LOG_CONFIGFILE_HELP","Logging related options for the debugger.\n");
 }
@@ -264,10 +271,10 @@ void DBGUI_StartUp(void) {
 	nodelay(dbg.win_main,true);
 	keypad(dbg.win_main,true);
 	#ifndef WIN32
-	resizeterm(50,81);
+	resizeterm(50,80);
 	touchwin(dbg.win_main);
-	old_cursor_state = curs_set(0);
 	#endif
+	old_cursor_state = curs_set(0);
 	start_color();
 	cycle_count=0;
 	MakePairs();
