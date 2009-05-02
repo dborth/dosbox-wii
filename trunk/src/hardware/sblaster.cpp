@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sblaster.cpp,v 1.63 2007/02/24 21:07:22 c2woody Exp $ */
+/* $Id: sblaster.cpp,v 1.65 2007/06/14 18:06:59 qbix79 Exp $ */
 
 #include <iomanip>
 #include <sstream>
@@ -158,7 +158,7 @@ struct SB_INFO {
 
 static SB_INFO sb;
 
-static char * copyright_string="COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.";
+static char const * const copyright_string="COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.";
 
 static Bit8u DSP_cmd_len[256] = {
 //  0,0,0,0, 1,2,0,0, 0,0,0,0, 0,0,2,1,  // 0x00 for SB16. but breaks sbpro
@@ -355,9 +355,11 @@ INLINE Bit8u decode_ADPCM_3_sample(Bit8u sample,Bit8u & reference,Bits& scale) {
 
 static void GenerateDMASound(Bitu size) {
 	Bitu read=0;Bitu done=0;Bitu i=0;
-	if (sb.dma.left<=sb.dma.min) {
-		size=sb.dma.left;
-	}
+
+	if(sb.dma.autoinit) {
+		if (sb.dma.left <= size) size = sb.dma.left;
+	} else if (sb.dma.left <= sb.dma.min) size = sb.dma.left;
+
 	switch (sb.dma.mode) {
 	case DSP_DMA_2:
 		read=sb.dma.chan->Read(size,sb.dma.buf.b8);
@@ -534,7 +536,7 @@ static void DSP_RaiseIRQEvent(Bitu val) {
 }
 
 static void DSP_DoDMATransfer(DMA_MODES mode,Bitu freq,bool stereo) {
-	char * type;
+	char const * type;
 	sb.mode=MODE_DMA_MASKED;
 	sb.chan->FillUp();
 	sb.dma.left=sb.dma.total;
@@ -847,7 +849,7 @@ static void DSP_DoCommand(void) {
 	case 0xe3:	/* DSP Copyright */
 		{
 			DSP_FlushData();
-			for (Bit32u i=0;i<=strlen(copyright_string);i++) {
+			for (size_t i=0;i<=strlen(copyright_string);i++) {
 				DSP_AddData(copyright_string[i]);
 			}
 		}

@@ -138,13 +138,13 @@ target_alias = @target_alias@
 target_cpu = @target_cpu@
 target_os = @target_os@
 target_vendor = @target_vendor@
-SUBDIRS = core_full core_normal core_dyn_x86
+SUBDIRS = core_full core_normal core_dyn_x86 core_dynrec
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libcpu.a
 libcpu_a_SOURCES = callback.cpp cpu.cpp flags.cpp modrm.cpp modrm.h core_full.cpp instructions.h	\
 		   paging.cpp lazyflags.h core_normal.cpp core_simple.cpp \
-		   core_dyn_x86.cpp
+		   core_dyn_x86.cpp core_dynrec.cpp
 
 subdir = src/cpu
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -158,7 +158,7 @@ libcpu_a_LIBADD =
 am_libcpu_a_OBJECTS = callback.$(OBJEXT) cpu.$(OBJEXT) flags.$(OBJEXT) \
 	modrm.$(OBJEXT) core_full.$(OBJEXT) paging.$(OBJEXT) \
 	core_normal.$(OBJEXT) core_simple.$(OBJEXT) \
-	core_dyn_x86.$(OBJEXT)
+	core_dyn_x86.$(OBJEXT) core_dynrec.$(OBJEXT)
 libcpu_a_OBJECTS = $(am_libcpu_a_OBJECTS)
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
@@ -166,7 +166,8 @@ depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/callback.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/core_dyn_x86.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/core_full.Po ./$(DEPDIR)/core_normal.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/core_dynrec.Po ./$(DEPDIR)/core_full.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/core_normal.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/core_simple.Po ./$(DEPDIR)/cpu.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/flags.Po ./$(DEPDIR)/modrm.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/paging.Po
@@ -217,6 +218,7 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/callback.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_dyn_x86.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_dynrec.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_full.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_normal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_simple.Po@am__quote@

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.127 2007/01/24 16:29:09 harekiet Exp $ */
+/* $Id: sdlmain.cpp,v 1.131 2007/06/12 20:22:08 c2woody Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -28,6 +28,9 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <sys/types.h>
+#ifdef WIN32
+#include <signal.h>
+#endif
 
 #include "SDL.h"
 
@@ -278,6 +281,7 @@ check_surface:
 		else if (flags & GFX_LOVE_15) testbpp=15;
 		else if (flags & GFX_LOVE_16) testbpp=16;
 		else if (flags & GFX_LOVE_32) testbpp=32;
+		else testbpp=0;
 check_gotbpp:
 		if (sdl.desktop.fullscreen) gotbpp=SDL_VideoModeOK(640,480,testbpp,SDL_FULLSCREEN|SDL_HWSURFACE|SDL_HWPALETTE);
 		else gotbpp=sdl.desktop.bpp;
@@ -395,7 +399,7 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 	sdl.draw.scalex=scalex;
 	sdl.draw.scaley=scaley;
 
-	Bitu bpp;
+	Bitu bpp=0;
 	Bitu retFlags = 0;
 	
 	if (sdl.blit.surface) {
@@ -433,11 +437,17 @@ dosurface:
 			sdl.surface=SDL_SetVideoMode(width,height,bpp,(flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE);
 #ifdef WIN32
 			if (sdl.surface == NULL) {
-				LOG_MSG("Failed to create hardware surface.\nRestarting video subsystem with windib enabled.");
 				SDL_QuitSubSystem(SDL_INIT_VIDEO);
-				putenv("SDL_VIDEODRIVER=windib");
+				if (!sdl.using_windib) {
+					LOG_MSG("Failed to create hardware surface.\nRestarting video subsystem with windib enabled.");
+					putenv("SDL_VIDEODRIVER=windib");
+					sdl.using_windib=true;
+				} else {
+					LOG_MSG("Failed to create hardware surface.\nRestarting video subsystem with directx enabled.");
+					putenv("SDL_VIDEODRIVER=directx");
+					sdl.using_windib=false;
+				}
 				SDL_InitSubSystem(SDL_INIT_VIDEO);
-				sdl.using_windib=true;
 				sdl.surface = SDL_SetVideoMode(width,height,bpp,SDL_HWSURFACE);
 			}
 #endif
@@ -490,6 +500,10 @@ dosurface:
 				sdl.surface->format->Bmask,
 				0);
 		if (!sdl.blit.surface || (!sdl.blit.surface->flags&SDL_HWSURFACE)) {
+			if (sdl.blit.surface) {
+				SDL_FreeSurface(sdl.blit.surface);
+				sdl.blit.surface=0;
+			}
 			LOG_MSG("Failed to create ddraw surface, back to normal surface.");
 			goto dosurface;
 		}
@@ -1133,7 +1147,11 @@ void Mouse_AutoLock(bool enable) {
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 	if (sdl.mouse.locked || !sdl.mouse.autoenable) 
-		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100,(float)motion->yrel*sdl.mouse.sensitivity/100,(float)(motion->x-sdl.clip.x)/(sdl.clip.w-1)*sdl.mouse.sensitivity/100,(float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0,sdl.mouse.locked);
+		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
+						  (float)motion->yrel*sdl.mouse.sensitivity/100.0f,
+						  (float)(motion->x-sdl.clip.x)/(sdl.clip.w-1)*sdl.mouse.sensitivity/100.0f,
+						  (float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0f,
+						  sdl.mouse.locked);
 }
 
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
@@ -1183,7 +1201,7 @@ void GFX_Events() {
 	SDL_Event event;
 #if defined (REDUCE_JOYSTICK_POLLING)
 	static int poll_delay=0;
-	int time=SDL_GetTicks();
+	int time=GetTicks();
 	if (time-poll_delay>20) {
 		poll_delay=time;
 		if (sdl.num_joysticks>0) SDL_JoystickUpdate();
@@ -1293,6 +1311,23 @@ void GFX_Events() {
 	}
 }
 
+#if defined (WIN32)
+static BOOL WINAPI ConsoleEventHandler(DWORD event) {
+	switch (event) {
+	case CTRL_SHUTDOWN_EVENT:
+	case CTRL_LOGOFF_EVENT:
+	case CTRL_CLOSE_EVENT:
+	case CTRL_BREAK_EVENT:
+		raise(SIGTERM);
+		return TRUE;
+	case CTRL_C_EVENT:
+	default: //pass to the next handler
+		return FALSE;
+	}
+}
+#endif
+
+
 /* static variable to show wether there is not a valid stdout.
  * Fixes some bugs when -noconsole is used in a read only directory */
 static bool no_stdout = false;
@@ -1345,6 +1380,10 @@ int main(int argc, char* argv[]) {
 		DEBUG_SetupConsole();
 #endif
 
+#if defined(WIN32)
+	SetConsoleCtrlHandler((PHANDLER_ROUTINE) ConsoleEventHandler,TRUE);
+#endif
+
 #ifdef OS2
         PPIB pib;
         PTIB tib;
@@ -1373,12 +1412,16 @@ int main(int argc, char* argv[]) {
 		char sdl_drv_name[128];
 		if (getenv("SDL_VIDEODRIVER")==NULL) {
 			if (SDL_VideoDriverName(sdl_drv_name,128)!=NULL) {
+				sdl.using_windib=false;
 				if (strcmp(sdl_drv_name,"directx")!=0) {
 					SDL_QuitSubSystem(SDL_INIT_VIDEO);
 					putenv("SDL_VIDEODRIVER=directx");
-					SDL_InitSubSystem(SDL_INIT_VIDEO);
+					if (SDL_InitSubSystem(SDL_INIT_VIDEO)<0) {
+						putenv("SDL_VIDEODRIVER=windib");
+						if (SDL_InitSubSystem(SDL_INIT_VIDEO)<0) E_Exit("Can't init SDL Video %s",SDL_GetError());
+						sdl.using_windib=true;
+					}
 				}
-				sdl.using_windib=false;
 			}
 		} else {
 			char* sdl_videodrv = getenv("SDL_VIDEODRIVER");
