@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -22,19 +22,24 @@
 #include "debug.h"
 #include "cpu.h"
 
-
 #define crtc(blah) vga.crtc.blah
 
-void write_p3d4(Bit32u port,Bit8u val) {
+
+void VGA_MapMMIO(void);
+void VGA_UnmapMMIO(void);
+
+void write_p3d5_vga(Bitu port,Bitu val,Bitu iolen);
+Bitu DEBUG_EnableDebugger(void);
+
+void write_p3d4_vga(Bitu port,Bitu val,Bitu iolen) {
 	crtc(index)=val;
 }
 
-Bit8u read_p3d4(Bit32u port) {
+Bitu read_p3d4_vga(Bitu port,Bitu iolen) {
 	return crtc(index);
 }
 
-
-void write_p3d5(Bit32u port,Bit8u val) {
+void write_p3d5_vga(Bitu port,Bitu val,Bitu iolen) {
 //	if (crtc(index)>0x18) LOG_MSG("VGA CRCT write %X to reg %X",val,crtc(index));
 	switch(crtc(index)) {
 	case 0x00:	/* Horizontal Total Register */
@@ -219,12 +224,10 @@ void write_p3d5(Bit32u port,Bit8u val) {
 		*/
 		break;
 	case 0x13:	/* Offset register */
-		if (val!=crtc(offset)) {
-			crtc(offset)=val;
-			vga.config.scan_len&=0x300;
-			vga.config.scan_len|=val;
-			VGA_StartResize();
-		}
+		crtc(offset)=val;
+		vga.config.scan_len&=0x300;
+		vga.config.scan_len|=val;
+		VGA_CheckScanLength();
 		/*
 			0-7	Number of bytes in a scanline / K. Where K is 2 for byte mode, 4 for
 				word mode and 8 for Double Word mode.
@@ -258,6 +261,7 @@ void write_p3d5(Bit32u port,Bit8u val) {
 		break;
 	case 0x17:	/* Mode Control Register */
 		crtc(mode_control)=val;
+		VGA_DetermineMode();
 		/*
 			0	If clear use CGA compatible memory addressing system
 				by substituting character row scan counter bit 0 for address bit 13,
@@ -328,12 +332,15 @@ void write_p3d5(Bit32u port,Bit8u val) {
 	case 0x39:	/* CR39 Register Lock 2 */
 		vga.s3.reg_lock2=val;
 		break;
+	case 0x40:  /* CR40 System Config */
+		vga.s3.reg_40 = val;
+		break;
 	case 0x43:	/* CR43 Extended Mode */
 		vga.s3.reg_43=val & ~0x4;
 		if (((val & 0x4) ^ (vga.config.scan_len >> 6)) & 0x4) {
 			vga.config.scan_len&=0x2ff;
 			vga.config.scan_len|=(val & 0x4) << 6;
-			VGA_StartResize();
+			VGA_CheckScanLength();
 		}
 		break;
 		/*
@@ -341,6 +348,43 @@ void write_p3d5(Bit32u port,Bit8u val) {
 			(3d4h index 13h). (801/5,928) Only active if 3d4h index 51h bits 4-5
 			are 0
 		*/
+	case 0x45:  /* Hardware cursor mode */
+		vga.s3.hgc.curmode = val;
+		break;
+	case 0x46:
+		vga.s3.hgc.originx = (vga.s3.hgc.originx & 0x00ff) | (val << 8);
+		break;
+	case 0x47:  /*  HGC orgX */
+		vga.s3.hgc.originx = (vga.s3.hgc.originx & 0xff00) | val;
+		break;
+	case 0x48:
+		vga.s3.hgc.originy = (vga.s3.hgc.originy & 0x00ff) | (val << 8);
+		break;
+	case 0x49:  /*  HGC orgY */
+		vga.s3.hgc.originy = (vga.s3.hgc.originy & 0xff00) | val;
+		break;
+	case 0x4A:  /* HGC foreground stack */
+		if (vga.s3.hgc.fstackpos > 2) vga.s3.hgc.fstackpos = 0;
+		vga.s3.hgc.forestack[vga.s3.hgc.fstackpos] = val;
+		vga.s3.hgc.fstackpos++;
+		break;
+	case 0x4B:  /* HGC background stack */
+		if (vga.s3.hgc.bstackpos > 2) vga.s3.hgc.bstackpos = 0;
+		vga.s3.hgc.backstack[vga.s3.hgc.bstackpos] = val;
+		vga.s3.hgc.bstackpos++;
+		break;
+	case 0x4c:  /* HGC start address high byte*/
+		vga.s3.hgc.startaddr = vga.s3.hgc.startaddr | ((val & 0xff) << 8);
+		break;
+	case 0x4d:  /* HGC start address low byte*/
+		vga.s3.hgc.startaddr = vga.s3.hgc.startaddr | (val & 0xff);
+		break;
+	case 0x4e:  /* HGC pattern start X */
+		vga.s3.hgc.posx = val;
+		break;
+	case 0x4f:  /* HGC pattern start X */
+		vga.s3.hgc.posy = val;
+		break;
 	case 0x51:	/* Extended System Control 2 */
 		vga.s3.reg_51=val & 0xc0;		//Only store bits 6,7
 		//TODO Display start
@@ -354,7 +398,7 @@ void write_p3d5(Bit32u port,Bit8u val) {
 		if (((val & 0x30) ^ (vga.config.scan_len >> 4)) & 0x30) {
 			vga.config.scan_len&=0xff;
 			vga.config.scan_len|=(val & 0x30) << 4;
-			VGA_StartResize();
+			VGA_CheckScanLength();
 		}
 		break;
 		/*
@@ -377,6 +421,18 @@ void write_p3d5(Bit32u port,Bit8u val) {
 			7	(not 864/964) Enable EPROM Write. If set enables flash memory write
 				control to the BIOS ROM address
 		*/
+	case 0x53:
+		if((val & 0x10) != (vga.s3.ext_mem_ctrl & 0x10)) {
+			/* Map or unmap MMIO */
+			if ((val & 0x10) != 0) {
+				LOG_MSG("VGA: Mapping Memory Mapped I/O to 0xA0000");
+				VGA_MapMMIO();
+			} else {
+				VGA_UnmapMMIO();
+			}
+		}
+		vga.s3.ext_mem_ctrl = val;
+		break;
 	case 0x55:	/* Extended Video DAC Control */
 		vga.s3.reg_55=val;
 		break;
@@ -481,6 +537,21 @@ void write_p3d5(Bit32u port,Bit8u val) {
 				(3d4h index 18h). Bit 8 is in 3d4h index 7 bit 4 and bit 9 in 3d4h
 				index 9 bit 6.
 		*/
+	case 0x67:	/* Extended Miscellaneous Control 2 */
+		/*
+			0	VCLK PHS. VCLK Phase With Respect to DCLK. If clear VLKC is inverted
+				DCLK, if set VCLK = DCLK.
+			4-7	Pixel format.
+					0  Mode  0: 8bit (1 pixel/VCLK)
+					1  Mode  8: 8bit (2 pixels/VCLK)
+					3  Mode  9: 15bit (1 pixel/VCLK)
+					5  Mode 10: 16bit (1 pixel/VCLK)
+					7  Mode 11: 24/32bit (2 VCLKs/pixel)
+					13  (732/764) 32bit (1 pixel/VCLK)
+		*/
+		vga.s3.misc_control_2=val;
+		VGA_DetermineMode();
+		break;
 	case 0x69:	/* Extended System Control 3 */
 		if (((vga.config.display_start & 0x1f0000)>>16) ^ (val & 0x1f)) {
 			vga.config.display_start&=0xffff;
@@ -497,7 +568,7 @@ void write_p3d5(Bit32u port,Bit8u val) {
 	}
 }
 
-Bit8u read_p3d5(Bit32u port) {
+Bitu read_p3d5_vga(Bitu port,Bitu iolen) {
 //	LOG_MSG("VGA CRCT read from reg %X",crtc(index));
 	switch(crtc(index)) {
 	case 0x00:	/* Horizontal Total Register */
@@ -560,7 +631,7 @@ Bit8u read_p3d5(Bit32u port) {
 		return 0x11;		
 		//Trio 64 id
 	case 0x2f:	/* Revision */
-		return 0x80;
+		return 0x00;
 	case 0x30:	/* CR30 Chip ID/REV register */
 		return 0xe0;		//Trio+ dual byte
 		// Trio32/64 has 0xe0. extended
@@ -570,7 +641,8 @@ Bit8u read_p3d5(Bit32u port) {
 	case 0x35:	/* CR35 CRT Register Lock */
 		return vga.s3.reg_35|(vga.s3.bank & 0xf);
 	case 0x36: /* CR36 Reset State Read 1 */
-		return 0x8f;
+		//return 0x8f;
+		return 0x8e; /* PCI version */
 		//2 Mb PCI and some bios settings
 	case 0x37: /* Reset state read 2 */
 		return 0x2b;
@@ -578,21 +650,35 @@ Bit8u read_p3d5(Bit32u port) {
 		return vga.s3.reg_lock1;
 	case 0x39: /* CR39 Register Lock 2 */
 		return vga.s3.reg_lock2;
+	case 0x40: /* CR40 system config */
+		return vga.s3.reg_40;
 	case 0x43:	/* CR43 Extended Mode */
 		return vga.s3.reg_43|((vga.config.scan_len>>6)&0x4);
+	case 0x45:  /* Hardware cursor mode */
+		vga.s3.hgc.bstackpos = 0;
+		vga.s3.hgc.fstackpos = 0;
+		return vga.s3.hgc.curmode;
 	case 0x51:	/* Extended System Control 2 */
 		return ((vga.config.display_start >> 16) & 3 ) |
 				((vga.s3.bank & 0x30) >> 2) |
 				((vga.config.scan_len & 0x300) >> 4) |
 				vga.s3.reg_51;
+	case 0x53:
+		return vga.s3.ext_mem_ctrl;
 	case 0x55:	/* Extended Video DAC Control */
 		return vga.s3.reg_55;
 	case 0x58:	/* Linear Address Window Control */
 		return	vga.s3.reg_58;
+	case 0x59:	/* Linear Address Window Position High */
+		return (vga.s3.la_window >> 8);
+	case 0x5a:	/* Linear Address Window Position Low */
+		return (vga.s3.la_window & 0xff);
 	case 0x5D:	/* Extended Horizontal Overflow */
 		return vga.s3.ex_hor_overflow;
 	case 0x5e:	/* Extended Vertical Overflow */
 		return vga.s3.ex_ver_overflow;
+	case 0x67:	/* Extended Miscellaneous Control 2 */		
+		return vga.s3.misc_control_2;
 	case 0x69:	/* Extended System Control 3 */
 		return (Bit8u)((vga.config.display_start & 0x1f0000)>>16); 
 	case 0x6a:	/* Extended System Control 4 */

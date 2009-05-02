@@ -135,9 +135,9 @@ noinst_LIBRARIES = libdos.a
 EXTRA_DIST = scsidefs.h wnaspi32.h
 libdos_a_SOURCES = dos.cpp dos_devices.cpp dos_execute.cpp dos_files.cpp dos_ioctl.cpp dos_memory.cpp \
                    dos_misc.cpp dos_classes.cpp dos_programs.cpp dos_tables.cpp \
-		   drives.cpp drives.h drive_virtual.cpp drive_local.cpp drive_cache.cpp \
-		   dev_con.h dos_mscdex.cpp \
-		   cdrom.h cdrom.cpp cdrom_ioctl_win32.cpp cdrom_aspi_win32.cpp cdrom_ioctl_linux.cpp
+		   drives.cpp drives.h drive_virtual.cpp drive_local.cpp drive_cache.cpp drive_fat.cpp \
+		   drive_iso.cpp dev_con.h dos_mscdex.cpp \
+		   cdrom.h cdrom.cpp cdrom_ioctl_win32.cpp cdrom_aspi_win32.cpp cdrom_ioctl_linux.cpp cdrom_image.cpp
 
 subdir = src/dos
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -153,9 +153,10 @@ am_libdos_a_OBJECTS = dos.$(OBJEXT) dos_devices.$(OBJEXT) \
 	dos_memory.$(OBJEXT) dos_misc.$(OBJEXT) dos_classes.$(OBJEXT) \
 	dos_programs.$(OBJEXT) dos_tables.$(OBJEXT) drives.$(OBJEXT) \
 	drive_virtual.$(OBJEXT) drive_local.$(OBJEXT) \
-	drive_cache.$(OBJEXT) dos_mscdex.$(OBJEXT) cdrom.$(OBJEXT) \
+	drive_cache.$(OBJEXT) drive_fat.$(OBJEXT) drive_iso.$(OBJEXT) \
+	dos_mscdex.$(OBJEXT) cdrom.$(OBJEXT) \
 	cdrom_ioctl_win32.$(OBJEXT) cdrom_aspi_win32.$(OBJEXT) \
-	cdrom_ioctl_linux.$(OBJEXT)
+	cdrom_ioctl_linux.$(OBJEXT) cdrom_image.$(OBJEXT)
 libdos_a_OBJECTS = $(am_libdos_a_OBJECTS)
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
@@ -163,6 +164,7 @@ depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/cdrom.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/cdrom_aspi_win32.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/cdrom_image.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/cdrom_ioctl_linux.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/cdrom_ioctl_win32.Po ./$(DEPDIR)/dos.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dos_classes.Po \
@@ -172,8 +174,8 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/dos_misc.Po ./$(DEPDIR)/dos_mscdex.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dos_programs.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dos_tables.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/drive_cache.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/drive_local.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/drive_cache.Po ./$(DEPDIR)/drive_fat.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/drive_iso.Po ./$(DEPDIR)/drive_local.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/drive_virtual.Po ./$(DEPDIR)/drives.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
@@ -215,6 +217,7 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cdrom.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cdrom_aspi_win32.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cdrom_image.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cdrom_ioctl_linux.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cdrom_ioctl_win32.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dos.Po@am__quote@
@@ -229,6 +232,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dos_programs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dos_tables.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drive_cache.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drive_fat.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drive_iso.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drive_local.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drive_virtual.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/drives.Po@am__quote@

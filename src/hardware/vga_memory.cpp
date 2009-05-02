@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -26,6 +26,9 @@
 #include "vga.h"
 #include "paging.h"
 #include "pic.h"
+#include "inout.h"
+
+void VGA_MapMMIO(void);
 
 static Bitu VGA_NormalReadHandler(PhysPt start) {
 	vga.latch.d=vga.mem.latched[start].d;
@@ -210,11 +213,11 @@ public:
 		flags=PFLAG_NOCODE;
 	}
 	Bitu readb(PhysPt addr) {
-		addr&=0x7fff;
+		addr&=0xffff;
 		return vga.draw.font[addr];
 	}
 	void writeb(PhysPt addr,Bitu val){
-		addr&=0x7fff;
+		addr&=0xffff;
 		if (vga.seq.map_mask & 0x4) {
 			vga.draw.font[addr]=(Bit8u)val;
 		}
@@ -233,6 +236,7 @@ public:
 	}
 };
 
+
 class VGA_MAP_PageHandler : public PageHandler {
 public:
 	VGA_MAP_PageHandler() {
@@ -244,31 +248,113 @@ public:
 	}
 };
 
+class VGA_MMIO_PageHandler : public PageHandler {
+public:
+	Bit16u regmem[16384];
+
+	VGA_MMIO_PageHandler() {
+		flags=PFLAG_NOCODE;
+		//memset(&regmem[0], 0, sizeof(regmem));
+	}
+	void writeb(PhysPt addr,Bitu val) {
+		Bitu port = addr & 0xffff;
+		if(port >= 0x82E8) IO_WriteB(port, val);
+		LOG_MSG("MMIO: Write byte to %x with %x", addr, val);
+	}
+	void writew(PhysPt addr,Bitu val) {
+		Bitu port = addr & 0xffff;
+		if(port >= 0x82E8) IO_WriteW(port, val);
+		if(port == 0x8118) IO_WriteW(0x9ae8, val);
+		if(port <= 0x0020) {
+			IO_WriteW(0xe2e8, val);
+		}
+
+		LOG_MSG("MMIO: Write word to %x with %x", addr, val);	
+	}
+	void writed(PhysPt addr,Bitu val) {
+		Bitu port = addr & 0xffff;
+		if(port >= 0x82E8) IO_WriteD(port, val);
+		if(port == 0x8100) {
+			IO_WriteW(0x86e8, (val >> 16));
+			IO_WriteW(0x82e8, (val & 0xffff));
+		}
+		if(port == 0x8148) {
+			IO_WriteW(0x96e8, (val >> 16));
+			IO_WriteW(0xbee8, (val & 0xffff));
+		}
+		if(port <= 0x0020) {
+			IO_WriteW(0xe2e8, (val & 0xffff));
+			IO_WriteW(0xe2e8, (val >> 16));
+		}
+
+		LOG_MSG("MMIO: Write dword to %x with %x", addr, val);
+	}
+
+	Bitu readb(PhysPt addr) {
+		LOG_MSG("MMIO: Read byte from %x", addr);
+
+		return 0x00;
+	}
+	Bitu readw(PhysPt addr) {
+		Bitu port = addr & 0xffff;
+		if(port >= 0x82E8) return IO_ReadW(port);
+		LOG_MSG("MMIO: Read word from %x", addr);
+		return 0x00;
+	}
+	Bitu readd(PhysPt addr) {
+		LOG_MSG("MMIO: Read dword from %x", addr);
+		return 0x00;
+	}
+
+};
+
 class VGA_TANDY_PageHandler : public PageHandler {
 public:
 	VGA_TANDY_PageHandler() {
-		flags=PFLAG_READABLE|PFLAG_WRITEABLE|PFLAG_NOCODE;
+		flags=PFLAG_READABLE|PFLAG_WRITEABLE;
+//			|PFLAG_NOCODE;
 	}
 	HostPt GetHostPt(Bitu phys_page) {
-		phys_page-=vgapages.map_base;
-		return &vga.mem.linear[(vga.tandy.mem_bank << 14)+(phys_page * 4096)];
+		if (phys_page>=0xb8) {
+			phys_page-=0xb8;
+			return &vga.mem.linear[(vga.tandy.mem_bank << 14)+(phys_page * 4096)];
+		} else {
+			phys_page-=0x80;
+			return &vga.mem.linear[phys_page * 4096];
+		}
 	}
 };
 
 
-static struct {
+static struct vg {
 	VGA_RAM_PageHandler hram;
 	VGA_MAP_PageHandler hmap;
 	VGA_TEXT_PageHandler htext;
 	VGA_TANDY_PageHandler htandy;
 	VGA_256_PageHandler h256;
 	VGA_16_PageHandler h16;
+	VGA_MMIO_PageHandler mmio;
 } vgaph;
 
 
 void VGA_SetupHandlers(void) {
 	PageHandler * range_handler;
+	switch (machine) {
+	case MCH_CGA:
+		range_handler=&vgaph.hmap;
+		goto range_b800;
+	case MCH_HERC:
+		range_handler=&vgaph.hmap;
+		if (vga.herc.mode_control&0x80) goto range_b800;
+		else goto range_b000;
+	case MCH_TANDY:
+		range_handler=&vgaph.htandy;
+		MEM_SetPageHandler(0x80,32,range_handler);
+		goto range_b800;
+	}
 	switch (vga.mode) {
+	case M_ERROR:
+		return;
 	case M_LIN8:
 		range_handler=&vgaph.hmap;
 		break;
@@ -282,29 +368,15 @@ void VGA_SetupHandlers(void) {
 	case M_EGA16:
 		range_handler=&vgaph.h16;
 		break;	
-	case M_TEXT2:
-	case M_TEXT16:
+	case M_TEXT:
 		/* Check if we're not in odd/even mode */
-		if (vga.gfx.miscellaneous & 0x2) {
-			range_handler=&vgaph.hmap;
-		} else {
-			range_handler=&vgaph.htext;
-		}
+		if (vga.gfx.miscellaneous & 0x2) range_handler=&vgaph.hmap;
+		else range_handler=&vgaph.htext;
 		break;
-	case M_TANDY16:
-		range_handler=&vgaph.htandy;
-		break;
-	case M_CGA16:
 	case M_CGA4:
 	case M_CGA2:
 		range_handler=&vgaph.hmap;
 		break;
-	case M_HERC:
-		range_handler=&vgaph.hmap;
-		if (vga.herc.mode_control&0x80) goto range_b800;
-		else goto range_b000;
-	default:
-		LOG_MSG("Unhandled vga mode %X",vga.mode);
 	}
 	switch ((vga.gfx.miscellaneous >> 2) & 3) {
 	case 0:
@@ -331,12 +403,15 @@ range_b800:
 		MEM_SetPageHandler(VGA_PAGE_B0,8,&vgaph.hram);
 		break;
 	}
+
+	if(((vga.s3.ext_mem_ctrl & 0x10) != 0x00) && (vga.mode == M_LIN8)) MEM_SetPageHandler(VGA_PAGE_A0, 16, &vgaph.mmio);
+
 	PAGING_ClearTLB();
 }
 
-bool  lfb_update;
+static bool lfb_update;
 
-static void VGA_DoUpdateLFB(void) {
+static void VGA_DoUpdateLFB(Bitu val) {
 	lfb_update=false;
 	MEM_SetLFB(vga.s3.la_window << 4 ,sizeof(vga.mem.linear)/4096,&vga.mem.linear[0]);
 }
@@ -344,9 +419,19 @@ static void VGA_DoUpdateLFB(void) {
 void VGA_StartUpdateLFB(void) {
 	if (!lfb_update) {
 		lfb_update=true;
-		PIC_AddEvent(VGA_DoUpdateLFB,100);	//100 microseconds later
+		PIC_AddEvent(VGA_DoUpdateLFB,0.100f);	//100 microseconds later
 	}
 }
+
+void VGA_MapMMIO(void) {
+	MEM_SetPageHandler(VGA_PAGE_A0, 16, &vgaph.mmio);
+
+}
+
+void VGA_UnmapMMIO(void) {
+	//MEM_SetPageHandler(VGA_PAGE_A0, &ram_page_handler);
+}
+
 
 void VGA_SetupMemory() {
 	memset((void *)&vga.mem,0,512*1024*4);

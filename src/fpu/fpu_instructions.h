@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: fpu_instructions.h,v 1.16 2004/01/11 09:41:52 qbix79 Exp $ */
+/* $Id: fpu_instructions.h,v 1.21 2004/09/09 18:36:50 qbix79 Exp $ */
 
 
 static void FPU_FINIT(void) {
@@ -262,10 +262,33 @@ static void FPU_FBST(PhysPt addr)
 	mem_writeb(addr+9,p);
 }
 
+static Real64 FPU_FBLD(PhysPt addr)
+{
+	Bit64u val = 0;
+	Bitu in = 0;
+	Bit64u base = 1;
+	for(Bitu i = 0;i < 9;i++){
+		in = mem_readb(addr + i);
+		val += ( (in&0xf) * base); //in&0xf shouldn't be higher then 9
+		base *= 10;
+		val += ((( in>>4)&0xf) * base);
+		base *= 10;
+	}
+
+	//last number, only now convert to float in order to get
+	//the best signification
+	Real64 temp = static_cast<Real64>(val);
+	in = mem_readb(addr + 9);
+	temp += ( (in&0xf) * base );
+	if(in&0x80) temp *= -1.0;
+	return temp;
+}
+
+
 #define BIAS80 16383
 #define BIAS64 1023
 
-static void FPU_FLD80(PhysPt addr)
+static Real64 FPU_FLD80(PhysPt addr)
 {
 	struct{
 		Bit16s begin;
@@ -283,20 +306,21 @@ static void FPU_FLD80(PhysPt addr)
 	Bit64s sign = (test.begin &0x8000)?1:0;
 	FPU_Reg result;
 	result.ll= (sign <<63)|(exp64final << 52)| mant64;
-	FPU_PUSH(result.d);
+	return result.d;   
+
 	//mant64= test.mant80/2***64    * 2 **53 
 }
 
-static void FPU_ST80(PhysPt addr)
+static void FPU_ST80(PhysPt addr,Bitu reg)
 {
 	struct{
 		Bit16s begin;
 		FPU_Reg eind;
 	} test;
-	Bit64s sign80= (fpu.regs[TOP].ll&LONGTYPE(0x8000000000000000))?1:0;
-	Bit64s exp80 =  fpu.regs[TOP].ll&LONGTYPE(0x7ff0000000000000);
+	Bit64s sign80= (fpu.regs[reg].ll&LONGTYPE(0x8000000000000000))?1:0;
+	Bit64s exp80 =  fpu.regs[reg].ll&LONGTYPE(0x7ff0000000000000);
 	Bit64s exp80final= (exp80>>52) - BIAS64 + BIAS80;
-	Bit64s mant80 = fpu.regs[TOP].ll&LONGTYPE(0x000fffffffffffff);
+	Bit64s mant80 = fpu.regs[reg].ll&LONGTYPE(0x000fffffffffffff);
 	Bit64s mant80final= (mant80 << 11) | LONGTYPE(0x8000000000000000);
 	test.begin= (static_cast<Bit16s>(sign80)<<15)| static_cast<Bit16s>(exp80final);
 	test.eind.ll=mant80final;
@@ -318,5 +342,53 @@ static void FPU_FYL2X(void){
 static void FPU_FSCALE(void){
 	fpu.regs[TOP].d *= pow(2.0,static_cast<Real64>(static_cast<Bit64s>(fpu.regs[ST(1)].d)));
 	return; //2^x where x is chopped.
+}
+
+static void FPU_FSTENV(PhysPt addr){
+	if(!cpu.code.big) {
+		mem_writew(addr+0,static_cast<Bit16u>(fpu.cw));
+		mem_writew(addr+2,static_cast<Bit16u>(fpu.sw));
+		mem_writew(addr+4,static_cast<Bit16u>(FPU_GetTag()));
+	} else { 
+		mem_writed(addr+0,static_cast<Bit32u>(fpu.cw));
+		mem_writed(addr+4,static_cast<Bit32u>(fpu.sw));
+		mem_writed(addr+8,static_cast<Bit32u>(FPU_GetTag()));
+	}
+}
+
+static void FPU_FLDENV(PhysPt addr){
+	Bit16u tag;
+	Bit32u tagbig;
+	Bitu cw;
+	if(!cpu.code.big) {
+		cw     = mem_readw(addr+0);
+		fpu.sw = mem_readw(addr+2);
+		tag    = mem_readw(addr+4);
+	} else { 
+		cw     = mem_readd(addr+0);
+		fpu.sw = mem_readd(addr+4);
+		tagbig = mem_readd(addr+8);
+		tag    = static_cast<Bit16u>(tagbig);
+	}
+	FPU_SetTag(tag);
+	FPU_SetCW(cw);
+}
+
+static void FPU_FSAVE(PhysPt addr){
+	FPU_FSTENV(addr);
+	Bitu start=(cpu.code.big?28:14);
+	for(Bitu i=0;i<8;i++){
+		FPU_ST80(addr+start,i);
+		start+=10;
+	}
+}
+
+static void FPU_FSTOR(PhysPt addr){
+	FPU_FLDENV(addr);
+	Bitu start=(cpu.code.big?28:14);
+	for(Bitu i=0;i<8;i++){
+		fpu.regs[i].d=FPU_FLD80(addr+start);
+		start+=10;
+	}
 }
 

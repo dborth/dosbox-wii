@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -22,15 +22,15 @@
 
 #define seq(blah) vga.seq.blah
 
-Bit8u read_p3c4(Bit32u port) {
+Bitu read_p3c4(Bitu port,Bitu iolen) {
 	return seq(index);
 }
 
-void write_p3c4(Bit32u port,Bit8u val) {
+void write_p3c4(Bitu port,Bitu val,Bitu iolen) {
 	seq(index)=val;
 };
 
-void write_p3c5(Bit32u port,Bit8u val) {
+void write_p3c5(Bitu port,Bitu val,Bitu iolen) {
 	if (seq(index)>0x8 && vga.s3.pll.lock!=0x6) return;
 //	LOG_MSG("SEQ WRITE reg %X val %X",seq(index),val);
 	switch(seq(index)) {
@@ -69,10 +69,10 @@ void write_p3c5(Bit32u port,Bit8u val) {
 	case 3:		/* Character Map Select */
 		{
 			seq(character_map_select)=val;
-			Bit8u font1=(val & 0x3) | ((val & 0x10) >> 2);
-			vga.draw.font1_start=((font1&3) * 16*1024) + ((font1 > 4) ? (8*1024) : 0);
-			Bit8u font2=((val & 0xc) >> 2) | ((val & 0x20) >> 3);
-			vga.draw.font2_start=((font2&3) * 16*1024) + ((font2 > 4) ? (8*1024) : 0);
+			Bit8u font1=((val & 0x3) << 1) | ((val & 0x10) >> 4);
+			vga.draw.font_tables[0]=&vga.draw.font[font1*8*1024];
+			Bit8u font2=((val & 0xc) >> 1) | ((val & 0x20) >> 5);
+			vga.draw.font_tables[1]=&vga.draw.font[font2*8*1024];
 		}
 		/*
 			0,1,4  Selects VGA Character Map (0..7) if bit 3 of the character
@@ -127,7 +127,7 @@ void write_p3c5(Bit32u port,Bit8u val) {
 };
 
 
-Bit8u read_p3c5(Bit32u port) {
+Bitu read_p3c5(Bitu port,Bitu iolen) {
 //	LOG_MSG("VGA:SEQ:Read from index %2X",seq(index));
 	if (seq(index)>0x8 && vga.s3.pll.lock!=0x6) return seq(index);
 	switch(seq(index)) {
@@ -167,10 +167,11 @@ Bit8u read_p3c5(Bit32u port) {
 
 
 void VGA_SetupSEQ(void) {
-	IO_RegisterWriteHandler(0x3c4,write_p3c4,"VGA:Sequencer Index");
-	IO_RegisterWriteHandler(0x3c5,write_p3c5,"VGA:Sequencer Data");
-	IO_RegisterReadHandler(0x3c4,read_p3c4,"VGA:Sequencer Index");
-	IO_RegisterReadHandler(0x3c5,read_p3c5,"VGA:Sequencer Data");
-
+	if (machine==MCH_VGA) {
+		IO_RegisterWriteHandler(0x3c4,write_p3c4,IO_MB);
+		IO_RegisterWriteHandler(0x3c5,write_p3c5,IO_MB);
+		IO_RegisterReadHandler(0x3c4,read_p3c4,IO_MB);
+		IO_RegisterReadHandler(0x3c5,read_p3c5,IO_MB);
+	}
 }
 

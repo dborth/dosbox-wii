@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -76,12 +76,8 @@ public:
 		}
 	}
 	
-	void PlayMsg(Bit32u msg) {
-		MusicDeviceMIDIEvent(m_musicDevice,
-				(msg & 0x000000FF),
-				(msg & 0x0000FF00) >> 8,
-				(msg & 0x00FF0000) >> 16,
-				0);
+	void PlayMsg(Bit8u * msg) {
+		MusicDeviceMIDIEvent(m_musicDevice,msg[0],msg[1],msg[2],0);
 	}
 	
 	void PlaySysex(Bit8u * sysex, Bitu len) {

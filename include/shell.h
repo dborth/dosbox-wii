@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.h,v 1.2 2004/01/10 14:03:33 qbix79 Exp $ */
+/* $Id: shell.h,v 1.7 2004/09/09 18:36:50 qbix79 Exp $ */
 
 #ifndef SHELL_H_
 #define SHELL_H_
@@ -57,9 +57,7 @@ public:
 };
 
 class DOS_Shell : public Program {
-
 private:
-
 	std::list<std::string> l_history, l_completion;
 
 	char *completion_start;
@@ -102,6 +100,8 @@ public:
 	void CMD_PAUSE(char * args);
 	void CMD_SUBST(char* args);
 	void CMD_LOADHIGH(char* args);
+	void CMD_CHOICE(char * args);
+	void CMD_ATTRIB(char * args);
 	/* The shell's variables */
 	Bit16u input_handle;
 	BatchFile * bf;
@@ -117,15 +117,12 @@ struct SHELL_Cmd {
     const char * help;								/* String with command help */
 };
 
-static inline void StripSpaces(char*&args)
-{
-	while(*args && (*args == ' '))
+static inline void StripSpaces(char*&args) {
+	while(*args && ((*args == ' ') || (*args == '\t')))
 		args++;
 }
 
-
-static inline char* ExpandDot(char*args, char* buffer)
-{
+static inline char* ExpandDot(char*args, char* buffer) {
 	if(*args=='.')
 	{
 		if(*(args+1)==0)
@@ -139,11 +136,11 @@ static inline char* ExpandDot(char*args, char* buffer)
 			buffer[1]=0;
 			strcat(buffer,args);
 			return buffer;
-		}
+		} else 
+			strcpy (buffer, args); 
 	}
 	else strcpy(buffer,args);
 	return buffer;
 }
-
 
 #endif

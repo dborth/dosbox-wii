@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_local.cpp,v 1.44 2004/01/11 16:48:32 qbix79 Exp $ */
+/* $Id: drive_local.cpp,v 1.51 2004/08/13 19:43:02 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +39,7 @@ public:
 	bool Seek(Bit32u * pos,Bit32u type);
 	bool Close();
 	Bit16u GetInformation(void);
+	bool UpdateDateTimeFromHost(void);   
 private:
 	FILE * fhandle;
 	enum { NONE,READ,WRITE } last_action;
@@ -102,6 +103,26 @@ bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 	return true;
 };
 
+FILE * localDrive::GetSystemFilePtr(char * name, char * type) {
+
+	char newname[CROSS_LEN];
+	strcpy(newname,basedir);
+	strcat(newname,name);
+	CROSS_FILENAME(newname);
+	dirCache.ExpandName(newname);
+
+	return fopen(newname,type);
+}
+
+bool localDrive::GetSystemFilename(char *sysName, char *dosName) {
+
+	strcpy(sysName, basedir);
+	strcat(sysName, dosName);
+	CROSS_FILENAME(sysName);
+	dirCache.ExpandName(sysName);
+	return true;
+}
+
 bool localDrive::FileUnlink(char * name) {
 	char newname[CROSS_LEN];
 	strcpy(newname,basedir);
@@ -115,7 +136,7 @@ bool localDrive::FileUnlink(char * name) {
 };
 
 
-bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
+bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 
 	char tempDir[CROSS_LEN];
 	strcpy(tempDir,basedir);
@@ -130,7 +151,7 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
 	if (tempDir[strlen(tempDir)-1]!=CROSS_FILESPLIT) strcat(tempDir,end);
 	
 	Bitu id;
-	if (!dirCache.FindFirst(tempDir,(Bitu)dos.dta,id))
+	if (!dirCache.FindFirst(tempDir,id))
 	{
 		DOS_SetError(DOSERR_PATH_NOT_FOUND);
 		return false;
@@ -140,19 +161,17 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta) {
 	
 	Bit8u sAttr;
 	dta.GetSearchParams(sAttr,tempDir);
-	if ((sAttr & DOS_ATTR_VOLUME) && (*_dir==0)) {
+	if ( (sAttr & DOS_ATTR_VOLUME) && ( (*_dir==0) || fcb_findfirst ) ) {
 	// Get Volume Label (DOS_ATTR_VOLUME) and only in basedir
+	// or it's a fcb findfirst as that always returns label
 		if ( strcmp(dirCache.GetLabel(), "") == 0 ) {
 			LOG(LOG_DOSMISC,LOG_ERROR)("DRIVELABEL REQUESTED: none present, returned  NOLABEL");
-			dta.SetResult("NOLABEL",0,0,0,DOS_ATTR_VOLUME);
+			dta.SetResult("NO_LABEL",0,0,0,DOS_ATTR_VOLUME);
 			return true;
 		}
-	    
-		if (WildFileCmp(dirCache.GetLabel(),tempDir)) {
-			// Get Volume Label
-			dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
-			return true;
-		}
+		// Get Volume Label && ignore search string (pandora)
+		dta.SetResult(dirCache.GetLabel(),0,0,0,DOS_ATTR_VOLUME);
+		return true;
 	}
 	return FindNext(dta);
 }
@@ -437,6 +456,21 @@ localFile::localFile(const char* _name, FILE * handle,Bit16u devinfo) {
 	SetName(_name);
 }
 
+bool localFile::UpdateDateTimeFromHost(void) {
+	if(!open) return false;
+	struct stat temp_stat;
+	fstat(fileno(fhandle),&temp_stat);
+	struct tm * ltime;
+	if((ltime=localtime(&temp_stat.st_mtime))!=0) {
+		time=DOS_PackTime(ltime->tm_hour,ltime->tm_min,ltime->tm_sec);
+		date=DOS_PackDate(ltime->tm_year+1900,ltime->tm_mon+1,ltime->tm_mday);
+	} else {
+		time=1;date=1;
+	}
+	return true;
+}
+
+
 // ********************************************
 // CDROM DRIVE
 // ********************************************
@@ -505,7 +539,7 @@ bool cdromDrive::GetFileAttr(char * name,Bit16u * attr)
 	return result;
 };
 
-bool cdromDrive::FindFirst(char * _dir,DOS_DTA & dta)
+bool cdromDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst)
 {
 	// If media has changed, reInit drivecache.
 	if (MSCDEX_HasMediaChanged(subUnit)) {

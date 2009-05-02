@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -19,7 +19,17 @@
 #ifndef _HARDWARE_H_
 #define _HARDWARE_H_
 
+#include <stdio.h>
 
+class Section;
+enum OPL_Mode {
+	OPL_none,OPL_cms,OPL_opl2,OPL_dualopl2,OPL_opl3
+};
+
+void OPL_Init(Section* sec,Bitu base,OPL_Mode mode,Bitu rate);
+void CMS_Init(Section* sec,Bitu base,Bitu rate);
+extern Bit8u adlib_commandreg;
+FILE * OpenCaptureFile(const char * type,const char * ext);
 
 
 #endif

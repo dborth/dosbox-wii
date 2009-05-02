@@ -1,5 +1,5 @@
 dnl Init.
-AC_INIT(dosbox,0.61)
+AC_INIT(dosbox,0.62)
 AC_PREREQ(2.50)
 AC_CONFIG_SRCDIR(README)
 
@@ -26,7 +26,7 @@ AM_PATH_SDL($SDL_VERSION,
 	    AC_MSG_ERROR([*** SDL version $SDL_VERSION not found!])
 )
 LIBS="$LIBS $SDL_LIBS"
-CXXFLAGS="$CXXFLAGS $SDL_CFLAGS"
+CPPFLAGS="$CPPFLAGS $SDL_CFLAGS"
 
 dnl Checks for header files.
 
@@ -35,7 +35,12 @@ AC_C_CONST
 AC_C_INLINE
 AC_TYPE_SIZE_T
 AC_STRUCT_TM
-
+AC_CHECK_SIZEOF(unsigned char)
+AC_CHECK_SIZEOF(unsigned short)
+AC_CHECK_SIZEOF(unsigned int)
+AC_CHECK_SIZEOF(unsigned long)
+AC_CHECK_SIZEOF(unsigned long long)
+AC_CHECK_SIZEOF(int *)
 
 AC_MSG_CHECKING(if environ can be included)
 AC_TRY_LINK([#include <unistd.h>
@@ -143,13 +148,15 @@ else
 fi
 
 AH_TEMPLATE(C_MODEM,[Define to 1 to enable internal modem support, requires SDL_net])
-AC_CHECK_HEADER(SDL/SDL_net.h,have_sdl_net_h=yes,)
+AH_TEMPLATE(C_IPX,[Define to 1 to enable IPX over Internet networking, requires SDL_net])
+AC_CHECK_HEADER(SDL_net.h,have_sdl_net_h=yes,)
 AC_CHECK_LIB(SDL_net, SDLNet_Init, have_sdl_net_lib=yes, , )
 if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
   LIBS="$LIBS -lSDL_net"
    AC_DEFINE(C_MODEM,1)
+   AC_DEFINE(C_IPX,1)
 else 
-   AC_MSG_WARN([Can't find SDL_net, internal modem disabled])
+   AC_MSG_WARN([Can't find SDL_net, internal modem and ipx disabled])
 fi
 
 AH_TEMPLATE(C_OPENGL,[Define to 1 to use opengl display output support])
@@ -170,10 +177,32 @@ else
   AC_MSG_RESULT(no)
 fi
 
+AH_TEMPLATE(C_SDL_SOUND,[Define to 1 to enable SDL_sound support])
+AC_CHECK_HEADER(SDL/SDL_sound.h,have_SDL_sound_h=yes,)
+AC_CHECK_LIB(SDL_sound, Sound_Init, have_SDL_sound_lib=yes,,)
+if test x$have_SDL_sound_h = xyes -a x$have_SDL_sound_lib = xyes ; then
+  LIBS="$LIBS -lSDL_sound"
+  AC_DEFINE(C_SDL_SOUND,1)
+else
+  AC_MSG_WARN([Can't find libSDL_sound, libSDL_sound support disabled])
+fi
+
+AH_TEMPLATE(C_SET_PRIORITY,[Define to 1 if you have setpriority support])
+AC_MSG_CHECKING(for setpriority support)
+AC_LINK_IFELSE([
+#include <sys/resource.h>
+int main(int argc,char * argv[]) {
+	return setpriority (PRIO_PROCESS, 0,PRIO_MIN+PRIO_MAX);
+};
+],AC_MSG_RESULT(yes);AC_DEFINE(C_SET_PRIORITY,1),AC_MSG_RESULT(no))
+
+
 dnl Some host detection and actions for them
 case "$target" in
     *-*-cygwin* | *-*-mingw32*)
        LIBS="$LIBS -lwinmm"
+       AC_CHECK_HEADERS(ddraw.h)
+       AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32 only).])
        ;;
     *-*-darwin*)
        dnl We have a problem here: both MacOS X and Darwin report 

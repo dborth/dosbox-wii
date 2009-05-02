@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -23,6 +23,7 @@
 #include "pic.h"
 #include "inout.h"
 #include "mem.h"
+#include "bios.h"
 
 static struct {
 	Bit8u regs[0x40];
@@ -32,42 +33,36 @@ static struct {
 	struct {
 		bool enabled;
 		Bit8u div;
-		Bitu micro;
+		float delay;
 	} timer;
 	struct {
-		Bit64u timer;
-		Bit64u ended;
-		Bit64u alarm;
+		double timer;
+		double ended;
+		double alarm;
 	} last;
-	bool ack;
 	bool update_ended;
 } cmos;
 
-static void cmos_timerevent(void) {
+static void cmos_timerevent(Bitu val) {
 	PIC_ActivateIRQ(8); 
-	if(cmos.timer.enabled) PIC_AddEvent(cmos_timerevent,cmos.timer.micro);
-	if (cmos.ack) {
-		PIC_AddEvent(cmos_timerevent,cmos.timer.micro);
-		cmos.regs[0x0c]|=0x0a0;
-		cmos.ack=false;
-	}
+	if (cmos.timer.enabled) PIC_AddEvent(cmos_timerevent,cmos.timer.delay);
 }
 
 static void cmos_checktimer(void) {
 	PIC_RemoveEvents(cmos_timerevent);	
 	if (cmos.timer.div<=2) cmos.timer.div+=7;
-	cmos.timer.micro=(Bitu) (1000000.0/(32768.0 / (1 << (cmos.timer.div - 1))));
+	cmos.timer.delay=(1000.0f/(32768.0f / (1 << (cmos.timer.div - 1))));
 	if (!cmos.timer.div || !cmos.timer.enabled) return;
-	LOG(LOG_PIT,LOG_NORMAL)("RTC Timer at %f hz",1000000.0/cmos.timer.micro);
-	PIC_AddEvent(cmos_timerevent,cmos.timer.micro);
+	LOG(LOG_PIT,LOG_NORMAL)("RTC Timer at %.2f hz",1000.0/cmos.timer.delay);
+	PIC_AddEvent(cmos_timerevent,cmos.timer.delay);
 }
 
-void cmos_selreg(Bit32u port,Bit8u val) {
+void cmos_selreg(Bitu port,Bitu val,Bitu iolen) {
 	cmos.reg=val & 0x3f;
 	cmos.nmi=(val & 0x80)>0;
 }
 
-static void cmos_writereg(Bit32u port,Bit8u val) {
+static void cmos_writereg(Bitu port,Bitu val,Bitu iolen) {
 	switch (cmos.reg) {
 	case 0x00:		/* Seconds */
 	case 0x02:		/* Minutes */
@@ -84,10 +79,9 @@ static void cmos_writereg(Bit32u port,Bit8u val) {
 		LOG(LOG_BIOS,LOG_NORMAL)("CMOS:Trying to set alarm");
 		cmos.regs[cmos.reg]=val;
 		break;
-
 	case 0x0a:		/* Status reg A */
 		cmos.regs[cmos.reg]=val & 0x7f;
-		if (val & 0x70!=0x20) LOG(LOG_BIOS,LOG_ERROR)("CMOS Illegal 22 stage divider value");
+		if ((val & 0x70)!=0x20) LOG(LOG_BIOS,LOG_ERROR)("CMOS Illegal 22 stage divider value");
 		cmos.timer.div=(val & 0xf);
 		cmos_checktimer();
 		break;
@@ -110,11 +104,13 @@ static void cmos_writereg(Bit32u port,Bit8u val) {
 
 #define MAKE_RETURN(_VAL) (cmos.bcd ? (((_VAL / 10) << 4) | (_VAL % 10)) : _VAL);
 
-static Bit8u cmos_readreg(Bit32u port) {
+static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 	if (cmos.reg>0x3f) {
 		LOG(LOG_BIOS,LOG_ERROR)("CMOS:Read from illegal register %x",cmos.reg);
 		return 0xff;
 	}
+	Bitu drive_a, drive_b;
+	Bit8u hdparm;
 	time_t curtime;
 	struct tm *loctime;
 
@@ -144,7 +140,7 @@ static Bit8u cmos_readreg(Bit32u port) {
 	case 0x05:		/* Hours Alarm */
 		return cmos.regs[cmos.reg];
 	case 0x0a:		/* Status register C */
-		if (PIC_Index()<0x2) {
+		if (PIC_TickIndex()<0.002) {
 			return (cmos.regs[0x0a]&0x7f) | 0x80;
 		} else {
 			return (cmos.regs[0x0a]&0x7f);
@@ -158,17 +154,96 @@ static Bit8u cmos_readreg(Bit32u port) {
 		} else {
 			/* Give correct values at certain times */
 			Bit8u val=0;
-			Bit64u index=PIC_MicroCount();
-			if (index>=(cmos.last.timer+cmos.timer.micro)) {
+			double index=PIC_FullIndex();
+			if (index>=(cmos.last.timer+cmos.timer.delay)) {
 				cmos.last.timer=index;
 				val|=0x40;
 			} 
-			if (index>=(cmos.last.ended+1000000)) {
+			if (index>=(cmos.last.ended+1000)) {
 				cmos.last.ended=index;
 				val|=0x10;
 			} 
 			return val;
 		}
+	case 0x10:		/* Floppy size */
+		drive_a = 0;
+		drive_b = 0;
+		if(imageDiskList[0] != NULL) drive_a = imageDiskList[0]->GetBiosType();
+		if(imageDiskList[1] != NULL) drive_b = imageDiskList[1]->GetBiosType();
+		return ((drive_a << 4) | (drive_b));
+	/* First harddrive info */
+	case 0x12:
+		hdparm = 0;
+		if(imageDiskList[2] != NULL) hdparm |= 0xf;
+		if(imageDiskList[3] != NULL) hdparm |= 0xf0;
+		return hdparm;
+	case 0x19:
+		if(imageDiskList[2] != NULL) return 47; /* User defined type */
+		return 0;
+	case 0x1b:
+		if(imageDiskList[2] != NULL) return (imageDiskList[2]->cylinders & 0xff);
+		return 0;
+	case 0x1c:
+		if(imageDiskList[2] != NULL) return ((imageDiskList[2]->cylinders & 0xff00)>>8);
+		return 0;
+	case 0x1d:
+		if(imageDiskList[2] != NULL) return (imageDiskList[2]->heads);
+		return 0;
+	case 0x1e:
+		if(imageDiskList[2] != NULL) return 0xff;
+		return 0;
+	case 0x1f:
+		if(imageDiskList[2] != NULL) return 0xff;
+		return 0;
+	case 0x20:
+		if(imageDiskList[2] != NULL) return (0xc0 | (((imageDiskList[2]->heads) > 8) << 3));
+		return 0;
+	case 0x21:
+		if(imageDiskList[2] != NULL) return (imageDiskList[2]->cylinders & 0xff);
+		return 0;
+	case 0x22:
+		if(imageDiskList[2] != NULL) return ((imageDiskList[2]->cylinders & 0xff00)>>8);
+		return 0;
+	case 0x23:
+		if(imageDiskList[2] != NULL) return (imageDiskList[2]->sectors);
+		return 0;
+	/* Second harddrive info */
+	case 0x1a:
+		if(imageDiskList[3] != NULL) return 47; /* User defined type */
+		return 0;
+	case 0x24:
+		if(imageDiskList[3] != NULL) return (imageDiskList[3]->cylinders & 0xff);
+		return 0;
+	case 0x25:
+		if(imageDiskList[3] != NULL) return ((imageDiskList[3]->cylinders & 0xff00)>>8);
+		return 0;
+	case 0x26:
+		if(imageDiskList[3] != NULL) return (imageDiskList[3]->heads);
+		return 0;
+	case 0x27:
+		if(imageDiskList[3] != NULL) return 0xff;
+		return 0;
+	case 0x28:
+		if(imageDiskList[3] != NULL) return 0xff;
+		return 0;
+	case 0x29:
+		if(imageDiskList[3] != NULL) return (0xc0 | (((imageDiskList[3]->heads) > 8) << 3));
+		return 0;
+	case 0x2a:
+		if(imageDiskList[3] != NULL) return (imageDiskList[3]->cylinders & 0xff);
+		return 0;
+	case 0x2b:
+		if(imageDiskList[3] != NULL) return ((imageDiskList[3]->cylinders & 0xff00)>>8);
+		return 0;
+	case 0x2c:
+		if(imageDiskList[3] != NULL) return (imageDiskList[3]->sectors);
+		return 0;
+	case 0x39:
+		return 0;
+	case 0x3a:
+		return 0;
+
+
 	case 0x0b:		/* Status register B */
 	case 0x0f:		/* Shutdown status byte */
 	case 0x17:		/* Extended memory in KB Low Byte */
@@ -189,14 +264,14 @@ void CMOS_SetRegister(Bitu regNr, Bit8u val)
 };
 
 void CMOS_Init(Section* sec) {
-	IO_RegisterWriteHandler(0x70,cmos_selreg,"CMOS");
-	IO_RegisterWriteHandler(0x71,cmos_writereg,"CMOS");
-	IO_RegisterReadHandler(0x71,cmos_readreg,"CMOS");
+	IO_RegisterWriteHandler(0x70,cmos_selreg,IO_MB);
+	IO_RegisterWriteHandler(0x71,cmos_writereg,IO_MB);
+	IO_RegisterReadHandler(0x71,cmos_readreg,IO_MB);
 	cmos.timer.enabled=false;
 	cmos.reg=0xa;
-	cmos_writereg(0x71,0x26);
+	cmos_writereg(0x71,0x26,1);
 	cmos.reg=0xb;
-	cmos_writereg(0x71,0);
+	cmos_writereg(0x71,0,1);
 	/* Fill in extended memory size */
 	Bitu exsize=(MEM_TotalPages()*4)-1024;
 	cmos.regs[0x17]=(Bit8u)exsize;

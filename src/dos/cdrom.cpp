@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -21,6 +21,11 @@
 // SDL CDROM 
 // ******************************************************
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <dirent.h>
+#include "dosbox.h"
 #include "SDL.h"
 #include "support.h"
 #include "cdrom.h"
@@ -175,8 +180,13 @@ int CDROM_GetMountType(char* path, int forceCD)
 		cdName = SDL_CDName(i);
 		if (strcmp(buffer,cdName)==0) return 0;
 	};
-	// TODO: Detect ISO
-	return 2;
+	
+	// Detect ISO
+	struct stat file_stat;
+	stat(path, &file_stat);
+	if (S_ISREG(file_stat.st_mode)) return 1;
+
+        return 2;
 };
 
 // ******************************************************

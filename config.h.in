@@ -2,7 +2,7 @@
 
 
 /*
- *  Copyright (C) 2002-2003  The DOSBox Team
+ *  Copyright (C) 2002-2004  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,9 @@
 /* Define to 1 to enable internal debugger, requires libcurses */
 #undef C_DEBUG
 
+/* Define to 1 if you want serial passthrough support (Win32 only). */
+#undef C_DIRECTSERIAL
+
 /* Define to 1 to use x86 dynamic cpu core */
 #undef C_DYNAMIC_X86
 
@@ -41,11 +44,20 @@
 /* The type of cpu this host has */
 #undef C_HOSTCPU
 
+/* Define to 1 to enable IPX over Internet networking, requires SDL_net */
+#undef C_IPX
+
 /* Define to 1 to enable internal modem support, requires SDL_net */
 #undef C_MODEM
 
 /* Define to 1 to use opengl display output support */
 #undef C_OPENGL
+
+/* Define to 1 to enable SDL_sound support */
+#undef C_SDL_SOUND
+
+/* Define to 1 if you have setpriority support */
+#undef C_SET_PRIORITY
 
 /* Define to 1 to enable screenshots, requires libpng */
 #undef C_SSHOT
@@ -58,6 +70,9 @@
 
 /* Define to 1 to use ALSA for MIDI */
 #undef HAVE_ALSA
+
+/* Define to 1 if you have the <ddraw.h> header file. */
+#undef HAVE_DDRAW_H
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
@@ -113,6 +128,24 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
+/* The size of a `int *', as computed by sizeof. */
+#undef SIZEOF_INT_P
+
+/* The size of a `unsigned char', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_CHAR
+
+/* The size of a `unsigned int', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_INT
+
+/* The size of a `unsigned long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG
+
+/* The size of a `unsigned long long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG_LONG
+
+/* The size of a `unsigned short', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_SHORT
+
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
 
@@ -145,3 +178,50 @@
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #endif
+
+
+typedef         double     Real64;
+
+#if SIZEOF_UNSIGNED_CHAR != 1
+#  error "sizeof (unsigned char) != 1"
+#else
+  typedef unsigned char Bit8u;
+  typedef   signed char Bit8s;
+#endif
+
+#if SIZEOF_UNSIGNED_SHORT != 2
+#  error "sizeof (unsigned short) != 2"
+#else
+  typedef unsigned short Bit16u;
+  typedef   signed short Bit16s;
+#endif
+
+#if SIZEOF_UNSIGNED_INT == 4
+  typedef unsigned int Bit32u;
+  typedef   signed int Bit32s;
+#elif SIZEOF_UNSIGNED_LONG == 4
+  typedef unsigned long Bit32u;
+  typedef   signed long Bit32s;
+#else
+#  error "can't find sizeof(type) of 4 bytes!"
+#endif
+
+#if SIZEOF_UNSIGNED_LONG == 8
+  typedef unsigned long Bit64u;
+  typedef   signed long Bit64s;
+#elif SIZEOF_UNSIGNED_LONG_LONG == 8
+  typedef unsigned long long Bit64u;
+  typedef   signed long long Bit64s;
+#else
+#  error "can't find data type of 8 bytes"
+#endif
+
+#if SIZEOF_INT_P == 4
+  typedef Bit32u Bitu;
+  typedef Bit32s Bits;
+ #else
+  typedef Bit64u Bitu;
+  typedef Bit64s Bits;
+ #endif
+
+

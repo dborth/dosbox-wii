@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.39 2004/02/03 08:35:29 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.49 2004/09/28 15:31:21 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -47,7 +47,7 @@ void SHELL_AddAutoexec(char * line,...) {
 
 	size_t auto_len=strlen(autoexec_data);
 	if ((auto_len+strlen(line)+3)>AUTOEXEC_SIZE) {
-		E_Exit("SYSTEM:Autoexec.bat file overlow");
+		E_Exit("SYSTEM:Autoexec.bat file overflow");
 	}
 	sprintf((autoexec_data+auto_len),"%s\r\n",buf);
 }
@@ -108,7 +108,7 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 }	
 
 void DOS_Shell::ParseLine(char * line) {
-
+	LOG(LOG_EXEC,LOG_ERROR)("Parsing command line: %s",line);
 	/* Check for a leading @ */
  	if (line[0]=='@') line[0]=' ';
 	line=trim(line);
@@ -138,7 +138,6 @@ void DOS_Shell::ParseLine(char * line) {
 		free(out);
 	}
 #endif
-
 	DoCommand(line);
 	
 }
@@ -167,7 +166,6 @@ void DOS_Shell::RunInternal(void)
 void DOS_Shell::Run(void) {
 	char input_line[CMD_MAXLINE];
 	std::string line;
-
 	if (cmd->FindStringRemain("/C",line)) {
 		strcpy(input_line,line.c_str());
 		DOS_Shell temp;
@@ -188,7 +186,7 @@ void DOS_Shell::Run(void) {
 			if(bf->ReadLine(input_line)) {
 				if (echo) {
 					if (input_line[0]!='@') {
-                        ShowPrompt();
+						ShowPrompt();
 						WriteOut(input_line);
 						WriteOut("\n");
 					};
@@ -244,7 +242,15 @@ void AUTOEXEC_Init(Section * sec) {
 			if (access(buffer,F_OK)) goto nomount;
 			SHELL_AddAutoexec("MOUNT C \"%s\"",buffer);
 			SHELL_AddAutoexec("C:");
-			SHELL_AddAutoexec(name);
+			upcase(name);
+			if(strstr(name,".BAT")==0) {
+				SHELL_AddAutoexec(name);
+			} else {
+				char call[CROSS_LEN] = { 0 };
+				strcpy(call,"CALL ");
+				strcat(call,name);
+				SHELL_AddAutoexec(call);
+			}
 			if(addexit) SHELL_AddAutoexec("exit");
 		}
 	}
@@ -259,17 +265,17 @@ static char * init_line="/INIT AUTOEXEC.BAT";
 
 void SHELL_Init() {
 	/* Add messages */
-	MSG_Add("SHELL_ILLEGAL_PATH","Illegal Path\n");
+	MSG_Add("SHELL_ILLEGAL_PATH","Illegal Path.\n");
 	MSG_Add("SHELL_CMD_HELP","supported commands are:\n");
-	MSG_Add("SHELL_CMD_ECHO_ON","ECHO is on\n");
-	MSG_Add("SHELL_CMD_ECHO_OFF","ECHO is off\n");
-	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s\n");
-	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s\n");
-	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s\n");
-	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s\n");
-	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s\n");
+	MSG_Add("SHELL_CMD_ECHO_ON","ECHO is on.\n");
+	MSG_Add("SHELL_CMD_ECHO_OFF","ECHO is off.\n");
+	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s.\n");
+	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s.\n");
+	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s.\n");
+	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s.\n");
+	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s.\n");
 	MSG_Add("SHELL_SYNTAXERROR","The syntax of the command is incorrect.\n");
-	MSG_Add("SHELL_CMD_SET_NOT_SET","Environment variable %s not defined\n");
+	MSG_Add("SHELL_CMD_SET_NOT_SET","Environment variable %s not defined.\n");
 	MSG_Add("SHELL_CMD_SET_OUT_OF_SPACE","Not enough environment space left.\n");
 	MSG_Add("SHELL_CMD_IF_EXIST_MISSING_FILENAME","IF EXIST: Missing filename.\n");
 	MSG_Add("SHELL_CMD_IF_ERRORLEVEL_MISSING_NUMBER","IF ERRORLEVEL: Missing number.\n");
@@ -279,9 +285,9 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_FILE_NOT_FOUND","File %s not found.\n");
 	MSG_Add("SHELL_CMD_FILE_EXISTS","File %s already exists.\n");
 	MSG_Add("SHELL_CMD_DIR_INTRO","Directory of %s.\n");
-	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%5d File(s) %17s Bytes\n");
-	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free\n");
-	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%5d File(s) %17s Bytes.\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free.\n");
+	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\nYou must \033[31mmount\033[0m it first. Type \033[1;33mintro\033[0m for more information.\n");
 	MSG_Add("SHELL_EXECUTE_ILLEGAL_COMMAND","Illegal command: %s.\n");
 	MSG_Add("SHELL_CMD_PAUSE","Press any key to continue.\n");
 	MSG_Add("SHELL_CMD_PAUSE_HELP","Waits for 1 keystroke to continue.\n");
@@ -290,37 +296,51 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_SUBST_NO_REMOVE","Removing drive not supported. Doing nothing.\n");
 	MSG_Add("SHELL_CMD_SUBST_FAILURE","SUBST failed. You either made an error in your commandline or the target drive is already used.\nIt's only possible to use SUBST on Local drives");
 
-	MSG_Add("SHELL_STARTUP","DOSBox Shell v" VERSION "\n"
-	   "This version runs some protected mode games!\n"
-	   "For supported shell commands type: [33mHELP[0m\n"
-	   "For a short introduction type: [33mINTRO[0m\n\n"
-	   "If you want more speed, try [31mctrl-F8[0m and [31mctrl-F12[0m.\n"	
-	   "For more information read the [31mREADME[0m file in DOSBox directory.\n"
-	   "\nHAVE FUN!\nThe DOSBox Team\n\n"
+	MSG_Add("SHELL_STARTUP",
+		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
+		"\xBA \033[32mDOSBox Shell v" VERSION "\033[37m                                                 \xBA\n"
+		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
+		"\xBA For supported shell commands type: \033[1;33mHELP\033[37m                            \xBA\n"
+		"\xBA For a short introduction type: \033[33mINTRO\033[37m                               \xBA\n"
+		"\xBA                                                                    \xBA\n"
+		"\xBA If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  \xBA\n"
+		"\xBA To activate the keymapper \033[31mctrl-F1\033[37m.                                 \xBA\n"
+		"\xBA For more information read the \033[36mREADME\033[37m file in the DOSBox directory. \xBA\n"
+		"\xBA                                                                    \xBA\n"
+		"\xBA \033[32mHAVE FUN!\033[37m                                                          \xBA\n"
+		"\xBA \033[32mThe DOSBox Team\033[37m                                                    \xBA\n"
+		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
+		//"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
 
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Change Directory.\n");
-    MSG_Add("SHELL_CMD_CLS_HELP","Clear screen.\n");
-    MSG_Add("SHELL_CMD_DIR_HELP","Directory View.\n");
-    MSG_Add("SHELL_CMD_ECHO_HELP","Display messages and enable/disable command echoing.\n");
-    MSG_Add("SHELL_CMD_EXIT_HELP","Exit from the shell.\n");
-    MSG_Add("SHELL_CMD_HELP_HELP","Show help.\n");
-    MSG_Add("SHELL_CMD_MKDIR_HELP","Make Directory.\n");
-    MSG_Add("SHELL_CMD_RMDIR_HELP","Remove Directory.\n");
-    MSG_Add("SHELL_CMD_SET_HELP","Change environment variables.\n");
-    MSG_Add("SHELL_CMD_IF_HELP","Performs conditional processing in batch programs.\n");
-    MSG_Add("SHELL_CMD_GOTO_HELP","Jump to a labeled line in a batch script.\n");
-    MSG_Add("SHELL_CMD_TYPE_HELP","Display the contents of a text-file.\n");
-    MSG_Add("SHELL_CMD_REM_HELP","Add comments in a batch file.\n");
+	MSG_Add("SHELL_CMD_CLS_HELP","Clear screen.\n");
+	MSG_Add("SHELL_CMD_DIR_HELP","Directory View.\n");
+	MSG_Add("SHELL_CMD_ECHO_HELP","Display messages and enable/disable command echoing.\n");
+	MSG_Add("SHELL_CMD_EXIT_HELP","Exit from the shell.\n");
+	MSG_Add("SHELL_CMD_HELP_HELP","Show help.\n");
+	MSG_Add("SHELL_CMD_MKDIR_HELP","Make Directory.\n");
+	MSG_Add("SHELL_CMD_RMDIR_HELP","Remove Directory.\n");
+	MSG_Add("SHELL_CMD_SET_HELP","Change environment variables.\n");
+	MSG_Add("SHELL_CMD_IF_HELP","Performs conditional processing in batch programs.\n");
+	MSG_Add("SHELL_CMD_GOTO_HELP","Jump to a labeled line in a batch script.\n");
+	MSG_Add("SHELL_CMD_TYPE_HELP","Display the contents of a text-file.\n");
+	MSG_Add("SHELL_CMD_REM_HELP","Add comments in a batch file.\n");
 	MSG_Add("SHELL_CMD_NO_WILD","This is a simple version of the command, no wildcards allowed!\n");
 	MSG_Add("SHELL_CMD_RENAME_HELP","Renames files.\n");
 	MSG_Add("SHELL_CMD_DELETE_HELP","Removes files.\n");
 	MSG_Add("SHELL_CMD_COPY_HELP","Copy files.\n");
 	MSG_Add("SHELL_CMD_CALL_HELP","Start a batch file from within another batch file.\n");
-	MSG_Add("SHELL_CMD_SUBST_HELP","Assign an internal directory to a drive\n");
+	MSG_Add("SHELL_CMD_SUBST_HELP","Assign an internal directory to a drive.\n");
 	MSG_Add("SHELL_CMD_LOADHIGH_HELP","Run a program. For batch file compatibility only.\n");
+	MSG_Add("SHELL_CMD_CHOICE_HELP","Waits for a keypress and sets ERRORLEVEL.\n");
+	MSG_Add("SHELL_CMD_ATTRIB_HELP","Does nothing. Provided for compatibility.\n");
    
-   /* Regular startup */
+	/* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
 	/* Setup the startup CS:IP to kill the last running machine when exitted */
 	RealPt newcsip=CALLBACK_RealPointer(call_shellstop);
@@ -368,8 +388,9 @@ void SHELL_Init() {
 	strcpy(tail.buffer,init_line);
 	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
 	/* Setup internal DOS Variables */
-	dos.dta=psp.GetDTA();
-	dos.psp=psp_seg;
+
+	dos.dta(RealMake(psp_seg,0x80));
+	dos.psp(psp_seg);
 
 	Program * new_program;
 	SHELL_ProgramStart(&new_program);

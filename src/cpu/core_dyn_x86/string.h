@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -30,7 +30,7 @@ static void dyn_string(STRING_OP op) {
 	DynReg * si_base=decode.segprefix ? decode.segprefix : DREG(DS);
 	DynReg * di_base=DREG(ES);
 	DynReg * tmp_reg;bool usesi;bool usedi;
-	gen_storeflags();
+	gen_protectflags();
 	if (decode.rep) {
 		gen_dop_word_imm(DOP_SUB,true,DREG(CYCLES),decode.cycles);
 		gen_releasereg(DREG(CYCLES));
@@ -149,9 +149,8 @@ static void dyn_string(STRING_OP op) {
 		gen_releasereg(DREG(CYCLES));
 		dyn_savestate(&cycle_state);
 		Bit8u * cycle_branch=gen_create_branch(BR_NLE);
-		gen_lea(DREG(EIP),DREG(EIP),0,0,decode.op_start-decode.code_start);
-		dyn_releaseregs();
-		gen_restoreflags(true);
+		gen_dop_word_imm(DOP_ADD,decode.big_op,DREG(EIP),decode.op_start-decode.code_start);
+		dyn_save_critical_regs();
 		gen_return(BR_Cycles);
 		gen_fill_branch(cycle_branch);
 		dyn_loadstate(&cycle_state);
@@ -161,5 +160,4 @@ static void dyn_string(STRING_OP op) {
 		gen_fill_jump(rep_ecx_jmp);
 	}
 	gen_releasereg(DREG(TMPW));
-	gen_restoreflags();
 }

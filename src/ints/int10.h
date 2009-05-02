@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -39,6 +39,7 @@
 #define BIOSMEM_SWITCHES      0x88
 #define BIOSMEM_MODESET_CTL   0x89
 #define BIOSMEM_DCC_INDEX     0x8A
+#define BIOSMEM_CRTCPU_PAGE   0x8A
 #define BIOSMEM_VS_POINTER    0xA8
 
 
@@ -104,11 +105,10 @@ struct VideoModeBlock {
 
 	Bitu	htotal,vtotal;
 	Bitu	hdispend,vdispend;
-	Bitu	rate;
 	Bitu	special;
 	
 };
-extern VideoModeBlock ModeList[];
+extern VideoModeBlock ModeList_VGA[];
 extern VideoModeBlock * CurMode;
 
 typedef struct {

@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -19,10 +19,10 @@
 #if !defined __SUPPORT_H
 #define __SUPPORT_H
 
-
-#include <dosbox.h>
 #include <string.h>
 #include <ctype.h>
+
+#include "dosbox.h"
 
 #if defined (_MSC_VER)						/* MS Visual C++ */
 #define	strcasecmp(a,b) stricmp(a,b)
@@ -39,13 +39,16 @@
 
 void strreplace(char * str,char o,char n);
 char *ltrim(char *str);
-void rtrim(char * const str);
-char *trim(char *str);
+char *rtrim(char *str);
+char *trim(char * str);
 
 bool ScanCMDBool(char * cmd,char * check);
 char * ScanCMDRemain(char * cmd);
-bool ScanCMDHex(char * cmd,char * check,Bits * result);
-char * StripWord(char * cmd);
+char * StripWord(char *&cmd);
+bool IsDecWord(char * word);
+bool IsHexWord(char * word);
+Bits ConvDecWord(char * word);
+Bits ConvHexWord(char * word);
 
 INLINE char * upcase(char * str) {
     for (char* idx = str; *idx ; idx++) *idx = toupper(*idx);

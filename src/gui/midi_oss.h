@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -45,15 +45,15 @@ public:
 		if (!isOpen) return;
 		if (device>0) close(device);
 	};
-	void PlayMsg(Bit32u msg) {
+	void PlayMsg(Bit8u * msg) {
 		Bit8u buf[128];Bitu pos=0;
-		Bitu len=MIDI_evt_len[msg & 0xff];
+		Bitu len=MIDI_evt_len[*msg];
 		for (;len>0;len--) {
 			buf[pos++] = SEQ_MIDIPUTC;
-			buf[pos++] = msg & 0xff;
+			buf[pos++] = *msg;
 			buf[pos++] = device_num;
 			buf[pos++] = 0;
-			msg >>=8;
+			msg++;
 		}
 		write(device,buf,pos);
 	};

@@ -9,22 +9,25 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id */
+/* $Id: dos_execute.cpp,v 1.44 2004/08/04 09:12:53 qbix79 Exp $ */
 
 #include <string.h>
+#include <ctype.h>
 #include "dosbox.h"
 #include "mem.h"
 #include "dos_inc.h"
 #include "regs.h"
 #include "callback.h"
 #include "debug.h"
+
+char * RunningProgram="DOSBOX";
 
 #ifdef _MSC_VER
 #pragma pack(1)
@@ -65,7 +68,7 @@ struct EXE_Header {
 
 
 static void SaveRegisters(void) {
-	reg_sp-=20;
+	reg_sp-=18;
 	mem_writew(SegPhys(ss)+reg_sp+ 0,reg_ax);
 	mem_writew(SegPhys(ss)+reg_sp+ 2,reg_cx);
 	mem_writew(SegPhys(ss)+reg_sp+ 4,reg_dx);
@@ -87,19 +90,28 @@ static void RestoreRegisters(void) {
 	reg_bp=mem_readw(SegPhys(ss)+reg_sp+12);
 	SegSet16(ds,mem_readw(SegPhys(ss)+reg_sp+14));
 	SegSet16(es,mem_readw(SegPhys(ss)+reg_sp+16));
-	reg_sp+=20;
+	reg_sp+=18;
 }
 
+extern void GFX_SetTitle(Bits cycles,Bits frameskip,bool paused);
+void DOS_UpdatePSPName(void) {
+	DOS_MCB mcb(dos.psp()-1);
+	static char name[9];
+	mcb.GetFileName(name);
+	if (!strlen(name)) strcpy(name,"DOSBOX");
+	RunningProgram=name;
+	GFX_SetTitle(-1,-1,false);
+}
 
 bool DOS_Terminate(bool tsr) {
 
 	dos.return_code=reg_al;
 	dos.return_mode=RETURN_EXIT;
 	
-	Bit16u mempsp = dos.psp;
+	Bit16u mempsp = dos.psp();
 
-	DOS_PSP curpsp(dos.psp);
-	if (dos.psp==curpsp.GetParent()) return true;
+	DOS_PSP curpsp(mempsp);
+	if (mempsp==curpsp.GetParent()) return true;
 	/* Free Files owned by process */
 	if (!tsr) curpsp.CloseFiles();
 	
@@ -108,10 +120,9 @@ bool DOS_Terminate(bool tsr) {
 	/* Restore vector 22,23,24 */
 	curpsp.RestoreVectors();
 	/* Set the parent PSP */
-	dos.psp = curpsp.GetParent();
+	dos.psp(curpsp.GetParent());
 	DOS_PSP parentpsp(curpsp.GetParent());
-	/* Restore the DTA of the parent psp */
-	dos.dta = parentpsp.GetDTA();
+
 	/* Restore the SS:SP to the previous one */
 	SegSet16(ss,RealSeg(parentpsp.GetStack()));
 	reg_sp = RealOff(parentpsp.GetStack());		
@@ -123,15 +134,13 @@ bool DOS_Terminate(bool tsr) {
 	mem_writew(SegPhys(ss)+reg_sp+4,0x200); //stack isn't preserved
 	// Free memory owned by process
 	if (!tsr) DOS_FreeProcessMemory(mempsp);
+	DOS_UpdatePSPName();
 	return true;
 }
 
-
-
 static bool MakeEnv(char * name,Bit16u * segment) {
-
 	/* If segment to copy environment is 0 copy the caller's environment */
-	DOS_PSP psp(dos.psp);
+	DOS_PSP psp(dos.psp());
 	PhysPt envread,envwrite;
 	Bit16u envsize=1;
 	bool parentenv=true;
@@ -173,8 +182,7 @@ static bool MakeEnv(char * name,Bit16u * segment) {
 	} else return false;
 }
 
-bool DOS_NewPSP(Bit16u segment, Bit16u size)
-{
+bool DOS_NewPSP(Bit16u segment, Bit16u size) {
 	DOS_PSP psp(segment);
 	psp.MakeNew(size);
 	DOS_PSP psp_parent(psp.GetParent());
@@ -182,8 +190,7 @@ bool DOS_NewPSP(Bit16u segment, Bit16u size)
 	return true;
 };
 
-bool DOS_ChildPSP(Bit16u segment, Bit16u size)
-{
+bool DOS_ChildPSP(Bit16u segment, Bit16u size) {
 	DOS_PSP psp(segment);
 	psp.MakeNew(size);
 	DOS_PSP psp_parent(psp.GetParent());
@@ -194,7 +201,6 @@ bool DOS_ChildPSP(Bit16u segment, Bit16u size)
 };
 
 static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
-	
 	/* Fix the PSP for psp and environment MCB's */
 	DOS_MCB mcb((Bit16u)(pspseg-1));
 	mcb.SetPSPSeg(pspseg);
@@ -204,31 +210,14 @@ static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
 	DOS_PSP psp(pspseg);
 	psp.MakeNew(memsize);
 	psp.SetEnvironment(envseg);
-	/* Copy file handles   //QBIX::ALWAYS COPY BUT LEFT ORIGINAL INCASE OF MISTAKES
-/*	if (DOS_PSP::rootpsp!=dos.psp) { */
-		// TODO: Improve this 
-		// If prog wasnt started from commandline copy file table (California Games 2)
-/*		DOS_PSP oldpsp(dos.psp);
-		psp.CopyFileTable(&oldpsp);
-	} else {
-		psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
-		psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
-		psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
-		psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
-		psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
-		psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
-	} */
-	/* Save old DTA in psp */
-		DOS_PSP oldpsp(dos.psp);
-		psp.CopyFileTable(&oldpsp,true);
 
-	psp.SetDTA(dos.dta);
-	/* Setup the DTA */
-	dos.dta=RealMake(pspseg,0x80);
+	/* Copy file handles */
+	DOS_PSP oldpsp(dos.psp());
+	psp.CopyFileTable(&oldpsp,true);
+
 }
 
-static void SetupCMDLine(Bit16u pspseg,DOS_ParamBlock & block) 
-{
+static void SetupCMDLine(Bit16u pspseg,DOS_ParamBlock & block) {
 	DOS_PSP psp(pspseg);
 	// if cmdtail==0 it will inited as empty in SetCommandTail
 	psp.SetCommandTail(block.exec.cmdtail);
@@ -263,14 +252,8 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	if (len<sizeof(EXE_Header)) iscom=true;	
 	if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
 	else {
-		headersize=head.headersize*16;
-		if (head.extrabytes) {
-			imagesize  = (head.pages-1)*512-headersize; 
-			imagesize += head.extrabytes % 512;
-		} else
-			imagesize  = head.pages*512-headersize; 
-
-		// always load st least 512 Bytes (dos cache/dos bug?)
+		headersize = head.headersize*16;
+		imagesize = head.pages*512-headersize; 
 		if (imagesize+headersize<512) imagesize = 512-headersize;
 	}
 	if (flags!=OVERLAY) {
@@ -298,16 +281,20 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		else memsize=maxsize;
 		if (!DOS_AllocateMemory(&pspseg,&memsize)) E_Exit("DOS:Exec error in memory");
 		loadseg=pspseg+16;
+		if ((!iscom) & (head.minmemory == 0) & (head.maxmemory == 0))
+			loadseg = (0x9e000 - imagesize)/16; //c2woody
+	   
 	} else loadseg=block.overlay.loadseg;
 	/* Load the executable */
 	Bit8u * loadbuf=(Bit8u *)new Bit8u[0x10000];
 	loadaddress=PhysMake(loadseg,0);
+
 	if (iscom) {	/* COM Load 64k - 256 bytes max */
 		pos=0;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
 		readsize=0xffff-256;
 		DOS_ReadFile(fhandle,loadbuf,&readsize);
 		MEM_BlockWrite(loadaddress,loadbuf,readsize);
-	} else {		/* EXE Load in 32kb blocks and then relocate */
+	} else {	/* EXE Load in 32kb blocks and then relocate */
 		pos=headersize;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
 		while (imagesize>0x7FFF) {
 			readsize=0x8000;DOS_ReadFile(fhandle,loadbuf,&readsize);
@@ -341,7 +328,6 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		SetupPSP(pspseg,memsize,envseg);
 		SetupCMDLine(pspseg,block);
 	};
-
 	CALLBACK_SCF(false);		/* Carry flag cleared for caller if successfull */
 	if (flags==OVERLAY) return true;			/* Everything done for overlays */
 	RealPt csip,sssp;
@@ -353,14 +339,15 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		csip=RealMake(loadseg+head.initCS,head.initIP);
 		sssp=RealMake(loadseg+head.initSS,head.initSP);
 	}
-	
+
 	if (flags==LOAD) {
-		DOS_PSP callpsp(dos.psp);
+		DOS_PSP callpsp(dos.psp());
 		/* Save the SS:SP on the PSP of calling program */
 		callpsp.SetStack(RealMakeSeg(ss,reg_sp));
 		/* Switch the psp's */
-		dos.psp=pspseg;
-
+		dos.psp(pspseg);
+		DOS_PSP newpsp(dos.psp());
+		dos.dta(RealMake(newpsp.GetSegment(),0x80));
 		block.exec.initsssp = sssp;
 		block.exec.initcsip = csip;
 		block.SaveData();
@@ -371,14 +358,13 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		/* Get Caller's program CS:IP of the stack and set termination address to that */
 		RealSetVec(0x22,RealMake(mem_readw(SegPhys(ss)+reg_sp+2),mem_readw(SegPhys(ss)+reg_sp)));
 		SaveRegisters();
-		DOS_PSP callpsp(dos.psp);
+		DOS_PSP callpsp(dos.psp());
 		/* Save the SS:SP on the PSP of calling program */
 		callpsp.SetStack(RealMakeSeg(ss,reg_sp));
 		/* Switch the psp's and set new DTA */
-		dos.psp=pspseg;
-		DOS_PSP newpsp(dos.psp);
-		newpsp.SetDTA(dos.dta); /* Original: change this and line below. This way seems better(zone66 and unpack) */
-		//dos.dta=newpsp.GetDTA();
+		dos.psp(pspseg);
+		DOS_PSP newpsp(dos.psp());
+		dos.dta(RealMake(newpsp.GetSegment(),0x80));
 		/* save vectors */
 		newpsp.SaveVectors();
 		/* copy fcbs */
@@ -399,6 +385,24 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		/* Started from debug.com, then set breakpoint at start */
 		DEBUG_CheckExecuteBreakpoint(RealSeg(csip),RealOff(csip));
 #endif
+		/* Add the filename to PSP and environment MCB's */
+		char stripname[8];Bitu index=0;
+		while (char chr=*name++) {
+			switch (chr) {
+			case ':':case '\\':case '/':index=0;break;
+			default:if (index<8) stripname[index++]=toupper(chr);
+			}
+		}
+		index=0;
+		while (index<8) {
+			if (stripname[index]=='.') break;
+			if (!stripname[index]) break;	
+			index++;
+		}
+		memset(&stripname[index],0,8-index);
+		DOS_MCB pspmcb(dos.psp()-1);
+		pspmcb.SetFileName(stripname);
+		DOS_UpdatePSPName();
 		return true;
 	}
 	return false;

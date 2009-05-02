@@ -9,13 +9,16 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <mmsystem.h>
 
@@ -42,8 +45,8 @@ public:
 		midiOutClose(m_out);
 		CloseHandle (m_event);
 	};
-	void PlayMsg(Bit32u msg) {
-		midiOutShortMsg(m_out, msg);
+	void PlayMsg(Bit8u * msg) {
+		midiOutShortMsg(m_out, *(Bit32u*)msg);
 	};
 	void PlaySysex(Bit8u * sysex,Bitu len) {
 		if (WaitForSingleObject (m_event, 2000) == WAIT_TIMEOUT) {

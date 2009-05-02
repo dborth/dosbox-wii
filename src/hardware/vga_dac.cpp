@@ -9,7 +9,7 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
@@ -51,36 +51,37 @@ Note:  Each read or write of this register will cycle through first the
 enum {DAC_READ,DAC_WRITE};
 
 
-static void write_p3c6(Bit32u port,Bit8u val) {
+static void write_p3c6(Bitu port,Bitu val,Bitu iolen) {
 	if (val!=0xff) LOG(LOG_VGAGFX,LOG_NORMAL)("VGA:Pel Mask not 0xff");
 	vga.dac.pel_mask=val;
 }
 
 
-static Bit8u read_p3c6(Bit32u port) {
+static Bitu read_p3c6(Bitu port,Bitu iolen) {
 	return vga.dac.pel_mask;
 }
 
 
-static void write_p3c7(Bit32u port,Bit8u val) {
+static void write_p3c7(Bitu port,Bitu val,Bitu iolen) {
 	vga.dac.read_index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_READ;
 
 }
 
-static Bit8u read_p3c7(Bit32u port) {
+static Bitu read_p3c7(Bitu port,Bitu iolen) {
 	if (vga.dac.state==DAC_READ) return 0x3;
 	else return 0x0;
 }
 
-static void write_p3c8(Bit32u port,Bit8u val) {
+static void write_p3c8(Bitu port,Bitu val,Bitu iolen) {
 	vga.dac.write_index=val;
 	vga.dac.pel_index=0;
 	vga.dac.state=DAC_WRITE;
 }
 
-static void write_p3c9(Bit32u port,Bit8u val) {
+static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
+	val&=0x3f;
 	switch (vga.dac.pel_index) {
 	case 0:
 		vga.dac.rgb[vga.dac.write_index].red=val;
@@ -104,7 +105,7 @@ static void write_p3c9(Bit32u port,Bit8u val) {
 		default:
 			/* Check for attributes and DAC entry link */
 			for (Bitu i=0;i<16;i++) {
-				if (vga.dac.attr[i]==vga.dac.write_index) {
+				if (vga.attr.palette[i]==vga.dac.write_index) {
 					RENDER_SetPal(i,
 					vga.dac.rgb[vga.dac.write_index].red << 2,
 					vga.dac.rgb[vga.dac.write_index].green << 2,
@@ -120,7 +121,7 @@ static void write_p3c9(Bit32u port,Bit8u val) {
 	};
 }
 
-static Bit8u read_p3c9(Bit32u port) {
+static Bitu read_p3c9(Bitu port,Bitu iolen) {
 	Bit8u ret;
 	switch (vga.dac.pel_index) {
 	case 0:
@@ -144,7 +145,7 @@ static Bit8u read_p3c9(Bit32u port) {
 
 void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	/* Check if this is a new color */
-	vga.dac.attr[attr]=pal;
+	vga.attr.palette[attr]=pal;
 	switch (vga.mode) {
 	case M_VGA:
 	case M_LIN8:
@@ -158,6 +159,20 @@ void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	}
 }
 
+void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue) {
+	vga.dac.rgb[entry].red=red;
+	vga.dac.rgb[entry].green=green;
+	vga.dac.rgb[entry].blue=blue;
+	switch (vga.mode) {
+	case M_VGA:
+	case M_LIN8:
+		return;
+	}
+	for (Bitu i=0;i<16;i++) 
+		if (vga.attr.palette[i]==entry)
+			RENDER_SetPal(i,red << 2,green << 2,blue << 2);
+}
+
 void VGA_SetupDAC(void) {
 	vga.dac.first_changed=256;
 	vga.dac.bits=6;
@@ -166,14 +181,16 @@ void VGA_SetupDAC(void) {
 	vga.dac.state=DAC_READ;
 	vga.dac.read_index=0;
 	vga.dac.write_index=0;
-	/* Setup the DAC IO port Handlers */
-	IO_RegisterWriteHandler(0x3c6,write_p3c6,"PEL Mask");	
-	IO_RegisterReadHandler(0x3c6,read_p3c6,"PEL Mask");
-	IO_RegisterWriteHandler(0x3c7,write_p3c7,"PEL Read Mode");
-	IO_RegisterReadHandler(0x3c7,read_p3c7,"PEL Status Mode");
-	IO_RegisterWriteHandler(0x3c8,write_p3c8,"PEL Write Mode");
-	IO_RegisterWriteHandler(0x3c9,write_p3c9,"PEL Data");	
-	IO_RegisterReadHandler(0x3c9,read_p3c9,"PEL Data");
+	if (machine==MCH_VGA) {
+		/* Setup the DAC IO port Handlers */
+		IO_RegisterWriteHandler(0x3c6,write_p3c6,IO_MB);
+		IO_RegisterReadHandler(0x3c6,read_p3c6,IO_MB);
+		IO_RegisterWriteHandler(0x3c7,write_p3c7,IO_MB);
+		IO_RegisterReadHandler(0x3c7,read_p3c7,IO_MB);
+		IO_RegisterWriteHandler(0x3c8,write_p3c8,IO_MB);
+		IO_RegisterWriteHandler(0x3c9,write_p3c9,IO_MB);
+		IO_RegisterReadHandler(0x3c9,read_p3c9,IO_MB);
+	}
 };
 
 

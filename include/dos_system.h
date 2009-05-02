@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.20 2004/01/12 20:25:57 finsterr Exp $ */
+/* $Id: dos_system.h,v 1.24 2004/08/04 09:12:50 qbix79 Exp $ */
 
 #ifndef DOSSYSTEM_H_
 #define DOSSYSTEM_H_
@@ -54,7 +54,7 @@ class DOS_DTA;
 class DOS_File {
 public:
 	DOS_File():flags(0)		{ name=0; refCtr = 0; };
-	virtual	~DOS_File(){};
+	virtual	~DOS_File(){if(name) delete [] name;};
 	virtual bool	Read(Bit8u * data,Bit16u * size)=0;
 	virtual bool	Write(Bit8u * data,Bit16u * size)=0;
 	virtual bool	Seek(Bit32u * pos,Bit32u type)=0;
@@ -66,6 +66,7 @@ public:
 	virtual bool	IsName(const char* _name)	{ if (!name) return false; return strcmp(name,_name)==0; };
 	virtual void	AddRef()					{ refCtr++; };
 	virtual Bits	RemoveRef()					{ return --refCtr; };
+	virtual bool	UpdateDateTimeFromHost()	{ return true; }
 	Bit8u type;
 	Bit32u flags;
 	Bit16u time;
@@ -85,8 +86,8 @@ public:
 	Bit8u fhandle;	
 };
 
-#define MAX_OPENDIRS 16 
-
+#define MAX_OPENDIRS 2048
+//Can be high as it's only storage (16 bit variable)
 class DOS_Drive_Cache {
 public:
 	DOS_Drive_Cache					(void);
@@ -104,7 +105,7 @@ public:
 	char*		GetExpandName		(const char* path);
 	bool		GetShortName		(const char* fullname, char* shortname);
 	
-	bool		FindFirst			(char* path, Bitu dtaAddress, Bitu& id);
+	bool		FindFirst			(char* path, Bitu& id);
 	bool		FindNext			(Bitu id, char* &result);
 
 	void		CacheOut			(const char* path, bool ignoreLastDir = false);
@@ -119,21 +120,19 @@ public:
 	public:	
 		CFileInfo(void) {
 			orgname[0] = shortname[0] = 0;
-			nextEntry = shortNr = compareCount = 0;
+			nextEntry = shortNr = 0;
 			isDir = false;
 		}
 		~CFileInfo(void) {
 			for (Bit32u i=0; i<fileList.size(); i++) delete fileList[i];
 			fileList.clear();
 			longNameList.clear();
-			compareCount = 0;
 		};
 		char		orgname		[CROSS_LEN];
 		char		shortname	[DOS_NAMELENGTH_ASCII];
 		bool		isDir;
 		Bitu		nextEntry;
 		Bitu		shortNr;
-		Bitu		compareCount;
 		// contents
 		std::vector<CFileInfo*>	fileList;
 		std::vector<CFileInfo*>	longNameList;
@@ -142,18 +141,18 @@ public:
 private:
 
 	bool		RemoveTrailingDot	(char* shortname);
-	Bits		GetLongName			(CFileInfo* info, char* shortname);
+	Bits		GetLongName		(CFileInfo* info, char* shortname);
 	void		CreateShortName		(CFileInfo* dir, CFileInfo* info);
 	Bit16u		CreateShortNameID	(CFileInfo* dir, const char* name);
-	int			CompareShortname	(const char* compareName, const char* shortName);
-	bool		SetResult			(CFileInfo* dir, char * &result, Bit16u entryNr);
-	bool		IsCachedIn			(CFileInfo* dir);
-	CFileInfo*	FindDirInfo			(const char* path, char* expandedPath);
+	int		CompareShortname	(const char* compareName, const char* shortName);
+	bool		SetResult		(CFileInfo* dir, char * &result, Bit16u entryNr);
+	bool		IsCachedIn		(CFileInfo* dir);
+	CFileInfo*	FindDirInfo		(const char* path, char* expandedPath);
 	bool		RemoveSpaces		(char* str);
-	bool		OpenDir				(CFileInfo* dir, const char* path, Bit16u& id);
-	void		CreateEntry			(CFileInfo* dir, const char* name);
-	Bit16u		GetFreeID			(CFileInfo* dir);
-	void		Clear				(void);
+	bool		OpenDir			(CFileInfo* dir, const char* path, Bit16u& id);
+	void		CreateEntry		(CFileInfo* dir, const char* name);
+	Bit16u		GetFreeID		(CFileInfo* dir);
+	void		Clear			(void);
 
 	CFileInfo*	dirBase;
 	char		dirPath				[CROSS_LEN];
@@ -169,6 +168,7 @@ private:
 	char		dirSearchName		[MAX_OPENDIRS];
 	bool		free				[MAX_OPENDIRS];
 	CFileInfo*	dirFindFirst		[MAX_OPENDIRS];
+	Bitu		nextFreeFindFirst;
 
 	char		label				[CROSS_LEN];
 };
@@ -217,7 +217,7 @@ public:
 	virtual bool RemoveDir(char * _dir)=0;
 	virtual bool MakeDir(char * _dir)=0;
 	virtual bool TestDir(char * _dir)=0;
-	virtual bool FindFirst(char * _dir,DOS_DTA & dta)=0;
+	virtual bool FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst=false)=0;
 	virtual bool FindNext(DOS_DTA & dta)=0;
 	virtual bool GetFileAttr(char * name,Bit16u * attr)=0;
 	virtual bool Rename(char * oldname,char * newname)=0;

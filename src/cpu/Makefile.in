@@ -134,7 +134,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/include
 
 noinst_LIBRARIES = libcpu.a
 libcpu_a_SOURCES = callback.cpp cpu.cpp flags.cpp modrm.cpp modrm.h core_full.cpp instructions.h	\
-		   paging.cpp lazyflags.h core_normal.cpp \
+		   paging.cpp lazyflags.h core_normal.cpp core_simple.cpp \
 		   core_dyn_x86.cpp
 
 subdir = src/cpu
@@ -148,7 +148,8 @@ libcpu_a_AR = $(AR) cru
 libcpu_a_LIBADD =
 am_libcpu_a_OBJECTS = callback.$(OBJEXT) cpu.$(OBJEXT) flags.$(OBJEXT) \
 	modrm.$(OBJEXT) core_full.$(OBJEXT) paging.$(OBJEXT) \
-	core_normal.$(OBJEXT) core_dyn_x86.$(OBJEXT)
+	core_normal.$(OBJEXT) core_simple.$(OBJEXT) \
+	core_dyn_x86.$(OBJEXT)
 libcpu_a_OBJECTS = $(am_libcpu_a_OBJECTS)
 
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
@@ -157,8 +158,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/callback.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/core_dyn_x86.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/core_full.Po ./$(DEPDIR)/core_normal.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/cpu.Po ./$(DEPDIR)/flags.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/modrm.Po ./$(DEPDIR)/paging.Po
+@AMDEP_TRUE@	./$(DEPDIR)/core_simple.Po ./$(DEPDIR)/cpu.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/flags.Po ./$(DEPDIR)/modrm.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/paging.Po
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -208,6 +210,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_dyn_x86.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_full.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_normal.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core_simple.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cpu.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/flags.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modrm.Po@am__quote@

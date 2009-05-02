@@ -9,16 +9,17 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_cmds.cpp,v 1.37 2004/01/10 14:03:36 qbix79 Exp $ */
+/* $Id: shell_cmds.cpp,v 1.47 2004/09/18 10:20:54 qbix79 Exp $ */
 
 #include <string.h>
+#include <ctype.h>
 
 #include "shell.h"
 #include "callback.h"
@@ -36,7 +37,7 @@ static SHELL_Cmd cmd_list[]={
 {	"ERASE",	1,			&DOS_Shell::CMD_DELETE,		"SHELL_CMD_DELETE_HELP"},
 {	"ECHO",		0,			&DOS_Shell::CMD_ECHO,		"SHELL_CMD_ECHO_HELP"},
 {	"EXIT",		0,			&DOS_Shell::CMD_EXIT,		"SHELL_CMD_EXIT_HELP"},	
-{	"HELP",		0,			&DOS_Shell::CMD_HELP,		"SHELL_CMD_HELP_HELP"},
+{	"HELP",		1,			&DOS_Shell::CMD_HELP,		"SHELL_CMD_HELP_HELP"},
 {	"MKDIR",	0,			&DOS_Shell::CMD_MKDIR,		"SHELL_CMD_MKDIR_HELP"},
 {	"MD",		1,			&DOS_Shell::CMD_MKDIR,		"SHELL_CMD_MKDIR_HELP"},
 {	"RMDIR",	0,			&DOS_Shell::CMD_RMDIR,		"SHELL_CMD_RMDIR_HELP"},
@@ -53,13 +54,15 @@ static SHELL_Cmd cmd_list[]={
 {	"SUBST",	0,			&DOS_Shell::CMD_SUBST,		"SHELL_CMD_SUBST_HELP"},
 {	"LOADHIGH",	0,			&DOS_Shell::CMD_LOADHIGH, 	"SHELL_CMD_LOADHIGH_HELP"},
 {	"LH",		1,			&DOS_Shell::CMD_LOADHIGH,	"SHELL_CMD_LOADHIGH_HELP"},
+{	"CHOICE",	0,			&DOS_Shell::CMD_CHOICE,		"SHELL_CMD_CHOICE_HELP"},
+{	"ATTRIB",	0,			&DOS_Shell::CMD_ATTRIB,		"SHELL_CMD_ATTRIB_HELP"},
 {0,0,0,0}
 };
 
 void DOS_Shell::DoCommand(char * line) {
 /* First split the line into command and arguments */
 	line=trim(line);
-	char cmd[255];
+	char cmd[CMD_MAXLINE];
 	char * cmd_write=cmd;
 	while (*line) {
 		if (*line==32) break;
@@ -121,7 +124,7 @@ void DOS_Shell::CMD_DELETE(char * args) {
 	//end can't be 0, but if it is we'll get a nice crash, who cares :)
 	char * end=strrchr(full,'\\')+1;*end=0;
 	char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u time,date;Bit8u attr;
-	DOS_DTA dta(dos.dta);
+	DOS_DTA dta(dos.dta());
 	while (res) {
 		dta.GetResult(name,size,date,time,attr);	
 		if (!(attr & (DOS_ATTR_DIRECTORY|DOS_ATTR_READ_ONLY))) {
@@ -147,8 +150,8 @@ void DOS_Shell::CMD_RENAME(char * args){
 	StripSpaces(args);
 	if(!*args) {SyntaxError();return;}
 	if((strchr(args,'*')!=NULL) || (strchr(args,'?')!=NULL) ) { WriteOut(MSG_Get("SHELL_CMD_NO_WILD"));return;}
-	char * arg2 =StripWord(args);
-	DOS_Rename(args,arg2);
+	char * arg1=StripWord(args);
+	DOS_Rename(arg1,args);
 }
 
 void DOS_Shell::CMD_ECHO(char * args){
@@ -185,13 +188,9 @@ void DOS_Shell::CMD_CHDIR(char * args) {
 		char dir[DOS_PATHLENGTH];
 		DOS_GetCurrentDir(0,dir);
 		WriteOut("%c:\\%s\n",drive,dir);
+	} else 	if (!DOS_ChangeDir(args)) {
+		WriteOut(MSG_Get("SHELL_CMD_CHDIR_ERROR"),args);
 	}
-	if (DOS_ChangeDir(args)) {
-		
-	} else {
-	        WriteOut(MSG_Get("SHELL_CMD_CHDIR_ERROR"),args);
-	}
-
 };
 
 void DOS_Shell::CMD_MKDIR(char * args) {
@@ -240,9 +239,18 @@ void DOS_Shell::CMD_DIR(char * args) {
 	char numformat[16];
 	char path[DOS_PATHLENGTH];
 
+	std::string line;
+	if(GetEnvStr("DIRCMD",line)){
+		std::string::size_type idx = line.find('=');
+		std::string value=line.substr(idx +1 , std::string::npos);
+		line = std::string(args) + " " + value;
+		args=const_cast<char*>(line.c_str());
+	}
+   
 	bool optW=ScanCMDBool(args,"W");
 	bool optS=ScanCMDBool(args,"S");
 	bool optP=ScanCMDBool(args,"P");
+	bool optAD=ScanCMDBool(args,"AD");
 	char * rem=ScanCMDRemain(args);
 	if (rem) {
 		WriteOut(MSG_Get("SHELL_ILLEGAL_SWITCH"),rem);
@@ -290,17 +298,20 @@ void DOS_Shell::CMD_DIR(char * args) {
 	*(strrchr(path,'\\')+1)=0;
 	WriteOut(MSG_Get("SHELL_CMD_DIR_INTRO"),path);
 
-	DOS_DTA dta(dos.dta);
+	DOS_DTA dta(dos.dta());
 	bool ret=DOS_FindFirst(args,0xffff & ~DOS_ATTR_VOLUME);
 	if (!ret) {
 		WriteOut(MSG_Get("SHELL_CMD_FILE_NOT_FOUND"),args);
 		return;
 	}
-	while (ret) {
-/* File name and extension */
+ 
+	do {    /* File name and extension */
 		char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
 		dta.GetResult(name,size,date,time,attr);
 
+		/* Skip non-directories if option AD is present */
+		if(optAD && !(attr&DOS_ATTR_DIRECTORY) ) continue;
+   
 		char * ext="";
 		if (!optW && (name[0] != '.')) {
 			ext = strrchr(name, '.');
@@ -335,13 +346,12 @@ void DOS_Shell::CMD_DIR(char * args) {
 		if (optW) {
 			w_count++;
 		}
-		ret=DOS_FindNext();
 		if(optP) {
 			if(!(++p_count%(22*w_size))) {
 				CMD_PAUSE(args);
 			}
 		}
-	}
+	} while ( (ret=DOS_FindNext()) );
 	if (optW) {
 		if (w_count%5)	WriteOut("\n");
 	}
@@ -362,10 +372,15 @@ void DOS_Shell::CMD_DIR(char * args) {
 }
 
 void DOS_Shell::CMD_COPY(char * args) {
+	static char defaulttarget[] = ".";
 	StripSpaces(args);
-	DOS_DTA dta(dos.dta);
+	DOS_DTA dta(dos.dta());
 	Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
 	char name[DOS_NAMELENGTH_ASCII];
+
+	// ignore /b and /t switches: always copy binary
+	ScanCMDBool(args,"B");
+	ScanCMDBool(args,"T");
 
 	char * rem=ScanCMDRemain(args);
 	if (rem) {
@@ -373,8 +388,10 @@ void DOS_Shell::CMD_COPY(char * args) {
 		return;
 	}
 	// source/target
-	char* source = args;
-	char* target = StripWord(source);
+	char* source = StripWord(args);
+	char* target = NULL;
+	if (args && *args) target = StripWord(args);
+	if (!target || !*target) target = defaulttarget;
 	
 	// Target and Source have to be there
 	if (!source || !strlen(source)) {
@@ -410,7 +427,7 @@ void DOS_Shell::CMD_COPY(char * args) {
 		}
 	};
 
-	bool ret=DOS_FindFirst(args,0xffff & ~DOS_ATTR_VOLUME);
+	bool ret=DOS_FindFirst(source,0xffff & ~DOS_ATTR_VOLUME);
 	if (!ret) {
 		WriteOut(MSG_Get("SHELL_CMD_FILE_NOT_FOUND"),args);
 		return;
@@ -491,26 +508,23 @@ void DOS_Shell::CMD_IF(char * args) {
 		*comp++=' ';
 		*comp++=' ';
 	};
-	char * word;
-	word=args;
-	args=StripWord(word);
+	char * word=StripWord(args);
 	if (strcasecmp(word,"NOT")==0) {
-		word=args;
+		word=StripWord(args);
 		has_not=true;
-		args=StripWord(word);
 	}
 	if (strcasecmp(word,"EXIST")==0) {
-		word=args;args=StripWord(word);
+		word=StripWord(args);
 		if (!*word) {
 			WriteOut(MSG_Get("SHELL_CMD_IF_EXIST_MISSING_FILENAME"));
 			return;
 		};
 			
-		if (DOS_FindFirst(word,0xFFFF)==(!has_not)) DoCommand(args);
+		if (DOS_FindFirst(word,0xffff & ~DOS_ATTR_VOLUME)==(!has_not)) DoCommand(args);
 		return;
 	}
 	if (strcasecmp(word,"ERRORLEVEL")==0) {
-		word=args;args=StripWord(word);
+		word=StripWord(args);
 		if(!isdigit(*word)) {
 			WriteOut(MSG_Get("SHELL_CMD_IF_ERRORLEVEL_MISSING_NUMBER"));
 			return;
@@ -529,8 +543,7 @@ void DOS_Shell::CMD_IF(char * args) {
 	}
 	/* Normal if string compare */
 	if (!*args) { SyntaxError();return;};
-	char * word2=args;
-	args=StripWord(word2);
+	char * word2=StripWord(args);
 	if ((strcmp(word,word2)==0)==(!has_not)) DoCommand(args);
 }
 
@@ -558,8 +571,7 @@ void DOS_Shell::CMD_TYPE(char * args) {
 	Bit16u handle;
 	char * word;
 nextfile:
-	word=args;
-	args=StripWord(word);
+	word=StripWord(args);
 	if (!DOS_OpenFile(word,0,&handle)) {
 		WriteOut(MSG_Get("SHELL_CMD_FILE_NOT_FOUND"),word);
 		return;
@@ -582,7 +594,6 @@ void DOS_Shell::CMD_PAUSE(char * args){
 	Bit8u c;Bit16u n=1;
 	DOS_ReadFile (STDIN,&c,&n);
 }
-
 
 void DOS_Shell::CMD_CALL(char * args){
 	this->call=true; /* else the old batchfile will be closed first */
@@ -620,11 +631,13 @@ void DOS_Shell::CMD_SUBST (char * args) {
 	
 		if( ( ldp=dynamic_cast<localDrive*>(Drives[drive])) == 0 ) throw 0;
 		char newname[CROSS_LEN];   
-		strcpy(newname, ldp->basedir);
+		strcpy(newname, ldp->basedir);	   
 		strcat(newname,fulldir);
 		CROSS_FILENAME(newname);
 		ldp->dirCache.ExpandName(newname);
+		strcat(mountstring,"\"");	   
 		strcat(mountstring, newname);
+		strcat(mountstring,"\"");	   
 		this->ParseLine(mountstring);
 	}
 	catch(int a){
@@ -635,10 +648,56 @@ void DOS_Shell::CMD_SUBST (char * args) {
 		}
 		return;
 	}
-
+	catch(...) {		//dynamic cast failed =>so no localdrive
+		WriteOut(MSG_Get("SHELL_CMD_SUBST_FAILURE"));
+		return;
+	}
+   
 	return;
 }
 
 void DOS_Shell::CMD_LOADHIGH(char *args){
 	this->ParseLine(args);
 }
+
+void DOS_Shell::CMD_CHOICE(char * args){
+	static char defargs[] = "[YN]";
+	static char defchoice[] = "yn";
+	char *rem = NULL, *ptr;
+	bool optN = false;
+	if (args) {
+		char *last = strchr(args,0);
+		StripSpaces(args);
+		optN=ScanCMDBool(args,"N");
+		rem=ScanCMDRemain(args);
+		if (rem && *rem && (tolower(rem[1]) != 'c' || rem[2] != ':')) {
+			WriteOut(MSG_Get("SHELL_ILLEGAL_SWITCH"),rem);
+			return;
+		}
+		if (args == rem) args = strchr(rem,0)+1;
+		if (rem) rem += 3;
+		if (args > last) args = NULL;
+	}
+	if (!args || !*args) args = defargs;
+	if (!rem || !*rem) rem = defchoice;
+	ptr = rem;
+	Bit8u c;
+	while ((c = *ptr)) *ptr++ = tolower(c);
+
+	WriteOut(args);
+	if (!optN) WriteOut("\r\n");
+	Bit16u n=1;
+	do {
+		DOS_ReadFile (STDIN,&c,&n);
+	} while (!c || !(ptr = strchr(rem,tolower(c))));
+	if (optN) {
+		DOS_WriteFile (STDOUT,&c, &n);
+		WriteOut("\r\n");
+	}
+	dos.return_code = ptr-rem+1;
+}
+
+void DOS_Shell::CMD_ATTRIB(char *args){
+	// No-Op for now.
+}
+

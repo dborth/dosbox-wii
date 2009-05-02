@@ -9,16 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug.cpp,v 1.52 2004/01/27 14:52:28 qbix79 Exp $ */
-
-#include "programs.h"
+/* $Id: debug.cpp,v 1.59 2004/08/31 23:11:35 harekiet Exp $ */
 
 #include <string.h>
 #include <list>
@@ -26,19 +24,21 @@
 #include "dosbox.h"
 #if C_DEBUG
 #include "debug.h"
+#include "cross.h" //snprintf
 #include "cpu.h"
 #include "video.h"
 #include "pic.h"
-#include "keyboard.h"
+#include "mapper.h"
 #include "cpu.h"
 #include "callback.h"
 #include "inout.h"
 #include "mixer.h"
-#include "debug_inc.h"
 #include "timer.h"
 #include "paging.h"
-#include "../ints/xms.h"
+#include "support.h"
 #include "shell.h"
+#include "programs.h"
+#include "debug_inc.h"
 
 #ifdef WIN32
 void WIN32_Console();
@@ -53,13 +53,17 @@ int old_cursor_state;
 static void DrawCode(void);
 static bool DEBUG_Log_Loop(int count);
 static void DEBUG_RaiseTimerIrq(void);
+static void SaveMemory(Bitu seg, Bitu ofs1, Bit32s num);
+static void LogGDT(void);
+static void LogLDT(void);
+static void LogIDT(void);
+static void OutputVecTable(char* filename);
+static void DrawVariables(void);
+
 char* AnalyzeInstruction(char* inst, bool saveSelector);
-void SaveMemory(Bitu seg, Bitu ofs1, Bit32s num);
 Bit32u GetHexValue(char* str, char*& hex);
-void LogGDT(void);
-void LogLDT(void);
-void LogIDT(void);
-void OutputVecTable(char* filename);
+
+
 
 class DEBUG;
 
@@ -67,12 +71,15 @@ DEBUG*	pDebugcom	= 0;
 bool	exitLoop	= false;
 bool	logHeavy	= false;
 
+
 // Heavy Debugging Vars for logging
 #if C_HEAVY_DEBUG
 static FILE*	cpuLogFile		= 0;
 static bool		cpuLog			= false;
 static int		cpuLogCounter	= 0;
 #endif
+
+
 
 static struct  {
 	Bit32u eax,ebx,ecx,edx,esi,edi,ebp,esp,eip;
@@ -86,6 +93,8 @@ DBGBlock dbg;
 static Bitu input_count;
 Bitu cycle_count;
 static bool debugging;
+
+
 static void SetColor(Bitu test) {
 	if (test) {
 		if (has_colors()) { wattrset(dbg.win_reg,COLOR_PAIR(PAIR_BYELLOW_BLACK));}
@@ -535,35 +544,26 @@ void CBreakpoint::ShowList(void)
 bool DEBUG_Breakpoint(void)
 {
 	/* First get the phyiscal address and check for a set Breakpoint */
-//	PhysPt where=SegPhys(cs)+reg_eip-1;
-	PhysPt where=GetAddress(SegValue(cs),reg_eip-1);
-	if (!CBreakpoint::CheckBreakpoint(SegValue(cs),reg_eip-1)) return false;
+	PhysPt where=GetAddress(SegValue(cs),reg_eip);
+	if (!CBreakpoint::CheckBreakpoint(SegValue(cs),reg_eip)) return false;
 	// Found. Breakpoint is valid
-	reg_eip -= 1;
 	CBreakpoint::ActivateBreakpoints(where,false);	// Deactivate all breakpoints
-//	exitLoop = true;
-//	DEBUG_Enable();
 	return true;
 };
 
 bool DEBUG_IntBreakpoint(Bit8u intNum)
 {
 	/* First get the phyiscal address and check for a set Breakpoint */
-//	PhysPt where=SegPhys(cs)+reg_eip-2;
-	PhysPt where=GetAddress(SegValue(cs),reg_eip-2);
+	PhysPt where=GetAddress(SegValue(cs),reg_eip);
 	if (!CBreakpoint::CheckIntBreakpoint(where,intNum,reg_ah)) return false;
 	// Found. Breakpoint is valid
-	reg_eip -= 2;
 	CBreakpoint::ActivateBreakpoints(where,false);	// Deactivate all breakpoints
-//	exitLoop = true;
-//	DEBUG_Enable();
 	return true;
 };
 
 static bool StepOver()
 {
 	exitLoop = false;
-//	PhysPt start=SegPhys(cs)+reg_eip;
 	PhysPt start=GetAddress(SegValue(cs),reg_eip);
 	char dline[200];Bitu size;
 	size=DasmI386(dline, start, reg_eip, cpu.code.big);
@@ -581,6 +581,10 @@ static bool StepOver()
 
 bool DEBUG_ExitLoop(void)
 {
+#if C_HEAVY_DEBUG
+	DrawVariables();
+#endif
+
 	if (exitLoop) {
 		exitLoop = false;
 		return true;
@@ -911,6 +915,30 @@ bool ParseCommand(char* str)
 		else							DEBUG_ShowMsg("DEBUG: Variable list load (%s) : failure",name);
 		return true;
 	}
+	found = strstr(str,"SR ");
+	if (found) { // Set register value
+		found+=2;
+		if (ChangeRegister(found))	DEBUG_ShowMsg("DEBUG: Set Register success.");
+		else						DEBUG_ShowMsg("DEBUG: Set Register failure.");
+		return true;
+	}	
+	found = strstr(str,"SM ");
+	if (found) { // Set memory with following values
+		found+=3;
+		Bit16u seg = (Bit16u)GetHexValue(found,found); found++;
+		Bit32u ofs = GetHexValue(found,found); found++;
+		Bit16u count = 0;
+		while (*found) {
+			while (*found==' ') found++;
+			if (*found) {
+				Bit8u value = (Bit8u)GetHexValue(found,found); found++;
+				mem_writeb(GetAddress(seg,ofs+count),value);
+				count++;
+			}
+		};
+		DEBUG_ShowMsg("DEBUG: Memory changed.");
+		return true;
+	}
 
 	found = strstr(str,"BP ");
 	if (found) { // Add new breakpoint
@@ -1025,30 +1053,6 @@ bool ParseCommand(char* str)
 		return true;
 	}
 #endif
-	found = strstr(str,"SR ");
-	if (found) { // Set register value
-		found+=2;
-		if (ChangeRegister(found))	DEBUG_ShowMsg("DEBUG: Set Register success.");
-		else						DEBUG_ShowMsg("DEBUG: Set Register failure.");
-		return true;
-	}	
-	found = strstr(str,"SM ");
-	if (found) { // Set memory with following values
-		found+=3;
-		Bit16u seg = (Bit16u)GetHexValue(found,found); found++;
-		Bit32u ofs = GetHexValue(found,found); found++;
-		Bit16u count = 0;
-		while (*found) {
-			while (*found==' ') found++;
-			if (*found) {
-				Bit8u value = (Bit8u)GetHexValue(found,found); found++;
-				mem_writeb(GetAddress(seg,ofs+count),value);
-				count++;
-			}
-		};
-		DEBUG_ShowMsg("DEBUG: Memory changed.");
-		return true;
-	}
 	found = strstr(str,"INTT ");
 	if (found) { // Create Cpu log file
 		found+=4;
@@ -1433,6 +1437,7 @@ Bitu DEBUG_Loop(void) {
 	Bit16u oldCS	= SegValue(cs);
 	Bit32u oldEIP	= reg_eip;
 	PIC_runIRQs();
+	SDL_Delay(1);
 	if ((oldCS!=SegValue(cs)) || (oldEIP!=reg_eip)) {
 		CBreakpoint::AddBreakpoint(oldCS,oldEIP,true);
 		CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);
@@ -1455,13 +1460,14 @@ void DEBUG_DrawScreen(void) {
 	DrawData();
 	DrawCode();
 	DrawRegisters();
+	DrawVariables();
 }
 
 static void DEBUG_RaiseTimerIrq(void) {
 	PIC_ActivateIRQ(0);
 }
 
-void LogGDT(void)
+static void LogGDT(void)
 {
 	char out1[512];
 	Descriptor desc;
@@ -1480,7 +1486,7 @@ void LogGDT(void)
 	};
 };
 
-void LogLDT(void)
+static void LogLDT(void)
 {
 	char out1[512];
 	Descriptor desc;
@@ -1501,7 +1507,7 @@ void LogLDT(void)
 	};
 };
 
-void LogIDT(void)
+static void LogIDT(void)
 {
 	char out1[512];
 	Descriptor desc;
@@ -1681,8 +1687,7 @@ void DEBUG_Init(Section* sec) {
 	MSG_Add("DEBUG_CONFIGFILE_HELP","Nothing to setup yet!\n");
 	DEBUG_DrawScreen();
 	/* Add some keyhandlers */
-	KEYBOARD_AddEvent(KBD_kpminus,0,DEBUG_Enable);
-	KEYBOARD_AddEvent(KBD_kpplus,0,DEBUG_RaiseTimerIrq);
+	MAPPER_AddHandler(DEBUG_Enable,MK_pause,0,"debugger","Debugger");
 	/* Clear the TBreakpoint list */
 	memset((void*)&codeViewData,0,sizeof(codeViewData));
 	/* setup debug.com */
@@ -1769,7 +1774,7 @@ bool CDebugVar::LoadVars(char* name)
 	return true;
 };
 
-void SaveMemory(Bitu seg, Bitu ofs1, Bit32s num)
+static void SaveMemory(Bitu seg, Bitu ofs1, Bit32s num)
 {
 	FILE* f = fopen("MEMDUMP.TXT","wt");
 	if (!f) {
@@ -1796,7 +1801,7 @@ void SaveMemory(Bitu seg, Bitu ofs1, Bit32s num)
 	DEBUG_ShowMsg("DEBUG: Memory dump success.");
 };
 
-void OutputVecTable(char* filename)
+static void OutputVecTable(char* filename)
 {
 	FILE* f = fopen(filename, "wt");
 	if (!f)
@@ -1812,6 +1817,35 @@ void OutputVecTable(char* filename)
 	DEBUG_ShowMsg("DEBUG: Interrupt vector table written to %s.", filename);
 }
 
+#define DEBUG_VAR_BUF_LEN 16
+static void DrawVariables(void)
+{
+	std::list<CDebugVar*>::iterator i;
+	CDebugVar *dv;
+	char buffer[DEBUG_VAR_BUF_LEN];
+
+	int idx = 0;
+	for(i=CDebugVar::varList.begin(); i != CDebugVar::varList.end(); i++, idx++) {
+
+		if (idx == 4*3) {
+			/* too many variables */
+			break;
+		}
+
+		dv = static_cast<CDebugVar*>(*i);
+
+		Bit16u value = mem_readw(dv->GetAdr());
+		snprintf(buffer,DEBUG_VAR_BUF_LEN, "0x%04x", value);
+
+		int y = idx / 3;
+		int x = (idx % 3) * 26;
+		mvwprintw(dbg.win_var, y, x, dv->GetName());
+		mvwprintw(dbg.win_var, y,  (x + DEBUG_VAR_BUF_LEN + 1) , buffer);
+	}
+
+	wrefresh(dbg.win_var);
+}
+#undef DEBUG_VAR_BUF_LEN
 // HEAVY DEBUGGING STUFF
 
 #if C_HEAVY_DEBUG
@@ -1892,8 +1926,8 @@ bool DEBUG_HeavyIsBreakpoint(void)
 	}
 	return false;
 };
-
 #endif // HEAVY DEBUG
+
 
 #endif // DEBUG
 

@@ -9,14 +9,14 @@
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_classes.cpp,v 1.33 2004/01/10 14:03:34 qbix79 Exp $ */
+/* $Id: dos_classes.cpp,v 1.41 2004/08/04 09:12:53 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -64,11 +64,45 @@ void DOS_InfoBlock::SetLocation(Bit16u segment)
 	pt=PhysMake(seg,0);
 /* Clear the initual Block */
 	for(Bitu i=0;i<sizeof(sDIB);i++) mem_writeb(pt+i,0xff);
+
+	sSave(sDIB,regCXfrom5e,(Bit16u)0);
+	sSave(sDIB,countLRUcache,(Bit16u)0);
+	sSave(sDIB,countLRUopens,(Bit16u)0);
+
+	sSave(sDIB,protFCBs,(Bit16u)0);
+	sSave(sDIB,specialCodeSeg,(Bit16u)0);
+	sSave(sDIB,joindedDrives,(Bit8u)0);
+	sSave(sDIB,lastdrive,(Bit8u)0x01);//increase this if you add drives to cds-chain
+
+	sSave(sDIB,setverPtr,(Bit32u)0);
+
+	sSave(sDIB,a20FixOfs,(Bit16u)0);
+	sSave(sDIB,pspLastIfHMA,(Bit16u)0);
+	sSave(sDIB,blockDevices,(Bit8u)0);
+	
+	sSave(sDIB,bootDrive,(Bit8u)0);
+	sSave(sDIB,useDwordMov,(Bit8u)1);
+	sSave(sDIB,extendedSize,(Bit16u)0x4000);	// >16mb
+
+	sSave(sDIB,sharingCount,(Bit16u)0);
+	sSave(sDIB,sharingDelay,(Bit16u)0);
+
+	sSave(sDIB,nulNextDriver,(Bit32u)0xffffffff);
+	sSave(sDIB,nulAttributes,(Bit16u)0x8004);
+	sSave(sDIB,nulStrategy,(Bit32u)0x00000000);
+	sSave(sDIB,nulString[0],(Bit8u)0x4e);
+	sSave(sDIB,nulString[1],(Bit8u)0x55);
+	sSave(sDIB,nulString[2],(Bit8u)0x4c);
+	sSave(sDIB,nulString[3],(Bit8u)0x20);
+	sSave(sDIB,nulString[4],(Bit8u)0x20);
+	sSave(sDIB,nulString[5],(Bit8u)0x20);
+	sSave(sDIB,nulString[6],(Bit8u)0x20);
+	sSave(sDIB,nulString[7],(Bit8u)0x20);
 }
 
 void DOS_InfoBlock::SetFirstMCB(Bit16u _firstmcb)
 {
-	sSave(sDIB,firstMCB,_firstmcb);
+	sSave(sDIB,firstMCB,_firstmcb); //c2woody
 }
 
 void DOS_InfoBlock::SetfirstFileTable(RealPt _first_table){
@@ -79,6 +113,26 @@ void DOS_InfoBlock::SetBuffers(Bit16u x,Bit16u y) {
 	sSave(sDIB,buffers_x,x);
 	sSave(sDIB,buffers_y,y);
 
+}
+
+void DOS_InfoBlock::SetCurDirStruct(Bit32u _curdirstruct)
+{
+	sSave(sDIB,curDirStructure,_curdirstruct);
+}
+
+void DOS_InfoBlock::SetFCBTable(Bit32u _fcbtable)
+{
+	sSave(sDIB,fcbTable,_fcbtable);
+}
+
+void DOS_InfoBlock::SetDeviceChainStart(Bit32u _devchain)
+{
+	sSave(sDIB,nulNextDriver,_devchain);
+}
+
+void DOS_InfoBlock::SetDiskInfoBuffer(Bit32u _dinfobuf)
+{
+	sSave(sDIB,diskInfoBuffer,_dinfobuf);
 }
 
 RealPt DOS_InfoBlock::GetPointer(void)
@@ -94,7 +148,7 @@ Bit16u DOS_PSP::rootpsp = 0;
 void DOS_PSP::MakeNew(Bit16u mem_size) 
 {
 	/* get previous */
-	DOS_PSP prevpsp(dos.psp);
+	DOS_PSP prevpsp(dos.psp());
 	/* Clear it first */
 	Bitu i;
 	for (i=0;i<sizeof(sPSP);i++) mem_writeb(pt+i,0);
@@ -112,16 +166,16 @@ void DOS_PSP::MakeNew(Bit16u mem_size)
 	sSave(sPSP,service[1],0x21);
 	sSave(sPSP,service[2],0xcb);
 	/* psp and psp-parent */
-	sSave(sPSP,psp_parent,dos.psp);
-	sSave(sPSP,prev_psp,RealMake(dos.psp,0));
+	sSave(sPSP,psp_parent,dos.psp());
+	sSave(sPSP,prev_psp,0xffffffff);
+	sSave(sPSP,dos_version,0x0005);
 	/* terminate 22,break 23,crititcal error 24 address stored */
 	SaveVectors();
-	/* Process DTA */
-	sSave(sPSP,dta,RealMake(seg,128));
+
 	/* FCBs are filled with 0 */
 	// ....
 	/* Init file pointer and max_files */
-	sSave(sPSP,file_table,RealMake(seg,offsetof(sPSP,files[0])));
+	sSave(sPSP,file_table,RealMake(seg,offsetof(sPSP,files)));
 	sSave(sPSP,max_files,20);
 	for (i=0;i<20;i++) SetFileHandle(i,0xff);
 
@@ -218,7 +272,7 @@ void DOS_PSP::SetCommandTail(RealPt src)
 		MEM_BlockCopy(pt+offsetof(sPSP,cmdtail),Real2Phys(src),128);
 	} else {	// empty
 		sSave(sPSP,cmdtail.count,0x00);
-		mem_writeb(pt+offsetof(sPSP,cmdtail.buffer[0]),0x0d);
+		mem_writeb(pt+offsetof(sPSP,cmdtail.buffer),0x0d);
 	};
 };
 
@@ -403,3 +457,16 @@ void DOS_FCB::GetName(char * fillname) {
 	fillname[14]=0;
 }
 
+void DOS_FCB::GetAttr(Bit8u& attr) {
+	if(extended) attr=mem_readb(pt - 1);
+}
+
+void DOS_FCB::SetAttr(Bit8u attr) {
+	if(extended) mem_writeb(pt - 1,attr);
+}
+
+void DOS_SDA::Init() {
+	/* Clear */
+	for(Bitu i=0;i<sizeof(sSDA);i++) mem_writeb(pt+i,0x00);
+	sSave(sSDA,drive_crit_error,0xff);   
+}
