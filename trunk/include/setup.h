@@ -19,9 +19,11 @@
 #ifndef _SETUP_H_
 #define _SETUP_H_
 
+#ifdef _MSC_VER
 #pragma warning ( disable : 4786 )
+#endif
 
-#include <cross.h>
+#include "cross.h"
 #include <string>
 #include <list>
 
@@ -35,10 +37,10 @@ public:
 	bool FindHex(char * name,int & value,bool remove=false);
 	bool FindInt(char * name,int & value,bool remove=false);
 	bool FindString(char * name,std::string & value,bool remove=false);
-	bool FindCommand(int which,std::string & value);
+	bool FindCommand(unsigned int which,std::string & value);
 	bool FindStringBegin(char * begin,std::string & value, bool remove=false);
 	bool FindStringRemain(char * name,std::string & value);
-	int GetCount(void);
+	unsigned int GetCount(void);
 private:
 	typedef std::list<std::string>::iterator cmd_it;
 	std::list<std::string> cmds;

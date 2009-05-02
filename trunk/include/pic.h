@@ -20,7 +20,10 @@
 #define __PIC_H
 
 
-#include "cpu.h" 
+/* CPU Cycle Timing */
+extern Bits CPU_Cycles;
+extern Bits CPU_CycleLeft;
+extern Bits CPU_CycleMax;
 
 typedef void (PIC_EOIHandler) (void);
 typedef void (* PIC_EventHandler)(void);
@@ -32,7 +35,6 @@ typedef void (* PIC_EventHandler)(void);
 
 extern Bitu PIC_IRQCheck;
 extern Bitu PIC_IRQActive;
-
 extern Bitu PIC_Ticks;
 
 INLINE Bitu PIC_Index(void) {
@@ -55,7 +57,7 @@ void PIC_runIRQs(void);
 
 void PIC_RegisterIRQ(Bit32u irq,PIC_EOIHandler handler,char * name);
 void PIC_FreeIRQ(Bit32u irq);
-Bitu PIC_RunQueue(void);
+bool PIC_RunQueue(void);
 
 void PIC_AddIRQ(Bitu irq,Bitu delay);
 void PIC_AddEvent(PIC_EventHandler handler,Bitu delay);

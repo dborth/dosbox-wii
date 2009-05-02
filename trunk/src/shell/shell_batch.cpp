@@ -27,7 +27,7 @@ BatchFile::BatchFile(DOS_Shell * host,char * name, char * cmd_line) {
 	echo=host->echo;
 	shell=host;
 	cmd=new CommandLine(0,cmd_line);
-	if (!DOS_OpenFile(name,0,&file_handle)) {
+	if (!DOS_OpenFile(name,128,&file_handle)) {
 		//TODO Come up with something better
 		E_Exit("SHELL:Can't open BatchFile");
 	}
@@ -49,7 +49,7 @@ emptyline:
 		n=1;
 		DOS_ReadFile(file_handle,&c,&n);
 		if (n>0) {
-			if (c>31 || c==0x1b)
+			if (c>31 || c==0x1b || c=='\t')
 				*cmd_write++=c;
 		}
 	} while (c!='\n' && n);

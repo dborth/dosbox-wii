@@ -19,94 +19,122 @@
 switch(Fetchb()) {
 	case 0x00:												/* GRP 6 */
 		{
-			INTERRUPT(6);
-			break;
-			GetRM;
-			switch (rm & 0x38) {
-			case 0x00:
+			GetRM;Bitu which=(rm>>3)&7;
+			switch (which) {
+			case 0x00:	/* SLDT */
+			case 0x01:	/* STR */
+				{
+					Bitu saveval;
+					if (!which) CPU_SLDT(saveval);
+					else CPU_STR(saveval);
+					if (rm>0xc0) {GetEArw;*earw=saveval;}
+					else {GetEAa;SaveMw(eaa,saveval);}
+				}
+				break;
+			case 0x02:case 0x03:case 0x04:case 0x05:
+				{
+					Bitu loadval;
+					if (rm >= 0xc0 ) {GetEArw;loadval=*earw;}
+					else {GetEAa;loadval=LoadMw(eaa);}
+					break;
+					switch (which) {
+					case 0x02:CPU_LLDT(loadval);break;
+					case 0x03:CPU_LTR(loadval);break;
+					case 0x04:CPU_VERR(loadval);break;
+					case 0x05:CPU_VERW(loadval);break;
+					}
+				}
 			default:
-				E_Exit("CPU:GRP6:Illegal call %2X",(rm>>3) &3);
+				LOG(LOG_CPU,LOG_ERROR)("GRP6:Illegal call %2X",which);
 			}
 		}
 		break;
-
-	case 0x01:												/* GRP 7 */
+	case 0x01:											/* Group 7 Ew */
+		{
+			GetRM;Bitu which=(rm>>3)&7;
+			if (rm < 0xc0)	{ //First ones all use EA
+				GetEAa;Bitu limit,base;
+				switch (which) {
+				case 0x00:								/* SGDT */
+					CPU_SGDT(limit,base);
+					SaveMw(eaa,limit);
+					SaveMd(eaa+2,base);
+					break;
+				case 0x01:								/* SIDT */
+					CPU_SIDT(limit,base);
+					SaveMw(eaa,limit);
+					SaveMd(eaa+2,base);
+					break;
+				case 0x02:								/* LGDT */
+					CPU_LGDT(LoadMw(eaa),LoadMd(eaa+2) & 0xFFFFFF);
+					break;
+				case 0x03:								/* LIDT */
+					CPU_LIDT(LoadMw(eaa),LoadMd(eaa+2) & 0xFFFFFF);
+					break;
+				case 0x04:								/* SMSW */
+					CPU_SMSW(limit);
+					SaveMw(eaa,limit);
+					break;
+				case 0x06:								/* LMSW */
+					limit=LoadMw(eaa);
+					if (!CPU_LMSW(limit)) goto decode_end;
+					break;
+				}
+			} else {
+				GetEArw;Bitu limit;
+				switch (which) {
+				case 0x04:								/* SMSW */
+					CPU_SMSW(limit);
+					*earw=limit;
+					break;
+				case 0x06:								/* LMSW */
+					if (!CPU_LMSW(*earw)) goto decode_end;
+					break;
+				default:
+					LOG(LOG_CPU,LOG_ERROR)("Illegal group 7 RM subfunction %d",which);
+					break;
+				}
+			}
+		}
+		break;
+	case 0x20:												/* MOV Rd.CRx */
 		{
 			GetRM;
-			switch (rm & 0x38) {
-			case 0x20:										/* SMSW */
-			/* Let's seriously fake this call */
-				if (rm>0xc0) {GetEArw;*earw=0;}
-				else {GetEAa;SaveMw(eaa,0);}
-				break;
-			default:
-				E_Exit("CPU:GRP7:Illegal call %2X",(rm>>3) &3);
+			Bitu which=(rm >> 3) & 7;
+			if (rm >= 0xc0 ) {
+				GetEArd;
+				*eard=CPU_GET_CRX(which);
+			} else {
+				GetEAa;
+				LOG(LOG_CPU,LOG_ERROR)("MOV XXX,CR%d with non-register",which);
 			}
 		}
 		break;
-	/* 0x02 LAR Gw,Ew (286) */
-	/* 0x03 LSL Gw,Ew (286) */
-	/* 0x05 LOADALL (286 only?) */
-	/* 0x06 CLTS (286) */
-	/* 0x07 LOADALL (386 only?) */
-	/* 0x08 INVD (486) */
-	/* 0x02 WBINVD (486) */
-	/* 0x10 UMOV Eb,Gb (386) */
-	/* 0x11 UMOV Ew,Gw (386) */
-	/* 0x12 UMOV Gb,Eb (386) */
-	/* 0x13 UMOV Gw,Ew (386) */
-	/* 0x20 MOV Rd,CRx (386) */
-	/* 0x21 MOV Rd,DRx (386) */
-	/* 0x22 MOV CRx,Rd (386) */
-	/* 0x23 MOV DRx,Rd (386) */
+	case 0x22:												/* MOV CRx,Rd */
+		{
+			GetRM;
+			Bitu which=(rm >> 3) & 7;
+			if (rm >= 0xc0 ) {
+				GetEArd;
+				if (!CPU_SET_CRX(which,*eard)) goto decode_end;
+			} else {
+				GetEAa;
+				LOG(LOG_CPU,LOG_ERROR)("MOV CR%,XXX with non-register",which);
+			}
+		}
+		break;
 	case 0x23:												/* MOV DRx,Rd */
 		{
 			GetRM;
-			LOG(LOG_CPU,"CPU:0F:23 does nothing");
+			Bitu which=(rm >> 3) & 7;
+			if (rm >= 0xc0 ) {
+				GetEArd;
+			} else {
+				GetEAa;
+				LOG(LOG_CPU,LOG_ERROR)("MOV DR%,XXX with non-register",which);
+			}
 		}
 		break;
-	/* 0x24 MOV Rd,TRx (386) */
-	/* 0x26 MOV TRx,Rd (386) */
-	/* 0x30 WRMSR (P5) */
-	/* 0x31 RDTSC (P5) */
-	/* 0x32 RDMSR (P5) */
-	/* 0x33 RDPMC (P6) */
-	/* 0x40-4F CMOVcc Gw,Ew (P6) */
-	/* 0x50 PAVEB Rq,Eq (CYRIX MMX) */
-	/* 0x51 PADDSIW Rq,Eq (CYRIX MMX) */
-	/* 0x52 PMAGW Rq,Eq (CYRIX MMX) */
-	/* 0x54 PDISTIB Rq,Eq (CYRIX MMX) */
-	/* 0x55 PSUBSIW Rq,Eq (CYRIX MMX) */
-	/* 0x58 PMVZB Rq,Eq (CYRIX MMX) */
-	/* 0x59 PMULHRW Rq,Eq (CYRIX MMX) */
-	/* 0x5A PMVNZB Rq,Eq (CYRIX MMX) */
-	/* 0x5B PMVLZB Rq,Eq (CYRIX MMX) */
-	/* 0x5C PMVGEZB Rq,Eq (CYRIX MMX) */
-	/* 0x5D PMULHRIW Rq,Eq (CYRIX MMX) */
-	/* 0x5E PMACHRIW Rq,Eq (CYRIX MMX) */
-	/* 0x60 PUNPCKLBW Rq,Eq (MMX) */
-	/* 0x61 PUNPCKLWD Rq,Eq (MMX) */
-	/* 0x62 PUNPCKLDQ Rq,Eq (MMX) */
-	/* 0x63 PACKSSWB Rq,Eq (MMX) */
-	/* 0x64 PCMPGTB Rq,Eq (MMX) */
-	/* 0x65 PCMPGTW Rq,Eq (MMX) */
-	/* 0x66 PCMPGTD Rq,Eq (MMX) */
-	/* 0x67 PACKUSWB Rq,Eq (MMX) */
-	/* 0x68 PUNPCKHBW Rq,Eq (MMX) */
-	/* 0x69 PUNPCKHWD Rq,Eq (MMX) */
-	/* 0x6A PUNPCKHDQ Rq,Eq (MMX) */
-	/* 0x6B PACKSSDW Rq,Eq (MMX) */
-	/* 0x6E MOVD Rq,Ed (MMX) */
-	/* 0x6F MOVQ Rq,Eq (MMX) */
-	/* 0x71 PSLLW/PSRAW/PSRLW Rq,Ib (MMX) */
-	/* 0x72 PSLLD/PSRAD/PSRLD Rq,Ib (MMX) */
-	/* 0x73 PSLLQ/PSRLQ Rq,Ib (MMX) */
-	/* 0x74 PCMPEQB Rq,Eq (MMX) */
-	/* 0x75 PCMPEQW Rq,Eq (MMX) */
-	/* 0x76 PCMPEQD Rq,Eq (MMX) */
-	/* 0x77 EMMS (MMX) */
-	/* 0x7E MOVD Ed,Rq (MMX) */
-	/* 0x7F MOVQ Ed,Rq (MMX) */
 	case 0x80:												/* JO */
 		JumpSIw(get_OF());break;
 	case 0x81:												/* JNO */
@@ -177,90 +205,64 @@ switch(Fetchb()) {
 		Push_16(SegValue(fs));break;
 	case 0xa1:												/* POP FS */		
 		SegSet16(fs,Pop_16());break;
-	/* 0xa2 CPUID */
+	case 0xa2:
+		CPU_CPUID();
+		break;
 	case 0xa3:												/* BT Ew,Gw */
 		{
 			GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
-				flags.cf=(*earw & mask)>0;
+				SETFLAGBIT(CF,(*earw & mask));
 			} else {
 				GetEAa;Bit16u old=LoadMw(eaa);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 			}
 			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	case 0xa4:												/* SHLD Ew,Gw,Ib */
-		{
-			GetRMrw;
-			if (rm >= 0xc0 ) {GetEArw;DSHLW(*earw,*rmrw,Fetchb(),LoadRw,SaveRw);}
-			else {GetEAa;DSHLW(eaa,*rmrw,Fetchb(),LoadMw,SaveMw);}
-			break;
-		}
+		RMEwGwOp3(DSHLW,Fetchb());
+		break;
 	case 0xa5:												/* SHLD Ew,Gw,CL */
-		{
-			GetRMrw;
-			if (rm >= 0xc0 ) {GetEArw;DSHLW(*earw,*rmrw,reg_cl,LoadRw,SaveRw);}
-			else {GetEAa;DSHLW(eaa,*rmrw,reg_cl,LoadMw,SaveMw);}
-			break;
-		}
-	/* 0xa6 XBTS (early 386 only) CMPXCHG (early 486 only) */
-	/* 0xa7 IBTS (early 386 only) CMPXCHG (early 486 only) */
+		RMEwGwOp3(DSHLW,reg_cl);
+		break;
 	case 0xa8:												/* PUSH GS */		
 		Push_16(SegValue(gs));break;
 	case 0xa9:												/* POP GS */		
 		SegSet16(gs,Pop_16());break;
-	/* 0xaa RSM */
 	case 0xab:												/* BTS Ew,Gw */
 		{
 			GetRMrw;
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
-				flags.cf=(*earw & mask)>0;
+				SETFLAGBIT(CF,(*earw & mask));
 				*earw|=mask;
 			} else {
 				GetEAa;Bit16u old=LoadMw(eaa);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old | mask);
 			}
 			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
 			break;
 		}
 	case 0xac:												/* SHRD Ew,Gw,Ib */
-		{
-			GetRMrw;
-			if (rm >= 0xc0 ) {GetEArw;DSHRW(*earw,*rmrw,Fetchb(),LoadRw,SaveRw);}
-			else {GetEAa;DSHRW(eaa,*rmrw,Fetchb(),LoadMw,SaveMw);}
-			break;
-		}
+		RMEwGwOp3(DSHRW,Fetchb());
+		break;
 	case 0xad:												/* SHRD Ew,Gw,CL */
-		{
-			GetRMrw;
-			if (rm >= 0xc0 ) {GetEArw;DSHRW(*earw,*rmrw,reg_cl,LoadRw,SaveRw);}
-			else {GetEAa;DSHRW(eaa,*rmrw,reg_cl,LoadMw,SaveMw);}
-			break;
-		}
+		RMEwGwOp3(DSHRW,reg_cl);
+		break;
 	case 0xaf:												/* IMUL Gw,Ew */
-		{
-			GetRMrw;
-			Bit32s res;
-			if (rm >= 0xc0 ) {GetEArw;res=(Bit32s)(*rmrw) * (Bit32s)(*earws);}
-			else {GetEAa;res=(Bit32s)(*rmrw) *(Bit32s)LoadMws(eaa);}
-			*rmrw=res & 0xFFFF;
-			flags.type=t_MUL;
-			if ((res> -32768)  && (res<32767)) {flags.cf=false;flags.of=false;}
-			else {flags.cf=true;flags.of=true;}
-			break;
-		}
-	/* 0xb0 CMPXCHG Eb,Gb */
-	/* 0xb1 CMPXCHG Ew,Gw */
+		RMGwEwOp3(DIMULW,*rmrw);
+		break;
+	
 	case 0xb2:												/* LSS */
 		{	
 			GetRMrw;GetEAa;
 			*rmrw=LoadMw(eaa);SegSet16(ss,LoadMw(eaa+2));
+			CPU_Cycles++;//Be sure we run another instruction
 			break;
 		}
 	case 0xb3:												/* BTR Ew,Gw */
@@ -269,11 +271,11 @@ switch(Fetchb()) {
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
-				flags.cf=(*earw & mask)>0;
+				SETFLAGBIT(CF,(*earw & mask));
 				*earw&= ~mask;
 			} else {
 				GetEAa;Bit16u old=LoadMw(eaa);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old & ~mask);
 			}
 			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
@@ -309,10 +311,10 @@ switch(Fetchb()) {
 	case 0xba:												/* GRP8 Ew,Ib */
 		{
 			GetRM;
-			Bit16u mask=1 << (Fetchb() & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
-				flags.cf=(*earw & mask)>0;
+				Bit16u mask=1 << (Fetchb() & 15);
+				SETFLAGBIT(CF,(*earw & mask));
 				switch (rm & 0x38) {
 				case 0x20:									/* BT */
 					break;
@@ -330,7 +332,8 @@ switch(Fetchb()) {
 				}
 			} else {
 				GetEAa;Bit16u old=LoadMw(eaa);
-				flags.cf=(old & mask)>0;
+				Bit16u mask=1 << (Fetchb() & 15);
+				SETFLAGBIT(CF,(old & mask));
 				switch (rm & 0x38) {
 				case 0x20:									/* BT */
 					break;
@@ -356,11 +359,11 @@ switch(Fetchb()) {
 			Bit16u mask=1 << (*rmrw & 15);
 			if (rm >= 0xc0 ) {
 				GetEArw;
-				flags.cf=(*earw & mask)>0;
+				SETFLAGBIT(CF,(*earw & mask));
 				*earw^=mask;
 			} else {
 				GetEAa;Bit16u old=LoadMw(eaa);
-				flags.cf=(old & mask)>0;
+				SETFLAGBIT(CF,(old & mask));
 				SaveMw(eaa,old ^ mask);
 			}
 			if (flags.type!=t_CF)	{ flags.prev_type=flags.type;flags.type=t_CF;	}
@@ -373,11 +376,11 @@ switch(Fetchb()) {
 			if (rm >= 0xc0) { GetEArw; value=*earw; } 
 			else			{ GetEAa; value=LoadMw(eaa); }
 			if (value==0) {
-				flags.zf = true;
+				SETFLAGBIT(ZF,true);
 			} else {
 				result = 0;
 				while ((value & 0x01)==0) { result++; value>>=1; }
-				flags.zf = false;
+				SETFLAGBIT(ZF,false);
 				*rmrw = result;
 			}
 			flags.type=t_UNKNOWN;
@@ -390,11 +393,11 @@ switch(Fetchb()) {
 			if (rm >= 0xc0) { GetEArw; value=*earw; } 
 			else			{ GetEAa; value=LoadMw(eaa); }
 			if (value==0) {
-				flags.zf = true;
+				SETFLAGBIT(ZF,true);
 			} else {
 				result = 15;	// Operandsize-1
 				while ((value & 0x8000)==0) { result--; value<<=1; }
-				flags.zf = false;
+				SETFLAGBIT(ZF,false);
 				*rmrw = result;
 			}
 			flags.type=t_UNKNOWN;
@@ -403,14 +406,10 @@ switch(Fetchb()) {
 	case 0xbe:												/* MOVSX Gw,Eb */
 		{
 			GetRMrw;															
-			if (rm >= 0xc0 ) {GetEArb;*rmrw=*earbs;}
+			if (rm >= 0xc0 ) {GetEArb;*rmrw=*(Bit8s *)earb;}
 			else {GetEAa;*rmrw=LoadMbs(eaa);}
 			break;
 		}
-	/* 0xc0 XADD Eb,Gb (486) */
-	/* 0xc1 XADD Ew,Gw (486) */
-	/* 0xc7 CMPXCHG8B Mq (P5) */
-	/* 0xc8-cf BSWAP Rw (odd behavior,486) */
 	case 0xc8:	BSWAP(reg_eax);		break;
 	case 0xc9:	BSWAP(reg_ecx);		break;
 	case 0xca:	BSWAP(reg_edx);		break;
@@ -420,35 +419,6 @@ switch(Fetchb()) {
 	case 0xce:	BSWAP(reg_esi);		break;
 	case 0xcf:	BSWAP(reg_edi);		break;
 		
-	/* 0xd1 PSRLW Rq,Eq (MMX) */
-	/* 0xd2 PSRLD Rq,Eq (MMX) */
-	/* 0xd3 PSRLQ Rq,Eq (MMX) */
-	/* 0xd5 PMULLW Rq,Eq (MMX) */
-	/* 0xd8 PSUBUSB Rq,Eq (MMX) */
-	/* 0xd9 PSUBUSW Rq,Eq (MMX) */
-	/* 0xdb PAND Rq,Eq (MMX) */
-	/* 0xdc PADDUSB Rq,Eq (MMX) */
-	/* 0xdd PADDUSW Rq,Eq (MMX) */
-	/* 0xdf PANDN Rq,Eq (MMX) */
-	/* 0xe1 PSRAW Rq,Eq (MMX) */
-	/* 0xe2 PSRAD Rq,Eq (MMX) */
-	/* 0xe5 PMULHW Rq,Eq (MMX) */
-	/* 0xe8 PSUBSB Rq,Eq (MMX) */
-	/* 0xe9 PSUBSW Rq,Eq (MMX) */
-	/* 0xeb POR Rq,Eq (MMX) */
-	/* 0xec PADDSB Rq,Eq (MMX) */
-	/* 0xed PADDSW Rq,Eq (MMX) */
-	/* 0xef PXOR Rq,Eq (MMX) */
-	/* 0xf1 PSLLW Rq,Eq (MMX) */
-	/* 0xf2 PSLLD Rq,Eq (MMX) */
-	/* 0xf3 PSLLQ Rq,Eq (MMX) */
-	/* 0xf5 PMADDWD Rq,Eq (MMX) */
-	/* 0xf8 PSUBB Rq,Eq (MMX) */
-	/* 0xf9 PSUBW Rq,Eq (MMX) */
-	/* 0xfa PSUBD Rq,Eq (MMX) */
-	/* 0xfc PADDB Rq,Eq (MMX) */
-	/* 0xfd PADDW Rq,Eq (MMX) */
-	/* 0xfe PADDD Rq,Eq (MMX) */
 	default:
 		 SUBIP(1);
 		 E_Exit("CPU:Opcode 0F:%2X Unhandled",Fetchb());

@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: dos_files.cpp,v 1.47 2003/10/10 13:50:34 finsterr Exp $ */
+
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -24,7 +26,7 @@
 #include "dosbox.h"
 #include "bios.h"
 #include "mem.h"
-#include "cpu.h"
+#include "regs.h"
 #include "dos_inc.h"
 #include "drives.h"
 #include "cross.h"
@@ -79,7 +81,7 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 		case '\\':	case '$':	case '#':	case '@':	case '(':	case ')':
 		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
 		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
-		case '\'':
+		case '\'':	case '+':
 			upname[w++]=c;
 			break;
 		default:
@@ -110,7 +112,28 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 				w=0;r++;
 				continue;
 			}
-			if (strcmp(tempdir,"..")==0) {
+
+			Bit32u iDown, cDots;
+			bool dots = true;
+			Bit32u templen =strlen(tempdir);
+			for(iDown=0;(iDown < templen) && dots;iDown++)
+				if(tempdir[iDown] != '.')
+					dots = false;
+
+			// only dots?
+			cDots = templen - 1;
+			if(dots && (cDots > 0))
+			{
+				for(iDown=strlen(fullname)-1;iDown>=0;iDown--)
+				{
+					if(fullname[iDown]=='\\' || iDown==0)
+					{
+						lastdir = iDown;
+						cDots--;
+						if(cDots==0)
+							break;
+					}
+				}
 				fullname[lastdir]=0;
 				Bit32u t=0;lastdir=0;
 				while (fullname[t]!=0) {
@@ -121,13 +144,14 @@ bool DOS_MakeName(char * name,char * fullname,Bit8u * drive) {
 				w=0;r++;
 				continue;
 			}
+			
+
 			lastdir=strlen(fullname);
-			//TODO Maybe another check for correct type because of .... stuff
+
 			if (lastdir!=0) strcat(fullname,"\\");
 			char * ext=strchr(tempdir,'.');
 			if (ext) {
 				ext[4]=0;
-				Bitu blah=strlen(tempdir);
 				if (strlen(tempdir)>12) memmove(tempdir+8,ext,5);
 			} else tempdir[8]=0;
 			strcat(fullname,tempdir);
@@ -206,14 +230,13 @@ bool DOS_FindFirst(char * search,Bit16u attr) {
 	}		
 	dta.SetupSearch(drive,(Bit8u)attr,pattern);
 	if (Drives[drive]->FindFirst(dir,dta)) return true;
-	DOS_SetError(DOSERR_NO_MORE_FILES);
+	
 	return false;
 }
 
 bool DOS_FindNext(void) {
 	DOS_DTA dta(dos.dta);
 	if (Drives[dta.GetSearchDrive()]->FindNext(dta)) return true;
-	DOS_SetError(DOSERR_NO_MORE_FILES);
 	return false;
 }
 
@@ -287,15 +310,15 @@ bool DOS_CloseFile(Bit16u entry) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
 		return false;
 	};
-//TODO Figure this out with devices :)	
-
-	DOS_PSP psp(dos.psp);
-	if (entry>STDPRN) psp.SetFileHandle(entry,0xff);
-
 	/* Devices won't allow themselves to be closed or killed */
-	if (Files[handle]->Close()) {
-		delete Files[handle];
-		Files[handle]=0;
+	if (Files[handle]->Close()) 
+	{   //if close succesfull => delete file/update psp
+		DOS_PSP psp(dos.psp);
+		psp.SetFileHandle(entry,0xff);
+		if (Files[handle]->RemoveRef()<=0) {
+			delete Files[handle];
+			Files[handle]=0;
+		}
 	}
 	return true;
 }
@@ -324,6 +347,7 @@ bool DOS_CreateFile(char * name,Bit16u attributes,Bit16u * entry) {
 	}
 	bool foundit=Drives[drive]->FileCreate(&Files[handle],fullname,attributes);
 	if (foundit) { 
+		Files[handle]->AddRef();
 		psp.SetFileHandle(*entry,handle);
 		return true;
 	} else {
@@ -333,9 +357,9 @@ bool DOS_CreateFile(char * name,Bit16u attributes,Bit16u * entry) {
 
 bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	/* First check for devices */
-	if (flags>2) LOG(LOG_FILES|LOG_ERROR,"Special file open command %X file %s",flags,name);
-	else LOG(LOG_FILES,"file open command %X file %s",flags,name);
-	flags&=3;
+	if (flags>2) LOG(LOG_FILES,LOG_ERROR)("Special file open command %X file %s",flags,name);
+	else LOG(LOG_FILES,LOG_NORMAL)("file open command %X file %s",flags,name);
+	
 	DOS_PSP psp(dos.psp);
 	Bit8u handle=DOS_FindDevice((char *)name);
 	bool device=false;char fullname[DOS_PATHLENGTH];Bit8u drive;Bit8u i;
@@ -366,6 +390,12 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	bool exists=false;
 	if (!device) exists=Drives[drive]->FileOpen(&Files[handle],fullname,flags);
 	if (exists || device ) { 
+		// devices can only be opened once
+		if (device && (psp.FindEntryByHandle(handle)!=0xff)) {
+			*entry=psp.FindEntryByHandle(handle);
+			return true;
+		}
+		Files[handle]->AddRef();
 		psp.SetFileHandle(*entry,handle);
 		return true;
 	} else {
@@ -373,6 +403,32 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 		return false;
 	}
 }
+
+bool DOS_OpenFileExtended(char *name, Bit16u flags, Bit16u createAttr, Bit16u action, Bit16u *entry, Bit16u* status)
+// FIXME: Not yet supported : Bit 13 of flags (int 0x24 on critical error
+{
+	Bit16u result = 0;
+	if (DOS_OpenFile(name, (Bit8u)flags, entry)) {
+		// File already exists
+		switch (action & 0x0f) {
+			case 0x00 : return false;			// failed
+			case 0x01 :	result = 1; break;		// file open (already done)
+			case 0x02 : DOS_CloseFile(*entry);	// replace
+						if (!DOS_CreateFile(name, flags, entry)) return false;
+						result = 3;
+						break;
+			default	  : E_Exit("DOS: OpenFileExtended: Unknown action.");
+		};
+	} else {
+		// File doesnt exist
+		if ((action & 0xf0)==0) return false;
+		// Create File
+		if (!DOS_CreateFile(name, flags, entry)) return false;
+		result = 2;
+	};
+	*status = result;
+	return true;
+};
 
 bool DOS_UnlinkFile(char * name) {
 	char fullname[DOS_PATHLENGTH];Bit8u drive;
@@ -414,6 +470,13 @@ bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit8u * sectors,Bit16u * cl
 }
 
 bool DOS_DuplicateEntry(Bit16u entry,Bit16u * newentry) {
+
+	// Dont duplicate console handles
+	if (entry<=STDPRN) {
+		*newentry = entry;
+		return true;
+	};
+	
 	Bit8u handle=RealHandle(entry);
 	if (handle>=DOS_FILES) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
@@ -429,11 +492,19 @@ bool DOS_DuplicateEntry(Bit16u entry,Bit16u * newentry) {
 		DOS_SetError(DOSERR_TOO_MANY_OPEN_FILES);
 		return false;
 	}
+	Files[handle]->AddRef();	
 	psp.SetFileHandle(*newentry,handle);
 	return true;
 };
 
 bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry) {
+	
+	// Dont duplicate console handles
+	if (entry<=STDPRN) {
+		newentry = entry;
+		return true;
+	};
+
 	Bit8u orig=RealHandle(entry);
 	if (orig>=DOS_FILES) {
 		DOS_SetError(DOSERR_INVALID_HANDLE);
@@ -453,6 +524,7 @@ bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry) {
 		return false;
 	};
 	DOS_PSP psp(dos.psp);
+	Files[orig]->AddRef();
 	psp.SetFileHandle(newentry,(Bit8u)entry);
 	return true;
 };
@@ -478,27 +550,12 @@ bool DOS_CreateTempFile(char * name,Bit16u * entry) {
 	return true;
 }
 
-
-
-static bool FCB_MakeName2 (DOS_FCB & fcb, char* outname, Bit8u* outdrive){
-	char short_name[DOS_FCBNAME];
-	fcb.GetName(short_name);
-	return DOS_MakeName(short_name,outname, outdrive);
-}
-
 #define FCB_SEP ":.;,=+"
 #define ILLEGAL ":.;,=+ \t/\"[]<>|"
 
 static bool isvalid(const char in){
 	const char ill[]=ILLEGAL;    
 	return (Bit8u(in)>0x1F) && (!strchr(ill,in));
-}
-
-static void vullen (char* veld,char* pveld){
-    for(Bitu i=(pveld-veld);i<strlen(veld);i++){
-        *(veld+i)='?';
-    }
-    return;
 }
 
 #define PARSE_SEP_STOP          0x01
@@ -518,7 +575,9 @@ Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *
 	hasdrive=hasname=hasext=false;
 	Bitu index;bool finished;Bit8u fill;
 /* First get the old data from the fcb */
+#ifdef _MSC_VER
 #pragma pack (1)
+#endif
 	union {
 		struct {
 			char drive[2];
@@ -527,7 +586,9 @@ Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *
 		} part GCC_ATTRIBUTE (packed) ;
 		char full[DOS_FCBNAME];
 	} fcb_name;
+#ifdef _MSC_VER
 #pragma pack()
+#endif
 	/* Get the old information from the previous fcb */
 	fcb.GetName(fcb_name.full);fcb_name.part.drive[1]=0;fcb_name.part.name[8]=0;fcb_name.part.ext[3]=0;
 	/* Strip of the leading sepetaror */
@@ -651,13 +712,13 @@ bool DOS_FCBOpen(Bit16u seg,Bit16u offset) {
 	if (!DOS_MakeName(shortname,fullname,&drive)) return false;
 	
 	/* Check, if file is already opened */
-	for (Bit16u i=0;i<DOS_FILES;i++) {
+	for (Bit8u i=0;i<DOS_FILES;i++) {
 		DOS_PSP psp(dos.psp);
 		if (Files[i] && Files[i]->IsOpen() && Files[i]->IsName(fullname)) {
 			handle = psp.FindEntryByHandle(i);
 			if (handle==0xFF) {
 				// This shouldnt happen
-				LOG(LOG_FILES|LOG_ERROR,"DOS: File %s is opened but has no psp entry.",shortname);
+				LOG(LOG_FILES,LOG_ERROR)("DOS: File %s is opened but has no psp entry.",shortname);
 				return false;
 			}
 			fcb.FileOpen((Bit8u)handle);

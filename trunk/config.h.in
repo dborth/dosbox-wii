@@ -20,14 +20,32 @@
  */
 
 
+/* Define to 1 to use inlined memory functions in cpu core */
+#undef C_CORE_INLINE
+
 /* Define to 1 to enable internal debugger, requires libcurses */
 #undef C_DEBUG
+
+/* Define to 1 to enable floating point emulation */
+#undef C_FPU
 
 /* Determines if the compilers supports attributes for structures. */
 #undef C_HAS_ATTRIBUTE
 
+/* Define to 1 to enable heavy debugging, also have to enable C_DEBUG */
+#undef C_HEAVY_DEBUG
+
+/* Define to 1 to enable internal modem support, requires SDL_net */
+#undef C_MODEM
+
 /* Define to 1 to enable screenshots, requires libpng */
 #undef C_SSHOT
+
+/* environ can be included */
+#undef ENVIRON_INCLUDED
+
+/* environ can be linked */
+#undef ENVIRON_LINKED
 
 /* Define to 1 to use ALSA for MIDI */
 #undef HAVE_ALSA
@@ -113,17 +131,3 @@
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #endif
-
-
-/* Enable some heavy debugging options */
-#define C_HEAVY_DEBUG 0
-
-/* Enable some big compile-time increasing inlines */
-#define C_EXTRAINLINE 0
-
-/* Enable the FPU module, still only for beta testing */
-#define C_FPU 0
-
-/* Maximum memory address range in megabytes */
-#define C_MEM_MAX_SIZE 12
-

@@ -56,6 +56,8 @@ void write_p3cf(Bit32u port,Bit8u val) {
 		vga.config.full_not_enable_set_reset=~vga.config.full_enable_set_reset;
 		vga.config.full_enable_and_set_reset=vga.config.full_set_reset &
 			vga.config.full_enable_set_reset;
+//		if (gfx(enable_set_reset)) vga.config.mh_mask|=MH_SETRESET else vga.config.mh_mask&=~MH_SETRESET;
+		break;
 	case 2: /* Color Compare Register */
 		gfx(color_compare)=val & 0x0f;
 		/*
@@ -70,7 +72,7 @@ void write_p3cf(Bit32u port,Bit8u val) {
 	case 3: /* Data Rotate */
 		gfx(data_rotate)=val;
 		vga.config.data_rotate=val & 7;
-		if (vga.config.data_rotate) LOG(LOG_VGAGFX,"VGA:Data Rotate used %d",val &7);
+//		if (val) vga.config.mh_mask|=MH_ROTATEOP else vga.config.mh_mask&=~MH_ROTATEOP;
 		vga.config.raster_op=(val>>3) & 3;
 		/* 
 			0-2	Number of positions to rotate data right before it is written to
@@ -83,7 +85,6 @@ void write_p3cf(Bit32u port,Bit8u val) {
 				2: CPU data is ORed  with the latch data.
 				3: CPU data is XORed with the latched data.
 		*/
-//		if (vga.config.data_rotate || vga.config.raster_op ) LOG_DEBUG("Data Rotate = %2X Raster op %2X",val & 7,(val>>3) & 3 );
 		break;
 	case 4: /* Read Map Select Register */
 		/*	0-1	number of the plane Read Mode 0 will read from */
@@ -138,6 +139,7 @@ void write_p3cf(Bit32u port,Bit8u val) {
 		break;
 	case 6: /* Miscellaneous Register */
 		gfx(miscellaneous)=val;
+		VGA_SetupHandlers();
 		/*
 			0	Indicates Graphics Mode if set, Alphanumeric mode else.
 			1	Enables Odd/Even mode if set.
@@ -171,18 +173,18 @@ void write_p3cf(Bit32u port,Bit8u val) {
 	case 9:	/* Unknown */
 		/* Crystal Dreams seems to like to write tothis register very weird */
 		if (!index9warned) {
-			LOG(LOG_VGAMISC,"VGA:3CF:Write %2X to illegal index 9",val);
+			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index 9",val);
 			index9warned=true;
 		}
 		break;
 	default:
-		LOG(LOG_VGAMISC,"VGA:3CF:Write %2X to illegal index %2X",val,gfx(index));
+		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index %2X",val,gfx(index));
 		break;
 	}
 }
 
 Bit8u read_p3cf(Bit32u port) {
-switch (gfx(index)) {
+	switch (gfx(index)) {
 	case 0:	/* Set/Reset Register */
 		return gfx(set_reset);
 	case 1: /* Enable Set/Reset Register */
@@ -202,7 +204,7 @@ switch (gfx(index)) {
 	case 8: /* Bit Mask Register */
 		return gfx(bit_mask);
 	default:
-		LOG(LOG_VGAMISC,"Reading from illegal index %2X in port %4X",gfx(index),port);
+		LOG(LOG_VGAMISC,LOG_NORMAL)("Reading from illegal index %2X in port %4X",static_cast<Bit32u>(gfx(index)),port);
 	}
 	return 0;	/* Compiler happy */
 }

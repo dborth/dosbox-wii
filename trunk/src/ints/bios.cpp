@@ -15,6 +15,9 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: bios.cpp,v 1.22 2003/09/30 13:49:34 finsterr Exp $ */
+
 #include <time.h>
 #include "dosbox.h"
 #include "bios.h"
@@ -26,7 +29,30 @@
 #include "joystick.h"
 
 static Bitu call_int1a,call_int11,call_int8,call_int17,call_int12,call_int15,call_int1c;
-static Bitu call_int1;
+static Bitu call_int1,call_int70;
+
+static Bitu INT70_Handler(void) {
+	/* Acknowledge irq with cmos */
+	IO_Write(0x70,0xc);
+	IO_Read(0x71);
+	if (mem_readb(BIOS_WAIT_FLAG_ACTIVE)) {
+		Bits count=mem_readd(BIOS_WAIT_FLAG_COUNT);
+		if (count>997) {
+			mem_writed(BIOS_WAIT_FLAG_COUNT,count-997);
+		} else {
+			mem_writed(BIOS_WAIT_FLAG_COUNT,0);
+			PhysPt where=Real2Phys(mem_readd(BIOS_WAIT_FLAG_POINTER));
+			mem_writeb(where,mem_readb(where)|0x80);
+			mem_writeb(BIOS_WAIT_FLAG_ACTIVE,0);
+			IO_Write(0x70,0xb);
+			IO_Write(0x71,IO_Read(0x71)&~0x40);
+		}
+	} 
+	/* Signal EOI to both pics */
+	IO_Write(0xa0,0x20);
+	IO_Write(0x20,0x20);
+	return 0;
+}
 
 static Bitu INT1A_Handler(void) {
 	switch (reg_ah) {
@@ -42,20 +68,25 @@ static Bitu INT1A_Handler(void) {
 		mem_writed(BIOS_TIMER,(reg_cx<<16)|reg_dx);
 		break;
 	case 0x02:	/* GET REAL-TIME CLOCK TIME (AT,XT286,PS) */
-		reg_dx=reg_cx=0;
+		IO_Write(0x70,0x04);		//Hours
+		reg_ch=IO_Read(0x71);
+		IO_Write(0x70,0x02);		//Minutes
+		reg_cl=IO_Read(0x71);
+		IO_Write(0x70,0x00);		//Seconds
+		reg_dh=IO_Read(0x71);
+		reg_dl=0;					//Daylight saving disabled
 		CALLBACK_SCF(false);
-		LOG(LOG_BIOS,"INT1A:02:Faked RTC get time call");
 		break;
 	case 0x04:	/* GET REAL-TIME ClOCK DATA  (AT,XT286,PS) */
 		reg_dx=reg_cx=0;
 		CALLBACK_SCF(false);
-		LOG(LOG_ERROR|LOG_BIOS,"INT1A:04:Faked RTC get date call");
+		LOG(LOG_BIOS,LOG_ERROR)("INT1A:04:Faked RTC get date call");
 		break;
 	case 0x80:	/* Pcjr Setup Sound Multiplexer */
-		LOG(LOG_ERROR|LOG_BIOS,"INT1A:80:Setup tandy sound multiplexer to %d",reg_al);
+		LOG(LOG_BIOS,LOG_ERROR)("INT1A:80:Setup tandy sound multiplexer to %d",reg_al);
 		break;
 	case 0x81:	/* Tandy sound system checks */
-		LOG(LOG_ERROR|LOG_BIOS,"INT1A:81:Tandy DAC Check failing");
+		LOG(LOG_BIOS,LOG_ERROR)("INT1A:81:Tandy DAC Check failing");
 		break;
 /*
 	INT 1A - Tandy 2500, Tandy 1000L series - DIGITAL SOUND - INSTALLATION CHECK
@@ -66,38 +97,19 @@ static Bitu INT1A_Handler(void) {
 	    CF clear  if sound chip is free
 	Note:	the value of CF is not definitive; call this function until CF is
 			clear on return, then call AH=84h"Tandy"
-*/
+		*/
+	case 0xb1:		/* PCI Bios Calls */
+		LOG(LOG_BIOS,LOG_ERROR)("INT1A:PCI bios call %2X",reg_al);
+		CALLBACK_SCF(true);
+		break;
 	default:
-		LOG(LOG_ERROR|LOG_BIOS,"INT1A:Undefined call %2X",reg_ah);
+		LOG(LOG_BIOS,LOG_ERROR)("INT1A:Undefined call %2X",reg_ah);
 	}
 	return CBRET_NONE;
 }	
 
 static Bitu INT11_Handler(void) {
-	/*
-	AX = BIOS equipment list word
-    bits
-    0     floppy disk(s) installed (see bits 6-7)
-    1     80x87 coprocessor installed
-    2,3   number of 16K banks of RAM on motherboard (PC only)
-          number of 64K banks of RAM on motherboard (XT only)
-    2     pointing device installed (PS)
-    3     unused (PS)
-    4-5   initial video mode
-          00 EGA, VGA, or PGA
-          01 40x25 color
-          10 80x25 color
-          11 80x25 monochrome
-    6-7   number of floppies installed less 1 (if bit 0 set)
-    8     DMA support installed (PCjr, some Tandy 1000s, 1400LT)
-    9-11  number of serial ports installed
-    12    game port installed
-    13    serial printer attached (PCjr)
-          internal modem installed (PC/Convertible)
-    14-15 number of parallel ports installed
-	*/
-	reg_ax=0x104D;
-	LOG(LOG_BIOS,"INT11:Equipment list returned %X",reg_ax);
+	reg_ax=mem_readw(BIOS_CONFIGURATION);
 	return CBRET_NONE;
 }
 
@@ -133,7 +145,7 @@ static Bitu INT12_Handler(void) {
 };
 
 static Bitu INT17_Handler(void) {
-	LOG(LOG_BIOS,"INT17:Function %X",reg_ah);
+	LOG(LOG_BIOS,LOG_NORMAL)("INT17:Function %X",reg_ah);
 	switch(reg_ah) {
 	case 0x00:		/* PRINTER: Write Character */
 		reg_ah=1;	/* Report a timeout */
@@ -143,25 +155,23 @@ static Bitu INT17_Handler(void) {
 	case 0x02:		/* PRINTER: Get Status */
 		reg_ah=0;	
 		break;
+	case 0x20:		/* Some sort of printerdriver install check*/
+		break;
 	default:
 		E_Exit("Unhandled INT 17 call %2X",reg_ah);
+		
 	};
 	return CBRET_NONE;
 }
 
-static void WaitFlagEvent(void) {
-	PhysPt where=Real2Phys(mem_readd(BIOS_WAIT_FLAG_POINTER));
-	mem_writeb(where,mem_readb(where)|0x80);
-	mem_writeb(BIOS_WAIT_FLAG_ACTIVE,0);
-}
 
 static Bitu INT15_Handler(void) {
 	switch (reg_ah) {
 	case 0x06:
-		LOG(LOG_BIOS,"INT15 Unkown Function 6");
+		LOG(LOG_BIOS,LOG_NORMAL)("INT15 Unkown Function 6");
 		break;
 	case 0xC0:	/* Get Configuration*/
-		LOG(LOG_ERROR|LOG_BIOS,"Request BIOS Configuration INT 15 C0");
+		LOG(LOG_BIOS,LOG_ERROR)("Request BIOS Configuration INT 15 C0");
 		CALLBACK_SCF(true);
 		break;
 	case 0x4f:	/* BIOS - Keyboard intercept */
@@ -169,11 +179,21 @@ static Bitu INT15_Handler(void) {
 		CALLBACK_SCF(true);
 		break;
 	case 0x83:	/* BIOS - SET EVENT WAIT INTERVAL */
-		mem_writed(BIOS_WAIT_FLAG_POINTER,RealMake(SegValue(es),reg_bx));
-		mem_writed(BIOS_WAIT_FLAG_COUNT,reg_cx<<16|reg_dx);
-		mem_writeb(BIOS_WAIT_FLAG_ACTIVE,1);
-		PIC_RemoveEvents(&WaitFlagEvent);
-		PIC_AddEvent(&WaitFlagEvent,reg_cx<<16|reg_dx);
+		{
+			if (mem_readb(BIOS_WAIT_FLAG_ACTIVE)) {
+				reg_ah=0x80;
+				CALLBACK_SCF(true);
+				break;
+			}
+			Bit32u count=(reg_cx<<16)|reg_dx;
+			mem_writed(BIOS_WAIT_FLAG_POINTER,RealMake(SegValue(es),reg_bx));
+			mem_writed(BIOS_WAIT_FLAG_COUNT,count);
+			mem_writeb(BIOS_WAIT_FLAG_ACTIVE,1);
+			/* Reprogram RTC to start */
+			IO_Write(0x70,0xb);
+			IO_Write(0x71,IO_Read(0x71)|0x40);
+			CALLBACK_SCF(false);
+		}
 		break;
 	case 0x84:	/* BIOS - JOYSTICK SUPPORT (XT after 11/8/82,AT,XT286,PS) */
 		if (reg_dx==0x0000) {
@@ -199,7 +219,7 @@ static Bitu INT15_Handler(void) {
 				CALLBACK_SCF(true);
 			}
 		} else {
-			LOG(LOG_ERROR|LOG_BIOS,"INT15:84:Unknown Bios Joystick functionality.");
+			LOG(LOG_BIOS,LOG_ERROR)("INT15:84:Unknown Bios Joystick functionality.");
 		}
 		break;
 	case 0x86:	/* BIOS - WAIT (AT,PS) */
@@ -208,8 +228,26 @@ static Bitu INT15_Handler(void) {
 			Bit32u micro=(reg_cx<<16)|reg_dx;
 			CALLBACK_SCF(false);
 		}
+	case 0x87:	/* Copy extended memory */
+		{
+			bool enabled = MEM_A20_Enabled();
+			MEM_A20_Enable(true);
+			Bitu   bytes	= reg_cx * 2;
+			PhysPt data		= SegPhys(es)+reg_si;
+			PhysPt source	= mem_readd(data+0x12) & 0x00FFFFFF + (mem_readb(data+0x16)<<24);
+			PhysPt dest		= mem_readd(data+0x1A) & 0x00FFFFFF + (mem_readb(data+0x1E)<<24);
+			MEM_BlockCopy(dest,source,bytes);
+			reg_ax = 0x00;
+			MEM_A20_Enable(enabled);
+			CALLBACK_SCF(false);
+			break;
+		}	
 	case 0x88:	/* SYSTEM - GET EXTENDED MEMORY SIZE (286+) */
-		reg_ax=0;
+		IO_Write(0x70,0x30);
+		reg_al=IO_Read(0x71);
+		IO_Write(0x70,0x31);
+		reg_ah=IO_Read(0x71);
+		LOG(LOG_BIOS,LOG_NORMAL)("INT15:Function 0x88 Remaining %04X kb",reg_ax);
 		CALLBACK_SCF(false);
 		break;
 	case 0x90:	/* OS HOOK - DEVICE BUSY */
@@ -226,11 +264,11 @@ static Bitu INT15_Handler(void) {
 			Damn programs should use the mouse drivers 
 			So let's fail these calls 
 		*/
-		LOG(LOG_BIOS,"INT15:Function %X called,bios mouse not supported",reg_ah);
+		LOG(LOG_BIOS,LOG_NORMAL)("INT15:Function %X called,bios mouse not supported",reg_ah);
 		CALLBACK_SCF(true);
 		break;
 	default:
-		LOG(LOG_ERROR|LOG_BIOS,"INT15:Unknown call %2X",reg_ah);
+		LOG(LOG_BIOS,LOG_ERROR)("INT15:Unknown call %4X",reg_ax);
 		reg_ah=0x86;
 		CALLBACK_SCF(false);
 	}
@@ -241,7 +279,7 @@ static Bitu INT1_Single_Step(void) {
 	static bool warned=false;
 	if (!warned) {
 		warned=true;
-		LOG(LOG_CPU,"INT 1:Single Step called");
+		LOG(LOG_CPU,LOG_NORMAL)("INT 1:Single Step called");
 	}
 	return CBRET_NONE;
 }
@@ -292,14 +330,29 @@ void BIOS_Init(Section* sec) {
 	call_int1c=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int1c,&INT1C_Handler,CB_IRET);
 	RealSetVec(0x1C,CALLBACK_RealPointer(call_int1c));
+	/* IRQ 8 RTC Handler */
+	call_int70=CALLBACK_Allocate();
+	CALLBACK_Setup(call_int70,&INT70_Handler,CB_IRET);
+	RealSetVec(0x70,CALLBACK_RealPointer(call_int70));
 
 	/* Some defeault CPU error interrupt handlers */
 	call_int1=CALLBACK_Allocate();
 	CALLBACK_Setup(call_int1,&INT1_Single_Step,CB_IRET);
 	RealSetVec(0x1,CALLBACK_RealPointer(call_int1));
 
-	/* Test for some hardware */
-	if (IO_Read(0x378)!=0xff) real_writed(0x40,0x08,0x378);
+	/* Setup some stuff in 0x40 bios segment */
+	/* Test for parallel port */
+	if (IO_Read(0x378)!=0xff) real_writew(0x40,0x08,0x378);
+	/* Test for serial port */
+	Bitu index=0;
+	if (IO_Read(0x3f8)!=0xff) real_writew(0x40,(index++)*2,0x3f8);
+	if (IO_Read(0x2f8)!=0xff) real_writew(0x40,(index++)*2,0x2f8);
+	/* Setup equipment list */
+#if (C_FPU)
+	mem_writew(BIOS_CONFIGURATION,0xc823);		//1 Floppy,FPU,2 serial, 1 parallel
+#else 
+	mem_writew(BIOS_CONFIGURATION,0xc821);		//1 Floppy,FPU,2 serial, 1 parallel
+#endif
 }
 
 

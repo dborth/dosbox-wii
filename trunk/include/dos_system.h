@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: dos_system.h,v 1.16 2003/10/09 13:50:27 finsterr Exp $ */
+
 #ifndef DOSSYSTEM_H_
 #define DOSSYSTEM_H_
 
@@ -51,7 +53,7 @@ class DOS_DTA;
 
 class DOS_File {
 public:
-	DOS_File()		{ name=0; };
+	DOS_File():flags(0)		{ name=0; refCtr = 0; };
 	virtual	~DOS_File(){};
 	virtual bool	Read(Bit8u * data,Bit16u * size)=0;
 	virtual bool	Write(Bit8u * data,Bit16u * size)=0;
@@ -62,12 +64,15 @@ public:
 	virtual char*	GetName(void)				{ return name; };
 	virtual bool	IsOpen()					{ return open; };
 	virtual bool	IsName(const char* _name)	{ if (!name) return false; return strcmp(name,_name)==0; };
+	virtual void	AddRef()					{ refCtr++; };
+	virtual Bits	RemoveRef()					{ return --refCtr; };
 	Bit8u type;
 	Bit32u flags;
 	Bit16u time;
 	Bit16u date;
 	Bit16u attr;
 	Bit32u size;
+	Bits refCtr;
 	bool open;
 	char* name;
 /* Some Device Specific Stuff */
@@ -99,11 +104,16 @@ public:
 	char*		GetExpandName		(const char* path);
 	bool		GetShortName		(const char* fullname, char* shortname);
 	
+	bool		FindFirst			(char* path, Bitu dtaAddress, Bitu& id);
+	bool		FindNext			(Bitu id, char* &result);
+
 	void		CacheOut			(const char* path, bool ignoreLastDir = false);
 	void		AddEntry			(const char* path, bool checkExist = false);
 	void		DeleteEntry			(const char* path, bool ignoreLastDir = false);
 
 	void		EmptyCache			(void);
+	void		SetLabel			(const char* name);
+	char*		GetLabel			(void) { return label; };
 
 	class CFileInfo {
 	public:	
@@ -111,7 +121,7 @@ public:
 			for (Bit32u i=0; i<fileList.size(); i++) delete fileList[i];
 			fileList.clear();
 			longNameList.clear();
-			outputList.clear();
+			compareCount = 0;
 		};
 		char		orgname		[CROSS_LEN];
 		char		shortname	[DOS_NAMELENGTH_ASCII];
@@ -122,24 +132,22 @@ public:
 		// contents
 		std::vector<CFileInfo*>	fileList;
 		std::vector<CFileInfo*>	longNameList;
-		std::vector<CFileInfo*>	outputList;
 	};
 
 private:
 
 	bool		RemoveTrailingDot	(char* shortname);
-	Bit16s		GetLongName			(CFileInfo* info, char* shortname);
+	Bits		GetLongName			(CFileInfo* info, char* shortname);
 	void		CreateShortName		(CFileInfo* dir, CFileInfo* info);
 	Bit16u		CreateShortNameID	(CFileInfo* dir, const char* name);
 	bool		SetResult			(CFileInfo* dir, char * &result, Bit16u entryNr);
 	bool		IsCachedIn			(CFileInfo* dir);
 	CFileInfo*	FindDirInfo			(const char* path, char* expandedPath);
 	bool		RemoveSpaces		(char* str);
-	bool		OpenDir				(CFileInfo* dir, char* path, Bit16u& id);
+	bool		OpenDir				(CFileInfo* dir, const char* path, Bit16u& id);
 	void		CreateEntry			(CFileInfo* dir, const char* name);
 	Bit16u		GetFreeID			(CFileInfo* dir);
 	void		Clear				(void);
-
 
 	CFileInfo*	dirBase;
 	char		dirPath				[CROSS_LEN];
@@ -154,7 +162,9 @@ private:
 	CFileInfo*	dirSearch			[MAX_OPENDIRS];
 	char		dirSearchName		[MAX_OPENDIRS];
 	bool		free				[MAX_OPENDIRS];
+	CFileInfo*	dirFindFirst		[MAX_OPENDIRS];
 
+	char		label				[CROSS_LEN];
 };
 
 class DOS_No_Drive_Cache {
@@ -182,6 +192,9 @@ public:
 	Bit16u		GetCurrentEntry		(void) { return 0; };
 
 	void		EmptyCache			(void) {};
+	
+	void		SetLabel			(const char* name)	{};
+	char*		GetLabel			(void)				{return "";};
 
 public:
 	char		basePath			[CROSS_LEN];
@@ -215,7 +228,7 @@ public:
 	DOS_Drive_Cache dirCache;
 };
 
-enum { OPEN_READ=0,OPEN_WRITE=1,OPEN_READWRITE=2 };
+enum { OPEN_READ=0,OPEN_WRITE=1,OPEN_READWRITE=2, DOS_NOT_INHERIT=128};
 enum { DOS_SEEK_SET=0,DOS_SEEK_CUR=1,DOS_SEEK_END=2};
 
 

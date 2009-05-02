@@ -28,6 +28,7 @@ enum { CB_RETF,CB_IRET,CB_IRET_STI };
 
 #define CB_MAX 1024
 #define CB_SEG 0xC800
+#define CB_BASE (CB_SEG << 4)
 
 enum {	
 	CBRET_NONE=0,CBRET_STOP=1
@@ -47,6 +48,7 @@ void CALLBACK_RunRealInt(Bit8u intnum);
 void CALLBACK_RunRealFar(Bit16u seg,Bit16u off);
 
 bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type);
+bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress);
 
 bool CALLBACK_Free(Bitu callback);
 

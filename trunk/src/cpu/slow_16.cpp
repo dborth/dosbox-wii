@@ -20,6 +20,7 @@
 #include "dosbox.h"
 #include "mem.h"
 #include "cpu.h"
+#include "lazyflags.h"
 #include "inout.h"
 #include "callback.h"
 #include "pic.h"
@@ -56,60 +57,69 @@ extern Bitu cycle_count;
 /* Enable parts of the cpu emulation */
 #define CPU_386							//Enable 386 instructions
 #define CPU_PREFIX_67					//Enable the 0x67 prefix
-#define CPU_PREFIX_COUNT				//Enable counting of prefixes
+#define CPU_PIC_CHECK					//Check for IRQ's on critical moment
 
 #if C_FPU
 #define CPU_FPU							//Enable FPU escape instructions
 #endif
 
+static struct {
+	Bitu prefixes;
+	PhysPt segbase;
+	PhysPt ip_lookup;
+	PhysPt ip_start;
+}core_16 ;
+
 
 #include "instructions.h"
 #include "core_16/support.h"
-static Bitu CPU_Real_16_Slow_Decode_Trap(void);
+static Bits CPU_Real_16_Slow_Decode_Trap(void);
 
-static Bitu CPU_Real_16_Slow_Decode(void) {
-#include "core_16/start.h"		
+static Bits CPU_Real_16_Slow_Decode(void) {
+decode_start:
+	LOADIP;
+	flags.type=t_UNKNOWN;
 	while (CPU_Cycles>0) {
 #if C_DEBUG
 		cycle_count++;		
 #if C_HEAVY_DEBUG
-		SAVEIP;
-		if (DEBUG_HeavyIsBreakpoint()) return 1;
+		LEAVECORE;
+		if (DEBUG_HeavyIsBreakpoint()) return debugCallback;
 #endif
 #endif
+		core_16.ip_start=core_16.ip_lookup;
+		core_16.prefixes=0;
+		lookupEATable=EAPrefixTable[0];
 		#include "core_16/main.h"
-		if (prefix.count) {
-			PrefixReset;
-			//DEBUG_HeavyWriteLogInstruction();
-			LOG(LOG_CPU,"Prefix for non prefixed instruction");
-		}
 		CPU_Cycles--;
 	}
-	#include "core_16/stop.h"		
+decode_end:
+	LEAVECORE;
 	return CBRET_NONE;
 }
 
-static Bitu CPU_Real_16_Slow_Decode_Trap(void) {
+static Bits CPU_Real_16_Slow_Decode_Trap(void) {
 
 	Bits oldCycles = CPU_Cycles;
 	CPU_Cycles = 1;
-	CPU_Real_16_Slow_Decode();
+	Bits ret=CPU_Real_16_Slow_Decode();
 	
 //	LOG_DEBUG("TRAP: Trap Flag executed");
-	INTERRUPT(1);
+	Interrupt(1);
 	
 	CPU_Cycles = oldCycles-1;
 	cpudecoder = &CPU_Real_16_Slow_Decode;
 
-	return CBRET_NONE;
+	return ret;
 }
 
 
-void CPU_Real_16_Slow_Start(void) {
+void CPU_Real_16_Slow_Start(bool big) {
+	if (big) E_Exit("Core 16 only runs 16-bit code");
 	cpudecoder=&CPU_Real_16_Slow_Decode;
-	EAPrefixTable[0]=&GetEA_16_n;
-	EAPrefixTable[1]=&GetEA_16_s;
 	EAPrefixTable[2]=&GetEA_32_n;
 	EAPrefixTable[3]=&GetEA_32_s;
-	PrefixReset;
+	EAPrefixTable[0]=&GetEA_16_n;
+	EAPrefixTable[1]=&GetEA_16_s;
+
 };

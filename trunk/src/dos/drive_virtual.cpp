@@ -132,6 +132,7 @@ bool Virtual_Drive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 		if (strcasecmp(name,cur_file->name)==0) {
 		/* We have a match */
 			*file=new Virtual_File(cur_file->data,cur_file->size);
+			(*file)->flags=flags;
 			return true;
 		}
 		cur_file=cur_file->next;
@@ -156,6 +157,7 @@ bool Virtual_Drive::MakeDir(char * dir) {
 }
 
 bool Virtual_Drive::TestDir(char * dir) {
+	if (!dir[0]) return true;		//only valid dir is the empty dir
 	return false;
 }
 
@@ -199,6 +201,7 @@ bool Virtual_Drive::FindNext(DOS_DTA & dta) {
 		}
 		search_file=search_file->next;
 	}
+	DOS_SetError(DOSERR_NO_MORE_FILES);
 	return false;
 }
 

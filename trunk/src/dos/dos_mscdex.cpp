@@ -18,11 +18,12 @@
 
 #include <string.h>
 #include <ctype.h>
-#include "cpu.h"
+#include "regs.h"
 #include "callback.h"
 #include "dos_system.h"
 #include "dos_inc.h"
 #include "setup.h"
+#include "support.h"
 
 #include "cdrom.h"
 
@@ -61,7 +62,9 @@ public:
 	void	SetStrategy			(Bit16u ofs)	{ sSave(sDeviceHeader,strategy,ofs);			};
 
 public:
+	#ifdef _MSC_VER
 	#pragma pack(1)
+	#endif
 	struct sDeviceHeader{
 		RealPt	nextDeviceHeader;
 		Bit16u	devAttributes;
@@ -72,7 +75,9 @@ public:
 		Bit8u	driveLetter;
 		Bit8u	numSubUnits;
 	} TDeviceHeader;
+	#ifdef _MSC_VER
 	#pragma pack()
+	#endif
 };
 
 class CMscdex
@@ -97,10 +102,11 @@ public:
 	int			AddDrive			(Bit16u _drive, char* physicalPath, Bit8u& subUnit);
 	void		GetDrives			(PhysPt data);
 	void		GetDriverInfo		(PhysPt data);
-	bool		GetCopyrightName	(Bit16u drive, PhysPt data) { return false; };
-	bool		GetAbstractName		(Bit16u drive, PhysPt data) { return false; };
-	bool		GetDocumentationName(Bit16u drive, PhysPt data) { return false; };
-	bool		ReadVTOC			(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error)	{ return false; };
+	bool		GetVolumeName		(Bit8u subUnit, char* name);
+	bool		GetCopyrightName	(Bit16u drive, PhysPt data);
+	bool		GetAbstractName		(Bit16u drive, PhysPt data);
+	bool		GetDocumentationName(Bit16u drive, PhysPt data);
+	bool		ReadVTOC			(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error);
 	bool		ReadSectors			(Bit16u drive, Bit32u sector, Bit16u num, PhysPt data);
 	bool		ReadSectors			(Bit8u subUnit, bool raw, Bit32u sector, Bit16u num, PhysPt data);
 	bool		ReadSectorsMSF		(Bit8u subUnit, bool raw, Bit32u sector, Bit16u num, PhysPt data);
@@ -222,43 +228,40 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 		// Get Mounttype and init needed cdrom interface
 		switch (CDROM_GetMountType(physicalPath,forceCD)) {
 			case 0x00	: {	
-							LOG(LOG_MISC,"MSCDEX: Mounting physical cdrom: %s"	,physicalPath);
+							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: Mounting physical cdrom: %s"	,physicalPath);
 							#if defined (WIN32)
 								// Check OS
 								OSVERSIONINFO osi;
 								osi.dwOSVersionInfoSize = sizeof(osi);
 								GetVersionEx(&osi);
 								if ((osi.dwPlatformId==VER_PLATFORM_WIN32_NT) && (osi.dwMajorVersion>4)) {
-									// WIN NT/200/XP
-									if (useCdromInterface==CDROM_USE_ASPI) {
-										cdrom[numDrives] = new CDROM_Interface_Aspi();
-										LOG(LOG_MISC,"MSCDEX: ASPI Interface.");
-										break;
-									} else if (useCdromInterface==CDROM_USE_IOCTL) {
+									// only WIN NT/200/XP
+									if (useCdromInterface==CDROM_USE_IOCTL) {
 										cdrom[numDrives] = new CDROM_Interface_Ioctl();
-										LOG(LOG_MISC,"MSCDEX: IOCTL Interface.");
+										LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: IOCTL Interface.");
 										break;
 									}
-								} else {
-									// Win 95/98/ME - always use ASPI
+								}
+								if (useCdromInterface==CDROM_USE_ASPI) {
+									// all Wins - ASPI
 									cdrom[numDrives] = new CDROM_Interface_Aspi();
-									LOG(LOG_MISC,"MSCDEX: ASPI Interface.");
+									LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: ASPI Interface.");
 									break;
 								}
 							#endif
 							cdrom[numDrives] = new CDROM_Interface_SDL();
-							LOG(LOG_MISC,"MSCDEX: SDL Interface.");
+							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: SDL Interface.");
 						  } break;
 			case 0x01	:	// iso cdrom interface
 							// FIXME: Not yet supported	
-							LOG(LOG_MISC|LOG_ERROR,"MSCDEX: Mounting iso file as cdrom: %s"	,physicalPath);
+							LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Mounting iso file as cdrom: %s"	,physicalPath);
 							cdrom[numDrives] = new CDROM_Interface_Fake;
 							return 2;
 							break;
 			case 0x02	:	// fake cdrom interface (directories)
 							cdrom[numDrives] = new CDROM_Interface_Fake;
-							LOG(LOG_MISC,"MSCDEX: Mounting directory as cdrom: %s",physicalPath);	
-							LOG(LOG_MISC,"MSCDEX: You wont have full MSCDEX support !");	
+							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: Mounting directory as cdrom: %s",physicalPath);	
+							LOG(LOG_MISC,LOG_NORMAL)("MSCDEX: You wont have full MSCDEX support !");	
 							result = 5;
 							break;
 			default		:	// weird result
@@ -271,7 +274,9 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 		devHeader.SetNumSubUnits(devHeader.GetNumSubUnits()+1);
 		dinfo[numDrives].drive		= (Bit8u)_drive;
 		dinfo[numDrives].physDrive	= toupper(physicalPath[0]);
-		numDrives++;	
+		numDrives++;
+		// stop audio
+		StopAudio(subUnit);
 		return result;
 	}
 	return 4;
@@ -288,6 +293,7 @@ void CMscdex::GetDriverInfo	(PhysPt data)
 
 bool CMscdex::GetCDInfo(Bit8u subUnit, Bit8u& tr1, Bit8u& tr2, TMSF& leadOut)
 {
+	if (subUnit>=numDrives) return false;
 	int tr1i,tr2i;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioTracks(tr1i,tr2i,leadOut);
 	if (!dinfo[subUnit].lastResult) {
@@ -302,6 +308,7 @@ bool CMscdex::GetCDInfo(Bit8u subUnit, Bit8u& tr1, Bit8u& tr2, TMSF& leadOut)
 
 bool CMscdex::GetTrackInfo(Bit8u subUnit, Bit8u track, Bit8u& attr, TMSF& start)
 {
+	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioTrackInfo(track,start,attr);	
 	if (!dinfo[subUnit].lastResult) {
 		attr = 0;
@@ -312,6 +319,7 @@ bool CMscdex::GetTrackInfo(Bit8u subUnit, Bit8u track, Bit8u& attr, TMSF& start)
 
 bool CMscdex::PlayAudioSector(Bit8u subUnit, Bit32u sector, Bit32u length)
 {
+	if (subUnit>=numDrives) return false;
 	// If value from last stop is used, this is meant as a resume
 	// better start using resume command
 	if (dinfo[subUnit].audioPaused && (sector==dinfo[subUnit].audioStart)) {
@@ -330,19 +338,17 @@ bool CMscdex::PlayAudioSector(Bit8u subUnit, Bit32u sector, Bit32u length)
 
 bool CMscdex::PlayAudioMSF(Bit8u subUnit, Bit32u start, Bit32u length)
 {
+	if (subUnit>=numDrives) return false;
 	Bit8u min		= (start>>16) & 0xFF;
 	Bit8u sec		= (start>> 8) & 0xFF;
 	Bit8u fr		= (start>> 0) & 0xFF;
-	Bit32u sector	= min*60*76+sec*75+fr - 150;
-	min				= (length>>16) & 0xFF;
-	sec				= (length>> 8) & 0xFF;
-	fr				= (length>> 0) & 0xFF;	
-	Bit32u seclen	= min*60*76+sec*75+fr - 150;
-	return dinfo[subUnit].lastResult = PlayAudioSector(subUnit,sector,seclen);
+	Bit32u sector	= min*60*75+sec*75+fr - 150;
+	return dinfo[subUnit].lastResult = PlayAudioSector(subUnit,sector,length);
 };
 
 bool CMscdex::GetSubChannelData(Bit8u subUnit, Bit8u& attr, Bit8u& track, Bit8u &index, TMSF& rel, TMSF& abs)
 {
+	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioSub(attr,track,index,rel,abs);
 	if (!dinfo[subUnit].lastResult) {
 		attr = track = index = 0;
@@ -354,6 +360,7 @@ bool CMscdex::GetSubChannelData(Bit8u subUnit, Bit8u& attr, Bit8u& track, Bit8u 
 
 bool CMscdex::GetAudioStatus(Bit8u subUnit, bool& playing, bool& pause, TMSF& start, TMSF& end)
 {
+	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioStatus(playing,pause);
 	if (dinfo[subUnit].lastResult) {
 		// Start
@@ -378,6 +385,7 @@ bool CMscdex::GetAudioStatus(Bit8u subUnit, bool& playing, bool& pause, TMSF& st
 
 bool CMscdex::StopAudio(Bit8u subUnit)
 {
+	if (subUnit>=numDrives) return false;
 	if (dinfo[subUnit].audioPlay)	dinfo[subUnit].lastResult = cdrom[subUnit]->PauseAudio(false);
 	else							dinfo[subUnit].lastResult = cdrom[subUnit]->StopAudio();
 	
@@ -385,7 +393,7 @@ bool CMscdex::StopAudio(Bit8u subUnit)
 		if (dinfo[subUnit].audioPlay) {
 			TMSF pos;
 			GetCurrentPos(subUnit,pos);
-			dinfo[subUnit].audioStart	= pos.min*60*76+pos.sec*75+pos.fr - 150;
+			dinfo[subUnit].audioStart	= pos.min*60*75+pos.sec*75+pos.fr - 150;
 			dinfo[subUnit].audioPaused  = true;
 		} else {	
 			dinfo[subUnit].audioPaused  = false;
@@ -399,11 +407,13 @@ bool CMscdex::StopAudio(Bit8u subUnit)
 
 bool CMscdex::ResumeAudio(Bit8u subUnit)
 {
+	if (subUnit>=numDrives) return false;
 	return dinfo[subUnit].lastResult = PlayAudioSector(subUnit,dinfo[subUnit].audioStart,dinfo[subUnit].audioEnd);
 };
 
 Bit32u CMscdex::GetVolumeSize(Bit8u subUnit)
 {
+	if (subUnit>=numDrives) return false;
 	Bit8u tr1,tr2;
 	TMSF leadOut;
 	dinfo[subUnit].lastResult = GetCDInfo(subUnit,tr1,tr2,leadOut);
@@ -411,24 +421,100 @@ Bit32u CMscdex::GetVolumeSize(Bit8u subUnit)
 	return 0;
 };
 
+bool CMscdex::ReadVTOC(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error)	
+{ 
+	ReadSectors(GetSubUnit(drive),false,/*150+*/16,1,data) ? error=0:error=MSCDEX_ERROR_DRIVE_NOT_READY;
+	return (error==0);
+};
+
+bool CMscdex::GetVolumeName(Bit8u subUnit, char* data) 
+{	
+	if (subUnit>=numDrives) return false;
+	Bit16u drive = dinfo[subUnit].drive;
+
+	Bit16u error,seg,size = 128;
+	bool success = false;
+	if (DOS_AllocateMemory(&seg,&size)) {
+		PhysPt ptoc = PhysMake(seg,0);
+		success = ReadVTOC(drive,0x00,ptoc,error);
+		if (success) {
+			MEM_StrCopy(ptoc+40,data,31);
+			data[31] = 0;
+			rtrim(data);
+		};
+		DOS_FreeMemory(seg);
+	}
+	return success; 
+};
+
+bool CMscdex::GetCopyrightName(Bit16u drive, PhysPt data) 
+{	
+	Bit16u error,seg,size = 128;
+	bool success = false;
+	if (DOS_AllocateMemory(&seg,&size)) {
+		PhysPt ptoc = PhysMake(seg,0);
+		success = ReadVTOC(drive,0x00,ptoc,error);
+		if (success) {
+			MEM_BlockCopy(data,ptoc+702,37);
+			mem_writeb(data+37,0);
+		};
+		DOS_FreeMemory(seg);
+	}
+	return success; 
+};
+
+bool CMscdex::GetAbstractName(Bit16u drive, PhysPt data) 
+{ 
+	Bit16u error,seg,size = 128;
+	bool success = false;
+	if (DOS_AllocateMemory(&seg,&size)) {
+		PhysPt ptoc = PhysMake(seg,0);
+		success = ReadVTOC(drive,0x00,ptoc,error);
+		if (success) {
+			MEM_BlockCopy(data,ptoc+739,37);
+			mem_writeb(data+37,0);
+		};
+		DOS_FreeMemory(seg);
+	}
+	return success; 
+};
+
+bool CMscdex::GetDocumentationName(Bit16u drive, PhysPt data) 
+{ 
+	Bit16u error,seg,size = 128;
+	bool success = false;
+	if (DOS_AllocateMemory(&seg,&size)) {
+		PhysPt ptoc = PhysMake(seg,0);
+		success = ReadVTOC(drive,0x00,ptoc,error);
+		if (success) {
+			MEM_BlockCopy(data,ptoc+776,37);
+			mem_writeb(data+37,0);
+		};
+		DOS_FreeMemory(seg);
+	}
+	return success; 
+};
+
 bool CMscdex::GetUPC(Bit8u subUnit, Bit8u& attr, char* upc)
 {
+	if (subUnit>=numDrives) return false;
 	return dinfo[subUnit].lastResult = cdrom[subUnit]->GetUPC(attr,&upc[0]);
 };
 
 bool CMscdex::ReadSectors(Bit8u subUnit, bool raw, Bit32u sector, Bit16u num, PhysPt data)
 {
-	void* buffer = (void*)Phys2Host(data);
-	dinfo[subUnit].lastResult = cdrom[subUnit]->ReadSectors(buffer,raw,sector,num);
+	if (subUnit>=numDrives) return false;
+	dinfo[subUnit].lastResult = cdrom[subUnit]->ReadSectors(data,raw,sector,num);
 	return dinfo[subUnit].lastResult;
 };
 
 bool CMscdex::ReadSectorsMSF(Bit8u subUnit, bool raw, Bit32u start, Bit16u num, PhysPt data)
 {
+	if (subUnit>=numDrives) return false;
 	Bit8u min		= (start>>16) & 0xFF;
 	Bit8u sec		= (start>> 8) & 0xFF;
 	Bit8u fr		= (start>> 0) & 0xFF;
-	Bit32u sector	= min*60*76+sec*75+fr - 150;
+	Bit32u sector	= min*60*75+sec*75+fr - 150;
 	// TODO: Check, if num has to be converted too ?!
 	return ReadSectors(subUnit,raw,sector,num,data);
 };
@@ -441,6 +527,7 @@ bool CMscdex::ReadSectors(Bit16u drive, Bit32u sector, Bit16u num, PhysPt data)
 
 bool CMscdex::GetCurrentPos(Bit8u subUnit, TMSF& pos)
 {
+	if (subUnit>=numDrives) return false;
 	TMSF rel;
 	Bit8u attr,track,index;
 	dinfo[subUnit].lastResult = GetSubChannelData(subUnit, attr, track, index, rel, pos);
@@ -450,12 +537,14 @@ bool CMscdex::GetCurrentPos(Bit8u subUnit, TMSF& pos)
 
 bool CMscdex::GetMediaStatus(Bit8u subUnit, bool& media, bool& changed, bool& trayOpen)
 {
+	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetMediaTrayStatus(media,changed,trayOpen);
 	return dinfo[subUnit].lastResult;
 };
 
 Bit32u CMscdex::GetDeviceStatus(Bit8u subUnit)
 {
+	if (subUnit>=numDrives) return false;
 	bool media,changed,trayOpen;
 
 	dinfo[subUnit].lastResult = GetMediaStatus(subUnit,media,changed,trayOpen);
@@ -470,6 +559,7 @@ Bit32u CMscdex::GetDeviceStatus(Bit8u subUnit)
 
 bool CMscdex::GetMediaStatus(Bit8u subUnit, Bit8u& status)
 {
+	if (subUnit>=numDrives) return false;
 	bool media,changed,open,result;
 	result = GetMediaStatus(subUnit,media,changed,open);
 	status = changed ? 0xFF : 0x01;
@@ -478,14 +568,17 @@ bool CMscdex::GetMediaStatus(Bit8u subUnit, Bit8u& status)
 
 bool CMscdex::LoadUnloadMedia(Bit8u subUnit, bool unload)
 {
+	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->LoadUnloadMedia(unload);
 	return dinfo[subUnit].lastResult;
 };
 
 bool CMscdex::SendDriverRequest(Bit16u drive, PhysPt data)
 {
+	Bit8u subUnit = GetSubUnit(drive);
+	if (subUnit>=numDrives) return false;	
 	// Get SubUnit
-	mem_writeb(data+1,GetSubUnit(drive));
+	mem_writeb(data+1,subUnit);
 	// Call Strategy / Interrupt
 	MSCDEX_Strategy_Handler();
 	MSCDEX_Interrupt_Handler();
@@ -494,11 +587,11 @@ bool CMscdex::SendDriverRequest(Bit16u drive, PhysPt data)
 
 Bit16u CMscdex::GetStatusWord(Bit8u subUnit)
 {
+	if (subUnit>=numDrives) return 0x02; // error : Drive not ready
+
 	Bit16u status ;
 	if (dinfo[subUnit].lastResult)	status = REQUEST_STATUS_DONE;				// ok
-	else {
-		status = REQUEST_STATUS_ERROR | 0x02; // error : Drive not ready
-	}
+	else							status = REQUEST_STATUS_ERROR; 
 
 	if (dinfo[subUnit].audioPlay) {
 		// Check if audio is still playing....
@@ -532,14 +625,14 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 	Bit8u	subUnit		= mem_readb(data+1);
 	Bit8u	funcNr		= mem_readb(data+2);
 
-//	if (funcNr!=0x03) LOG("MSCDEX: Driver Function %02X",funcNr);
+//	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Driver Function %02X",funcNr);
 
 	switch (funcNr) {
 	
 		case 0x03	: {	/* IOCTL INPUT */
 						PhysPt buffer	= PhysMake(mem_readw(data+0x10),mem_readw(data+0x0E));
 						subFuncNr		= mem_readb(buffer);
-						//if (subFuncNr!=0x0B) LOG("MSCDEX: IOCTL INPUT Subfunction %02X",subFuncNr);
+//						LOG(LOG_MISC,LOG_ERROR)("MSCDEX: IOCTL INPUT Subfunction %02X",subFuncNr);
 						switch (subFuncNr) {
 							case 0x00 : /* Get Device Header address */
 										mem_writed(buffer+1,RealMake(mscdex->rootDriverHeaderSeg,0));
@@ -565,7 +658,8 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 										break;
 							case 0x09 : /* Media change ? */
 										Bit8u status;
-										mscdex->GetMediaStatus(subUnit,status);
+										//TEMP mscdex->GetMediaStatus(subUnit,status);
+										status = 1;
 										mem_writeb(buffer+1,status);
 										break;
 							case 0x0A : /* Get Audio Disk info */	
@@ -627,7 +721,7 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 										mem_writeb(buffer+10,0x00);
 										break;
 									   };
-							default :	LOG(LOG_ERROR|LOG_MISC,"MSCDEX: Unsupported IOCTL INPUT Subfunction %02X",subFuncNr);
+							default :	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unsupported IOCTL INPUT Subfunction %02X",subFuncNr);
 										break;
 						}
 						break;
@@ -635,7 +729,7 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 		case 0x0C	: {	/* IOCTL OUTPUT */
 						PhysPt buffer	= PhysMake(mem_readw(data+0x10),mem_readw(data+0x0E));
 						subFuncNr		= mem_readb(buffer);
-						// if (subFuncNr!=0x0B) LOG("MSCDEX: IOCTL OUTPUT Subfunction %02X",subFuncNr);
+//						LOG(LOG_MISC,LOG_ERROR)("MSCDEX: IOCTL OUTPUT Subfunction %02X",subFuncNr);
 						switch (subFuncNr) {
 							case 0x00 :	// Unload /eject) media
 										mscdex->LoadUnloadMedia(subUnit,true);
@@ -646,7 +740,7 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 							case 0x05 :	// load media
 										mscdex->LoadUnloadMedia(subUnit,false);
 										break;
-							default	:	LOG(LOG_ERROR|LOG_MISC,"MSCDEX: Unsupported IOCTL OUTPUT Subfunction %02X",subFuncNr);
+							default	:	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unsupported IOCTL OUTPUT Subfunction %02X",subFuncNr);
 										break;
 						};
 						break;
@@ -683,7 +777,7 @@ static Bitu MSCDEX_Interrupt_Handler(void)
 		case 0x88	:	/* Resume Audio */
 						mscdex->ResumeAudio(subUnit);
 						break;
-		default		:	LOG(LOG_ERROR|LOG_MISC,"MSCDEX: Unsupported Driver Request %02X",funcNr);
+		default		:	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unsupported Driver Request %02X",funcNr);
 						break;
 	
 	};
@@ -698,7 +792,7 @@ static bool MSCDEX_Handler(void)
 	if (reg_ah!=0x15) return false;
 
 	PhysPt data = PhysMake(SegValue(es),reg_bx);
-//	if (reg_ax!=0x1510) LOG("MSCEEX: INT 2F %04X",reg_ax);
+//	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: INT 2F %04X",reg_ax);
 	switch (reg_ax) {
 	
 		case 0x1500:	/* Install check */
@@ -732,7 +826,7 @@ static bool MSCDEX_Handler(void)
 							CALLBACK_SCF(true);							
 						};
 						return true;		
-/*		case 0x1505: {	// read vtoc 
+		case 0x1505: {	// read vtoc 
 						Bit16u error = 0;
 						if (mscdex->ReadVTOC(reg_cx,reg_dx,data,error)) {
 							CALLBACK_SCF(false);
@@ -741,7 +835,7 @@ static bool MSCDEX_Handler(void)
 							CALLBACK_SCF(true);							
 						};
 					 };
-						return true;*/		
+						return true;
 		case 0x1508: {	// read sectors 
 						Bit32u sector = (reg_si<<16)+reg_di;
 						if (mscdex->ReadSectors(reg_cx,sector,reg_dx,data)) {
@@ -767,9 +861,9 @@ static bool MSCDEX_Handler(void)
 						mscdex->GetDrives(data);
 						return true;
 		case 0x1510:	/* Device driver request */
-						mscdex->SendDriverRequest(reg_cx,data);
+						mscdex->SendDriverRequest(reg_cx & 0xFF,data);
 						return true;
-		default	:		LOG(LOG_ERROR|LOG_MISC,"MSCDEX: Unknwon call : %04X",reg_ax);
+		default	:		LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unknwon call : %04X",reg_ax);
 						return true;
 
 	};
@@ -781,7 +875,7 @@ public:
 	device_MSCDEX() { name="MSCD001"; }
 	bool Read (Bit8u * data,Bit16u * size) { return false;}
 	bool Write(Bit8u * data,Bit16u * size) { 
-		LOG(0,"Write to mscdex device");	
+		LOG(LOG_ALL,LOG_NORMAL)("Write to mscdex device");	
 		return false;
 	}
 	bool Seek(Bit32u * pos,Bit32u type){return false;}
@@ -795,6 +889,11 @@ int MSCDEX_AddDrive(char driveLetter, const char* physicalPath, Bit8u& subUnit)
 {
 	int result = mscdex->AddDrive(driveLetter-'A',(char*)physicalPath,subUnit);
 	return result;
+};
+
+bool MSCDEX_GetVolumeName(Bit8u subUnit, char* name)
+{
+	return mscdex->GetVolumeName(subUnit,name);
 };
 
 bool MSCDEX_HasMediaChanged(Bit8u subUnit)

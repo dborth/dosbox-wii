@@ -230,7 +230,7 @@ static void MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
 	/* Copy data from out buffer to the stream */
 	Bitu size=MIXER_BUFSIZE+mixer.out.write-mixer.out.read;
 	if (size>=MIXER_BUFSIZE) size-=MIXER_BUFSIZE;
-	if (size*MIXER_SSIZE<len) {
+	if (size*MIXER_SSIZE<(Bitu)len) {
 //		LOG(0,"Buffer underrun");
 		/* When there's a buffer underrun, keep the data so there will be more next time */
 		return;
@@ -274,7 +274,7 @@ static void MIXER_WaveEvent(void) {
 		LOG_MSG("Can't open waveout dir %s",mixer.wave.dir);
 		return;
 	}
-	while (dir_ent=readdir(dir)) {
+	while ((dir_ent=readdir(dir))) {
 		char tempname[CROSS_LEN];
 		strcpy(tempname,dir_ent->d_name);
 		char * test=strstr(tempname,".wav");
@@ -304,10 +304,9 @@ static void MIXER_Stop(Section* sec) {
 
 void MIXER_Init(Section* sec) {
 	sec->AddDestroyFunction(&MIXER_Stop);
-	MSG_Add("MIXER_CONFIGFILE_HELP","Nothing to setup yet!\n");
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	/* Read out config section */
-	mixer.freq=section->Get_int("freq");
+	mixer.freq=section->Get_int("rate");
 	mixer.nosound=section->Get_bool("nosound");
 	mixer.blocksize=section->Get_int("blocksize");
 	mixer.wave.dir=section->Get_string("wavedir");

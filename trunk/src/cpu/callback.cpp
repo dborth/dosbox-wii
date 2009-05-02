@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: callback.cpp,v 1.16 2003/09/29 21:06:49 qbix79 Exp $ */
+
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -40,7 +42,7 @@ static Bitu illegal_handler(void) {
 }
 
 Bitu CALLBACK_Allocate(void) {
-	for (Bitu i=0;(i<CB_MAX);i++) {
+	for (Bitu i=1;(i<CB_MAX);i++) {
 		if (CallBack_Handlers[i]==&illegal_handler) {
 			CallBack_Handlers[i]=0;
 			return i;	
@@ -52,8 +54,8 @@ Bitu CALLBACK_Allocate(void) {
 
 void CALLBACK_Idle(void) {
 /* this makes the cpu execute instructions to handle irq's and then come back */
-	bool oldintf=flags.intf;
-	flags.intf=true;
+	Bitu oldIF=GETFLAG(IF);
+	SETFLAGBIT(IF,true);
 	Bit16u oldcs=SegValue(cs);
 	Bit32u oldeip=reg_eip;
 	SegSet16(cs,CB_SEG);
@@ -61,13 +63,13 @@ void CALLBACK_Idle(void) {
 	DOSBOX_RunMachine();
 	reg_eip=oldeip;
 	SegSet16(cs,oldcs);
-	flags.intf=oldintf;
+	SETFLAGBIT(IF,oldIF);
 	if (CPU_CycleLeft<300) CPU_CycleLeft=1;
 	else CPU_CycleLeft-=300;
 }
 
 static Bitu default_handler(void) {
-	LOG(LOG_ERROR|LOG_CPU,"Illegal Unhandled Interrupt Called %X",lastint);
+	LOG(LOG_CPU,LOG_ERROR)("Illegal Unhandled Interrupt Called %X",lastint);
 	return CBRET_NONE;
 };
 
@@ -121,28 +123,57 @@ bool CALLBACK_Setup(Bitu callback,CallBack_Handler handler,Bitu type) {
 	if (callback>=CB_MAX) return false;
 	switch (type) {
 	case CB_RETF:
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+0,(Bit8u)0xFE);	//GRP 4
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+1,(Bit8u)0x38);	//Extra Callback instruction
-		real_writew((Bit16u)CB_SEG,(callback<<4)+2,callback);		//The immediate word
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+4,(Bit8u)0xCB);	//A RETF Instruction
+		phys_writeb(CB_BASE+(callback<<4)+0,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(CB_BASE+(callback<<4)+1,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(CB_BASE+(callback<<4)+2,callback);		//The immediate word
+		phys_writeb(CB_BASE+(callback<<4)+4,(Bit8u)0xCB);	//A RETF Instruction
 		break;
 	case CB_IRET:
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+0,(Bit8u)0xFE);	//GRP 4
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+1,(Bit8u)0x38);	//Extra Callback instruction
-		real_writew((Bit16u)CB_SEG,(callback<<4)+2,callback);		//The immediate word
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+4,(Bit8u)0xCF);	//An IRET Instruction
+		phys_writeb(CB_BASE+(callback<<4)+0,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(CB_BASE+(callback<<4)+1,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(CB_BASE+(callback<<4)+2,callback);		//The immediate word
+		phys_writeb(CB_BASE+(callback<<4)+4,(Bit8u)0xCF);	//An IRET Instruction
 		break;
 	case CB_IRET_STI:
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+0,(Bit8u)0xFB);	//STI
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+1,(Bit8u)0xFE);	//GRP 4
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+2,(Bit8u)0x38);	//Extra Callback instruction
-		real_writew((Bit16u)CB_SEG,(callback<<4)+3,callback);		//The immediate word
-		real_writeb((Bit16u)CB_SEG,(callback<<4)+5,(Bit8u)0xCF);	//An IRET Instruction
+		phys_writeb(CB_BASE+(callback<<4)+0,(Bit8u)0xFB);	//STI
+		phys_writeb(CB_BASE+(callback<<4)+1,(Bit8u)0xFE);	//GRP 4
+		phys_writeb(CB_BASE+(callback<<4)+2,(Bit8u)0x38);	//Extra Callback instruction
+		phys_writew(CB_BASE+(callback<<4)+3,callback);		//The immediate word
+		phys_writeb(CB_BASE+(callback<<4)+5,(Bit8u)0xCF);	//An IRET Instruction
 		break;
 
 	default:
 		E_Exit("CALLBACK:Setup:Illegal type %d",type);
 
+	}
+	CallBack_Handlers[callback]=handler;
+	return true;
+}
+
+bool CALLBACK_SetupAt(Bitu callback,CallBack_Handler handler,Bitu type,Bitu linearAddress) {
+	if (callback>=CB_MAX) return false;
+	switch (type) {
+	case CB_RETF:
+		mem_writeb(linearAddress+0,(Bit8u)0xFE);	//GRP 4
+		mem_writeb(linearAddress+1,(Bit8u)0x38);	//Extra Callback instruction
+		mem_writew(linearAddress+2, callback);		//The immediate word
+		mem_writeb(linearAddress+4,(Bit8u)0xCB);	//A RETF Instruction
+		break;
+	case CB_IRET:
+		mem_writeb(linearAddress+0,(Bit8u)0xFE);	//GRP 4
+		mem_writeb(linearAddress+1,(Bit8u)0x38);	//Extra Callback instruction
+		mem_writew(linearAddress+2,callback);		//The immediate word
+		mem_writeb(linearAddress+4,(Bit8u)0xCF);	//An IRET Instruction
+		break;
+	case CB_IRET_STI:
+		mem_writeb(linearAddress+0,(Bit8u)0xFB);	//STI
+		mem_writeb(linearAddress+1,(Bit8u)0xFE);	//GRP 4
+		mem_writeb(linearAddress+2,(Bit8u)0x38);	//Extra Callback instruction
+		mem_writew(linearAddress+3, callback);		//The immediate word
+		mem_writeb(linearAddress+5,(Bit8u)0xCF);	//An IRET Instruction
+		break;
+	default:
+		E_Exit("CALLBACK:Setup:Illegal type %d",type);
 	}
 	CallBack_Handlers[callback]=handler;
 	return true;
@@ -156,16 +187,16 @@ void CALLBACK_Init(Section* sec) {
 	/* Setup the Stop Handler */
 	call_stop=CALLBACK_Allocate();
 	CallBack_Handlers[call_stop]=stop_handler;
-	real_writeb((Bit16u)CB_SEG,(call_stop<<4)+0,0xFE);
-	real_writeb((Bit16u)CB_SEG,(call_stop<<4)+1,0x38);
-	real_writew((Bit16u)CB_SEG,(call_stop<<4)+2,call_stop);
+	phys_writeb(CB_BASE+(call_stop<<4)+0,0xFE);
+	phys_writeb(CB_BASE+(call_stop<<4)+1,0x38);
+	phys_writew(CB_BASE+(call_stop<<4)+2,call_stop);
 	/* Setup the idle handler */
 	call_idle=CALLBACK_Allocate();
 	CallBack_Handlers[call_idle]=stop_handler;
-	for (i=0;i<=11;i++) real_writeb((Bit16u)CB_SEG,(call_idle<<4)+i,0x90);
-	real_writeb((Bit16u)CB_SEG,(call_idle<<4)+12,0xFE);
-	real_writeb((Bit16u)CB_SEG,(call_idle<<4)+13,0x38);
-	real_writew((Bit16u)CB_SEG,(call_idle<<4)+14,call_idle);
+	for (i=0;i<=11;i++) phys_writeb(CB_BASE+(call_idle<<4)+i,0x90);
+	phys_writeb(CB_BASE+(call_idle<<4)+12,0xFE);
+	phys_writeb(CB_BASE+(call_idle<<4)+13,0x38);
+	phys_writew(CB_BASE+(call_idle<<4)+14,call_idle);
 
 	/* Setup all Interrupt to point to the default handler */
 	call_default=CALLBACK_Allocate();
@@ -174,6 +205,8 @@ void CALLBACK_Init(Section* sec) {
 	for (i=0;i<0x40;i++) {
 		real_writed(0,i*4,CALLBACK_RealPointer(call_default));
 	}
+	real_writed(0,0x67*4,CALLBACK_RealPointer(call_default));
+	//real_writed(0,0xf*4,0); some games don't like it
 }
 
 

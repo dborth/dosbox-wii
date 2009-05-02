@@ -20,6 +20,7 @@ CFG=dosbox - Win32 Debug
 !MESSAGE "dosbox - Win32 Release" (based on "Win32 (x86) Console Application")
 !MESSAGE "dosbox - Win32 Debug" (based on "Win32 (x86) Console Application")
 !MESSAGE 
+
 # Begin Project
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName ""
@@ -49,7 +50,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
-# ADD LINK32 winmm.lib zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
+# ADD LINK32 winmm.lib zlib.lib libpng.lib sdl_net.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
 
 !ELSEIF  "$(CFG)" == "dosbox - Win32 Debug"
 
@@ -74,7 +75,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
-# ADD LINK32 winmm.lib zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
+# ADD LINK32 sdl_net.lib winmm.lib zlib.lib libpng.lib sdlmain.lib sdl.lib curses.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /debug /machine:I386 /pdbtype:sept
 
 !ENDIF 
 
@@ -128,9 +129,93 @@ SOURCE=..\src\cpu\core_16\support.h
 SOURCE=..\src\cpu\core_16\table_ea.h
 # End Source File
 # End Group
+# Begin Group "core_full"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\ea_lookup.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\load.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\loadwrite.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\main.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\op.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\optable.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\save.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\string.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full\support.h
+# End Source File
+# End Group
+# Begin Group "core_normal"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\helpers.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\prefix_0f.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\prefix_66.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\prefix_66_0f.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\prefix_none.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\string.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\support.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal\table_ea.h
+# End Source File
+# End Group
 # Begin Source File
 
 SOURCE=..\src\cpu\callback.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_full.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\core_normal.cpp
 # End Source File
 # Begin Source File
 
@@ -146,11 +231,19 @@ SOURCE=..\src\cpu\instructions.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\src\cpu\lazyflags.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\cpu\modrm.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=..\src\cpu\modrm.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\cpu\paging.cpp
 # End Source File
 # Begin Source File
 
@@ -357,10 +450,6 @@ SOURCE=..\src\hardware\vga_draw.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\hardware\vga_fonts.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=..\src\hardware\vga_gfx.cpp
 # End Source File
 # Begin Source File
@@ -442,6 +531,14 @@ SOURCE=..\src\hardware\sblaster.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=..\src\hardware\serialport.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\hardware\softmodem.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\hardware\tandy_sound.cpp
 # End Source File
 # Begin Source File
@@ -487,6 +584,10 @@ SOURCE=..\src\ints\int10_pal.cpp
 
 SOURCE=..\src\ints\int10_put_pixel.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=..\src\ints\int10_vesa.cpp
+# End Source File
 # End Group
 # Begin Source File
 
@@ -502,6 +603,10 @@ SOURCE=..\src\ints\bios_keyboard.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=..\src\ints\dpmi.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\ints\ems.cpp
 # End Source File
 # Begin Source File
@@ -511,6 +616,10 @@ SOURCE=..\src\ints\mouse.cpp
 # Begin Source File
 
 SOURCE=..\src\ints\xms.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\src\ints\xms.h
 # End Source File
 # End Group
 # Begin Group "misc"
@@ -659,6 +768,10 @@ SOURCE=..\include\keyboard.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\include\logging.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\include\mem.h
 # End Source File
 # Begin Source File
@@ -668,6 +781,10 @@ SOURCE=..\include\mixer.h
 # Begin Source File
 
 SOURCE=..\include\mouse.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\include\paging.h
 # End Source File
 # Begin Source File
 

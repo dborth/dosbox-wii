@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,9 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: shell_inc.h,v 1.17 2003/09/08 18:19:28 qbix79 Exp $ */
+
 #include <ctype.h>
 #include <stdio.h>
 #include "dosbox.h"
@@ -25,6 +28,9 @@
 #include "support.h"
 #include "callback.h"
 #include "setup.h"
+
+#include <string>
+#include <list>
 
 #define CMD_MAXLINE 4096
 #define CMD_MAXCMDS 20
@@ -46,15 +52,24 @@ public:
 	CommandLine * cmd;
 };
 
-
-
 class DOS_Shell : public Program {
+
+private:
+
+	std::list<std::string> l_history, l_completion;
+
+	char *completion_start;
+	Bit16u completion_index;
+	
 public:
+
 	DOS_Shell();
+
 	void Run(void);
+	void RunInternal(void); //for command /C
 /* A load of subfunctions */
 	void ParseLine(char * line);
-	Bit32u GetRedirection(char *s, char **ifn, char **ofn);
+	Bitu GetRedirection(char *s, char **ifn, char **ofn,bool * append);
 	void InputCommand(char * line);
 	void ShowPrompt();
 	void DoCommand(char * cmd);
@@ -78,6 +93,7 @@ public:
 	void CMD_TYPE(char * args);
 	void CMD_REM(char * args);
 	void CMD_RENAME(char * args);
+	void CMD_CALL(char * args);
 	void SyntaxError(void);
 	void CMD_PAUSE(char * args);
 	/* The shell's variables */
@@ -85,12 +101,7 @@ public:
 	BatchFile * bf;
 	bool echo;
 	bool exit;
-	struct {
-		char buffer[CMD_OLDSIZE];
-		Bitu index;
-		Bitu size;
-	} old;
-
+	bool call;
 };
 
 struct SHELL_Cmd {
@@ -99,5 +110,33 @@ struct SHELL_Cmd {
     void (DOS_Shell::*handler)(char * args);		/* Handler for this command */
     const char * help;								/* String with command help */
 };
+
+static inline void StripSpaces(char*&args)
+{
+	while(*args && (*args == ' '))
+		args++;
+}
+
+
+static inline char* ExpandDot(char*args, char* buffer)
+{
+	if(*args=='.')
+	{
+		if(*(args+1)==0)
+		{
+			strcpy(buffer,"*.*");
+			return buffer;
+		}
+		if( (*(args+1)!='.') && (*(args+1)!='\\') )
+		{
+			buffer[0]='*';
+			buffer[1]=0;
+			strcat(buffer,args);
+			return buffer;
+		}
+	}
+	else strcpy(buffer,args);
+	return buffer;
+}
 
 

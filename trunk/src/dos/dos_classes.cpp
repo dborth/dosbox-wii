@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: dos_classes.cpp,v 1.32 2003/10/09 13:47:06 finsterr Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -73,6 +75,12 @@ void DOS_InfoBlock::SetfirstFileTable(RealPt _first_table){
 	sSave(sDIB,firstFileTable,_first_table);
 }
 
+void DOS_InfoBlock::SetBuffers(Bit16u x,Bit16u y) {
+	sSave(sDIB,buffers_x,x);
+	sSave(sDIB,buffers_y,y);
+
+}
+
 RealPt DOS_InfoBlock::GetPointer(void)
 {
 	return RealMake(seg,offsetof(sDIB,firstDPB));
@@ -94,7 +102,9 @@ void DOS_PSP::MakeNew(Bit16u mem_size)
 	sSave(sPSP,next_seg,seg+mem_size);
 	/* far call opcode */
 	sSave(sPSP,far_call,0xea);
-//	sSave(sPSP,cmp_entry
+	// far call to interrupt 0x21 - faked for bill & ted 
+	// lets hope nobody really uses this address
+	sSave(sPSP,cpm_entry,RealMake(0xDEAD,0xFFFF));
 	/* Standard blocks,int 20  and int21 retf */
 	sSave(sPSP,exit[0],0xcd);
 	sSave(sPSP,exit[1],0x20);
@@ -148,19 +158,34 @@ Bit16u DOS_PSP::FindFreeFileEntry(void)
 Bit16u DOS_PSP::FindEntryByHandle(Bit8u handle)
 {
 	PhysPt files=Real2Phys(sGet(sPSP,file_table));
-	Bit16u max = sGet(sPSP,max_files);
 	for (Bit16u i=0;i<sGet(sPSP,max_files);i++) {
 		if (mem_readb(files+i)==handle) return i;
 	}	
 	return 0xFF;
 };
 
-void DOS_PSP::CopyFileTable(DOS_PSP* srcpsp)
+void DOS_PSP::CopyFileTable(DOS_PSP* srcpsp,bool createchildpsp)
 {
 	/* Copy file table from calling process */
 	for (Bit16u i=0;i<20;i++) {
 		Bit8u handle = srcpsp->GetFileHandle(i);
-		SetFileHandle(i,handle);
+		if(createchildpsp)
+		{	//copy obeying not inherit flag.(but dont duplicate them)
+			bool allowCopy = (handle==0) || ((handle>0) && (FindEntryByHandle(handle)==0xff));
+			if((handle<DOS_FILES) && Files[handle] && !(Files[handle]->flags & DOS_NOT_INHERIT) && allowCopy)
+			{   
+				Files[handle]->AddRef();
+				SetFileHandle(i,handle);
+			}
+			else
+			{
+				SetFileHandle(i,0xff);
+			}
+		}
+		else
+		{	//normal copy so don't mind the inheritance
+			SetFileHandle(i,handle);
+		}
 	}
 };
 
@@ -211,6 +236,7 @@ bool DOS_PSP::SetNumFiles(Bit16u fileNum)
 {
 	if (fileNum>20) {
 		// Allocate needed paragraphs
+		fileNum+=2;	// Add a few more files for safety
 		Bit16u para = (fileNum/16)+((fileNum%16)>0);
 		RealPt data	= RealMake(DOS_GetMemory(para),0);
 		sSave(sPSP,file_table,data);
@@ -230,7 +256,7 @@ void DOS_DTA::SetupSearch(Bit8u _sdrive,Bit8u _sattr,char * pattern) {
 	sSave(sDTA,sattr,_sattr);
 	/* Fill with spaces */
 	Bitu i;
-	for (i=0;i<12;i++) mem_writeb(pt+offsetof(sDTA,sname)+i,' ');
+	for (i=0;i<11;i++) mem_writeb(pt+offsetof(sDTA,sname)+i,' ');
 	char * find_ext;
 	find_ext=strchr(pattern,'.');
 	if (find_ext) {
