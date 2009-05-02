@@ -24,6 +24,9 @@ void E_Exit(char * message,...);
 
 void S_Warn(char * message,...);
 
+void MSG_Add(const char*,const char*); //add messages to the internal langaugefile
+const char* MSG_Get(char const *);         //get messages from the internal langaugafile
+
 /* The internal types */
 typedef  unsigned char     Bit8u;
 typedef    signed char     Bit8s;
@@ -47,14 +50,115 @@ typedef signed int Bits;
 #include "config.h"
 #include "../settings.h"
 
+class Section;
+
+
 typedef Bitu (LoopHandler)(void);
 
 void DOSBOX_RunMachine();
 void DOSBOX_SetLoop(LoopHandler * handler);
 void DOSBOX_SetNormalLoop();
 
-void DOSBOX_Init(int argc, char* argv[]);
-void DOSBOX_StartUp(void);
+void DOSBOX_Init(void);
+
+class Config;
+extern Config * control;
+extern Bitu errorlevel;
+
+inline void LOG_MSG(char* message)
+{
+      if(errorlevel>=0) S_Warn(message);
+}
+
+template <class type1>
+inline void LOG_MSG(char* message,type1 arg1)
+{
+   
+      if(errorlevel>=0) S_Warn(message,arg1);
+}
+
+template <class type1,class type2>
+inline void LOG_MSG(char* message,type1 arg1,type2 arg2)
+{
+   
+      if(errorlevel>=0) S_Warn(message,arg1,arg2);
+}
+
+template <class type1,class type2, class type3>
+inline void LOG_MSG(char* message,type1 arg1,type2 arg2,type3 arg3)
+{
+   
+      if (errorlevel>=0)S_Warn(message,arg1,arg2,arg3);
+}
+
+#if C_LOGGING
+inline void LOG_DEBUG(char * message)
+{
+   
+      if(errorlevel>=2) S_Warn(message);
+}
+
+template <class type>
+inline void LOG_DEBUG(char * message, type type1)
+{
+   
+      if(errorlevel>=2) S_Warn(message,type1);
+}
+
+template <class type>
+inline void LOG_WARN(char * message, type type1)
+{
+   
+      if(errorlevel>=1) S_Warn(message,type1);
+}
+
+inline void LOG_WARN(char* message)
+{
+   
+        if(errorlevel>=1) S_Warn(message);
+}
+
+inline void LOG_ERROR(char * message)
+{
+   
+      if(errorlevel>=0) S_Warn(message);
+}
+
+template <class type>
+inline void LOG_ERROR(char * message, type type1)
+{
+   
+      if(errorlevel>=0) S_Warn(message,type1);
+}
+
+template <class type1, class type2>
+inline void LOG_ERROR(char * message, type1 arg1,type2 arg2)
+{
+   
+      if(errorlevel>=0) S_Warn(message,arg1,arg2);
+}
+
+template <class type1, class type2>
+inline void LOG_WARN(char * message, type1 arg1,type2 arg2)
+{
+   
+      if(errorlevel>=1) S_Warn(message,arg1,arg2);
+}
+
+template <class type1, class type2>
+inline void LOG_DEBUG(char * message, type1 arg1,type2 arg2)
+{
+   
+      if(errorlevel>=2) S_Warn(message,arg1,arg2);
+}
+
+#else
+#define LOG_DEBUG
+#define LOG_WARN
+#define LOG_ERROR
+#endif
+
+
 
 
 #endif

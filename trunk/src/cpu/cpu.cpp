@@ -21,6 +21,7 @@
 #include "memory.h"
 #include "debug.h"
 #include "keyboard.h"
+#include "setup.h"
 
 //Regs regs;
 
@@ -28,27 +29,22 @@ Flag_Info flags;
 
 CPU_Regs cpu_regs;
 
-
-
 Segment Segs[6];
-Bit32u cpu_cycles;
+Bitu cpu_cycles;
 
 CPU_Decoder * cpudecoder;
 
-
 static void CPU_CycleIncrease(void) {
-	Bit32u old_cycles=cpu_cycles;
-	cpu_cycles=(Bit32u)(cpu_cycles*1.2);
+	Bitu old_cycles=cpu_cycles;
+	cpu_cycles=(Bitu)(cpu_cycles*1.2);
 	if (cpu_cycles==old_cycles) cpu_cycles++;
 	LOG_MSG("CPU:%d cycles",cpu_cycles);
-
 }
 
 static void CPU_CycleDecrease(void) {
-	cpu_cycles=(Bit32u)(cpu_cycles/1.2);
+	cpu_cycles=(Bitu)(cpu_cycles/1.2);
 	if (!cpu_cycles) cpu_cycles=1;
 	LOG_MSG("CPU:%d cycles",cpu_cycles);
-
 }
 
 Bit8u lastint;
@@ -87,7 +83,7 @@ void Interrupt(Bit8u num) {
  		E_Exit("Call to interrupt 0xCD this is BAD");
 	case 0x03:
 #if C_DEBUG 
-	if (DEBUG_BreakPoint()) return;
+	if (DEBUG_Breakpoint()) return;
 #endif
 		break;
 	case 0x05:
@@ -137,7 +133,8 @@ void SetCPU16bit()
 }
 
 
-void CPU_Init(void) {
+void CPU_Init(Section* sec) {
+	Section_prop * section=static_cast<Section_prop *>(sec);
 	reg_eax=0;
 	reg_ebx=0;
 	reg_ecx=0;
@@ -166,11 +163,13 @@ void CPU_Init(void) {
 	flags.io=0;
 
 	SetCPU16bit();
-	cpu_cycles=2000;
+	cpu_cycles=section->Get_int("cycles");
+	if (!cpu_cycles) cpu_cycles=300;
 	KEYBOARD_AddEvent(KBD_f11,CTRL_PRESSED,CPU_CycleDecrease);
 	KEYBOARD_AddEvent(KBD_f12,CTRL_PRESSED,CPU_CycleIncrease);
 
 	reg_al=0;
 	reg_ah=0;
+    MSG_Add("CPU_CONFIGFILE_HELP","The amount of cycles to execute each loop. Lowering this setting will slowdown dosbox\n");
 }
 

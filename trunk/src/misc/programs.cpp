@@ -25,6 +25,7 @@
 #include "regs.h"
 #include "support.h"
 #include "cross.h"
+#include "setup.h"
 
 Bitu call_program;
 
@@ -55,30 +56,19 @@ void PROGRAMS_MakeFile(char * name,PROGRAMS_Main * main) {
 }
 
 
+
 static Bitu PROGRAMS_Handler(void) {
 	/* This sets up everything for a program start up call */
-	/* First get the current psp */
-	PROGRAM_Info * info=new PROGRAM_Info;
-	info->psp_seg=dos.psp;
-	MEM_BlockRead(PhysMake(dos.psp,0),&info->psp_copy,sizeof(PSP));
-	/* Get the file name cmd_line 0 */
-	PhysPt envblock=PhysMake(info->psp_copy.environment,0);
-	do {} while (mem_readw(envblock++));
-	envblock+=3;
-	MEM_StrCopy(envblock,info->full_name,32);
-	info->psp_copy.cmdtail.buffer[info->psp_copy.cmdtail.count]=0;
-	info->cmd_line=info->psp_copy.cmdtail.buffer;
-	/* Find the program handler somewhere reference in the file */
-	Bit16u handle;
-	DOS_OpenFile(info->full_name,0,&handle);
-	Bit32u pos=sizeof(PROGRAMS_Main *);
-	DOS_SeekFile(handle,&pos,DOS_SEEK_END);
-	PROGRAMS_Main * handler;
-	Bit16u size=sizeof(PROGRAMS_Main *);
-	DOS_ReadFile(handle,(Bit8u *)&handler,&size);
-	DOS_CloseFile(handle);
-	(*handler)(info);
-	free(info);
+	PROGRAMS_Main * handler=0;			//It will get sneakily itinialized
+	Bitu size=sizeof(PROGRAMS_Main *);
+	/* Read the handler from program code in memory */
+	PhysPt reader=PhysMake(dos.psp,256+sizeof(exe_block));
+	HostPt writer=(HostPt)&handler;
+	for (;size>0;size--) *writer++=mem_readb(reader++);
+	Program * new_program;
+	(*handler)(&new_program);
+	new_program->Run();
+	delete new_program;
 	return CBRET_NONE;
 };
 
@@ -86,11 +76,21 @@ static Bitu PROGRAMS_Handler(void) {
 /* Main functions used in all program */
 
 
-Program::Program(PROGRAM_Info * program_info) {
-	prog_info=program_info;
+Program::Program() {
+	/* Find the command line and setup the PSP */
+	psp = new DOS_PSP(dos.psp);
+	/* Scan environment for filename */
+	char * envscan=(char *)HostMake(psp->GetEnvironment(),0);
+	while (*envscan) envscan+=strlen(envscan)+1;	
+	envscan+=3;
+	CommandTail tail;
+	MEM_BlockRead(PhysMake(dos.psp,128),&tail,128);
+	if (tail.count<127) tail.buffer[tail.count]=0;
+	else tail.buffer[126]=0;
+	cmd = new CommandLine(envscan,tail.buffer);
 }
 
-void Program::WriteOut(char * format,...) {
+void Program::WriteOut(const char * format,...) {
 	char buf[1024];
 	va_list msg;
 	
@@ -103,72 +103,118 @@ void Program::WriteOut(char * format,...) {
 }
 
 
-char * Program::GetEnvStr(char * env_str) {
+bool Program::GetEnvStr(const char * entry,std::string & result) {
 	/* Walk through the internal environment and see for a match */
-/* Taking some short cuts here to not fuck around with memory structure */
-
-	char * envstart=(char *)HostMake(prog_info->psp_copy.environment,0);
-	size_t len=strlen(env_str);
-	while (*envstart) {
-		if (strncasecmp(env_str,envstart,len)==0 && envstart[len]=='=') {
-				return envstart;
-		}
-		envstart+=strlen(envstart)+1;	
-	}
-	return 0;
+	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
+	char env_string[1024];
+	result.erase();
+	if (!entry[0]) return false;
+	do 	{
+		MEM_StrCopy(env_read,env_string,1024);
+		if (!env_string[0]) return false;
+		env_read+=strlen(env_string)+1;
+		if (!strchr(env_string,'=')) continue;
+		if (strncasecmp(entry,env_string,strlen(entry))!=0) continue;
+		result=env_string;
+		return true;
+	} while (1);
+	return false;
 };
 
-char * Program::GetEnvNum(Bit32u num) {
-	char * envstart=(char *)HostMake(prog_info->psp_copy.environment,0);
-	while (*envstart) {
-		if (!num) return envstart;
-		envstart+=strlen(envstart)+1;	
+bool Program::GetEnvNum(Bitu num,std::string & result) {
+	char env_string[1024];
+	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
+	do 	{
+		MEM_StrCopy(env_read,env_string,1024);
+		if (!env_string[0]) break;
+		if (!num) { result=env_string;return true;}
+		env_read+=strlen(env_string)+1;
 		num--;
-	}
-	return 0;
+	} while (1);
+	return false;
 }
 
-Bit32u Program::GetEnvCount(void) {
-	char * envstart=(char *)HostMake(prog_info->psp_copy.environment,0);
-	Bit32u num=0;
-	while (*envstart) {
-		envstart+=strlen(envstart)+1;	
+Bitu Program::GetEnvCount(void) {
+	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
+	Bitu num=0;
+	while (mem_readb(env_read)!=0) {
+		for (;mem_readb(env_read);env_read++) {};
+		env_read++;
 		num++;
 	}
 	return num;
 }
 
-bool Program::SetEnv(char * env_entry,char * new_string) {
-	MCB * env_mcb=(MCB *)HostMake(prog_info->psp_copy.environment-1,0);
-	upcase(env_entry);
-	Bit32u env_size=env_mcb->size*16;
-	if (!env_size) E_Exit("SHELL:Illegal environment size");
-	/* First try to find the old entry */
-	size_t len=strlen(env_entry);
-	char * envstart=(char *)HostMake(prog_info->psp_copy.environment,0);
-	while (*envstart) {
-		if (strncasecmp(env_entry,envstart,len)==0 && envstart[len]=='=') {
-			/* Now remove this entry */
-			memmove(envstart,envstart+strlen(envstart)+1,env_size);
-		} else {
-			envstart+=strlen(envstart)+1;
-			env_size-=(strlen(envstart)+1);
-		}
+bool Program::SetEnv(const char * entry,const char * new_string) {
+	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
+	PhysPt env_write=env_read;
+	char env_string[1024];
+	do 	{
+		MEM_StrCopy(env_read,env_string,1024);
+		if (!env_string[0]) break;
+		env_read+=strlen(env_string)+1;
+		if (!strchr(env_string,'=')) continue;		/* Remove corrupt entry? */
+		if ((strncasecmp(entry,env_string,strlen(entry))==0) && 
+			env_string[strlen(entry)]=='=') continue;
+		MEM_BlockWrite(env_write,env_string,strlen(env_string)+1);
+		env_write+=strlen(env_string)+1;
+	} while (1);
+/* TODO Maybe save the program name sometime. not really needed though */
+	/* Save the new entry */
+	if (new_string[0]) {
+		sprintf(env_string,"%s=%s",entry,new_string);
+		MEM_BlockWrite(env_write,env_string,strlen(env_string)+1);
+		env_write+=strlen(env_string)+1;
 	}
-	/* Now add the string if there is space available */
-	if (env_size<(strlen(env_entry)+strlen(new_string)+2)) return false;
-	if (!*new_string) return true;
-	sprintf(envstart,"%s=%s",env_entry,new_string);
-	envstart+=strlen(envstart)+1;
-	*envstart++=0;*envstart++=0;*envstart++=0;
+	/* Clear out the final piece of the environment */
+	mem_writed(env_write,0);
 	return true;
 }
 
-//TODO Hash table :)
+class CONFIG : public Program {
+public:
+	void Run(void);
+};
+
+void MSG_Write(const char *);
+
+void CONFIG::Run(void) {
+	FILE * f;
+	if (cmd->FindString("-writeconf",temp_line,true)) {
+		f=fopen(temp_line.c_str(),"wb+");
+		if (!f) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
+			return;
+		}
+		fclose(f);
+		control->PrintConfig(temp_line.c_str());
+		return;
+	}
+	if (cmd->FindString("-writelang",temp_line,true)) {
+		f=fopen(temp_line.c_str(),"wb+");
+		if (!f) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
+			return;
+		}
+		fclose(f);
+		MSG_Write(temp_line.c_str());
+		return;
+	}
+	WriteOut(MSG_Get("PROGRAM_CONFIG_USAGE"));
+}
 
 
-void PROGRAMS_Init(void) {
+static void CONFIG_ProgramStart(Program * * make) {
+	*make=new CONFIG;
+}
+
+
+void PROGRAMS_Init(Section* sec) {
 	/* Setup a special callback to start virtual programs */
 	call_program=CALLBACK_Allocate();
 	CALLBACK_Setup(call_program,&PROGRAMS_Handler,CB_RETF);
+	PROGRAMS_MakeFile("CONFIG.COM",CONFIG_ProgramStart);
+
+	MSG_Add("PROGRAM_CONFIG_FILE_ERROR","Can't open file %s\n");
+	MSG_Add("PROGRAM_CONFIG_USAGE","Config tool:\nUse -writeconf filename to write the current config.\nUse -writelang filename to write the current language strings.\n");
 }

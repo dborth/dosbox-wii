@@ -21,6 +21,7 @@
 
 /* Enable the debugger, this only seems to work in win32 for now. */
 #define C_DEBUG 0
+#define C_HEAVY_DEBUG 0
 
 /* Enable the logging of extra information for debugging to the console */
 #define C_LOGGING 0
@@ -47,17 +48,5 @@
 #define DEBUG_SBLASTER 0	/* SoundBlaster Debugging*/
 #define DEBUG_DMA 0			/* DMA Debugging */
 #define DEBUG_DOS 0			/* DOS Debugging */
-
-#define LOG_MSG S_Warn
-
-#if C_LOGGING
-#define LOG_DEBUG S_Warn
-#define LOG_WARN S_Warn
-#define LOG_ERROR S_Warn
-#else
-#define LOG_DEBUG
-#define LOG_WARN
-#define LOG_ERROR
-#endif
 
 #endif

@@ -19,7 +19,7 @@
 
 #include <stdlib.h>
 #include <stdarg.h>
-
+#include "setup.h"
 #include "shell_inc.h"
 
 Bitu call_shellstop;
@@ -28,10 +28,8 @@ static Bitu shellstop_handler(void) {
 	return CBRET_STOP;
 }
 
-static void SHELL_ProgramStart(PROGRAM_Info * info) {
-	DOS_Shell * tempshell=new DOS_Shell(info);
-	tempshell->Run();
-	delete tempshell;
+static void SHELL_ProgramStart(Program * * make) {
+	*make=new DOS_Shell;
 }
 
 #define AUTOEXEC_SIZE 4096
@@ -53,7 +51,7 @@ void SHELL_AddAutoexec(char * line,...) {
 }
 
 
-DOS_Shell::DOS_Shell(PROGRAM_Info * info):Program(info) {
+DOS_Shell::DOS_Shell():Program(){
 	input_handle=STDIN;
 	echo=true;
 	exit=false;
@@ -96,16 +94,19 @@ void DOS_Shell::ParseLine(char * line) {
 
 
 void DOS_Shell::Run(void) {
-	/* Check for a direct Command */
-	if (strncasecmp(prog_info->cmd_line,"/C ",3)==0) {
-		ParseLine(prog_info->cmd_line+3);
+	char input_line[CMD_MAXLINE];
+	std::string line;
+	if (cmd->FindString("/C",line,true)) {
+		strcpy(input_line,line.c_str());
+		line.erase();
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
 	WriteOut(MSG_Get("SHELL_STARTUP"));
-	char input_line[CMD_MAXLINE];
-	if (strncasecmp(prog_info->cmd_line,"/INIT ",6)==0) {
-		ParseLine(prog_info->cmd_line+6);
+	if (cmd->FindString("/INIT",line,true)) {
+		strcpy(input_line,line.c_str());
+		line.erase();
+		ParseLine(input_line);
 	}
 	do {
 		if (bf && bf->ReadLine(input_line)) {
@@ -132,51 +133,138 @@ void DOS_Shell::SyntaxError(void) {
 
 
 
+void AUTOEXEC_Init(Section * sec) {
+    MSG_Add("AUTOEXEC_CONFIGFILE_HELP","Add here the lines you want to execute on startup.\n");
+	/* Register a virtual AUOEXEC.BAT file */
+
+	Section_line * section=static_cast<Section_line *>(sec);
+	char * extra=(char *)section->data.c_str();
+	if (extra) SHELL_AddAutoexec(extra);
+	/* Check to see for extra command line options to be added */
+	std::string line;
+	while (control->cmdline->FindString("-c",line,true)) {
+		SHELL_AddAutoexec((char *)line.c_str());	
+	}
+	/* Check for first command being a directory or file */
+	char buffer[CROSS_LEN];
+	if (control->cmdline->FindCommand(1,line)) {
+		struct stat test;
+		strcpy(buffer,line.c_str());
+		if (stat(buffer,&test)) {
+			getcwd(buffer,CROSS_LEN);
+			strcat(buffer,line.c_str());
+			if (stat(buffer,&test)) goto nomount;
+		}
+		if (test.st_mode & S_IFDIR) { 
+			SHELL_AddAutoexec("MOUNT C %s",buffer);
+			SHELL_AddAutoexec("C:");
+		} else {
+			char * name=strrchr(buffer,CROSS_FILESPLIT);
+			if (!name) goto nomount;
+			*name++=0;
+			if (access(buffer,F_OK)) goto nomount;
+			SHELL_AddAutoexec("MOUNT C %s",buffer);
+			SHELL_AddAutoexec("C:");
+			SHELL_AddAutoexec(name);
+		}
+	}
+nomount:
+	VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,strlen(autoexec_data));
+}
+
+static char * path_string="PATH=Z:\\";
+static char * comspec_string="COMSPEC=Z:\\COMMAND.COM";
+static char * full_name="Z:\\COMMAND.COM";
+static char * init_line="/INIT AUTOEXEC.BAT";
 
 void SHELL_Init() {
+	/* Add messages */
+	MSG_Add("SHELL_CMD_HELP","supported commands are:\n");
+	MSG_Add("SHELL_CMD_ECHO_ON","ECHO is on\n");
+	MSG_Add("SHELL_CMD_ECHO_OFF","ECHO is off\n");
+	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s\n");
+	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s\n");
+	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s\n");
+	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %\n");
+	MSG_Add("SHELL_SYNTAXERROR","The syntax of the command is incorrect.\n");
+	MSG_Add("SHELL_CMD_SET_NOT_SET","Environment variable %s not defined\n");
+	MSG_Add("SHELL_CMD_SET_OUT_OF_SPACE","Not enough environment space left.\n");
+	MSG_Add("SHELL_CMD_IF_EXIST_MISSING_FILENAME","IF EXIST: Missing filename.\n");
+	MSG_Add("SHELL_CMD_IF_ERRORLEVEL_MISSING_NUMBER","IF ERRORLEVEL: Missing number.\n");
+	MSG_Add("SHELL_CMD_IF_ERRORLEVEL_INVALID_NUMBER","IF ERRORLEVEL: Invalid number.\n");
+	MSG_Add("SHELL_CMD_GOTO_MISSING_LABEL","No label supplied to GOTO command.\n");
+	MSG_Add("SHELL_CMD_GOTO_LABEL_NOT_FOUND","GOTO: Label %s not found.\n");
+	MSG_Add("SHELL_CMD_FILE_NOT_FOUND","File %s not found.\n");
+	MSG_Add("SHELL_CMD_FILE_EXISTS","File %s already exists.\n");
+	MSG_Add("SHELL_CMD_DIR_INTRO","Directory of %s.\n");
+	MSG_Add("SHELL_CMD_DIR_PATH_ERROR","Illegal Path\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%5d File(s) %17s Bytes\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free\n");
+	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\n");
+	MSG_Add("SHELL_EXECUTE_ILLEGAL_COMMAND","Illegal command: %s.\n");
+	MSG_Add("SHELL_STARTUP","DOSBox Shell v" VERSION "\nFor Help and supported commands type: HELP\n\nHAVE FUN!\nThe DOSBox Team\n\n");
+	MSG_Add("SHELL_CMD_CHDIR_HELP","Change Directory.\n");
+    MSG_Add("SHELL_CMD_CLS_HELP","Clear screen.\n");
+    MSG_Add("SHELL_CMD_DIR_HELP","Directory View.\n");
+    MSG_Add("SHELL_CMD_ECHO_HELP","Display messages and enable/disable command echoing.\n");
+    MSG_Add("SHELL_CMD_EXIT_HELP","Exit from the shell.\n");
+    MSG_Add("SHELL_CMD_HELP_HELP","Show help.\n");
+    MSG_Add("SHELL_CMD_MKDIR_HELP","Make Directory.\n");
+    MSG_Add("SHELL_CMD_RMDIR_HELP","Remove Directory.\n");
+    MSG_Add("SHELL_CMD_SET_HELP","Change environment variables.\n");
+    MSG_Add("SHELL_CMD_IF_HELP","Performs conditional processing in batch programs.\n");
+    MSG_Add("SHELL_CMD_GOTO_HELP","Jump to a labeled line in a batch script.\n");
+    MSG_Add("SHELL_CMD_TYPE_HELP","Display the contents of a text-file.\n");
+    MSG_Add("SHELL_CMD_REM_HELP","Add comments in a batch file.\n");
+
+    /* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
+
 	CALLBACK_Setup(call_shellstop,shellstop_handler,CB_IRET);
 	PROGRAMS_MakeFile("COMMAND.COM",SHELL_ProgramStart);
+
 	/* Now call up the shell for the first time */
-	Bit16u psp_seg=DOS_GetMemory(16);
-	Bit16u env_seg=DOS_GetMemory(1+(4096/16));
+	Bit16u psp_seg=DOS_GetMemory(16+1)+1;
+	Bit16u env_seg=DOS_GetMemory(1+(4096/16))+1;
 	Bit16u stack_seg=DOS_GetMemory(2048/16);
 	SegSet16(ss,stack_seg);
 	reg_sp=2046;
-	/* Setup a fake MCB for the environment */
-	MCB * env_mcb=(MCB *)HostMake(env_seg,0);
+	/* Setup MCB and the environment */
+	MCB * env_mcb=(MCB *)HostMake(env_seg-1,0);
 	env_mcb->psp_segment=psp_seg;
 	env_mcb->size=4096/16;
-	real_writed(env_seg+1,0,0);
+	PhysPt env_write=PhysMake(env_seg,0);
+	MEM_BlockWrite(env_write,path_string,strlen(path_string)+1);
+	env_write+=strlen(path_string)+1;
+	MEM_BlockWrite(env_write,comspec_string,strlen(comspec_string)+1);
+	env_write+=strlen(comspec_string)+1;
+	mem_writeb(env_write++,0);
+	mem_writew(env_write,1);
+	env_write+=2;
+	MEM_BlockWrite(env_write,full_name,strlen(full_name)+1);
 
-	PSP * psp=(PSP *)HostMake(psp_seg,0);
-	Bit32u i;
-	for (i=0;i<20;i++) psp->files[i]=0xff;
-	psp->files[STDIN]=DOS_FindDevice("CON");
-	psp->files[STDOUT]=DOS_FindDevice("CON");
-	psp->files[STDERR]=DOS_FindDevice("CON");
-	psp->files[STDAUX]=DOS_FindDevice("CON");
-	psp->files[STDNUL]=DOS_FindDevice("CON");
-	psp->files[STDPRN]=DOS_FindDevice("CON");
-	psp->max_files=20;
-	psp->file_table=RealMake(psp_seg,offsetof(PSP,files));
-	/* Save old DTA in psp */
-	psp->dta=dos.dta;
-	/* Set the environment and clear it */
-	psp->environment=env_seg+1;
-	mem_writew(Real2Phys(RealMake(env_seg+1,0)),0);
+	DOS_PSP psp(psp_seg);
+	psp.MakeNew(0);
+	psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
+	psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
+	psp.SetParent(psp_seg);
+	/* Set the environment */
+	psp.SetEnvironment(env_seg);
+	/* Set the command line for the shell start up */
+	CommandTail tail;
+	tail.count=strlen(init_line);
+	strcpy(tail.buffer,init_line);
+	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
 	/* Setup internal DOS Variables */
-	dos.dta=RealMake(psp_seg,0x80);
+	dos.dta=psp.GetDTA();
 	dos.psp=psp_seg;
-	PROGRAM_Info info;
-	strcpy(info.full_name,"Z:\\COMMAND.COM");
-	info.psp_seg=psp_seg;
-	MEM_BlockRead(PhysMake(dos.psp,0),&info.psp_copy,sizeof(PSP));
-	char line[256];
-	strcpy(line,"/INIT Z:\\AUTOEXEC.BAT");
-	info.cmd_line=line;
 
-/* Handle the last AUTOEXEC.BAT Setup stuff */
-	VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,strlen(autoexec_data));
-	SHELL_ProgramStart(&info);
+	Program * new_program;
+	SHELL_ProgramStart(&new_program);
+	new_program->Run();
+	delete new_program;
 }

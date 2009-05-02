@@ -19,6 +19,7 @@
 #ifndef __VIDEO_H
 #define __VIDEO_H
 
+
 typedef void (GFX_DrawHandler)(Bit8u * vidstart);
 /* Used to reply to the renderer what size to set */
 typedef void (GFX_ResizeHandler)(Bitu * width,Bitu * height);
@@ -44,7 +45,6 @@ void GFX_Resize(Bitu width,Bitu height,Bitu bpp,GFX_ResizeHandler * resize);
 void GFX_Start(void);
 void GFX_Stop(void);
 void GFX_SwitchFullScreen(void);
-
 
 #endif
 

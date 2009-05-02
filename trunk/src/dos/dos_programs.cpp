@@ -28,69 +28,97 @@
 
 class MOUNT : public Program {
 public:
-	MOUNT(PROGRAM_Info * program_info):Program(program_info){};
-	void Run(void){
+	void Run(void)
+	{
+		DOS_Drive * newdrive;char drive;
+		
 		/* Parse the command line */
 		/* if the command line is empty show current mounts */
-		if (!*prog_info->cmd_line) {
-			WriteOut("Current mounted drives are\n");
+		if (!cmd->GetCount()) {
+			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_1"));
 			for (int d=0;d<DOS_DRIVES;d++) {
 				if (Drives[d]) {
-					WriteOut("Drive %c is mounted as %s\n",d+'A',Drives[d]->GetInfo());
+					WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),d+'A',Drives[d]->GetInfo());
 				}
 			}
 			return;
 		}
+		std::string type="dir";
+		cmd->FindString("-t",type,true);
+		if (type=="floppy" || type=="dir") {
+			Bit16u sizes[4];
+			Bit8u mediaid;
+			std::string str_size;
+			if (type=="floppy") {
+				str_size="512,1,2847,2847";/* All space free */
+				mediaid=0xF0;		/* Floppy 1.44 media */
+			}
+			if (type=="dir") {
+				str_size="512,127,16513,1700";
+				mediaid=0xF8;		/* Hard Disk */
+			}
+			cmd->FindString("-size",str_size,true);
+			char number[20];const char * scan=str_size.c_str();
+			Bitu index=0;Bitu count=0;
+			/* Parse the str_size string */
+			while (*scan) {
+				if (*scan==',') {
+					number[index]=0;sizes[count++]=atoi(number);
+					index=0;
+				} else number[index++]=*scan;
+				scan++;
+			}
+			number[index]=0;sizes[count++]=atoi(number);
 
-		char drive;	drive=toupper(*prog_info->cmd_line);
 
-		char * dir=strchr(prog_info->cmd_line,' ');	if (dir) {
-			if (!*dir) dir=0;
-			else dir=trim(dir);
+			if (!cmd->FindCommand(2,temp_line)) goto showusage;
+			if (!temp_line.size()) goto showusage;
+			struct stat test;
+			if (stat(temp_line.c_str(),&test)) {
+				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_1"),temp_line.c_str());
+				return;
+			}
+			/* Not a switch so a normal directory/file */
+			if (!(test.st_mode & S_IFDIR)) {
+				WriteOut(MSG_Get("PROGRAM_MOUNT_ERROR_2"),temp_line.c_str());
+				return;
+			}
+			if (temp_line[temp_line.size()-1]!=CROSS_FILESPLIT) temp_line+=CROSS_FILESPLIT;
+			newdrive=new localDrive(temp_line.c_str(),sizes[0],sizes[1],sizes[2],sizes[3],mediaid);
 		}
-		if (!isalpha(drive) || !dir) {
-			WriteOut("Usage MOUNT Drive-Letter Local-Directory\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
-			return;
-		};
-		struct stat test;
-		if (stat(dir,&test)) {
-			WriteOut("Directory %s Doesn't exist",dir);
-			return;
-		}
-		/* Not a switch so a normal directory/file */
-		if (!(test.st_mode & S_IFDIR)) {
-			WriteOut("%s isn't a directory",dir);
-			return;
-		}
+		cmd->FindCommand(1,temp_line);
+		if (temp_line.size()>1) goto showusage;
+		drive=toupper(temp_line[0]);
+		if (!isalpha(drive)) goto showusage;
 		if (Drives[drive-'A']) {
-			WriteOut("Drive %c already mounted with %s\n",drive,Drives[drive-'A']->GetInfo());
+			WriteOut(MSG_Get("PROGRAM_MOUNT_ALLREADY_MOUNDTED"),drive,Drives[drive-'A']->GetInfo());
+			if (newdrive) delete newdrive;
 			return;
 		}
-		char fulldir[DOS_PATHLENGTH];
-		strcpy(fulldir,dir);
-		static char theend[2]={CROSS_FILESPLIT,0};
-		char * last=strrchr(fulldir,CROSS_FILESPLIT);
-		if (!last || *(++last))  strcat(fulldir,theend);
-		Drives[drive-'A']=new localDrive(fulldir);
-		WriteOut("Mounting drive %c as %s\n",drive,fulldir);
+		if (!newdrive) E_Exit("DOS:Can't create drive");
+		Drives[drive-'A']=newdrive;
+		/* Set the correct media byte in the table */
+		mem_writeb(Real2Phys(dos.tables.mediaid)+drive-'A',newdrive->GetMediaByte());
+		WriteOut("Drive %c mounted as %s\n",drive,newdrive->GetInfo());
+		return;
+showusage:
+		WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"));
+		return;
 	}
 };
 
-static void MOUNT_ProgramStart(PROGRAM_Info * info) {
-	MOUNT * tempmount=new MOUNT(info);
-	tempmount->Run() ;
-	delete tempmount;
+static void MOUNT_ProgramStart(Program * * make) {
+	*make=new MOUNT;
 }
 
 class MEM : public Program {
 public:
-	MEM(PROGRAM_Info * program_info):Program(program_info){};
 	void Run(void) {
 		/* Show conventional Memory */
 		WriteOut("\n");
 		Bit16u seg,blocks;blocks=0xffff;
 		DOS_AllocateMemory(&seg,&blocks);
-		WriteOut("%10d Kb free conventional memory\n",blocks*16/1024);
+		WriteOut(MSG_Get("PROGRAM_MEM_CONVEN"),blocks*16/1024);
 		/* Test for and show free XMS */
 		reg_ax=0x4300;CALLBACK_RunRealInt(0x2f);
 		if (reg_al==0x80) {
@@ -99,7 +127,7 @@ public:
 			reg_ah=8;
 			CALLBACK_RunRealFar(xms_seg,xms_off);
 			if (!reg_bl) {
-				WriteOut("%10d Kb free extended memory\n",reg_dx);
+				WriteOut(MSG_Get("PROGRAM_MEM_EXTEND"),reg_dx);
 			}
 		}	
 		/* Test for and show free EMS */
@@ -108,34 +136,26 @@ public:
 			DOS_CloseFile(handle);
 			reg_ah=0x42;
 			CALLBACK_RunRealInt(0x67);
-			WriteOut("%10d Kb free expanded memory\n",reg_bx*16);
+			WriteOut(MSG_Get("PROGRAM_MEM_EXPAND"),reg_bx*16);
 		}
 	}
 };
 
 
-
-static void MEM_ProgramStart(PROGRAM_Info * info) {
-	MEM mem(info);
-	mem.Run();
+static void MEM_ProgramStart(Program * * make) {
+	*make=new MEM;
 }
 
 
 #if !defined (WIN32)						/* Unix */
+
 class UPCASE : public Program {
 public:
-	UPCASE(PROGRAM_Info * program_info);
 	void Run(void);
-	void upcasedir(char * directory);
+	void upcasedir(const char * directory);
 };
 
-
-UPCASE::UPCASE(PROGRAM_Info * info):Program(info) {
-
-}
-
-
-void UPCASE::upcasedir(char * directory) {
+void UPCASE::upcasedir(const char * directory) {
 	DIR * sdir;
 	char fullname[512];
 	char newname[512];
@@ -143,10 +163,10 @@ void UPCASE::upcasedir(char * directory) {
 	struct stat finfo;
 
 	if(!(sdir=opendir(directory)))	{
-		WriteOut("Failed to open directory %s\n",directory);
+		WriteOut(MSG_Get("PROGRAM_UPCASE_ERROR_DIR"),directory);
 		return;
 	}
-	WriteOut("Scanning directory %s\n",fullname);
+	WriteOut(MSG_Get("PROGRAM_UPCASE_SCANNING_DIR"),fullname);
 	while (tempdata=readdir(sdir)) {
 		if (strcmp(tempdata->d_name,".")==0) continue;
 		if (strcmp(tempdata->d_name,"..")==0) continue;
@@ -157,7 +177,7 @@ void UPCASE::upcasedir(char * directory) {
 		strcat(newname,"/");
 		upcase(tempdata->d_name);
 		strcat(newname,tempdata->d_name);
-		WriteOut("Renaming %s to %s\n",fullname,newname);
+		WriteOut(MSG_Get("PROGRAM_UPCASE_RENAME"),fullname,newname);
 		rename(fullname,newname);
 		stat(fullname,&finfo);
 		if(S_ISDIR(finfo.st_mode)) {
@@ -171,42 +191,60 @@ void UPCASE::upcasedir(char * directory) {
 void UPCASE::Run(void) {
 	/* First check if the directory exists */
 	struct stat info;
-	WriteOut("UPCASE 0.1 Directory case convertor.\n");
-	if (!strlen(prog_info->cmd_line)) {
-		WriteOut("Usage UPCASE [local directory]\n");
-		WriteOut("This tool will convert all files and subdirectories in a directory.\n");
-		WriteOut("Be VERY sure this directory contains only dos related material.\n");
-		WriteOut("Otherwise you might horribly screw up your filesystem.\n");
+	WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_1"));
+	if (!cmd->GetCount()) {
+		WriteOut(MSG_Get("PROGRAM_UPCASE_USAGE"));
 		return;
 	}
-	if (stat(prog_info->cmd_line,&info)) {
-		WriteOut("%s doesn't exist\n",prog_info->cmd_line);
+	cmd->FindCommand(1,temp_line);
+	if (stat(temp_line.c_str(),&info)) {
+		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_ERROR_1"),temp_line.c_str());
 		return;
 	}
 	if(!S_ISDIR(info.st_mode)) {
-		WriteOut("%s isn't a directory\n",prog_info->cmd_line);
+		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_ERROR_2"),temp_line.c_str());
 		return;
 	}
-	WriteOut("Converting the wrong directories can be very harmfull, please be carefull.\n");
-	WriteOut("Are you really really sure you want to convert %s to upcase?Y/N\n",prog_info->cmd_line);
+	WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_CHOICE"),temp_line.c_str());
 	Bit8u key;Bit16u n=1;
 	DOS_ReadFile(STDIN,&key,&n);
 	if (toupper(key)=='Y') {
-		upcasedir(prog_info->cmd_line);	
+		upcasedir(temp_line.c_str());	
 	} else {
-		WriteOut("Okay better not do it.\n");
+		WriteOut(MSG_Get("PROGRAM_UPCASE_RUN_NO"));
 	}
 }
 
-static void UPCASE_ProgramStart(PROGRAM_Info * info) {
-	UPCASE * tempUPCASE=new UPCASE(info);
-	tempUPCASE->Run();
-	delete tempUPCASE;
+static void UPCASE_ProgramStart(Program * * make) {
+	*make=new UPCASE;
 }
-
 #endif
 
 void DOS_SetupPrograms(void) {
+    /*Add Messages */
+	MSG_Add("PROGRAM_MOUNT_STATUS_2","Drive %c is mounted as %s\n");
+	MSG_Add("PROGRAM_MOUNT_STATUS_1","Current mounted drives are:\n");
+    MSG_Add("PROGRAM_MOUNT_ERROR_1","Directory %s doesn't exist.\n");
+    MSG_Add("PROGRAM_MOUNT_ERROR_2","%s isn't a directory\n");
+    MSG_Add("PROGRAM_MOUNT_ALLREADY_MOUNTED","Drive %c already mounted with %s\n");
+    MSG_Add("PROGRAM_MOUNT_USAGE","Usage MOUNT Drive-Letter Local-Directory\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
+
+    MSG_Add("PROGRAM_MEM_CONVEN","%10d Kb free conventional memory\n");
+    MSG_Add("PROGRAM_MEM_EXTEND","%10d Kb free extended memory\n");
+    MSG_Add("PROGRAM_MEM_EXPAND","%10d Kb free expanded memory\n");
+
+#if !defined (WIN32)                        /* Unix */
+    MSG_Add("PROGRAM_UPCASE_ERROR_DIR","Failed to open directory %s\n");
+    MSG_Add("PROGRAM_UPCASE_SCANNING_DIR","Scanning directory %s\n");
+    MSG_Add("PROGRAM_UPCASE_RENAME","Renaming %s to %s\n");
+    MSG_Add("PROGRAM_UPCASE_RUN_1","UPCASE 0.1 Directory case convertor.\n");
+    MSG_Add("PROGRAM_UPCASE_USAGE","Usage UPCASE [local directory]\nThis tool will convert all files and subdirectories in a directory.\nBe VERY sure this directory contains only dos related material.\nOtherwise you might horribly screw up your filesystem.\n");
+    MSG_Add("PROGRAM_UPCASE_RUN_ERROR_1","%s doesn't exist\n");
+    MSG_Add("PROGRAM_UPCASE_RUN_ERROR_2","%s isn't a directory\n");
+    MSG_Add("PROGRAM_UPCASE_RUN_CHOICE","Converting the wrong directories can be very harmfull, please be carefull.\nAre you really really sure you want to convert %s to upcase?Y/N\n");
+    MSG_Add("PROGRAM_UPCASE_RUN_NO","Okay better not do it.\n");
+#endif
+    /*regular setup*/
 	PROGRAMS_MakeFile("MOUNT.COM",MOUNT_ProgramStart);
 	PROGRAMS_MakeFile("MEM.COM",MEM_ProgramStart);
 #if !defined (WIN32)						/* Unix */
