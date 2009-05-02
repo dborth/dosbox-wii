@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -67,7 +67,7 @@ void CALLBACK_Idle(void) {
 }
 
 static Bitu default_handler(void) {
-	LOG_WARN("Illegal Unhandled Interrupt Called %X",lastint);
+	LOG(LOG_ERROR|LOG_CPU,"Illegal Unhandled Interrupt Called %X",lastint);
 	return CBRET_NONE;
 };
 
@@ -167,14 +167,13 @@ void CALLBACK_Init(Section* sec) {
 	real_writeb((Bit16u)CB_SEG,(call_idle<<4)+13,0x38);
 	real_writew((Bit16u)CB_SEG,(call_idle<<4)+14,call_idle);
 
-#if C_DEBUG	
 	/* Setup all Interrupt to point to the default handler */
 	call_default=CALLBACK_Allocate();
 	CALLBACK_Setup(call_default,&default_handler,CB_IRET);
-	for (i=0;i<256;i++) {
+	/* Only setup default handler for first half of interrupt table */
+	for (i=0;i<0x40;i++) {
 		real_writed(0,i*4,CALLBACK_RealPointer(call_default));
 	}
-#endif
 }
 
 

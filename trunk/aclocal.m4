@@ -1,4 +1,4 @@
-# aclocal.m4 generated automatically by aclocal 1.6.1 -*- Autoconf -*-
+# aclocal.m4 generated automatically by aclocal 1.6.3 -*- Autoconf -*-
 
 # Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2002
 # Free Software Foundation, Inc.
@@ -173,9 +173,155 @@ int main (int argc, char *argv[])
   rm -f conf.sdltest
 ])
 
+dnl Configure Paths for Alsa
+dnl Some modifications by Richard Boulton <richard-alsa@tartarus.org>
+dnl Christopher Lansdown <lansdoct@cs.alfred.edu>
+dnl Jaroslav Kysela <perex@suse.cz>
+dnl Last modification: alsa.m4,v 1.22 2002/05/27 11:14:20 tiwai Exp
+dnl AM_PATH_ALSA([MINIMUM-VERSION [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]]])
+dnl Test for libasound, and define ALSA_CFLAGS and ALSA_LIBS as appropriate.
+dnl enables arguments --with-alsa-prefix=
+dnl                   --with-alsa-enc-prefix=
+dnl                   --disable-alsatest  (this has no effect, as yet)
+dnl
+dnl For backwards compatibility, if ACTION_IF_NOT_FOUND is not specified,
+dnl and the alsa libraries are not found, a fatal AC_MSG_ERROR() will result.
+dnl
+AC_DEFUN(AM_PATH_ALSA,
+[dnl Save the original CFLAGS, LDFLAGS, and LIBS
+alsa_save_CFLAGS="$CFLAGS"
+alsa_save_LDFLAGS="$LDFLAGS"
+alsa_save_LIBS="$LIBS"
+alsa_found=yes
+
+dnl
+dnl Get the cflags and libraries for alsa
+dnl
+AC_ARG_WITH(alsa-prefix,
+[  --with-alsa-prefix=PFX  Prefix where Alsa library is installed(optional)],
+[alsa_prefix="$withval"], [alsa_prefix=""])
+
+AC_ARG_WITH(alsa-inc-prefix,
+[  --with-alsa-inc-prefix=PFX  Prefix where include libraries are (optional)],
+[alsa_inc_prefix="$withval"], [alsa_inc_prefix=""])
+
+dnl FIXME: this is not yet implemented
+AC_ARG_ENABLE(alsatest,
+[  --disable-alsatest      Do not try to compile and run a test Alsa program],
+[enable_alsatest=no],
+[enable_alsatest=yes])
+
+dnl Add any special include directories
+AC_MSG_CHECKING(for ALSA CFLAGS)
+if test "$alsa_inc_prefix" != "" ; then
+	ALSA_CFLAGS="$ALSA_CFLAGS -I$alsa_inc_prefix"
+	CFLAGS="$CFLAGS -I$alsa_inc_prefix"
+fi
+AC_MSG_RESULT($ALSA_CFLAGS)
+
+dnl add any special lib dirs
+AC_MSG_CHECKING(for ALSA LDFLAGS)
+if test "$alsa_prefix" != "" ; then
+	ALSA_LIBS="$ALSA_LIBS -L$alsa_prefix"
+	LDFLAGS="$LDFLAGS $ALSA_LIBS"
+fi
+
+dnl add the alsa library
+ALSA_LIBS="$ALSA_LIBS -lasound -lm -ldl -lpthread"
+LIBS=`echo $LIBS | sed 's/-lm//'`
+LIBS=`echo $LIBS | sed 's/-ldl//'`
+LIBS=`echo $LIBS | sed 's/-lpthread//'`
+LIBS=`echo $LIBS | sed 's/  //'`
+LIBS="$ALSA_LIBS $LIBS"
+AC_MSG_RESULT($ALSA_LIBS)
+
+dnl Check for a working version of libasound that is of the right version.
+min_alsa_version=ifelse([$1], ,0.1.1,$1)
+AC_MSG_CHECKING(for libasound headers version >= $min_alsa_version)
+no_alsa=""
+    alsa_min_major_version=`echo $min_alsa_version | \
+           sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\1/'`
+    alsa_min_minor_version=`echo $min_alsa_version | \
+           sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\2/'`
+    alsa_min_micro_version=`echo $min_alsa_version | \
+           sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\3/'`
+
+AC_LANG_SAVE
+AC_LANG_C
+AC_TRY_COMPILE([
+#include <alsa/asoundlib.h>
+], [
+/* ensure backward compatibility */
+#if !defined(SND_LIB_MAJOR) && defined(SOUNDLIB_VERSION_MAJOR)
+#define SND_LIB_MAJOR SOUNDLIB_VERSION_MAJOR
+#endif
+#if !defined(SND_LIB_MINOR) && defined(SOUNDLIB_VERSION_MINOR)
+#define SND_LIB_MINOR SOUNDLIB_VERSION_MINOR
+#endif
+#if !defined(SND_LIB_SUBMINOR) && defined(SOUNDLIB_VERSION_SUBMINOR)
+#define SND_LIB_SUBMINOR SOUNDLIB_VERSION_SUBMINOR
+#endif
+
+#  if(SND_LIB_MAJOR > $alsa_min_major_version)
+  exit(0);
+#  else
+#    if(SND_LIB_MAJOR < $alsa_min_major_version)
+#       error not present
+#    endif
+
+#   if(SND_LIB_MINOR > $alsa_min_minor_version)
+  exit(0);
+#   else
+#     if(SND_LIB_MINOR < $alsa_min_minor_version)
+#          error not present
+#      endif
+
+#      if(SND_LIB_SUBMINOR < $alsa_min_micro_version)
+#        error not present
+#      endif
+#    endif
+#  endif
+exit(0);
+],
+  [AC_MSG_RESULT(found.)],
+  [AC_MSG_RESULT(not present.)
+   ifelse([$3], , [AC_MSG_ERROR(Sufficiently new version of libasound not found.)])
+   alsa_found=no]
+)
+AC_LANG_RESTORE
+
+dnl Now that we know that we have the right version, let's see if we have the library and not just the headers.
+AC_CHECK_LIB([asound], [snd_ctl_open],,
+	[ifelse([$3], , [AC_MSG_ERROR(No linkable libasound was found.)])
+	 alsa_found=no]
+)
+
+if test "x$alsa_found" = "xyes" ; then
+   ifelse([$2], , :, [$2])
+   LIBS=`echo $LIBS | sed 's/-lasound//g'`
+   LIBS=`echo $LIBS | sed 's/  //'`
+   LIBS="-lasound $LIBS"
+fi
+if test "x$alsa_found" = "xno" ; then
+   ifelse([$3], , :, [$3])
+   CFLAGS="$alsa_save_CFLAGS"
+   LDFLAGS="$alsa_save_LDFLAGS"
+   LIBS="$alsa_save_LIBS"
+   ALSA_CFLAGS=""
+   ALSA_LIBS=""
+fi
+
+dnl That should be it.  Now just export out symbols:
+AC_SUBST(ALSA_CFLAGS)
+AC_SUBST(ALSA_LIBS)
+])
+
+
+
+
 AH_TOP([
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -193,7 +339,7 @@ AH_TOP([
  */
 ])
 
-AH_TEMPLATE([C_HAS_ATTRIBUTE],[Determines if the compilers supports attributes for structures])
+AH_TEMPLATE([C_HAS_ATTRIBUTE],[Determines if the compilers supports attributes for structures.])
 
 AH_BOTTOM([#define INLINE inline])
 
@@ -203,6 +349,19 @@ AH_BOTTOM([#if C_HAS_ATTRIBUTE
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #endif])
 
+AH_BOTTOM([
+/* Enable some heavy debugging options */
+#define C_HEAVY_DEBUG 0
+
+/* Enable some big compile-time increasing inlines */
+#define C_EXTRAINLINE 0
+
+/* Enable the FPU module, still only for beta testing */
+#define C_FPU 0
+
+/* Maximum memory address range in megabytes */
+#define C_MEM_MAX_SIZE 12
+])
 
 
 
@@ -333,7 +492,7 @@ AC_DEFUN([AM_AUTOMAKE_VERSION],[am__api_version="1.6"])
 # Call AM_AUTOMAKE_VERSION so it can be traced.
 # This function is AC_REQUIREd by AC_INIT_AUTOMAKE.
 AC_DEFUN([AM_SET_CURRENT_AUTOMAKE_VERSION],
-	 [AM_AUTOMAKE_VERSION([1.6.1])])
+	 [AM_AUTOMAKE_VERSION([1.6.3])])
 
 # Helper functions for option handling.                    -*- Autoconf -*-
 
@@ -665,7 +824,7 @@ AC_REQUIRE([AM_DEP_TRACK])dnl
 
 ifelse([$1], CC,   [depcc="$CC"   am_compiler_list=],
        [$1], CXX,  [depcc="$CXX"  am_compiler_list=],
-       [$1], OBJC, [depcc="$OBJC" am_compiler_list='gcc3 gcc']
+       [$1], OBJC, [depcc="$OBJC" am_compiler_list='gcc3 gcc'],
        [$1], GCJ,  [depcc="$GCJ"  am_compiler_list='gcc3 gcc'],
                    [depcc="$$1"   am_compiler_list=])
 
@@ -790,7 +949,13 @@ AC_DEFUN([_AM_OUTPUT_DEPENDENCY_COMMANDS],
 [for mf in $CONFIG_FILES; do
   # Strip MF so we end up with the name of the file.
   mf=`echo "$mf" | sed -e 's/:.*$//'`
-  if (sed 1q $mf | fgrep 'generated by automake') > /dev/null 2>&1; then
+  # Check whether this is an Automake generated Makefile or not.
+  # We used to match only the files named `Makefile.in', but
+  # some people rename them; so instead we look at the file content.
+  # Grep'ing the first line is not enough: some people post-process
+  # each Makefile.in and add a new line on top of each file to say so.
+  # So let's grep whole file.
+  if grep '^#.*generated by automake' $mf > /dev/null 2>&1; then
     dirpart=`AS_DIRNAME("$mf")`
   else
     continue

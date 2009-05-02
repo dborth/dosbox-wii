@@ -145,6 +145,16 @@ Bit16u DOS_PSP::FindFreeFileEntry(void)
 	return 0xff;
 };
 
+Bit16u DOS_PSP::FindEntryByHandle(Bit8u handle)
+{
+	PhysPt files=Real2Phys(sGet(sPSP,file_table));
+	Bit16u max = sGet(sPSP,max_files);
+	for (Bit16u i=0;i<sGet(sPSP,max_files);i++) {
+		if (mem_readb(files+i)==handle) return i;
+	}	
+	return 0xFF;
+};
+
 void DOS_PSP::CopyFileTable(DOS_PSP* srcpsp)
 {
 	/* Copy file table from calling process */
@@ -195,6 +205,23 @@ void DOS_PSP::SetFCB1(RealPt src)
 void DOS_PSP::SetFCB2(RealPt src)
 {
 	if (src) MEM_BlockCopy(PhysMake(seg,offsetof(sPSP,fcb2)),Real2Phys(src),16);
+};
+
+bool DOS_PSP::SetNumFiles(Bit16u fileNum)
+{
+	if (fileNum>20) {
+		// Allocate needed paragraphs
+		Bit16u para = (fileNum/16)+((fileNum%16)>0);
+		RealPt data	= RealMake(DOS_GetMemory(para),0);
+		sSave(sPSP,file_table,data);
+		sSave(sPSP,max_files,fileNum);
+		Bit16u i;
+		for (i=0; i<20; i++)		SetFileHandle(i,sGet(sPSP,files[i]));
+		for (i=20; i<fileNum; i++)	SetFileHandle(i,0xFF);
+	} else {
+		sSave(sPSP,max_files,fileNum);
+	};
+	return true;
 };
 
 
@@ -289,7 +316,8 @@ void DOS_FCB::SetSizeDateTime(Bit32u _size,Bit16u _date,Bit16u _time) {
 
 void DOS_FCB::GetSizeDateTime(Bit32u & _size,Bit16u & _date,Bit16u & _time) {
 	_size=sGet(sFCB,filesize);
-
+	_date=sGet(sFCB,date);
+	_time=sGet(sFCB,time);
 }
 
 void DOS_FCB::GetRecord(Bit16u & _cur_block,Bit8u & _cur_rec) {
@@ -349,15 +377,3 @@ void DOS_FCB::GetName(char * fillname) {
 	fillname[14]=0;
 }
 
-class DOS_MCB : public MemStruct{
-public:
-	DOS_MCB(Bit16u seg) { SetPt(seg); }
-private:
-	struct sMCB {
-		Bit8u type;
-		Bit16u psp_segment;
-		Bit16u size;	
-		Bit8u unused[3];
-		Bit8u filename[8];
-	} GCC_ATTRIBUTE(packed);
-};

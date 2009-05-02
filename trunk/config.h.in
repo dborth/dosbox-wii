@@ -2,7 +2,7 @@
 
 
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,14 +20,23 @@
  */
 
 
-/* Determines if the compilers supports attributes for structures */
+/* Define to 1 to enable internal debugger, requires libcurses */
+#undef C_DEBUG
+
+/* Determines if the compilers supports attributes for structures. */
 #undef C_HAS_ATTRIBUTE
+
+/* Define to 1 to enable screenshots, requires libpng */
+#undef C_SSHOT
+
+/* Define to 1 to use ALSA for MIDI */
+#undef HAVE_ALSA
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Define to 1 if you have the `png' library (-lpng). */
-#undef HAVE_LIBPNG
+/* Define to 1 if you have the `asound' library (-lasound). */
+#undef HAVE_LIBASOUND
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
@@ -52,6 +61,9 @@
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
+
+/* Compiling on Mac OS X */
+#undef MACOSX
 
 /* Name of package */
 #undef PACKAGE
@@ -80,6 +92,10 @@
 /* Version number of package */
 #undef VERSION
 
+/* Define to 1 if your processor stores words with the most significant byte
+   first (like Motorola and SPARC, unlike Intel and VAX). */
+#undef WORDS_BIGENDIAN
+
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
 
@@ -97,3 +113,17 @@
 #else
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #endif
+
+
+/* Enable some heavy debugging options */
+#define C_HEAVY_DEBUG 0
+
+/* Enable some big compile-time increasing inlines */
+#define C_EXTRAINLINE 0
+
+/* Enable the FPU module, still only for beta testing */
+#define C_FPU 0
+
+/* Maximum memory address range in megabytes */
+#define C_MEM_MAX_SIZE 12
+

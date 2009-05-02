@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,10 +15,16 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <string.h>
 #include <stdio.h>
-#include <SDL.h>
+#include <unistd.h>
+
+#include "SDL.h"
+#include "SDL_thread.h"
 
 #include "dosbox.h"
 #include "video.h"
@@ -31,17 +37,33 @@
 #include "debug.h"
 
 //#define DISABLE_JOYSTICK
+#define C_GFXTHREADED 1						//Enabled by default
+
+#if defined(MACOSX)
+extern char** environ;
+#endif
 
 struct SDL_Block {
-	bool active;							//If this isn't set don't draw
+	volatile bool active;							//If this isn't set don't draw
+	volatile bool drawing;
 	Bitu width;
 	Bitu height;
 	Bitu bpp;
 	Bitu flags;
 	GFX_ModeCallBack mode_callback;
 	bool full_screen;
+	bool nowait;
 	SDL_Surface * surface;
+	SDL_Surface * shadow_surface;
 	SDL_Joystick * joy;
+	SDL_cond *cond;
+#if C_GFXTHREADED
+	SDL_mutex *mutex;
+	SDL_Thread *thread;
+	SDL_sem *sem;
+	volatile bool kill_thread;
+#endif
+	GFX_DrawCallBack draw_callback;
 	struct {
 		bool autolock;
 		bool autoenable;
@@ -58,17 +80,22 @@ static void CaptureMouse(void);
 static void ResetScreen(void) {
 	GFX_Stop();
 	if (sdl.full_screen) { 
-	/* First get the original resolution */
-		sdl.surface=SDL_SetVideoMode(sdl.width,sdl.height,sdl.bpp,SDL_HWSURFACE|SDL_HWPALETTE|SDL_FULLSCREEN);
+		if (sdl.flags & GFX_SHADOW) {
+			/* TODO Maybe allocate a shadow surface and blit yourself and do real double buffering too */
+			sdl.surface=SDL_SetVideoMode(sdl.width,sdl.height,sdl.bpp,SDL_SWSURFACE|SDL_FULLSCREEN);
+		} else {
+			sdl.surface=SDL_SetVideoMode(sdl.width,sdl.height,sdl.bpp,SDL_HWSURFACE|SDL_HWPALETTE|SDL_FULLSCREEN|SDL_DOUBLEBUF);
+		}
 	} else {
 		if (sdl.flags & GFX_FIXED_BPP) sdl.surface=SDL_SetVideoMode(sdl.width,sdl.height,sdl.bpp,SDL_HWSURFACE);
 		else sdl.surface=SDL_SetVideoMode(sdl.width,sdl.height,0,SDL_HWSURFACE);
 	}
 	if (sdl.surface==0) {
-		E_Exit("SDL:Would be nice if I could get a surface.");
+		E_Exit("SDL:Can't get a surface error:%s.",SDL_GetError());
 	}
+
 	SDL_WM_SetCaption(VERSION,VERSION);
-/* also fill up gfx_info structure */
+
 	Bitu flags=MODE_SET;
 	if (sdl.full_screen) flags|=MODE_FULLSCREEN;
 	if (sdl.mode_callback) sdl.mode_callback(sdl.surface->w,sdl.surface->h,sdl.surface->format->BitsPerPixel,sdl.surface->pitch,flags);
@@ -76,18 +103,16 @@ static void ResetScreen(void) {
 }
 
 
-void GFX_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu flags,GFX_ModeCallBack callback) {
+void GFX_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu flags,GFX_ModeCallBack mode_callback, GFX_DrawCallBack draw_callback){
 	GFX_Stop();
 	sdl.width=width;
 	sdl.height=height;
 	sdl.bpp=bpp;
 	sdl.flags=flags;
-	sdl.mode_callback=callback;
+	sdl.mode_callback=mode_callback;
+	sdl.draw_callback=draw_callback;
 	ResetScreen();
-	GFX_Start();
 }
-
-
 
 
 static void CaptureMouse(void) {
@@ -109,32 +134,63 @@ static void SwitchFullScreen(void) {
 	} else {
 		if (sdl.mouse.locked) CaptureMouse();
 	}
-
 	ResetScreen();
 }
-//only prototype existed
+
 void GFX_SwitchFullScreen(void) {
     SwitchFullScreen();
 }
 
-void * GFX_StartUpdate(void) {
-	if (sdl.active) {
-		if (SDL_MUSTLOCK(sdl.surface)) if (SDL_LockSurface(sdl.surface)) return 0;
-		return sdl.surface->pixels;
-	} else {
-		return 0;
-	}
+static void SDL_DrawScreen(void) {
+		sdl.drawing=true;
+		if (SDL_MUSTLOCK(sdl.surface)) {
+			if (SDL_LockSurface(sdl.surface)) {
+				sdl.drawing=false;
+				return;
+			}
+		}
+		sdl.draw_callback(sdl.surface->pixels);
+		if (SDL_MUSTLOCK(sdl.surface)) {
+			SDL_UnlockSurface(sdl.surface);
+		}
+		SDL_Flip(sdl.surface);
+		sdl.drawing=false;	
 }
 
-void GFX_EndUpdate(void) {
-	if (SDL_MUSTLOCK(sdl.surface)) SDL_UnlockSurface(sdl.surface );
-	if (sdl.full_screen) SDL_Flip(sdl.surface);
-	else SDL_UpdateRect(sdl.surface,0,0,0,0);
+#if C_GFXTHREADED
+int SDL_DisplayThread(void * data) {
+	while (!SDL_SemWait(sdl.sem)) {
+		if (sdl.kill_thread) return 0;
+		if (!sdl.active) continue;
+		if (sdl.drawing) continue;
+		SDL_mutexP(sdl.mutex);
+		SDL_DrawScreen();
+		SDL_mutexV(sdl.mutex);
+	}
+	return 0;
+}
+#endif
+
+void GFX_DoUpdate(void) {
+	if (!sdl.active) 
+		return;
+	if (sdl.drawing)return;
+#if C_GFXTHREADED
+	SDL_SemPost(sdl.sem);
+#else 
+	SDL_DrawScreen();
+#endif
+
 }
 
 
 void GFX_SetPalette(Bitu start,Bitu count,GFX_PalEntry * entries) {
-/* I should probably not change the GFX_PalEntry :) */
+#if C_GFXTHREADED
+	if (SDL_mutexP(sdl.mutex)) {
+		E_Exit("SDL:Can't lock Mutex");
+	};
+#endif
+	/* I should probably not change the GFX_PalEntry :) */
 	if (sdl.full_screen) {
 		if (!SDL_SetPalette(sdl.surface,SDL_PHYSPAL,(SDL_Color *)entries,start,count)) {
 			E_Exit("SDL:Can't set palette");
@@ -144,6 +200,11 @@ void GFX_SetPalette(Bitu start,Bitu count,GFX_PalEntry * entries) {
 			E_Exit("SDL:Can't set palette");
 		}
 	}
+#if C_GFXTHREADED
+	if (SDL_mutexV(sdl.mutex)) {
+		E_Exit("SDL:Can't release Mutex");
+	};
+#endif
 }
 
 Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue) {
@@ -151,9 +212,15 @@ Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue) {
 }
 
 void GFX_Stop() {
+#if C_GFXTHREADED
+	SDL_mutexP(sdl.mutex);
+#endif
 	sdl.active=false;
-}
+#if C_GFXTHREADED
+	SDL_mutexV(sdl.mutex);
+#endif
 
+}
 
 void GFX_Start() {
 	sdl.active=true;
@@ -163,6 +230,18 @@ static void GUI_ShutDown(Section * sec) {
 	GFX_Stop();
 	if (sdl.mouse.locked) CaptureMouse();
 	if (sdl.full_screen) SwitchFullScreen();
+#if C_GFXTHREADED
+	sdl.kill_thread=true;
+	SDL_SemPost(sdl.sem);
+	SDL_WaitThread(sdl.thread,0);
+	SDL_DestroyMutex(sdl.mutex);
+	SDL_DestroySemaphore(sdl.sem);
+#endif
+
+}
+
+static void KillSwitch(void){
+	throw 1;
 }
 
 static void GUI_StartUp(Section * sec) {
@@ -171,23 +250,26 @@ static void GUI_StartUp(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	sdl.active=false;
 	sdl.full_screen=false;
+	sdl.nowait=section->Get_bool("nowait");
 	sdl.mouse.locked=false;
 	sdl.mouse.requestlock=false;
 	sdl.mouse.autoenable=section->Get_bool("autolock");
 	sdl.mouse.autolock=false;
 	sdl.mouse.sensitivity=section->Get_int("sensitivity");
-	GFX_SetSize(640,400,8,0,0);
+#if C_GFXTHREADED
+	sdl.kill_thread=false;
+	sdl.mutex=SDL_CreateMutex();
+	sdl.sem=SDL_CreateSemaphore(0);
+	sdl.thread=SDL_CreateThread(&SDL_DisplayThread,0);
+#endif
+	/* Initialize screen for first time */
+	GFX_SetSize(640,400,8,0,0,0);
 	SDL_EnableKeyRepeat(250,30);
-	
+	SDL_EnableUNICODE(1);
 /* Get some Keybinds */
-	KEYBOARD_AddEvent(KBD_f10,CTRL_PRESSED,CaptureMouse);
-	KEYBOARD_AddEvent(KBD_enter,ALT_PRESSED,SwitchFullScreen);
-}
-
-void GFX_ShutDown() {
-	if (sdl.full_screen) SwitchFullScreen();
-	if (sdl.mouse.locked) CaptureMouse();
-	GFX_Stop();
+	KEYBOARD_AddEvent(KBD_f9,KBD_MOD_CTRL,KillSwitch);
+	KEYBOARD_AddEvent(KBD_f10,KBD_MOD_CTRL,CaptureMouse);
+	KEYBOARD_AddEvent(KBD_enter,KBD_MOD_ALT,SwitchFullScreen);
 }
 
 void Mouse_AutoLock(bool enable) {
@@ -197,7 +279,7 @@ void Mouse_AutoLock(bool enable) {
 }
 
 static void HandleKey(SDL_KeyboardEvent * key) {
-	Bit32u code;
+	KBD_KEYS code;
 	switch (key->keysym.sym) {
 	case SDLK_1:code=KBD_1;break;
 	case SDLK_2:code=KBD_2;break;
@@ -252,8 +334,6 @@ static void HandleKey(SDL_KeyboardEvent * key) {
 	case SDLK_F10:code=KBD_f10;break;
 	case SDLK_F11:code=KBD_f11;break;
 	case SDLK_F12:code=KBD_f12;break;
-
-//	KBD_esc,KBD_tab,KBD_backspace,KBD_enter,KBD_space,
 
 	case SDLK_ESCAPE:code=KBD_esc;break;
 	case SDLK_TAB:code=KBD_tab;break;
@@ -314,13 +394,19 @@ static void HandleKey(SDL_KeyboardEvent * key) {
 	case SDLK_KP_ENTER:code=KBD_kpenter;break;
 	case SDLK_KP_PERIOD:code=KBD_kpperiod;break;
 
-//	case SDLK_:code=key_;break;
 	/* Special Keys */
 	default:
-//TODO maybe give warning for keypress unknown		
-		return;
+		code=KBD_1;
+		LOG(LOG_ERROR|LOG_KEYBOARD,"Unhandled SDL keysym %d",key->keysym.sym);
+		break;
 	}
-	KEYBOARD_AddKey(code,(key->state==SDL_PRESSED));
+	/* Check the modifiers */
+	Bitu mod=
+		((key->keysym.mod & KMOD_CTRL) ? KBD_MOD_CTRL : 0) |
+		((key->keysym.mod & KMOD_ALT) ? KBD_MOD_ALT : 0) |
+		((key->keysym.mod & KMOD_SHIFT) ? KBD_MOD_SHIFT : 0);
+	Bitu ascii=key->keysym.unicode<128 ? key->keysym.unicode : 0;
+	KEYBOARD_AddKey(code,ascii,mod,(key->state==SDL_PRESSED));
 }
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
@@ -395,7 +481,10 @@ static void HandleVideoResize(SDL_ResizeEvent * resize) {
 
 }
 
+static Bit8u laltstate = SDL_KEYUP;
+
 void GFX_Events() {
+	
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 	    switch (event.type) {
@@ -408,6 +497,9 @@ void GFX_Events() {
 			break;
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
+			// ignore event lalt+tab
+			if (event.key.keysym.sym==SDLK_LALT) laltstate = event.key.type;
+			if ((event.key.keysym.sym==SDLK_TAB) && (laltstate==SDL_KEYDOWN)) break;
 			HandleKey(&event.key);
 			break;
 		case SDL_MOUSEMOTION:
@@ -428,7 +520,7 @@ void GFX_Events() {
 			HandleVideoResize(&event.resize);
 			break;
 		case SDL_QUIT:
-			E_Exit("Closed the SDL Window");
+			throw(true);
 			break;
 		}
     }
@@ -442,17 +534,17 @@ void GFX_ShowMsg(char * msg) {
 };
 
 int main(int argc, char* argv[]) {
-	
-#if C_DEBUG
-	DEBUG_SetupConsole();
-#endif
-	
+
 	try {
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
 		control=&myconf;
+	
+#if C_DEBUG
+		DEBUG_SetupConsole();
+#endif
 
-		if ( SDL_Init(SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
+		if ( SDL_Init(SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
 #ifndef DISABLE_JOYSTICK
 		|SDL_INIT_JOYSTICK
 	
@@ -462,7 +554,7 @@ int main(int argc, char* argv[]) {
 		sdl_sec->Add_bool("fullscreen",false);
 		sdl_sec->Add_bool("autolock",true);
 		sdl_sec->Add_int("sensitivity",100);
-
+		sdl_sec->Add_bool("nowait",true);
 		/* Init all the dosbox subsystems */
 		DOSBOX_Init();
 		std::string config_file;
@@ -473,6 +565,7 @@ int main(int argc, char* argv[]) {
 		}
 		/* Parse the config file */
 		control->ParseConfigFile(config_file.c_str());
+		control->ParseEnv(environ);
 		/* Init all the sections */
 		control->Init();
 		/* Some extra SDL Functions */
@@ -494,8 +587,11 @@ int main(int argc, char* argv[]) {
         if (sdl.full_screen) SwitchFullScreen();
 	    if (sdl.mouse.locked) CaptureMouse();
 		LOG_MSG("Exit to error: %sPress enter to continue.",error);
-		fgetc(stdin);
+		if(!sdl.nowait) fgetc(stdin);
 	}
-    GFX_ShutDown();
-	return 0;
+	catch (...){ 
+        if (sdl.full_screen) SwitchFullScreen();
+	    if (sdl.mouse.locked) CaptureMouse();
+	}
+    return 0;
 };

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#include <png.h>
+#include <sys/types.h>
 #include <dirent.h>
 
 #include "dosbox.h"
@@ -25,11 +25,9 @@
 #include "setup.h"
 #include "keyboard.h"
 #include "cross.h"
-
+#include "support.h"
 
 #define MAX_RES 2048
-
-typedef void (* RENDER_Part_Handler)(Bit8u * src,Bitu x,Bitu y,Bitu dx,Bitu dy);
 
 struct PalData {
 	struct { 
@@ -55,17 +53,16 @@ static struct {
 		Bitu pitch;
 		Bitu flags;
 		float ratio;
-		RENDER_Part_Handler part_handler;
+		RENDER_Draw_Handler draw_handler;
 	} src;
 	struct {
 		Bitu width;
 		Bitu height;
 		Bitu pitch;
-		Bitu next_line;
-		Bitu next_pixel;
 		Bitu bpp;		/* The type of BPP the operation requires for input */
-		RENDER_Operation want_type;
 		RENDER_Operation type;
+		RENDER_Operation want_type;
+		RENDER_Part_Handler part_handler;
 		void * dest;
 		void * buffer;
 		void * pixels;
@@ -76,6 +73,13 @@ static struct {
 	} frameskip;
 	Bitu flags;
 	PalData pal;
+#if (C_SSHOT)
+	struct {
+		RENDER_Operation type;
+		Bitu pitch;
+		const char * dir;
+	} shot;
+#endif
 	bool keep_small;
 	bool screenshot;
 	bool active;
@@ -85,9 +89,12 @@ static struct {
 static void RENDER_ResetPal(void);
 
 /* Include the different rendering routines */
-#include "render_support.h"
+#include "render_normal.h"
+#include "render_scale2x.h"
 
-static const char * snapshots_dir;
+
+#if (C_SSHOT)
+#include <png.h>
 
 /* Take a screenshot of the data that should be rendered */
 static void TakeScreenShot(Bit8u * bitmap) {
@@ -99,18 +106,10 @@ static void TakeScreenShot(Bit8u * bitmap) {
 	png_color palette[256];
 	Bitu i;
 
-/* First try to alloacte the png structures */
-	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL, NULL);
-	if (!png_ptr) return;
-	info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr) {
-		png_destroy_write_struct(&png_ptr,(png_infopp)NULL);
-		return;
-    }	
 /* Find a filename to open */
-	dir=opendir(snapshots_dir);
+	dir=opendir(render.shot.dir);
 	if (!dir) {
-		LOG_WARN("Can't open snapshot dir %s",snapshots_dir);
+		LOG_MSG("Can't open snapshot directory %s",render.shot.dir);
 		return;
 	}
 	while (dir_ent=readdir(dir)) {
@@ -125,14 +124,24 @@ static void TakeScreenShot(Bit8u * bitmap) {
 		if (num>=last) last=num+1;
 	}
 	closedir(dir);
-	sprintf(file_name,"%s%csnap%05d.png",snapshots_dir,CROSS_FILESPLIT,last);
-/* Open the actual file */
+	sprintf(file_name,"%s%csnap%04d.png",render.shot.dir,CROSS_FILESPLIT,last);
+	/* Open the actual file */
 	FILE * fp=fopen(file_name,"wb");
 	if (!fp) {
-		LOG_WARN("Can't open snapshot file %s",file_name);
+		LOG_MSG("Can't open file %s for snapshot",file_name);
 		return;
 	}
-/* Finalize the initing of png library */
+
+	/* First try to alloacte the png structures */
+	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL, NULL);
+	if (!png_ptr) return;
+	info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+		png_destroy_write_struct(&png_ptr,(png_infopp)NULL);
+		return;
+    }
+
+	/* Finalize the initing of png library */
 	png_init_io(png_ptr, fp);
 	png_set_compression_level(png_ptr,Z_BEST_COMPRESSION);
 	
@@ -161,7 +170,7 @@ static void TakeScreenShot(Bit8u * bitmap) {
 	/*Allocate an array of scanline pointers*/
 	row_pointers=(png_bytep*)malloc(render.src.height*sizeof(png_bytep));
 	for (i=0;i<render.src.height;i++) {
-		row_pointers[i]=(bitmap+i*render.src.pitch);
+		row_pointers[i]=(bitmap+i*render.src.width);
 	}
 	/*tell the png library what to encode.*/
 	png_set_rows(png_ptr, info_ptr, row_pointers);
@@ -177,8 +186,15 @@ static void TakeScreenShot(Bit8u * bitmap) {
 	
 	/*clean up dynamically allocated RAM.*/
 	free(row_pointers);
+	LOG_MSG("Took snapshot in file %s",file_name);
 }
 
+static void EnableScreenShot(void) {
+	render.shot.type=render.op.type;
+	render.op.type=OP_Shot;
+}
+
+#endif
 
 
 /* This could go kinda bad with multiple threads */
@@ -224,36 +240,40 @@ void RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue) {
 	if (render.pal.last<entry) render.pal.last=entry;
 }
 
-bool RENDER_StartUpdate(void) {
+void RENDER_DoUpdate(void) {
 	if (render.frameskip.count<render.frameskip.max) {
 		render.frameskip.count++;
-		return false;
+		return;
 	}
 	render.frameskip.count=0;
 	if (render.src.bpp==8) Check_Palette();
-	switch (render.op.type) {
-	case OP_None:
-		render.op.dest=render.op.pixels=GFX_StartUpdate();
-		break;
-	}
-	if (render.op.dest) return true;
-	else return false;
+	GFX_DoUpdate();
 }
 
-void RENDER_EndUpdate(void) {
+static void RENDER_DrawScreen(void * data) {
 	switch (render.op.type) {
+doagain:
 	case OP_None:
-		/* Nothing to be done */
-		render.op.pixels=0;
+		render.op.dest=render.op.pixels=data;
+		render.src.draw_handler(render.op.part_handler);
 		break;
+	case OP_Scale2x:
+		render.op.dest=render.op.pixels=data;
+		render.src.draw_handler(render.op.part_handler);
+		break;
+#if (C_SSHOT)
+	case OP_Shot:
+		render.shot.pitch=render.op.pitch;
+		render.op.pitch=render.src.width;
+		render.op.pixels=malloc(render.src.width*render.src.height);
+		render.src.draw_handler(Normal_DN_8);
+		TakeScreenShot((Bit8u *)render.op.pixels);
+		free(render.op.pixels);
+		render.op.pitch=render.shot.pitch;
+		render.op.type=render.shot.type;
+		goto doagain;
+#endif
 	}
-	GFX_EndUpdate();
-}
-
-/* Update the data ready to be sent out for blitting onto the screen */
-void RENDER_Part(Bit8u * src,Bitu x,Bitu y,Bitu dx,Bitu dy) {
-	(render.src.part_handler)(src,x,y,dx,dy);
-	return;
 }
 
 static void RENDER_Resize(Bitu * width,Bitu * height) {
@@ -268,46 +288,71 @@ static void RENDER_Resize(Bitu * width,Bitu * height) {
 	}
 }
 
-void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu pitch,float ratio,Bitu flags) {
+void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,Bitu pitch,float ratio,Bitu flags,RENDER_Draw_Handler draw_handler) {
 	if ((!width) || (!height) || (!pitch)) { 
 		render.active=false;return;	
 	}
+	GFX_Stop();
 	render.src.width=width;
 	render.src.height=height;
 	render.src.bpp=bpp;
 	render.src.pitch=pitch;
 	render.src.ratio=ratio;
 	render.src.flags=flags;
+	render.src.draw_handler=draw_handler;
 
-	GFX_ModeCallBack callback;
+	GFX_ModeCallBack mode_callback=0;
 	switch (render.op.want_type) {
 
 	case OP_None:
 normalop:
 		switch (render.src.flags) {
-		case DoubleNone:break;
-		case DoubleWidth:width*=2;break;
-		case DoubleHeight:height*=2;break;
+		case DoubleNone:
+			flags=0;			
+			break;
+		case DoubleWidth:
+			width*=2;
+			flags=GFX_SHADOW;
+			break;
+		case DoubleHeight:
+			height*=2;
+			flags=0;
+			break;
 		case DoubleBoth:
 			if (render.keep_small) {
 				render.src.flags=0;
+				flags=0;
 			} else {
 				width*=2;height*=2;
+				flags=GFX_SHADOW;
 			}
 			break;
 		}
-		flags=0;
-		callback=Render_Normal_CallBack;
+		mode_callback=Render_Normal_CallBack;
+		break;
+	case OP_Scale2x:
+		switch (render.src.flags) {
+		case DoubleBoth:
+			if (render.keep_small) goto normalop;
+			mode_callback=Render_Scale2x_CallBack;
+			width*=2;height*=2;
+#if defined (SCALE2X_NORMAL)
+			flags=GFX_SHADOW;
+#elif defined (SCALE2X_MMX)
+			flags=GFX_FIXED_BPP;
+#endif
+			break;
+		default:
+			goto normalop;
+		}		
+
 		break;
 	default:
 		goto normalop;
 	
 	}
-	GFX_SetSize(width,height,bpp,flags,callback);
-}
-
-static void EnableScreenShot(void) {
-	render.screenshot=true;
+	GFX_SetSize(width,height,bpp,flags,mode_callback,RENDER_DrawScreen);
+	GFX_Start();
 }
 
 static void IncreaseFrameSkip(void) {
@@ -320,18 +365,32 @@ static void DecreaseFrameSkip(void) {
 	LOG_MSG("Frame Skip at %d",render.frameskip.max);
 }
 
-
 void RENDER_Init(Section * sec) {
+	MSG_Add("RENDER_CONFIGFILE_HELP","Available scalers: scale2x, none\n");
 	Section_prop * section=static_cast<Section_prop *>(sec);
-	snapshots_dir=section->Get_string("snapshots");
 
 	render.pal.first=256;
 	render.pal.last=0;
 	render.keep_small=section->Get_bool("keepsmall");
 	render.frameskip.max=section->Get_int("frameskip");
 	render.frameskip.count=0;
-	KEYBOARD_AddEvent(KBD_f5,CTRL_PRESSED,EnableScreenShot);
-	KEYBOARD_AddEvent(KBD_f7,CTRL_PRESSED,DecreaseFrameSkip);
-	KEYBOARD_AddEvent(KBD_f8,CTRL_PRESSED,IncreaseFrameSkip);
+#if (C_SSHOT)
+	render.shot.dir=section->Get_string("snapshots");
+	KEYBOARD_AddEvent(KBD_f5,KBD_MOD_CTRL,EnableScreenShot);
+#endif
+	const char * scaler;std::string cline;
+	if (control->cmdline->FindString("-scaler",cline,false)) {
+		scaler=cline.c_str();
+	} else {
+		scaler=section->Get_string("scaler");
+	}
+	if (!strcasecmp(scaler,"none")) render.op.want_type=OP_None;
+	else if (!strcasecmp(scaler,"scale2x")) render.op.want_type=OP_Scale2x;
+	else {
+		render.op.want_type=OP_None;
+		LOG_MSG("Illegal scaler type %s,falling back to none.",scaler);
+	}
+	KEYBOARD_AddEvent(KBD_f7,KBD_MOD_CTRL,DecreaseFrameSkip);
+	KEYBOARD_AddEvent(KBD_f8,KBD_MOD_CTRL,IncreaseFrameSkip);
 }
 

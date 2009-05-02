@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -141,7 +141,7 @@ static void write_p21(Bit32u port,Bit8u val) {
 		};
 		break;
 	case 1:                        /* icw2          */
-		LOG_DEBUG("PIC0:Base vector %X",val);
+		LOG(LOG_PIC,"PIC0:Base vector %X",val);
 		for (i=0;i<=7;i++) {
 			irqs[i].vector=(val&0xf8)+i;
 		};
@@ -377,7 +377,7 @@ static void AddEntry(PICEntry * entry) {
 
 void PIC_AddEvent(PIC_EventHandler handler,Bitu delay) {
 	if (!pic.free_entry) {
-		LOG_WARN("PIC:No free queue entries");
+		LOG(LOG_ERROR|LOG_PIC,"Event queue full");
 		return;
 	}
 	PICEntry * entry=pic.free_entry;
@@ -392,7 +392,7 @@ void PIC_AddEvent(PIC_EventHandler handler,Bitu delay) {
 void PIC_AddIRQ(Bitu irq,Bitu delay) {
 	if (irq>15) E_Exit("PIC:Illegal IRQ");
 	if (!pic.free_entry) {
-		LOG_WARN("PIC:No free queue entries");
+		LOG(LOG_ERROR|LOG_PIC,"Event queue full");
 		return;
 	}
 	PICEntry * entry=pic.free_entry;
@@ -441,9 +441,6 @@ Bitu PIC_RunQueue(void) {
 		CPU_CycleLeft+=CPU_Cycles;
 		CPU_Cycles=0;
 	}
-	if (CPU_CycleLeft<=0) {
-		CPU_CycleLeft=CPU_CycleMax;
-	}
 	while (CPU_CycleLeft>0) {
 		/* Check the queue for an entry */
 		Bitu index=PIC_Index();
@@ -482,8 +479,10 @@ Bitu PIC_RunQueue(void) {
 		}
 		if (ret) return ret;	
 	}
-	/* Go through the list of scheduled irq's and lower their index with 1000 */
+	/* Prepare everything for next round */
+	CPU_CycleLeft=CPU_CycleMax;
 	PIC_Ticks++;
+	/* Go through the list of scheduled irq's and lower their index with 1000 */
 	PICEntry * entry=pic.next_entry;
 	while (entry) {
 		if (entry->index>1000) entry->index-=1000;

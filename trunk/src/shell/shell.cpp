@@ -67,7 +67,7 @@ Bit32u DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn) {
 
 
 	return 1;
-}
+}	
 	
 
 
@@ -157,14 +157,14 @@ void AUTOEXEC_Init(Section * sec) {
 			if (stat(buffer,&test)) goto nomount;
 		}
 		if (test.st_mode & S_IFDIR) { 
-			SHELL_AddAutoexec("MOUNT C %s",buffer);
+			SHELL_AddAutoexec("MOUNT C \"%s\"",buffer);
 			SHELL_AddAutoexec("C:");
 		} else {
 			char * name=strrchr(buffer,CROSS_FILESPLIT);
 			if (!name) goto nomount;
 			*name++=0;
 			if (access(buffer,F_OK)) goto nomount;
-			SHELL_AddAutoexec("MOUNT C %s",buffer);
+			SHELL_AddAutoexec("MOUNT C \"%s\"",buffer);
 			SHELL_AddAutoexec("C:");
 			SHELL_AddAutoexec(name);
 		}
@@ -188,7 +188,7 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s\n");
 	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s\n");
-    MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s\n");
+	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s\n");
 	MSG_Add("SHELL_SYNTAXERROR","The syntax of the command is incorrect.\n");
 	MSG_Add("SHELL_CMD_SET_NOT_SET","Environment variable %s not defined\n");
 	MSG_Add("SHELL_CMD_SET_OUT_OF_SPACE","Not enough environment space left.\n");
@@ -204,14 +204,15 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free\n");
 	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\n");
 	MSG_Add("SHELL_EXECUTE_ILLEGAL_COMMAND","Illegal command: %s.\n");
+    MSG_Add("SHELL_CMD_PAUSE","Press any key to continue.\n");
+	MSG_Add("SHELL_CMD_PAUSE_HELP","Waits for 1 keystroke to continue.\n");
+	MSG_Add("SHELL_CMD_COPY_FAILURE","Copy failure : %s.\n");
+	MSG_Add("SHELL_CMD_COPY_SUCCESS","   %d File(s) copied.\n");
 
 	MSG_Add("SHELL_STARTUP","DOSBox Shell v" VERSION "\n"
-	   "DOSBox doesn't not run protected mode games!\n"
+	   "DOSBox does not run protected mode games!\n"
 	   "For supported shell commands type: HELP\n"
-#if! defined (WIN32)
-		"DOSBox only works with upcase filenames as dos is case-insensitive.\n"
-		"You can use the UPCASE command for this, but please be careful.\n" 
-#endif
+	   "For a short introduction type: INTRO\n\n"
 	   "For more information read the README file in DOSBox directory.\n"
 	   "\nHAVE FUN!\nThe DOSBox Team\n\n"
 	);
@@ -232,6 +233,8 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_NO_WILD","This is a simple version of the command, no wildcards allowed!\n");
 	MSG_Add("SHELL_CMD_RENAME_HELP","Renames files.\n");
     MSG_Add("SHELL_CMD_DELETE_HELP","Removes files.\n");
+	MSG_Add("SHELL_CMD_COPY_HELP","Copy files.\n");
+    MSG_Add("SHELL_CMD_INTRO_HELP","Gives an introduction into dosbox\n");
     /* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
 	/* Setup the startup CS:IP to kill the last running machine when exitted */
@@ -249,9 +252,10 @@ void SHELL_Init() {
 	SegSet16(ss,stack_seg);
 	reg_sp=2046;
 	/* Setup MCB and the environment */
-	MCB * env_mcb=(MCB *)HostMake(env_seg-1,0);
-	env_mcb->psp_segment=psp_seg;
-	env_mcb->size=4096/16;
+	DOS_MCB envmcb((Bit16u)(env_seg-1));
+	envmcb.SetPSPSeg(psp_seg);
+	envmcb.SetSize(4096/16);
+	
 	PhysPt env_write=PhysMake(env_seg,0);
 	MEM_BlockWrite(env_write,path_string,strlen(path_string)+1);
 	env_write+=strlen(path_string)+1;

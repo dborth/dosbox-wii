@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -197,17 +197,24 @@ static Bit16u check_key(void) {
 
 
 static Bitu IRQ1_Handler(void) {
-    //TODO CAPSLOCK NUMLOCK SCROLLLOCK maybe :)
-	Bit8u code=IO_Read(0x60);
+	/* Read the code */
+	Bitu scancode,ascii,mod;
+#if 0
+	scancode=IO_Read(0x60);
+	ascii=0;
+	mod=0;
+#else
+	KEYBOARD_ReadKey(scancode,ascii,mod);
+//	LOG(0,"Got code %X ascii %C mod %X",scancode,ascii,mod);
+#endif	
+
 	//TODO maybe implement the int 0x15 ah=4f scancode lookup hook
-/* Changed it so the flag handling takes place in here too */
 	Bit8u flags1=mem_readb(BIOS_KEYBOARD_FLAGS1);
 	Bit8u flags2=mem_readb(BIOS_KEYBOARD_FLAGS2);
 	Bit8u flags3=mem_readb(BIOS_KEYBOARD_FLAGS3);
-	switch (code) {
+	switch (scancode) {
 	/* First the hard ones  */
-	case 0xe0:
-		//TODO Think of something else maybe
+	case 0xe0:													/* Extended key */
 		flags3|=2;
 		break;
 	case 29:													/* Ctrl Pressed */
@@ -258,17 +265,18 @@ static Bitu IRQ1_Handler(void) {
 		/* Now Handle the releasing of keys and see if they match up for a code */
 		flags3&=~2;									//Reset 0xE0 Flag
 		/* Handle the actual scancode */
-		if (code & 0x80) goto irq1_end;
-		if (code > MAX_SCAN_CODE) goto irq1_end;
-		if (flags1 & 8) {							/* Alt is being pressed */
-			asciiscan=scan_to_scanascii[code].alt;
-		} else if (flags1 & 4) {					/* Ctrl is being pressed */
-			asciiscan=scan_to_scanascii[code].control;
-		} else if (flags1 & 3) {					/* Either shift is being pressed */
-//TODO Maybe check for Capslock sometime in some bored way
-			asciiscan=scan_to_scanascii[code].shift;
+		if (scancode & 0x80) goto irq1_end;
+		if (scancode > MAX_SCAN_CODE) goto irq1_end;
+		if (mod & KBD_MOD_ALT) {							/* Alt is being pressed */
+			asciiscan=scan_to_scanascii[scancode].alt;
+		} else if (ascii) {
+			asciiscan=(scancode << 8) | ascii;
+		} else if (mod & KBD_MOD_CTRL) {					/* Ctrl is being pressed */
+			asciiscan=scan_to_scanascii[scancode].control;
+		} else if (mod & KBD_MOD_SHIFT) {					/* Either shift is being pressed */
+			asciiscan=scan_to_scanascii[scancode].shift;
 		} else {
-			asciiscan=scan_to_scanascii[code].normal;
+			asciiscan=scan_to_scanascii[scancode].normal;
 		}
 		add_key(asciiscan);
 	};
@@ -277,10 +285,12 @@ irq1_end:
 	mem_writeb(BIOS_KEYBOARD_FLAGS2,flags2);
 	mem_writeb(BIOS_KEYBOARD_FLAGS3,flags3);
 	IO_Write(0x20,0x20);
+#if 0
 	/* Signal the keyboard for next code */
 	Bit8u old61=IO_Read(0x61);
 	IO_Write(0x61,old61 | 128);
 	IO_Write(0x61,old61 & 127);
+#endif
 	return CBRET_NONE;
 }
 
@@ -312,8 +322,7 @@ static Bitu INT16_Handler(void) {
 		reg_al=mem_readb(BIOS_KEYBOARD_FLAGS1);
 		break;
 	case 0x03:	/* SET TYPEMATIC RATE AND DELAY */
-//Have to implement this trhough SDL
-		LOG_DEBUG("INT16:Unhandled Typematic Rate Call %2X",reg_al);
+		LOG(LOG_ERROR|LOG_BIOS,"INT16:Unhandled Typematic Rate Call %2X",reg_al);
 		break;
 	case 0x05:	/* STORE KEYSTROKE IN KEYBOARD BUFFER */
 //TODO make add_key bool :)
@@ -326,10 +335,10 @@ static Bitu INT16_Handler(void) {
 		break;
 	case 0x55:
 		/* Weird call used by some dos apps */
-		LOG_DEBUG("INT16:55:Word TSR compatible call");
+		LOG(LOG_BIOS,"INT16:55:Word TSR compatible call");
 		break;
 	default:
-		LOG_ERROR("INT16:Unhandled call %02X",reg_ah);
+		LOG(LOG_ERROR|LOG_BIOS,"INT16:Unhandled call %02X",reg_ah);
 		break;
 
 	};

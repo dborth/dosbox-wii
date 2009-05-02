@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ VGAMODES vga_modes[MODE_MAX+1]=
  {0x03, 0xFFFF, TEXT,  CTEXT,   4, 4, 720, 400, 80, 25, 9, 16, 0xB800, 0x1000, 0x67, 0xFF, 0x01, 0x00, 0x00, 0x01, 0x02},
  {0x04, 0xFFFF, GRAPH, CGA,     4, 2, 320, 200, 40, 25, 8, 8,  0xB800, 0x0800, 0x63, 0xFF, 0x02, 0x01, 0x01, 0x02, 0x01},
  {0x05, 0xFFFF, GRAPH, CGA,     1, 2, 320, 200, 40, 25, 8, 8,  0xB800, 0x0800, 0x63, 0xFF, 0x02, 0x01, 0x01, 0x02, 0x01},
- {0x06, 0xFFFF, GRAPH, CGA,     1, 1, 640, 200, 80, 25, 8, 8,  0xB800, 0x1000, 0x63, 0xFF, 0x03, 0x02, 0x02, 0x03, 0x01},
+ {0x06, 0xFFFF, GRAPH, CGA2,    1, 1, 640, 200, 80, 25, 8, 8,  0xB800, 0x1000, 0x63, 0xFF, 0x03, 0x02, 0x02, 0x03, 0x01},
  {0x07, 0xFFFF, TEXT,  MTEXT,   4, 4, 720, 400, 80, 25, 9, 16, 0xB000, 0x1000, 0x66, 0xFF, 0x04, 0x03, 0x03, 0x01, 0x00},
  
  {0x0D, 0xFFFF, GRAPH, PLANAR4, 8, 4, 320, 200, 40, 25, 8, 8,  0xA000, 0x2000, 0x63, 0xFF, 0x05, 0x04, 0x04, 0x04, 0x01},
@@ -239,9 +239,11 @@ static Bit8u FindVideoMode(Bit8u mode) {
 }
 
 VGAMODES * GetCurrentMode(void) {
-	Bit8u ret=FindVideoMode(real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE)&127);
-	if (ret==0xff) return 0;
-	return &vga_modes[ret];
+	Bit8u mode=real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE)&127;
+	if (mode==int10.mode) return int10.entry;
+	int10.mode=mode;
+	int10.entry=&vga_modes[FindVideoMode(mode)];
+	return int10.entry;
 }
 
 
@@ -257,7 +259,7 @@ void INT10_SetVideoMode(Bit8u mode) {
 	mode&=mode & 127;
 	line=FindVideoMode(mode);
 	if (line==0xff) {
-		LOG_ERROR("INT10:Trying to set non supported video mode %X",mode);
+		LOG(LOG_ERROR|LOG_INT10,"INT10:Trying to set non supported video mode %X",mode);
 		return;	
 	}
 	
@@ -312,7 +314,7 @@ void INT10_SetVideoMode(Bit8u mode) {
 	IO_Read(VGAREG_ACTL_RESET);
 
 	//Set the palette
-	if ((modeset_ctl&0x08)==0x8) LOG_DEBUG("INT10:Mode set without palette");
+	if ((modeset_ctl&0x08)==0x8) LOG(LOG_INT10,"Mode set without palette");
 	if((modeset_ctl&0x08)==0) {
 		// Set the PEL mask
 		IO_Write(VGAREG_PEL_MASK,vga_modes[line].pelmask);

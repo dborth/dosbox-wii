@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include <ctype.h>
 
 #include "dosbox.h"
+#include "bios.h"
 #include "mem.h"
 #include "cpu.h"
 #include "dos_inc.h"
@@ -289,7 +290,7 @@ bool DOS_CloseFile(Bit16u entry) {
 //TODO Figure this out with devices :)	
 
 	DOS_PSP psp(dos.psp);
-	psp.SetFileHandle(entry,0xff);
+	if (entry>STDPRN) psp.SetFileHandle(entry,0xff);
 
 	/* Devices won't allow themselves to be closed or killed */
 	if (Files[handle]->Close()) {
@@ -332,7 +333,8 @@ bool DOS_CreateFile(char * name,Bit16u attributes,Bit16u * entry) {
 
 bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	/* First check for devices */
-	if (flags>2) LOG_DEBUG("Special file open command %X file %s",flags,name);
+	if (flags>2) LOG(LOG_FILES|LOG_ERROR,"Special file open command %X file %s",flags,name);
+	else LOG(LOG_FILES,"file open command %X file %s",flags,name);
 	flags&=3;
 	DOS_PSP psp(dos.psp);
 	Bit8u handle=DOS_FindDevice((char *)name);
@@ -342,6 +344,7 @@ bool DOS_OpenFile(char * name,Bit8u flags,Bit16u * entry) {
 	} else {
 		/* First check if the name is correct */
 		if (!DOS_MakeName(name,fullname,&drive)) return false;
+		
 		/* Check for a free file handle */
 			for (i=0;i<DOS_FILES;i++) {
 			if (!Files[i]) {
@@ -641,6 +644,27 @@ bool DOS_FCBOpen(Bit16u seg,Bit16u offset) {
 	DOS_FCB fcb(seg,offset);
 	char shortname[DOS_FCBNAME];Bit16u handle;
 	fcb.GetName(shortname);
+
+	/* First check if the name is correct */
+	Bit8u drive;
+	char fullname[DOS_PATHLENGTH];
+	if (!DOS_MakeName(shortname,fullname,&drive)) return false;
+	
+	/* Check, if file is already opened */
+	for (Bit16u i=0;i<DOS_FILES;i++) {
+		DOS_PSP psp(dos.psp);
+		if (Files[i] && Files[i]->IsOpen() && Files[i]->IsName(fullname)) {
+			handle = psp.FindEntryByHandle(i);
+			if (handle==0xFF) {
+				// This shouldnt happen
+				LOG(LOG_FILES|LOG_ERROR,"DOS: File %s is opened but has no psp entry.",shortname);
+				return false;
+			}
+			fcb.FileOpen((Bit8u)handle);
+			return true;
+		}
+	}
+	
 	if (!DOS_OpenFile(shortname,2,&handle)) return false;
 	fcb.FileOpen((Bit8u)handle);
 	return true;
@@ -712,7 +736,17 @@ Bit8u DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u recno)
 	Bit32u size;Bit16u date,time;
 	fcb.GetSizeDateTime(size,date,time);
 	if (pos+towrite>size) size=pos+towrite;
-	//TODO Set time to current time?
+	//time doesn't keep track of endofday
+	date = DOS_PackDate(dos.date.year,dos.date.month,dos.date.day);
+	Bit32u ticks = mem_readd(BIOS_TIMER);
+	Bit32u seconds = (ticks*10)/182;
+	Bit16u hour = (Bit16u)(seconds/3600);
+	Bit16u min = (Bit16u)((seconds % 3600)/60);
+	Bit16u sec = (Bit16u)(seconds % 60);
+	time = DOS_PackTime(hour,min,sec);
+	Bit8u temp=RealHandle(fhandle);
+	Files[temp]->time=time;
+	Files[temp]->date=date;
 	fcb.SetSizeDateTime(size,date,time);
 	if (++cur_rec>127) { cur_block++;cur_rec=0; }	
 	fcb.SetRecord(cur_block,cur_rec);

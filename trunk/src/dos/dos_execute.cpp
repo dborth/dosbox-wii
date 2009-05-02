@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -137,6 +137,9 @@ static bool MakeEnv(char * name,Bit16u * segment) {
 	}
 
 	if (parentenv) {
+		// hack to allow creation from envblock in unused mem (0xCD)
+		if (readw(envread)==0xCDCD) writew(envread,0x0000); 
+
 		for (envsize=0; ;envsize++) {
 			if (envsize>=MAXENV - ENV_KEEPFREE) {
 				DOS_SetError(DOSERR_ENVIRONMENT_INVALID);
@@ -173,20 +176,28 @@ bool DOS_NewPSP(Bit16u segment, Bit16u size)
 static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
 	
 	/* Fix the PSP for psp and environment MCB's */
-	MCB * pspmcb=(MCB *)HostMake(pspseg-1,0);
-	pspmcb->psp_segment=pspseg;
-	MCB * envmcb=(MCB *)HostMake(envseg-1,0);
-	envmcb->psp_segment=pspseg;
+	DOS_MCB mcb((Bit16u)(pspseg-1));
+	mcb.SetPSPSeg(pspseg);
+	mcb.SetPt((Bit16u)(envseg-1));
+	mcb.SetPSPSeg(pspseg);
 
 	DOS_PSP psp(pspseg);
 	psp.MakeNew(memsize);
 	psp.SetEnvironment(envseg);
-	psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
-	psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
+	/* Copy file handles */
+	if (DOS_PSP::rootpsp!=dos.psp) {
+		// TODO: Improve this 
+		// If prog wasnt started from commandline copy file table (California Games 2)
+		DOS_PSP oldpsp(dos.psp);
+		psp.CopyFileTable(&oldpsp);
+	} else {
+		psp.SetFileHandle(STDIN ,DOS_FindDevice("CON"));
+		psp.SetFileHandle(STDOUT,DOS_FindDevice("CON"));
+		psp.SetFileHandle(STDERR,DOS_FindDevice("CON"));
+		psp.SetFileHandle(STDAUX,DOS_FindDevice("CON"));
+		psp.SetFileHandle(STDNUL,DOS_FindDevice("CON"));
+		psp.SetFileHandle(STDPRN,DOS_FindDevice("CON"));
+	}
 	/* Save old DTA in psp */
 	psp.SetDTA(dos.dta);
 	/* Setup the DTA */
@@ -229,8 +240,14 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	if ((head.signature!=MAGIC1) && (head.signature!=MAGIC2)) iscom=true;
 	else {
 		headersize=head.headersize*16;
-		imagesize=(head.pages)*512-headersize; 
-		if (head.extrabytes) imagesize-=(512-head.extrabytes);
+		if (head.extrabytes) {
+			imagesize  = (head.pages-1)*512-headersize; 
+			imagesize += head.extrabytes % 512;
+		} else
+			imagesize  = head.pages*512-headersize; 
+
+		// always load st least 512 Bytes (dos cache/dos bug?)
+		if (imagesize+headersize<512) imagesize = 512-headersize;
 	}
 	if (flags!=OVERLAY) {
 		/* Create an environment block */
@@ -271,12 +288,12 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		pos=headersize;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
 		while (imagesize>0x7FFF) {
 			readsize=0x8000;DOS_ReadFile(fhandle,loadaddress,&readsize);
-			if (readsize!=0x8000) LOG_WARN("Illegal header");
+			if (readsize!=0x8000) LOG(LOG_EXEC,"Illegal header");
 			loadaddress+=0x8000;imagesize-=0x8000;
 		}
 		if (imagesize>0) {
 			readsize=(Bit16u)imagesize;DOS_ReadFile(fhandle,loadaddress,&readsize);
-			if (readsize!=imagesize) LOG_WARN("Illegal header");
+			if (readsize!=imagesize) LOG(LOG_EXEC,"Illegal header");
 		}
 		/* Relocate the exe image */
 		Bit16u relocate;
@@ -340,8 +357,8 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(csip));
 		mem_writew(SegPhys(ss)+reg_sp+4,0x200);
 		/* Setup the rest of the registers */
-		reg_ax=0;
-		reg_cx=reg_dx=reg_bx=reg_si=reg_di=reg_bp=0;
+		reg_ax=0;reg_si=0x100;
+		reg_cx=reg_dx=reg_bx=reg_di=reg_bp=0;
 		SegSet16(ds,pspseg);SegSet16(es,pspseg);
 #if C_DEBUG		
 		/* Started from debug.com, then set breakpoint at start */

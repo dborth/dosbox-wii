@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,6 +42,7 @@ Bitu errorlevel=1;
 
 /* The whole load of startups for all the subfunctions */
 void MSG_Init(Section_prop *);
+void LOG_StartUp(void);
 void MEM_Init(Section *);
 void IO_Init(Section * );
 void CALLBACK_Init(Section*);
@@ -57,6 +58,7 @@ void CPU_Init(Section*);
 //void FPU_Init();
 void DMA_Init(Section*);
 void MIXER_Init(Section*);
+void MIDI_Init(Section*);
 void HARDWARE_Init(Section*);
 
 
@@ -65,19 +67,20 @@ void JOYSTICK_Init(Section*);
 void MOUSE_Init(Section*);
 void SBLASTER_Init(Section*);
 void GUS_Init(Section*);
+void MPU401_Init(Section*);
 void ADLIB_Init(Section*);
 void PCSPEAKER_Init(Section*);
 void TANDYSOUND_Init(Section*);
 void CMS_Init(Section*);
 void DISNEY_Init(Section*);
 
-
-
 void PIC_Init(Section*);
 void TIMER_Init(Section*);
 void BIOS_Init(Section*);
 void DEBUG_Init(Section*);
 void CMOS_Init(Section*);
+
+void MSCDEX_Init(Section*);
 
 /* Dos Internal mostly */
 void EMS_Init(Section*);
@@ -158,6 +161,7 @@ void DOSBOX_Init(void) {
     secprop->Add_string("language","");
 #if C_DEBUG	
 	secprop->Add_int("warnings",4);
+	LOG_StartUp();
 #else 
 	secprop->Add_int("warnings",0);
 #endif
@@ -172,8 +176,9 @@ void DOSBOX_Init(void) {
 	secprop=control->AddSection_prop("render",&RENDER_Init);
 	secprop->Add_int("frameskip",0);
 	secprop->Add_bool("keepsmall",false);
-	secprop->Add_string("snapshots","snapshots");
-	
+	secprop->Add_string("snapshots","snaps");
+	secprop->Add_string("scaler","none");
+
 	secprop=control->AddSection_prop("cpu",&CPU_Init);
 	secprop->Add_int("cycles",1800);
 
@@ -184,6 +189,17 @@ void DOSBOX_Init(void) {
 	secprop->AddInitFunction(&JOYSTICK_Init);
 
 	secprop=control->AddSection_prop("mixer",&MIXER_Init);
+	secprop->Add_bool("nosound",false);
+	secprop->Add_int("freq",22050);
+	secprop->Add_int("blocksize",2048);
+	secprop->Add_string("wavedir","waves");
+	
+	secprop=control->AddSection_prop("midi",&MIDI_Init);
+	secprop->AddInitFunction(&MPU401_Init);
+	secprop->Add_bool("mpu401",true);
+	secprop->Add_string("device","default");
+	secprop->Add_string("config","");
+
 #if C_DEBUG
 	secprop=control->AddSection_prop("debug",&DEBUG_Init);
 #endif
@@ -192,20 +208,23 @@ void DOSBOX_Init(void) {
 	secprop->Add_int("irq",7);
 	secprop->Add_int("dma",1);
 	secprop->Add_int("hdma",5);
+	secprop->Add_int("sbrate",22050);
 	secprop->Add_bool("enabled",true);
 
 	secprop->AddInitFunction(&ADLIB_Init);
 	secprop->Add_bool("adlib",true);
 	secprop->AddInitFunction(&CMS_Init);
-    secprop->Add_bool("cms",false);
+	secprop->Add_bool("cms",false);
+	secprop->Add_int("cmsrate",22050);
 
 //	secprop=control->AddSection_prop("gus",&GUS_Init);
-	
+
 	secprop=control->AddSection_prop("disney",&DISNEY_Init);
+	secprop->Add_bool("enabled",true);
 
 	secprop=control->AddSection_prop("speaker",&PCSPEAKER_Init);
 	secprop->Add_bool("enabled",true);
-	secprop->Add_bool("sinewave",false);
+	secprop->Add_int("pcrate",22050);
 	secprop->AddInitFunction(&TANDYSOUND_Init);
 	secprop->Add_bool("tandy",false);
 
@@ -220,8 +239,11 @@ void DOSBOX_Init(void) {
 	secprop->AddInitFunction(&XMS_Init);
 	secprop->Add_int("xmssize",8);
 
+	// Mscdex
+	secprop->AddInitFunction(&MSCDEX_Init);
+
 	secline=control->AddSection_line("autoexec",&AUTOEXEC_Init);
-    
+
 	control->SetStartUp(&SHELL_Init);	
 
 #if C_FPU

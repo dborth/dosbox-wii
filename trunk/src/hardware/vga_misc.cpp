@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002  The DOSBox Team
+ *  Copyright (C) 2002-2003  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 #include "inout.h"
 #include "pic.h"
 #include "vga.h"
-
 
 static Bit8u flip=0;
 static Bit32u keep_vretrace;
@@ -49,7 +48,7 @@ static Bit8u read_p3da(Bit32u port) {
 
 
 static void write_p3d8(Bit32u port,Bit8u val) {
-	LOG_DEBUG("Write %2X to 3da",val);
+	LOG(LOG_VGAMISC,"Write %2X to 3da",val);
 	/*
 		3	Vertical Sync Select. If set Vertical Sync to the monitor is the
 			logical OR of the vertical sync and the vertical display enable.
@@ -99,18 +98,6 @@ static void write_p3c2(Bit32u port,Bit8u val) {
 
 static Bit8u read_p3cc(Bit32u port) {
 	return p3c2data;
-}
-
-
-static void EndRetrace(void) {
-	vga.config.retrace=false;
-}
-
-void VGA_StartRetrace(void) {
-	/* Setup a timer to destroy the vertical retrace bit in a few microseconds */
-	vga.config.real_start=vga.config.display_start;
-	vga.config.retrace=true;
-	PIC_AddEvent(EndRetrace,667);
 }
 
 void VGA_SetupMisc(void) {

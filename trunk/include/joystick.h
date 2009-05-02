@@ -23,3 +23,11 @@ void JOYSTICK_Button(Bitu which,Bitu num,bool pressed);
 void JOYSTICK_Move_X(Bitu which,float x);
 
 void JOYSTICK_Move_Y(Bitu which,float y);
+
+bool JOYSTICK_IsEnabled(Bitu which);
+
+bool JOYSTICK_GetButton(Bitu which, Bitu num);
+
+float JOYSTICK_GetMove_X(Bitu which);
+
+float JOYSTICK_GetMove_Y(Bitu which);
