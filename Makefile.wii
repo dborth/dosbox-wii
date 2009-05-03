@@ -39,9 +39,7 @@ LDFLAGS		= -g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,--cref
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL_ttf -lSDL_gfx -lSDL_mixer -lSDL_image -ljpeg -lpng -lz -lSDL -lfreetype \
-			-ldb -ldi -lpngu -lmxml -lmetaphrasis \
-			-lfat -lwiiuse -lz -lbte -logc -lasnd -ltremor -lfreetype -ltinysmb
+LIBS	:=	-lSDL -lfat -lwiiuse -lbte -logc 
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing

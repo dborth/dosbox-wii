@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#ifdef HW_RVL
+#include <wiiuse/WPAD.h> 
+#endif
 #include "dosbox.h"
 #include "regs.h"
 #include "control.h"
@@ -628,8 +631,19 @@ void SHELL_Init() {
 	dos.dta(RealMake(psp_seg,0x80));
 	dos.psp(psp_seg);
 
-	
+
 	SHELL_ProgramStart(&first_shell);
+
+#ifdef HW_RVL
+	printf("Press A to continue to a crash, or Home to exit.\n");
+	while (1) {
+		WPAD_ScanPads();
+		u16 buttonsDown = WPAD_ButtonsDown(0);
+		if( buttonsDown & WPAD_BUTTON_A ) break;
+		if( buttonsDown & WPAD_BUTTON_HOME ) exit(0);
+  	}
+#endif
+
 	first_shell->Run();
 	delete first_shell;
 	first_shell = 0;//Make clear that it shouldn't be used anymore
