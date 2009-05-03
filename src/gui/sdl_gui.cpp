@@ -111,7 +111,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 
 	old_unicode = SDL_EnableUNICODE(1);
 	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
-	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
+	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
 
 	// create screenshot for fade effect
 	int rs = screenshot->format->Rshift, gs = screenshot->format->Gshift, bs = screenshot->format->Bshift, am = GUI::Color::AlphaMask;
@@ -124,7 +124,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 		}
 	}
 
-	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
+	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
 	// use a blurred and sepia-toned screenshot as menu background
 	for (int y = 0; y < h; y++) {
 		Bit32u *bg = (Bit32u*)(y*background->pitch + (char*)background->pixels);
@@ -151,7 +151,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	mousetoggle = mouselocked;
 	if (mouselocked) GFX_CaptureMouse();
 
-	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 32, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
+	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 16, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
 	if (sdlscreen == NULL) E_Exit("Could not initialize video mode %ix%ix32 for UI: %s", w, h, SDL_GetError());
 
 	// fade out

@@ -980,9 +980,9 @@ static void GUI_StartUp(Section * sec) {
 	/* Set Icon (must be done before any sdl_setvideomode call) */
 	/* But don't set it on OS X, as we use a nicer external icon there. */
 #if WORDS_BIGENDIAN
-	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0xff000000,0x00ff0000,0x0000ff00,0);
+	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,16,128,0xff000000,0x00ff0000,0x0000ff00,0);
 #else
-	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0x000000ff,0x0000ff00,0x00ff0000,0);
+	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,16,128,0x000000ff,0x0000ff00,0x00ff0000,0);
 #endif
 	SDL_WM_SetIcon(logos,NULL);
 #endif
