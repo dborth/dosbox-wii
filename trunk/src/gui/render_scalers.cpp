@@ -173,7 +173,7 @@ ScalerLineBlock_t ScalerCache = {
 
 ScalerSimpleBlock_t ScaleNormal1x = {
 	"Normal",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	1,1,{
 {	Normal1x_8_8_L,		Normal1x_8_15_L ,	Normal1x_8_16_L ,	Normal1x_8_32_L },
 {	             0,		Normal1x_15_15_L,	Normal1x_15_16_L,	Normal1x_15_32_L},
@@ -190,7 +190,7 @@ ScalerSimpleBlock_t ScaleNormal1x = {
 
 ScalerSimpleBlock_t ScaleNormalDw = {
 	"Normal",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	2,1,{
 {	NormalDw_8_8_L,		NormalDw_8_15_L ,	NormalDw_8_16_L ,	NormalDw_8_32_L },
 {	             0,		NormalDw_15_15_L,	NormalDw_15_16_L,	NormalDw_15_32_L},
@@ -207,7 +207,7 @@ ScalerSimpleBlock_t ScaleNormalDw = {
 
 ScalerSimpleBlock_t ScaleNormalDh = {
 	"Normal",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	1,2,{
 {	NormalDh_8_8_L,		NormalDh_8_15_L ,	NormalDh_8_16_L ,	NormalDh_8_32_L },
 {	             0,		NormalDh_15_15_L,	NormalDh_15_16_L,	NormalDh_15_32_L},
@@ -224,7 +224,7 @@ ScalerSimpleBlock_t ScaleNormalDh = {
 
 ScalerSimpleBlock_t ScaleNormal2x = {
 	"Normal2x",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	2,2,{
 {	Normal2x_8_8_L,		Normal2x_8_15_L,	Normal2x_8_16_L,	Normal2x_8_32_L },
 {	             0,		Normal2x_15_15_L,	Normal2x_15_16_L,	Normal2x_15_32_L},
@@ -241,7 +241,7 @@ ScalerSimpleBlock_t ScaleNormal2x = {
 
 ScalerSimpleBlock_t ScaleNormal3x = {
 	"Normal3x",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	3,3,{
 {	Normal3x_8_8_L,		Normal3x_8_15_L ,	Normal3x_8_16_L ,	Normal3x_8_32_L },
 {	             0,		Normal3x_15_15_L,	Normal3x_15_16_L,	Normal3x_15_32_L},
@@ -259,7 +259,7 @@ ScalerSimpleBlock_t ScaleNormal3x = {
 #if RENDER_USE_ADVANCED_SCALERS>0
 ScalerSimpleBlock_t ScaleTV2x = {
 	"TV2x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,{
 {	0,		TV2x_8_15_L ,	TV2x_8_16_L ,	TV2x_8_32_L },
 {	0,		TV2x_15_15_L,	TV2x_15_16_L,	TV2x_15_32_L},
@@ -276,7 +276,7 @@ ScalerSimpleBlock_t ScaleTV2x = {
 
 ScalerSimpleBlock_t ScaleTV3x = {
 	"TV3x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	3,3,{
 {	0,		TV3x_8_15_L ,	TV3x_8_16_L ,	TV3x_8_32_L },
 {	0,		TV3x_15_15_L,	TV3x_15_16_L,	TV3x_15_32_L},
@@ -293,7 +293,7 @@ ScalerSimpleBlock_t ScaleTV3x = {
 
 ScalerSimpleBlock_t ScaleScan2x = {
 	"Scan2x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,{
 {	0,		Scan2x_8_15_L ,	Scan2x_8_16_L ,	Scan2x_8_32_L },
 {	0,		Scan2x_15_15_L,	Scan2x_15_16_L,	Scan2x_15_32_L},
@@ -310,7 +310,7 @@ ScalerSimpleBlock_t ScaleScan2x = {
 
 ScalerSimpleBlock_t ScaleScan3x = {
 	"Scan3x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	3,3,{
 {	0,		Scan3x_8_15_L ,	Scan3x_8_16_L ,	Scan3x_8_32_L },
 {	0,		Scan3x_15_15_L,	Scan3x_15_16_L,	Scan3x_15_32_L},
@@ -327,7 +327,7 @@ ScalerSimpleBlock_t ScaleScan3x = {
 
 ScalerSimpleBlock_t ScaleRGB2x = {
 	"RGB2x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,{
 {	0,		RGB2x_8_15_L ,	RGB2x_8_16_L ,	RGB2x_8_32_L },
 {	0,		RGB2x_15_15_L,	RGB2x_15_16_L,	RGB2x_15_32_L},
@@ -344,7 +344,7 @@ ScalerSimpleBlock_t ScaleRGB2x = {
 
 ScalerSimpleBlock_t ScaleRGB3x = {
 	"RGB3x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	3,3,{
 {	0,		RGB3x_8_15_L ,	RGB3x_8_16_L ,	RGB3x_8_32_L },
 {	0,		RGB3x_15_15_L,	RGB3x_15_16_L,	RGB3x_15_32_L},
@@ -366,7 +366,7 @@ ScalerSimpleBlock_t ScaleRGB3x = {
 #if RENDER_USE_ADVANCED_SCALERS>2
 ScalerComplexBlock_t ScaleAdvMame2x ={
 	"AdvMame2x",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	2,2,
 {	AdvMame2x_8_L,AdvMame2x_16_L,AdvMame2x_16_L,AdvMame2x_32_L},
 {	AdvMame2x_8_R,AdvMame2x_16_R,AdvMame2x_16_R,AdvMame2x_32_R}
@@ -374,7 +374,7 @@ ScalerComplexBlock_t ScaleAdvMame2x ={
 
 ScalerComplexBlock_t ScaleAdvMame3x = {
 	"AdvMame3x",
-	GFX_CAN_8|GFX_CAN_15|GFX_CAN_16|GFX_CAN_32,
+	GFX_CAN_16,
 	3,3,
 {	AdvMame3x_8_L,AdvMame3x_16_L,AdvMame3x_16_L,AdvMame3x_32_L},
 {	AdvMame3x_8_R,AdvMame3x_16_R,AdvMame3x_16_R,AdvMame3x_32_R}
@@ -383,7 +383,7 @@ ScalerComplexBlock_t ScaleAdvMame3x = {
 /* These need specific 15bpp versions */
 ScalerComplexBlock_t ScaleHQ2x ={
 	"HQ2x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,
 {	0,HQ2x_16_L,HQ2x_16_L,HQ2x_32_L},
 {	0,HQ2x_16_R,HQ2x_16_R,HQ2x_32_R}
@@ -391,7 +391,7 @@ ScalerComplexBlock_t ScaleHQ2x ={
 
 ScalerComplexBlock_t ScaleHQ3x ={
 	"HQ3x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	3,3,
 {	0,HQ3x_16_L,HQ3x_16_L,HQ3x_32_L},
 {	0,HQ3x_16_R,HQ3x_16_R,HQ3x_32_R}
@@ -399,7 +399,7 @@ ScalerComplexBlock_t ScaleHQ3x ={
 
 ScalerComplexBlock_t ScaleSuper2xSaI ={
 	"Super2xSaI",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,
 {	0,Super2xSaI_16_L,Super2xSaI_16_L,Super2xSaI_32_L},
 {	0,Super2xSaI_16_R,Super2xSaI_16_R,Super2xSaI_32_R}
@@ -407,7 +407,7 @@ ScalerComplexBlock_t ScaleSuper2xSaI ={
 
 ScalerComplexBlock_t Scale2xSaI ={
 	"2xSaI",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,
 {	0,_2xSaI_16_L,_2xSaI_16_L,_2xSaI_32_L},
 {	0,_2xSaI_16_R,_2xSaI_16_R,_2xSaI_32_R}
@@ -415,7 +415,7 @@ ScalerComplexBlock_t Scale2xSaI ={
 
 ScalerComplexBlock_t ScaleSuperEagle ={
 	"SuperEagle",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,
 {	0,SuperEagle_16_L,SuperEagle_16_L,SuperEagle_32_L},
 {	0,SuperEagle_16_R,SuperEagle_16_R,SuperEagle_32_R}
@@ -423,7 +423,7 @@ ScalerComplexBlock_t ScaleSuperEagle ={
 
 ScalerComplexBlock_t ScaleAdvInterp2x = {
 	"AdvInterp2x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	2,2,
 {	0,AdvInterp2x_15_L,AdvInterp2x_16_L,AdvInterp2x_32_L},
 {	0,AdvInterp2x_15_R,AdvInterp2x_16_R,AdvInterp2x_32_R}
@@ -431,7 +431,7 @@ ScalerComplexBlock_t ScaleAdvInterp2x = {
 
 ScalerComplexBlock_t ScaleAdvInterp3x = {
 	"AdvInterp3x",
-	GFX_CAN_15|GFX_CAN_16|GFX_CAN_32|GFX_RGBONLY,
+	GFX_CAN_16,
 	3,3,
 {	0,AdvInterp3x_15_L,AdvInterp3x_16_L,AdvInterp3x_32_L},
 {	0,AdvInterp3x_15_R,AdvInterp3x_16_R,AdvInterp3x_32_R}
