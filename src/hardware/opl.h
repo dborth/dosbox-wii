@@ -151,7 +151,7 @@ op_type op[MAXOPERATORS];
 Bits int_samplerate;
 	
 Bit8u status;
-Bit32u index;
+Bit32u opl_index;
 #if defined(OPLTYPE_IS_OPL3)
 Bit8u adlibreg[512];	// adlib register set (including second set)
 Bit8u wave_sel[44];		// waveform selection

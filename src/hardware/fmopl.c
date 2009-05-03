@@ -64,6 +64,7 @@ Revision History:
 
 //#include "driver.h"		/* use M.A.M.E. */
 #include "fmopl.h"
+#include "config.h" // INLINE
 
 #ifndef PI
 #define PI 3.14159265358979323846
