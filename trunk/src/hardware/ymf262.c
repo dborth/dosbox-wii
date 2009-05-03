@@ -45,6 +45,14 @@ differences between OPL2 and OPL3 shown in datasheets:
 
 //#include "driver.h"		/* use M.A.M.E. */
 #include "ymf262.h"
+#ifdef HW_RVL
+#undef INLINE
+#define INLINE static inline
+#endif
+#ifdef HW_DOL
+#undef INLINE
+#define INLINE static inline
+#endif
 
 #ifndef PI
 #define PI 3.14159265358979323846

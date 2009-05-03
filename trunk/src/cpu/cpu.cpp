@@ -22,7 +22,15 @@
 #include <sstream>
 #include "dosbox.h"
 #include "cpu.h"
+#ifdef HW_RVL
+// memory.h doesn't exist for Wii
+#else
+#ifdef HW_DOL
+// memory.h doesn't exist for Gamecube
+#else
 #include "memory.h"
+#endif
+#endif
 #include "debug.h"
 #include "mapper.h"
 #include "setup.h"

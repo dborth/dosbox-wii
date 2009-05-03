@@ -27,6 +27,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <stdlib.h> // rand()
 #include "dosbox.h"
 #include "opl.h"
 
@@ -510,7 +511,7 @@ void adlib_init(Bit32u samplerate) {
 	}
 
 	status = 0;
-	index = 0;
+	opl_index = 0;
 
 
 	// create vibrato table
@@ -900,11 +901,11 @@ Bitu adlib_reg_read(Bitu port) {
 }
 
 void adlib_write_index(Bitu port, Bit8u val) {
-	index = val;
+	opl_index = val;
 #if defined(OPLTYPE_IS_OPL3)
 	if ((port&3)!=0) {
 		// possibly second set
-		if (((adlibreg[0x105]&1)!=0) || (index==5)) index |= ARC_SECONDSET;
+		if (((adlibreg[0x105]&1)!=0) || (opl_index==5)) opl_index |= ARC_SECONDSET;
 	}
 #endif
 }
