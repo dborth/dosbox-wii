@@ -32,6 +32,9 @@
 #include <signal.h>
 #include <process.h>
 #endif
+#ifdef HW_RVL
+#include <wiiuse/WPAD.h> 
+#endif
 
 #include "SDL.h"
 
@@ -1598,7 +1601,9 @@ int main(int argc, char* argv[]) {
 	if(!parsed_anyconfigfile) {
 		//Try to create the userlevel configfile.
 		config_file.clear();
+#ifndef HW_RVL
 		Cross::CreatePlatformConfigDir(config_path);
+#endif
 		Cross::GetPlatformConfigName(config_file);
 		config_path += config_file;
 		if(control->PrintConfig(config_path.c_str())) {

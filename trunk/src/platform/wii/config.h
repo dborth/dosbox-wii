@@ -19,8 +19,7 @@
 #define C_HEAVY_DEBUG 0
 
 /* The type of cpu this host has */
-//#define C_TARGETCPU X86
-//#define C_TARGETCPU X86_64
+#define C_TARGETCPU POWERPC
 
 /* Define to 1 to use x86 dynamic cpu core */
 #define C_DYNAMIC_X86 0
@@ -58,10 +57,6 @@
 #define INLINE inline
 //#define DB_FASTCALL __fastcall
 
-#if defined(_MSC_VER) && (_MSC_VER >= 1400) 
-#pragma warning(disable : 4996) 
-#endif
-
 typedef         double		Real64;
 /* The internal types */
 typedef  unsigned char		Bit8u;
@@ -69,7 +64,7 @@ typedef    signed char		Bit8s;
 typedef unsigned short		Bit16u;
 typedef   signed short		Bit16s;
 typedef  unsigned long		Bit32u;
-typedef    signed long		Bit32s;
+typedef    int				Bit32s;
 typedef unsigned long long	Bit64u;
 typedef   signed long long	Bit64s;
 typedef unsigned int		Bitu;
