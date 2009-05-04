@@ -111,7 +111,12 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 
 	old_unicode = SDL_EnableUNICODE(1);
 	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
+#ifdef HW_RVL
+	// This won't work because the Masks are wrong for 16-bit.
 	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
+#else
+	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
+#endif	
 
 	// create screenshot for fade effect
 	int rs = screenshot->format->Rshift, gs = screenshot->format->Gshift, bs = screenshot->format->Bshift, am = GUI::Color::AlphaMask;
@@ -124,7 +129,12 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 		}
 	}
 
+#ifdef HW_RVL
+	// This won't work because the Masks are wrong for 16-bit.
 	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
+#else
+	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
+#endif	
 	// use a blurred and sepia-toned screenshot as menu background
 	for (int y = 0; y < h; y++) {
 		Bit32u *bg = (Bit32u*)(y*background->pitch + (char*)background->pixels);
@@ -151,7 +161,11 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	mousetoggle = mouselocked;
 	if (mouselocked) GFX_CaptureMouse();
 
+#ifdef HW_RVL
 	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 16, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
+#else
+	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 32, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
+#endif	
 	if (sdlscreen == NULL) E_Exit("Could not initialize video mode %ix%ix32 for UI: %s", w, h, SDL_GetError());
 
 	// fade out

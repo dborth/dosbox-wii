@@ -2283,7 +2283,11 @@ void MAPPER_Run(bool pressed) {
 
 	/* Be sure that there is no update in progress */
 	GFX_EndUpdate( 0 );
+#ifdef HW_RVL	
 	mapper.surface=SDL_SetVideoMode(640,480,16,0);
+#else
+	mapper.surface=SDL_SetVideoMode(640,480,8,0);
+#endif
 	if (mapper.surface == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
 
 	/* Set some palette entries */
