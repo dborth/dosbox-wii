@@ -635,7 +635,7 @@ void SHELL_Init() {
 	SHELL_ProgramStart(&first_shell);
 
 #ifdef HW_RVL
-	printf("Press A to continue to a crash, or Home to exit.\n");
+	printf("Press A to continue (or Home to exit).\n");
 	while (1) {
 		WPAD_ScanPads();
 		u16 buttonsDown = WPAD_ButtonsDown(0);
