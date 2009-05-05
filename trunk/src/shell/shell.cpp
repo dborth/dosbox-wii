@@ -476,6 +476,39 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_SUBST_NO_REMOVE","Removing drive not supported. Doing nothing.\n");
 	MSG_Add("SHELL_CMD_SUBST_FAILURE","SUBST failed. You either made an error in your commandline or the target drive is already used.\nIt's only possible to use SUBST on Local drives");
 
+#ifdef HW_RVL
+	MSG_Add("SHELL_STARTUP_BEGIN",
+		"\033[44;1m========================"
+		"========================"
+		"======================\n"
+		"| \033[32mWelcome to DOSBox v%-8s\033[37m                                        |\n"
+		"|                                                                    |\n"
+//		"| DOSBox runs real and protected mode games.                         |\n"
+		"| For a short introduction for new users type: \033[33mINTRO\033[37m                 |\n"
+		"| For supported shell commands type: \033[33mHELP\033[37m                            |\n"
+		"|                                                                    |\n"
+		"| If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  |\n"
+		"| To activate the keymapper \033[31mctrl-F1\033[37m.                                 |\n"
+		"| For more information read the \033[36mREADME\033[37m file in the DOSBox directory. |\n"
+		"|                                                                    |\n"
+	);
+	MSG_Add("SHELL_STARTUP_CGA","| DOSBox supports Composite CGA mode.                                |\n"
+	        "| Use \033[31m(alt-)F11\033[37m to change the colours when in this mode.             |\n"
+	        "|                                                                    |\n"
+	);
+	MSG_Add("SHELL_STARTUP_DEBUG",
+	        "| Press \033[31malt-Pause\033[37m to enter the debugger or start the exe with \033[33mDEBUG\033[37m. |\n"
+	        "|                                                                    |\n"
+	);
+	MSG_Add("SHELL_STARTUP_END",
+	        "| \033[32mHAVE FUN!\033[37m                                                          |\n"
+	        "| \033[32mThe DOSBox Team\033[37m                                                    |\n"
+	        "========================"
+	        "========================"
+	        "======================\033[0m\n"
+	        //"\n" //Breaks the startup message if you type a mount and a drive change.
+	);
+#else
 	MSG_Add("SHELL_STARTUP_BEGIN",
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
@@ -507,6 +540,7 @@ void SHELL_Init() {
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 	        //"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
+#endif
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Displays/changes the current directory.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP_LONG","CHDIR [drive:][path]\n"
 	        "CHDIR [..]\n"
