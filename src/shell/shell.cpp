@@ -22,7 +22,7 @@
 #include <stdarg.h>
 #include <string.h>
 #ifdef HW_RVL
-#include <wiiuse/WPAD.h> 
+#include <wiihardware.h> 
 #endif
 #include "dosbox.h"
 #include "regs.h"
@@ -635,13 +635,7 @@ void SHELL_Init() {
 	SHELL_ProgramStart(&first_shell);
 
 #ifdef HW_RVL
-	printf("Press A to continue (or Home to exit).\n");
-	while (1) {
-		WPAD_ScanPads();
-		u16 buttonsDown = WPAD_ButtonsDown(0);
-		if( buttonsDown & WPAD_BUTTON_A ) break;
-		if( buttonsDown & WPAD_BUTTON_HOME ) exit(0);
-  	}
+	WiiMessagePause("Press A to continue (or Home to exit).\n");
 #endif
 
 	first_shell->Run();

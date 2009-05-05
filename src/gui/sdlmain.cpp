@@ -33,7 +33,7 @@
 #include <process.h>
 #endif
 #ifdef HW_RVL
-#include <wiiuse/WPAD.h> 
+#include <wiihardware.h>
 #endif
 
 #include "SDL.h"
@@ -1467,6 +1467,9 @@ static void printconfiglocation() {
 //extern void UI_Init(void);
 int main(int argc, char* argv[]) {
 	try {
+#ifdef HW_RVL
+	WiiInit();
+#endif
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
 		control=&myconf;
@@ -1601,9 +1604,7 @@ int main(int argc, char* argv[]) {
 	if(!parsed_anyconfigfile) {
 		//Try to create the userlevel configfile.
 		config_file.clear();
-#ifndef HW_RVL
 		Cross::CreatePlatformConfigDir(config_path);
-#endif
 		Cross::GetPlatformConfigName(config_file);
 		config_path += config_file;
 		if(control->PrintConfig(config_path.c_str())) {
@@ -1665,15 +1666,8 @@ int main(int argc, char* argv[]) {
 	//Force visible mouse to end user. Somehow this sometimes doesn't happen
 	SDL_WM_GrabInput(SDL_GRAB_OFF);
 	SDL_ShowCursor(SDL_ENABLE);
-
 #ifdef HW_RVL
-	printf("Press A to return to homebrew channel.\n");
-	while (1) {
-		WPAD_ScanPads();
-		u16 buttonsDown = WPAD_ButtonsDown(0);
-		if( buttonsDown & WPAD_BUTTON_A ) break;
-		if( buttonsDown & WPAD_BUTTON_HOME ) exit(0);
-  	}
+	WiiFinished();
 #endif
 	SDL_Quit();//Let's hope sdl will quit as well when it catches an exception
 	return 0;
