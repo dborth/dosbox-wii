@@ -24,6 +24,10 @@
 #include <string>
 #include <stdlib.h>
 
+#ifdef HW_RVL
+#include "wiihardware.h"
+#endif
+
 #ifdef WIN32
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x0400
@@ -46,6 +50,9 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 #elif defined(MACOSX)
 	in = "~/Library/Preferences";
 	ResolveHomedir(in);
+#elif defined(HW_RVL)
+	in = "sd:/DOSBox";
+	ResolveHomedir(in);
 #else
 	in = "~/.dosbox";
 	ResolveHomedir(in);
@@ -58,6 +65,8 @@ void Cross::GetPlatformConfigName(std::string& in) {
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #elif defined(MACOSX)
 #define DEFAULT_CONFIG_FILE "DOSBox " VERSION " Preferences"
+#elif defined(HW_RVL)
+#define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #else /*linux freebsd*/
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #endif
@@ -74,6 +83,10 @@ void Cross::CreatePlatformConfigDir(std::string& in) {
 #elif defined(MACOSX)
 	in = "~/Library/Preferences/";
 	ResolveHomedir(in);
+	//Don't create it. Assume it exists
+#elif defined(HW_RVL)
+	in = "sd:/DOSBox";
+	CreateDir(in);
 	//Don't create it. Assume it exists
 #else
 	in = "~/.dosbox";
