@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <libgen.h>
+#include <sys/stat.h>
 #include "dos_inc.h"
 #define MAX_FILENAME_LENGTH 256
 
@@ -21,13 +22,10 @@ char * dirname(char * file) {
 	}
 }
 int access(const char *path, int amode) {
-	FILE *F = fopen(path, "rb");
-	if (F) {
-		fclose(F);
-		return 0;
-	} else {
-		return ENOENT;
-	}
+	struct stat st;
+	bool folderExists = (stat(path, &st) == 0);
+	if (folderExists) return 0;
+	else return ENOENT;
 }
 int rmdir(const char *path) {
 	return remove(path);
