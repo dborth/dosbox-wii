@@ -1463,6 +1463,7 @@ static void printconfiglocation() {
 	exit(0);
 }
 
+void MountDOSBoxDir(char DriveLetter, const char *path);
 
 //extern void UI_Init(void);
 int main(int argc, char* argv[]) {
@@ -1636,6 +1637,9 @@ int main(int argc, char* argv[]) {
 		/* Init the keyMapper */
 		MAPPER_Init();
 		if (control->cmdline->FindExist("-startmapper")) MAPPER_Run(false);
+#ifdef HW_RVL
+		MountDOSBoxDir('C', "sd:/DOSBox");
+#endif		
 		/* Start up main machine */
 		control->StartUp();
 		/* Shutdown everything */
