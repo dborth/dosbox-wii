@@ -1055,6 +1055,8 @@ static void GUI_StartUp(Section * sec) {
 	if (!sdl.desktop.full.width) {
 #ifdef WIN32
 		sdl.desktop.full.width=(Bit16u)GetSystemMetrics(SM_CXSCREEN);
+#elif defined(HW_RVL)
+		sdl.desktop.full.width=640;
 #else
 		sdl.desktop.full.width=1024;
 #endif
@@ -1062,6 +1064,8 @@ static void GUI_StartUp(Section * sec) {
 	if (!sdl.desktop.full.height) {
 #ifdef WIN32
 		sdl.desktop.full.height=(Bit16u)GetSystemMetrics(SM_CYSCREEN);
+#elif defined(HW_RVL)
+		sdl.desktop.full.height=480;
 #else
 		sdl.desktop.full.height=768;
 #endif
@@ -1130,7 +1134,11 @@ static void GUI_StartUp(Section * sec) {
 
 #endif	//OPENGL
 	/* Initialize screen for first time */
+	#ifdef HW_RVL
+	sdl.surface=SDL_SetVideoMode(640,480,16,0);
+	#else
 	sdl.surface=SDL_SetVideoMode(640,400,0,0);
+	#endif
 	if (sdl.surface == NULL) E_Exit("Could not initialize video: %s",SDL_GetError());
 	sdl.desktop.bpp=sdl.surface->format->BitsPerPixel;
 	if (sdl.desktop.bpp==24) {
@@ -1639,7 +1647,7 @@ int main(int argc, char* argv[]) {
 		if (control->cmdline->FindExist("-startmapper")) MAPPER_Run(false);
 #ifdef HW_RVL
 		MountDOSBoxDir('C', "sd:/DOSBox");
-#endif		
+#endif
 		/* Start up main machine */
 		control->StartUp();
 		/* Shutdown everything */
