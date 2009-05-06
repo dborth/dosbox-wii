@@ -51,8 +51,8 @@
 /* Define to 1 if you want serial passthrough support (Win32 only). */
 #define C_DIRECTSERIAL 0
 
-#define GCC_ATTRIBUTE(x) /* attribute not supported */
-#define GCC_UNLIKELY(x) (x)
+#define GCC_ATTRIBUTE(x) __attribute__ ((x))
+#define GCC_UNLIKELY(x) __builtin_expect((x), 0)
 
 #define INLINE inline
 //#define DB_FASTCALL __fastcall
