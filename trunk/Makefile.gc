@@ -27,7 +27,7 @@ INCLUDES 	:=  include src/platform/wii
 #---------------------------------------------------------------------------------
 
 CFLAGS  = 	-g -O3 -Wall $(MACHDEP) $(INCLUDE) \
-			-fomit-frame-pointer -fno-exceptions \
+			-fomit-frame-pointer \
 			-Wno-unused-parameter -Wno-strict-aliasing \
 			-DWORDS_BIGENDIAN
 CXXFLAGS	= $(CFLAGS)
