@@ -66,7 +66,7 @@ void Cross::GetPlatformConfigName(std::string& in) {
 #elif defined(MACOSX)
 #define DEFAULT_CONFIG_FILE "DOSBox " VERSION " Preferences"
 #elif defined(HW_RVL)
-#define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
+#define DEFAULT_CONFIG_FILE "dosbox.conf"
 #else /*linux freebsd*/
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #endif
