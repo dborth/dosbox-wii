@@ -29,7 +29,5 @@ bool WiiMessagePause(const char *s) {
 }
 
 void WiiFinished() {
-#ifdef HW_RVL
-	if (WiiMessagePause("Press A to return to homebrew channel.\n")) exit(0);
-#endif
+
 }

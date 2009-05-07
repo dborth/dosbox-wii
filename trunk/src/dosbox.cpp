@@ -84,7 +84,7 @@ void MPU401_Init(Section*);
 void PCSPEAKER_Init(Section*);
 void TANDYSOUND_Init(Section*);
 void DISNEY_Init(Section*);
-void SERIAL_Init(Section*); 
+void SERIAL_Init(Section*);
 
 
 #if C_IPX
@@ -179,9 +179,9 @@ increaseticks:
 						if (ratioremoved < 1.0) {
 							ratio = (Bit32s)((double)ratio * (1 - ratioremoved));
 							Bit64s cmax_scaled = (Bit64s)CPU_CycleMax * (Bit64s)ratio;
-							if (ratio <= 1024) 
+							if (ratio <= 1024)
 								new_cmax = (Bit32s)(cmax_scaled / (Bit64s)1024);
-							else 
+							else
 								new_cmax = (Bit32s)(1 + (CPU_CycleMax >> 1) + cmax_scaled / (Bit64s)2048);
 						}
 					}
@@ -250,7 +250,7 @@ static void DOSBOX_UnlockSpeed( bool pressed ) {
 			CPU_CycleMax /= 3;
 			if (CPU_CycleMax<1000) CPU_CycleMax=1000;
 		}
-	} else { 
+	} else {
 		ticksLocked = false;
 		if (autoadjust) {
 			autoadjust = false;
@@ -277,7 +277,7 @@ static void DOSBOX_RealInit(Section * sec) {
 	}
 
 	std::string mtype(section->Get_string("machine"));
-	svgaCard = SVGA_None; 
+	svgaCard = SVGA_None;
 	machine = MCH_VGA;
 	int10.vesa_nolfb = false;
 	int10.vesa_oldvbe = false;
@@ -338,10 +338,10 @@ void DOSBOX_Init(void) {
 	Pstring = secprop->Add_path("captures",Property::Changeable::Always,"capture");
 	Pstring->Set_help("Directory where things like wave, midi, screenshot get captured.");
 
-#if C_DEBUG	
+#if C_DEBUG
 	LOG_StartUp();
 #endif
-	
+
 	secprop->AddInitFunction(&IO_Init);//done
 	secprop->AddInitFunction(&PAGING_Init);//done
 	secprop->AddInitFunction(&MEM_Init);//done
@@ -372,7 +372,7 @@ void DOSBOX_Init(void) {
 	Pmulti->Set_help("Scaler used to enlarge/enhance low resolution modes. If 'forced' is appended,the scaler will be used even if the result might not be desired.");
 	Pstring = Pmulti->GetSection()->Add_string("type",Property::Changeable::Always,"normal2x");
 
-	const char *scalers[] = { 
+	const char *scalers[] = {
 		"none", "normal2x", "normal3x",
 #if RENDER_USE_ADVANCED_SCALERS>2
 		"advmame2x", "advmame3x", "advinterp2x", "advinterp3x", "hq2x", "hq3x", "2xsai", "super2xsai", "supereagle",
@@ -418,7 +418,7 @@ void DOSBOX_Init(void) {
 	Pstring->Set_values(cyclest);
 
 	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::Always,"");
-	
+
 	Pint = secprop->Add_int("cycleup",Property::Changeable::Always,500);
 	Pint->SetMinMax(1,1000000);
 	Pint->Set_help("Amount of cycles to increase/decrease with keycombo.");
@@ -426,7 +426,7 @@ void DOSBOX_Init(void) {
 	Pint = secprop->Add_int("cycledown",Property::Changeable::Always,20);
 	Pint->SetMinMax(1,1000000);
 	Pint->Set_help("Setting it lower than 100 will be a percentage.");
-		
+
 #if C_FPU
 	secprop->AddInitFunction(&FPU_Init);
 #endif
@@ -438,7 +438,7 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("nosound",Property::Changeable::OnlyAtStart,false);
 	Pbool->Set_help("Enable silent mode, sound is still emulated though.");
 
-	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,22050);
+	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,48000);
 	Pint->Set_values(rates);
 	Pint->Set_help("Mixer sample rate, setting any device's rate higher than this will probably lower their sound quality.");
 
@@ -451,10 +451,10 @@ void DOSBOX_Init(void) {
 	Pint = secprop->Add_int("prebuffer",Property::Changeable::OnlyAtStart,10);
 	Pint->SetMinMax(0,100);
 	Pint->Set_help("How many milliseconds of data to keep on top of the blocksize.");
-	
+
 	secprop=control->AddSection_prop("midi",&MIDI_Init,true);//done
 	secprop->AddInitFunction(&MPU401_Init,true);//done
-	
+
 	const char* mputypes[] = { "intelligent", "uart", "none",0};
 	// FIXME: add some way to offer the actually available choices.
 	const char *devices[] = { "default", "win32", "alsa", "oss", "coreaudio", "coremidi","none", 0};
@@ -474,7 +474,7 @@ void DOSBOX_Init(void) {
 #endif
 
 	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init,true);//done
-	
+
 	const char* sbtypes[] = { "sb1", "sb2", "sbpro1", "sbpro2", "sb16", "none", 0 };
 	Pstring = secprop->Add_string("sbtype",Property::Changeable::WhenIdle,"sb16");
 	Pstring->Set_values(sbtypes);
@@ -509,16 +509,16 @@ void DOSBOX_Init(void) {
 	Pstring->Set_values(oplemus);
 	Pstring->Set_help("Provider for the OPL emulation. compat or old might provide better quality (see oplrate as well).");
 
-	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,22050);
+	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,48000);
 	Pint->Set_values(oplrates);
 	Pint->Set_help("Sample rate of OPL music emulation. Use 49716 for highest quality (set the mixer rate accordingly).");
 
 
 	secprop=control->AddSection_prop("gus",&GUS_Init,true); //done
-	Pbool = secprop->Add_bool("gus",Property::Changeable::WhenIdle,false); 	
+	Pbool = secprop->Add_bool("gus",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("Enable the Gravis Ultrasound emulation.");
 
-	Pint = secprop->Add_int("gusrate",Property::Changeable::WhenIdle,22050);
+	Pint = secprop->Add_int("gusrate",Property::Changeable::WhenIdle,48000);
 	Pint->Set_values(rates);
 	Pint->Set_help("Sample rate of Ultrasound emulation.");
 
@@ -545,7 +545,7 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("pcspeaker",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Enable PC-Speaker emulation.");
 
-	Pint = secprop->Add_int("pcrate",Property::Changeable::WhenIdle,22050);
+	Pint = secprop->Add_int("pcrate",Property::Changeable::WhenIdle,48000);
 	Pint->Set_values(rates);
 	Pint->Set_help("Sample rate of the PC-Speaker sound generation.");
 
@@ -554,13 +554,13 @@ void DOSBOX_Init(void) {
 	Pstring = secprop->Add_string("tandy",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(tandys);
 	Pstring->Set_help("Enable Tandy Sound System emulation. For 'auto', emulation is present only if machine is set to 'tandy'.");
-	
-	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,22050);
+
+	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,48000);
 	Pint->Set_values(rates);
 	Pint->Set_help("Sample rate of the Tandy 3-Voice generation.");
 
 	secprop->AddInitFunction(&DISNEY_Init,true);//done
-	
+
 	Pbool = secprop->Add_bool("disney",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Enable Disney Sound Source emulation. (Covox Voice Master and Speech Thing compatible).");
 
@@ -585,7 +585,7 @@ void DOSBOX_Init(void) {
 
 	Pbool = secprop->Add_bool("autofire",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("continuously fires as long as you keep the button pressed.");
-	
+
 	Pbool = secprop->Add_bool("swap34",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("swap the 3rd and the 4th axis. can be useful for certain joysticks.");
 
@@ -595,7 +595,7 @@ void DOSBOX_Init(void) {
 	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
 	const char* serials[] = { "dummy", "disabled", "modem", "nullmodem",
 	                          "directserial",0 };
-   
+
 	Pmulti_remain = secprop->Add_multiremain("serial1",Property::Changeable::WhenIdle," ");
 	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"dummy");
 	Pmulti_remain->SetValue("dummy");
