@@ -1225,6 +1225,15 @@ void GFX_LosingFocus(void) {
 }
 
 void GFX_Events() {
+	// check for home button
+	u32 btns;
+	for(int i=0; i<4; i++)
+	{
+		btns = WPAD_ButtonsHeld(i);
+		if((btns & WPAD_BUTTON_HOME) || (btns & WPAD_CLASSIC_BUTTON_HOME))
+			throw(0);
+	}
+
 	SDL_Event event;
 #if defined (REDUCE_JOYSTICK_POLLING)
 	static int poll_delay=0;
@@ -1380,10 +1389,10 @@ void Config_Add_SDL() {
 	Prop_int* Pint;
 	Prop_multival* Pmulti;
 
-	Pbool = sdl_sec->Add_bool("fullscreen",Property::Changeable::Always,false);
+	Pbool = sdl_sec->Add_bool("fullscreen",Property::Changeable::Always,true);
 	Pbool->Set_help("Start dosbox directly in fullscreen.");
 
-	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,false);
+	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,true);
 	Pbool->Set_help("Use double buffering in fullscreen.");
 
 	Pstring = sdl_sec->Add_string("fullresolution",Property::Changeable::Always,"original");
