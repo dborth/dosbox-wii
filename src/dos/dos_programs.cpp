@@ -989,7 +989,9 @@ public:
 		/* Basic mounting has a version for each operating system.
 		 * This is done this way so both messages appear in the language file*/
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_START"));
-#if (WIN32)
+#ifdef HW_RVL
+		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_WII"));
+#elif (WIN32)
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_WINDOWS"));
 #else			
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_OTHER"));
@@ -1414,7 +1416,11 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_MOUNT_ERROR_2","%s isn't a directory\n");
 	MSG_Add("PROGRAM_MOUNT_ILL_TYPE","Illegal type %s\n");
 	MSG_Add("PROGRAM_MOUNT_ALREADY_MOUNTED","Drive %c already mounted with %s\n");
+#ifdef HW_RVL
+	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT d usb:/windows mounts windows directory on USB as the d: drive\n");
+#else
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
+#endif	
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED","Drive %c isn't mounted.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCES","Drive %c has succesfully been removed.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL","Virtual Drives can not be unMOUNTed.\n");
@@ -1471,6 +1477,17 @@ void DOS_SetupPrograms(void) {
 		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
+		);
+	MSG_Add("PROGRAM_INTRO_MOUNT_WII",
+		"\033[44;1m==========================="
+		"============================"
+		"=======================\n"
+		"| \033[32mmount c usb:/dosprog/\033[37m will create a C drive with usb:/dosprog as contents. |\n"
+		"|                                                                            |\n"
+		"| \033[32musb:/dosprog/\033[37m is an example. Possible drives are sd: usb: carda: cardb: \033[37m   |\n"
+		"==========================="
+		"============================"
+		"=======================\033[0m\n"
 		);
 	MSG_Add("PROGRAM_INTRO_MOUNT_OTHER",
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
