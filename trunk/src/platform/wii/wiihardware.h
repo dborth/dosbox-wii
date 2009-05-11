@@ -1,6 +1,6 @@
 #ifndef WIIHARDWARE_H
 #define WIIHARDWARE_H
-#include <wiiuse/WPAD.h> 
+#include <wiiuse/wpad.h>
 
 void WiiInit();
 void WiiFinished();
