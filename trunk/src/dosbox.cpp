@@ -439,7 +439,7 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Enable silent mode, sound is still emulated though.");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,48000);
+	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,32000);
 #else
 	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,22050);
 #endif
@@ -448,7 +448,11 @@ void DOSBOX_Init(void) {
 
 	const char *blocksizes[] = {
 		"2048", "4096", "8192", "1024", "512", "256", 0};
+#ifdef HW_RVL
+	Pint = secprop->Add_int("blocksize",Property::Changeable::OnlyAtStart,512);
+#else
 	Pint = secprop->Add_int("blocksize",Property::Changeable::OnlyAtStart,2048);
+#endif
 	Pint->Set_values(blocksizes);
 	Pint->Set_help("Mixer block size, larger blocks might help sound stuttering but sound will also be more lagged.");
 
@@ -514,7 +518,7 @@ void DOSBOX_Init(void) {
 	Pstring->Set_help("Provider for the OPL emulation. compat or old might provide better quality (see oplrate as well).");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,48000);
+	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,32000);
 #else
 	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,22050);
 #endif
@@ -527,7 +531,7 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Enable the Gravis Ultrasound emulation.");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("gusrate",Property::Changeable::WhenIdle,48000);
+	Pint = secprop->Add_int("gusrate",Property::Changeable::WhenIdle,32000);
 #else
 	Pint = secprop->Add_int("gusrate",Property::Changeable::WhenIdle,22050);
 #endif
@@ -558,7 +562,7 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Enable PC-Speaker emulation.");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("pcrate",Property::Changeable::WhenIdle,48000);
+	Pint = secprop->Add_int("pcrate",Property::Changeable::WhenIdle,32000);
 #else
 	Pint = secprop->Add_int("pcrate",Property::Changeable::WhenIdle,22050);
 #endif
@@ -572,7 +576,7 @@ void DOSBOX_Init(void) {
 	Pstring->Set_help("Enable Tandy Sound System emulation. For 'auto', emulation is present only if machine is set to 'tandy'.");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,48000);
+	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,32000);
 #else
 	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,22050);
 #endif

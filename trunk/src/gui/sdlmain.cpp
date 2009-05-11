@@ -1225,7 +1225,7 @@ void GFX_LosingFocus(void) {
 }
 
 void GFX_Events() {
-#ifdef HWRVL
+#ifdef HW_RVL
 	// check for home button
 	u32 btns;
 	for(int i=0; i<4; i++)

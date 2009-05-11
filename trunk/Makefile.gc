@@ -27,8 +27,7 @@ INCLUDES 	:=  include src/platform/wii
 #---------------------------------------------------------------------------------
 
 CFLAGS  = 	-g -O3 -Wall $(MACHDEP) $(INCLUDE) \
-			-fomit-frame-pointer \
-			-Wno-unused-parameter -Wno-strict-aliasing \
+			-fomit-frame-pointer -Wno-strict-aliasing \
 			-DWORDS_BIGENDIAN
 CXXFLAGS	= $(CFLAGS)
 LDFLAGS		= -g $(MACHDEP) -Wl,-Map,$(notdir $@).map
