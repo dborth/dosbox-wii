@@ -639,7 +639,9 @@ void MIXER_Init(Section* sec) {
 	SDL_AudioSpec obtained;
 
 	spec.freq=mixer.freq;
+#ifdef HW_RVL
 	spec.format=AUDIO_S16MSB;
+#endif
 	spec.channels=2;
 	spec.callback=MIXER_CallBack;
 	spec.userdata=NULL;
