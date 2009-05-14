@@ -10,8 +10,31 @@
 #include <fat.h>
 #include "wiihardware.h"
 
+char appPath[1024];
+
 void WiiInit() {
 	fatInitDefault();
+	appPath[0] = 0;
+}
+
+void CreateAppPath(char origpath[])
+{
+	char path[1024];
+	strncpy(path, origpath, 1024); // make a copy
+
+	char * loc;
+	int pos = -1;
+
+	loc = strrchr(path,'/');
+	if (loc != NULL)
+		*loc = 0; // strip file name
+
+	loc = strchr(path,'/'); // looking for / from fat:/
+	if (loc != NULL)
+		pos = loc - path + 1;
+
+	if(pos >= 0 && pos < 1024)
+		sprintf(appPath, &(path[pos]));
 }
 
 bool WiiMessagePause(const char *s) {

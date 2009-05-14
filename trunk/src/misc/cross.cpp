@@ -52,7 +52,6 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 	ResolveHomedir(in);
 #elif defined(HW_RVL)
 	in = "sd:/DOSBox";
-	ResolveHomedir(in);
 #else
 	in = "~/.dosbox";
 	ResolveHomedir(in);
