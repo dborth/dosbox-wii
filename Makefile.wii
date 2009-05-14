@@ -19,7 +19,8 @@ TARGET		:=	dosbox_wii
 TARGETDIR   :=  executables
 BUILD		:=	build_wii
 SOURCES		:=	src src/cpu src/debug src/dos src/fpu src/gui \
-				src/hardware src/hardware/serialport src/ints src/libs src/misc src/platform/wii src/shell
+				src/hardware src/hardware/serialport src/ints src/libs \
+				src/misc src/platform/wii src/shell
 INCLUDES 	:=  include src/platform/wii
 
 #---------------------------------------------------------------------------------
@@ -35,7 +36,7 @@ LDFLAGS		= -g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,--cref
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL -lfat -lwiiuse -lbte -logc 
+LIBS	:=	-lSDL -lfat -lwiiuse -lbte -logc -lwiikeyboard 
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing

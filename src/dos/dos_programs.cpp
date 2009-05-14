@@ -52,7 +52,7 @@ void MSCDEX_SetCDInterface(int intNr, int forceCD);
 
 // Mounts a folder as a harddrive before starting the shell
 // Designed for the Wii
-void MountDOSBoxDir(char DriveLetter, const char *path) {
+int MountDOSBoxDir(char DriveLetter, const char *path) {
 	DOS_Drive * newdrive;
 	Bit16u sizes[4];
 	Bit8u mediaid;
@@ -74,7 +74,7 @@ void MountDOSBoxDir(char DriveLetter, const char *path) {
 	}
 	number[index]=0;
 	sizes[count++]=atoi(number);
-		
+
 	// get the drive letter
 	char drive=toupper(DriveLetter);
 	std::string temp_line = path;
@@ -88,12 +88,12 @@ void MountDOSBoxDir(char DriveLetter, const char *path) {
 	}
 	if(failed) {
 		printf(MSG_Get("PROGRAM_MOUNT_ERROR_1"),temp_line.c_str());
-		return;
+		return 0;
 	}
 	/* Not a switch so a normal directory/file */
 	if (!(test.st_mode & S_IFDIR)) {
 		printf(MSG_Get("PROGRAM_MOUNT_ERROR_2"),temp_line.c_str());
-		return;
+		return 0;
 	}
 	if (temp_line[temp_line.size()-1]!=CROSS_FILESPLIT) temp_line+=CROSS_FILESPLIT;
 	Bit8u bit8size=(Bit8u) sizes[1];
@@ -101,9 +101,11 @@ void MountDOSBoxDir(char DriveLetter, const char *path) {
 	if (Drives[drive-'A']) {
 		printf(MSG_Get("PROGRAM_MOUNT_ALREADY_MOUNTED"),drive,Drives[drive-'A']->GetInfo());
 		if (newdrive) delete newdrive;
-		return;
+		return 0;
 	}
-	if (!newdrive) E_Exit("DOS:Can't create drive");
+	if (!newdrive)
+		return 0;
+
 	Drives[drive-'A']=newdrive;
 	/* Set the correct media byte in the table */
 	mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,newdrive->GetMediaByte());
@@ -113,7 +115,7 @@ void MountDOSBoxDir(char DriveLetter, const char *path) {
 	 * This way every drive except cdroms should get a label.*/
 	label = drive; label+="_DRIVE";
 	newdrive->dirCache.SetLabel(label.c_str(),false,true);
-	return;
+	return 1;
 }
 
 
@@ -140,7 +142,7 @@ public:
 			return;
 		}
 
-		/* In secure mode don't allow people to change mount points. 
+		/* In secure mode don't allow people to change mount points.
 		 * Neither mount nor unmount */
 		if(control->SecureMode()) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
@@ -155,7 +157,7 @@ public:
 					switch (DriveManager::UnmountDrive(i_drive)) {
 					case 0:
 						Drives[i_drive] = 0;
-						if(i_drive == DOS_GetDefaultDrive()) 
+						if(i_drive == DOS_GetDefaultDrive())
 							DOS_SetDrive(toupper('Z') - 'A');
 						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCES"),umount[0]);
 						break;
@@ -171,7 +173,7 @@ public:
 				}
 			return;
 		}
-	   
+
 		// Show list of cdroms
 		if (cmd->FindExist("-cd",false)) {
 			int num = SDL_CDNumDrives();
@@ -216,7 +218,7 @@ public:
 				}
 				str_size=teststr;
 			}
-		   
+
 			cmd->FindString("-size",str_size,true);
 			char number[20];const char * scan=str_size.c_str();
 			Bitu index=0;Bitu count=0;
@@ -229,7 +231,7 @@ public:
 				scan++;
 			}
 			number[index]=0;sizes[count++]=atoi(number);
-		
+
 			// get the drive letter
 			cmd->FindCommand(1,temp_line);
 			if ((temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) goto showusage;
@@ -352,8 +354,8 @@ public:
 			} else {
 				/* Give a warning when mount c:\ or the / */
 #if defined (WIN32) || defined(OS2)
-				if( (temp_line == "c:\\") || (temp_line == "C:\\") || 
-				    (temp_line == "c:/") || (temp_line == "C:/")    )	
+				if( (temp_line == "c:\\") || (temp_line == "C:\\") ||
+				    (temp_line == "c:/") || (temp_line == "C:/")    )
 					WriteOut(MSG_Get("PROGRAM_MOUNT_WARNING_WIN"));
 #else
 				if(temp_line == "/") WriteOut(MSG_Get("PROGRAM_MOUNT_WARNING_OTHER"));
@@ -379,7 +381,7 @@ public:
 		/* For hard drives set the label to DRIVELETTER_Drive.
 		 * For floppy drives set the label to DRIVELETTER_Floppy.
 		 * This way every drive except cdroms should get a label.*/
-		else if(type == "dir") { 
+		else if(type == "dir") {
 			label = drive; label += "_DRIVE";
 			newdrive->dirCache.SetLabel(label.c_str(),iscdrom,true);
 		} else if(type == "floppy") {
@@ -448,7 +450,7 @@ public:
 			if (!reg_bl) {
 				WriteOut(MSG_Get("PROGRAM_MEM_EXTEND"),reg_dx);
 			}
-		}	
+		}
 		/* Test for and show free EMS */
 		Bit16u handle;
 		char emm[9] = { 'E','M','M','X','X','X','X','0',0 };
@@ -471,7 +473,7 @@ extern Bit32u floppytype;
 
 class BOOT : public Program {
 private:
-   
+
 	FILE *getFSFile_mounted(char const* filename, Bit32u *ksize, Bit32u *bsize, Bit8u *error) {
 		//if return NULL then put in error the errormessage code if an error was requested
 		bool tryload = (*error)?true:false;
@@ -483,7 +485,7 @@ private:
 		localDrive* ldp=0;
 		if (!DOS_MakeName(const_cast<char*>(filename),fullname,&drive)) return NULL;
 
-		try {		
+		try {
 			ldp=dynamic_cast<localDrive*>(Drives[drive]);
 			if(!ldp) return NULL;
 
@@ -517,7 +519,7 @@ private:
 			return NULL;
 		}
 	}
-   
+
 	FILE *getFSFile(char const * filename, Bit32u *ksize, Bit32u *bsize,bool tryload=false) {
 		Bit8u error = tryload?1:0;
 		FILE* tmpfile = getFSFile_mounted(filename,ksize,bsize,&error);
@@ -566,11 +568,11 @@ private:
      }
 
 public:
-   
+
 	void Run(void) {
 		//Hack To allow long commandlines
 		ChangeToLongCmd();
-		/* In secure mode don't allow people to boot stuff. 
+		/* In secure mode don't allow people to boot stuff.
 		 * They might try to corrupt the data on it */
 		if(control->SecureMode()) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
@@ -579,7 +581,7 @@ public:
 
 		FILE *usefile_1=NULL;
 		FILE *usefile_2=NULL;
-		Bitu i=0; 
+		Bitu i=0;
 		Bit32u floppysize;
 		Bit32u rombytesize_1=0;
 		Bit32u rombytesize_2=0;
@@ -798,7 +800,7 @@ public:
 						/* boot cartridge (int18) */
 						SegSet16(cs,RealSeg(new_int18));
 						reg_ip = RealOff(new_int18);
-					} 
+					}
 				} else {
 					if (cfound_at>0) {
 						/* run cartridge setup */
@@ -853,7 +855,7 @@ public:
 		localDrive* ldp=0;
 		if (!DOS_MakeName((char *)temp_line.c_str(),fullname,&drive)) return;
 
-		try {		
+		try {
 			ldp=dynamic_cast<localDrive*>(Drives[drive]);
 			if(!ldp) return;
 
@@ -904,7 +906,7 @@ public:
 	void Run(void);
 };
 
-void LOADFIX::Run(void) 
+void LOADFIX::Run(void)
 {
 	Bit16u commandNr	= 1;
 	Bit16u kb			= 64;
@@ -946,15 +948,15 @@ void LOADFIX::Run(void)
 					break;
 				strcat(args,temp_line.c_str());
 				strcat(args," ");
-			} while (ok);			
+			} while (ok);
 			// Use shell to start program
 			DOS_Shell shell;
 			shell.Execute(filename,args);
-			DOS_FreeMemory(segment);		
+			DOS_FreeMemory(segment);
 			WriteOut(MSG_Get("PROGRAM_LOADFIX_DEALLOC"),kb);
 		}
 	} else {
-		WriteOut(MSG_Get("PROGRAM_LOADFIX_ERROR"),kb);	
+		WriteOut(MSG_Get("PROGRAM_LOADFIX_ERROR"),kb);
 	}
 }
 
@@ -969,7 +971,7 @@ public:
 	void Run(void);
 };
 
-void RESCAN::Run(void) 
+void RESCAN::Run(void)
 {
 	// Get current drive
 	Bit8u drive = DOS_GetDefaultDrive();
@@ -993,7 +995,7 @@ public:
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_WII"));
 #elif (WIN32)
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_WINDOWS"));
-#else			
+#else
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_OTHER"));
 #endif
 		WriteOut(MSG_Get("PROGRAM_INTRO_MOUNT_END"));
@@ -1036,7 +1038,7 @@ public:
 	void Run(void) {
 		//Hack To allow long commandlines
 		ChangeToLongCmd();
-		/* In secure mode don't allow people to change imgmount points. 
+		/* In secure mode don't allow people to change imgmount points.
 		 * Neither mount nor unmount */
 		if(control->SecureMode()) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
@@ -1057,7 +1059,7 @@ public:
 					switch (DriveManager::UnmountDrive(i_drive)) {
 					case 0:
 						Drives[i_drive] = 0;
-						if (i_drive == DOS_GetDefaultDrive()) 
+						if (i_drive == DOS_GetDefaultDrive())
 							DOS_SetDrive(toupper('Z') - 'A');
 						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCES"),umount[0]);
 						break;
@@ -1084,17 +1086,17 @@ public:
 		if (type=="floppy" || type=="hdd" || type=="iso") {
 			Bit16u sizes[4];
 			bool imgsizedetect=false;
-			
+
 			std::string str_size;
 			mediaid=0xF8;
 
 			if (type=="floppy") {
-				mediaid=0xF0;		
+				mediaid=0xF0;
 			} else if (type=="iso") {
 				str_size="650,127,16513,1700";
-				mediaid=0xF8;		
+				mediaid=0xF8;
 				fstype = "iso";
-			} 
+			}
 			cmd->FindString("-size",str_size,true);
 			if ((type=="hdd") && (str_size.size()==0)) {
 				imgsizedetect=true;
@@ -1102,7 +1104,7 @@ public:
 				char number[20];
 				const char * scan=str_size.c_str();
 				Bitu index=0;Bitu count=0;
-				
+
 				while (*scan) {
 					if (*scan==',') {
 						number[index]=0;sizes[count++]=atoi(number);
@@ -1112,7 +1114,7 @@ public:
 				}
 				number[index]=0;sizes[count++]=atoi(number);
 			}
-		
+
 			if(fstype=="fat" || fstype=="iso") {
 				// get the drive letter
 				if (!cmd->FindCommand(1,temp_line) || (temp_line.size() > 2) || ((temp_line.size()>1) && (temp_line[1]!=':'))) {
@@ -1139,10 +1141,10 @@ public:
 				WriteOut_NoParsing(MSG_Get("PROGRAM_IMGMOUNT_FORMAT_UNSUPPORTED"));
 				return;
 			}
-			
+
 			// find all file parameters, assuming that all option parameters have been removed
 			while(cmd->FindCommand((unsigned int)(paths.size() + 2), temp_line) && temp_line.size()) {
-				
+
 				struct stat test;
 				if (stat(temp_line.c_str(),&test)) {
 					//See if it works if the ~ are written out
@@ -1185,7 +1187,7 @@ public:
 			}
 			if (paths.size() == 0) {
 				WriteOut(MSG_Get("PROGRAM_IMGMOUNT_SPECIFY_FILE"));
-				return;	
+				return;
 			}
 			if (paths.size() == 1)
 				temp_line = paths[0];
@@ -1251,7 +1253,7 @@ public:
 			}
 			if (!newdrive) {WriteOut(MSG_Get("PROGRAM_IMGMOUNT_CANT_CREATE"));return;}
 			Drives[drive-'A']=newdrive;
-			// Set the correct media byte in the table 
+			// Set the correct media byte in the table
 			mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,mediaid);
 			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,temp_line.c_str());
 			if(((fatDrive *)newdrive)->loadedDisk->hardDrive) {
@@ -1306,10 +1308,10 @@ public:
 				DriveManager::AppendDisk(drive - 'A', isoDisks[ct]);
 			}
 			DriveManager::InitializeDrive(drive - 'A');
-			
-			// Set the correct media byte in the table 
+
+			// Set the correct media byte in the table
 			mem_writeb(Real2Phys(dos.tables.mediaid) + (drive - 'A') * 2, mediaid);
-			
+
 			// Print status message (success)
 			WriteOut(MSG_Get("MSCDEX_SUCCESS"));
 			std::string tmp(paths[0]);
@@ -1317,7 +1319,7 @@ public:
 				tmp += "; " + paths[i];
 			}
 			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"), drive, tmp.c_str());
-			
+
 		} else if (fstype=="none") {
 			if(imageDiskList[drive-'0'] != NULL) delete imageDiskList[drive-'0'];
 			imageDiskList[drive-'0'] = newImage;
@@ -1420,7 +1422,7 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT d usb:/windows mounts windows directory on USB as the d: drive\n");
 #else
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
-#endif	
+#endif
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED","Drive %c isn't mounted.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCES","Drive %c has succesfully been removed.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL","Virtual Drives can not be unMOUNTed.\n");

@@ -19,7 +19,8 @@ TARGET		:=	dosbox_gc
 TARGETDIR   :=  executables
 BUILD		:=	build_gc
 SOURCES		:=	src src/cpu src/debug src/dos src/fpu src/gui \
-				src/hardware src/hardware/serialport src/ints src/libs src/misc src/platform/wii src/shell
+				src/hardware src/hardware/serialport src/ints src/libs \
+				src/misc src/platform/wii src/shell
 INCLUDES 	:=  include src/platform/wii
 
 #---------------------------------------------------------------------------------

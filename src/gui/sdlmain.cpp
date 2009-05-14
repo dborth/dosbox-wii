@@ -1490,13 +1490,15 @@ static void printconfiglocation() {
 	exit(0);
 }
 
-void MountDOSBoxDir(char DriveLetter, const char *path);
+int MountDOSBoxDir(char DriveLetter, const char *path);
 
 //extern void UI_Init(void);
 int main(int argc, char* argv[]) {
 	try {
 #ifdef HW_RVL
 	WiiInit();
+	if(argc > 0 && argv[0] != NULL)
+		CreateAppPath(argv[0]);
 #endif
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
@@ -1617,7 +1619,13 @@ int main(int argc, char* argv[]) {
 		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
 
 	//if none found => parse localdir conf
+#ifdef HW_RVL
+	char wiiconf[1024];
+	sprintf(wiiconf, "%s/dosbox.conf", appPath);
+	config_file.assign(wiiconf);
+#else
 	config_file = "dosbox.conf";
+#endif
 	if (!parsed_anyconfigfile && control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
 
 	//if none found => parse userlevel conf
@@ -1665,7 +1673,16 @@ int main(int argc, char* argv[]) {
 		MAPPER_Init();
 		if (control->cmdline->FindExist("-startmapper")) MAPPER_Run(false);
 #ifdef HW_RVL
-		MountDOSBoxDir('C', "sd:/DOSBox");
+		bool cMounted = false;
+
+		// mount the current directory as C, if not loading from apps/dosbox-wii
+		if(strlen(appPath) > 0 && strcmp(appPath, "apps/dosbox-wii") != 0)
+			if(MountDOSBoxDir('C', appPath))
+				cMounted = true;
+		if(cMounted)
+			MountDOSBoxDir('D', "sd:/DOSBox");
+		else
+			MountDOSBoxDir('C', "sd:/DOSBox");
 #endif
 		/* Start up main machine */
 		control->StartUp();
