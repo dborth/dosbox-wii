@@ -29,12 +29,12 @@ void CreateAppPath(char origpath[])
 	if (loc != NULL)
 		*loc = 0; // strip file name
 
-	loc = strchr(path,'/'); // looking for / from fat:/
+	loc = strchr(path,'/'); // looking for / from fat:/ (or sd:/)
 	if (loc != NULL)
 		pos = loc - path + 1;
 
 	if(pos >= 0 && pos < 1024)
-		sprintf(appPath, &(path[pos]));
+		sprintf(appPath, "sd:/%s", &(path[pos]));
 }
 
 bool WiiMessagePause(const char *s) {
