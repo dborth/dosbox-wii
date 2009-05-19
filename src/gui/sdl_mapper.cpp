@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_mapper.cpp,v 1.58 2009/04/25 06:59:54 qbix79 Exp $ */
+/* $Id: sdl_mapper.cpp,v 1.59 2009/05/14 18:01:25 qbix79 Exp $ */
 
 #include <vector>
 #include <list>
@@ -2283,11 +2283,7 @@ void MAPPER_Run(bool pressed) {
 
 	/* Be sure that there is no update in progress */
 	GFX_EndUpdate( 0 );
-#ifdef HW_RVL	
-	mapper.surface=SDL_SetVideoMode(640,480,16,0);
-#else
 	mapper.surface=SDL_SetVideoMode(640,480,8,0);
-#endif
 	if (mapper.surface == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
 
 	/* Set some palette entries */
@@ -2336,7 +2332,7 @@ void MAPPER_Init(void) {
 	}
 }
 //Somehow including them at the top conflicts with something in setup.h
-#ifdef LINUX
+#ifdef C_X11_XKB
 #include "SDL_syswm.h"
 #include <X11/XKBlib.h>
 #endif
@@ -2385,7 +2381,7 @@ void MAPPER_StartUp(Section * sec) {
 		sdlkey_map[0x41]=SDLK_KP6;
 #elif !defined (WIN32) /* => Linux & BSDs */
 		bool evdev_input = false;
-#ifdef LINUX
+#ifdef C_X11_XKB
 		SDL_SysWMinfo info;
 		SDL_VERSION(&info.version);
 		if (SDL_GetWMInfo(&info)) {
