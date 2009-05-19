@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: adlib.cpp,v 1.38 2009/04/28 21:48:24 harekiet Exp $ */
+/* $Id: adlib.cpp,v 1.41 2009/05/16 08:29:05 harekiet Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -530,8 +530,8 @@ void Module::DualWrite( Bit8u index, Bit8u reg, Bit8u val ) {
 	if ( chip[index].Write( reg, val ) ) 
 		return;
 	//Enabling panning
-	if ( reg >= 0xc0 && reg <0xc8 ) {
-		val &= 7;
+	if ( reg >= 0xc0 && reg <=0xc8 ) {
+		val &= 0x0f;
 		val |= index ? 0xA0 : 0x50;
 	}
 	Bit32u fullReg = reg + (index ? 0x100 : 0);
@@ -729,6 +729,9 @@ Module::Module( Section* configuration ) : Module_base(configuration) {
 	Section_prop * section=static_cast<Section_prop *>(configuration);
 	Bitu base = section->Get_hex("sbbase");
 	Bitu rate = section->Get_int("oplrate");
+	//Make sure we can't select lower than 8000 to prevent fixed point issues
+	if ( rate < 8000 )
+		rate = 8000;
 	std::string oplemu( section->Get_string( "oplemu" ) );
 
 	mixerChan = mixerObject.Install(OPL_CallBack,rate,"FM");
@@ -751,10 +754,10 @@ Module::Module( Section* configuration ) : Module_base(configuration) {
 		handler = new DBOPL::Handler();
 	}
 	handler->Init( rate );
-	Bit8u portRange = 4;	//opl2 will set this to 2
+	bool single = false;
 	switch ( oplmode ) {
 	case OPL_opl2:
-		portRange = 2;
+		single = true;
 		Init( Adlib::MODE_OPL2 );
 		break;
 	case OPL_dualopl2:
@@ -765,14 +768,16 @@ Module::Module( Section* configuration ) : Module_base(configuration) {
 		break;
 	}
 	//0x388 range
-	WriteHandler[0].Install(0x388,OPL_Write,IO_MB, portRange );
-	ReadHandler[0].Install(0x388,OPL_Read,IO_MB, portRange - 1 );
+	WriteHandler[0].Install(0x388,OPL_Write,IO_MB, 4 );
+	ReadHandler[0].Install(0x388,OPL_Read,IO_MB, 4 );
 	//0x220 range
-	WriteHandler[1].Install(base,OPL_Write,IO_MB, portRange );
-	ReadHandler[1].Install(base,OPL_Read,IO_MB, portRange - 1 );
+	if ( !single ) {
+		WriteHandler[1].Install(base,OPL_Write,IO_MB, 4 );
+		ReadHandler[1].Install(base,OPL_Read,IO_MB, 4 );
+	}
 	//0x228 range
-	WriteHandler[2].Install(base+8,OPL_Write,IO_MB,2);
-	ReadHandler[2].Install(base+8,OPL_Read,IO_MB,1);
+	WriteHandler[2].Install(base+8,OPL_Write,IO_MB, 2);
+	ReadHandler[2].Install(base+8,OPL_Read,IO_MB, 1);
 
 	MAPPER_AddHandler(OPL_SaveRawEvent,MK_f7,MMOD1|MMOD2,"caprawopl","Cap OPL");
 }
