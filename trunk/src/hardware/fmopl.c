@@ -65,6 +65,10 @@ Revision History:
 //#include "driver.h"		/* use M.A.M.E. */
 #include "fmopl.h"
 
+#ifdef HW_RVL
+#include "../platform/wii/config.h"
+#endif
+
 #ifndef PI
 #define PI 3.14159265358979323846
 #endif
