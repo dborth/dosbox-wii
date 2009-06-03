@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.98 2009/03/23 10:55:36 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.99 2009/05/14 18:44:54 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -166,9 +166,9 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 			while (*lr && *lr!=' ') lr++;
 			//if it ends on a : => remove it.
 			if((*ofn != lr) && (lr[-1] == ':')) lr[-1] = 0;
-			if(*lr && *(lr+1))
-				*lr++=0;
-			else
+			if(*lr && *(lr+1)) 
+				*lr++=0; 
+			else 
 				*lr=0;
 			*ofn=strdup(*ofn);
 			continue;
@@ -178,9 +178,9 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 			*ifn=lr;
 			while (*lr && *lr!=' ') lr++;
 			if((*ifn != lr) && (lr[-1] == ':')) lr[-1] = 0;
-			if(*lr && *(lr+1))
-				*lr++=0;
-			else
+			if(*lr && *(lr+1)) 
+				*lr++=0; 
+			else 
 				*lr=0;
 			*ifn=strdup(*ifn);
 			continue;
@@ -192,7 +192,7 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 	}
 	*lw=0;
 	return num;
-}
+}	
 
 void DOS_Shell::ParseLine(char * line) {
 	LOG(LOG_EXEC,LOG_ERROR)("Parsing command line: %s",line);
@@ -201,7 +201,7 @@ void DOS_Shell::ParseLine(char * line) {
 	line = trim(line);
 
 	/* Do redirection and pipe checks */
-
+	
 	char * in  = 0;
 	char * out = 0;
 
@@ -211,12 +211,12 @@ void DOS_Shell::ParseLine(char * line) {
 	bool append;
 	bool normalstdin  = false;	/* wether stdin/out are open on start. */
 	bool normalstdout = false;	/* Bug: Assumed is they are "con"      */
-
+	
 	num = GetRedirection(line,&in, &out,&append);
 	if (num>1) LOG_MSG("SHELL:Multiple command on 1 line not supported");
 	if (in || out) {
-		normalstdin  = (psp->GetFileHandle(0) != 0xff);
-		normalstdout = (psp->GetFileHandle(1) != 0xff);
+		normalstdin  = (psp->GetFileHandle(0) != 0xff); 
+		normalstdout = (psp->GetFileHandle(1) != 0xff); 
 	}
 	if (in) {
 		if(DOS_OpenFile(in,OPEN_READ,&dummy)) {	//Test if file exists
@@ -241,7 +241,7 @@ void DOS_Shell::ParseLine(char * line) {
 		} else {
 			status = DOS_OpenFileExtended(out,OPEN_READWRITE,DOS_ATTR_ARCHIVE,0x12,&dummy,&dummy2);
 		}
-
+		
 		if(!status && normalstdout) DOS_OpenFile("con",OPEN_READWRITE,&dummy); //Read only file, open con again
 		if(!normalstdin && !in) DOS_CloseFile(0);
 	}
@@ -267,7 +267,7 @@ void DOS_Shell::ParseLine(char * line) {
 void DOS_Shell::RunInternal(void)
 {
 	char input_line[CMD_MAXLINE] = {0};
-	while(bf && bf->ReadLine(input_line))
+	while(bf && bf->ReadLine(input_line)) 
 	{
 		if (echo) {
 				if (input_line[0] != '@') {
@@ -375,8 +375,8 @@ public:
 		/* Check for first command being a directory or file */
 		char buffer[CROSS_LEN];
 		char cross_filesplit[2] = {CROSS_FILESPLIT , 0};
-		/* Combining -securemode and no parameter leaves you with a lovely Z:\. */
-		if ( !control->cmdline->FindCommand(1,line) ) {
+		/* Combining -securemode and no parameter leaves you with a lovely Z:\. */ 
+		if ( !control->cmdline->FindCommand(1,line) ) { 
 			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
 		} else {
 			struct stat test;
@@ -387,13 +387,13 @@ public:
 				strcat(buffer,line.c_str());
 				if (stat(buffer,&test)) goto nomount;
 			}
-			if (test.st_mode & S_IFDIR) {
+			if (test.st_mode & S_IFDIR) { 
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				if(secure) autoexec[14].Install("z:\\config.com -securemode");
 			} else {
 				char* name = strrchr(buffer,CROSS_FILESPLIT);
-				if (!name) { //Only a filename
+				if (!name) { //Only a filename 
 					line = buffer;
 					getcwd(buffer,CROSS_LEN);
 					strcat(buffer,cross_filesplit);
@@ -534,7 +534,7 @@ void SHELL_Init() {
 	);
 	MSG_Add("SHELL_STARTUP_END",
 	        "\xBA \033[32mHAVE FUN!\033[37m                                                          \xBA\n"
-	        "\xBA \033[32mThe DOSBox Team\033[37m                                                    \xBA\n"
+	        "\xBA \033[32mThe DOSBox Team \033[33mhttp://www.dosbox.com\033[37m                              \xBA\n"
 	        "\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
@@ -623,7 +623,7 @@ void SHELL_Init() {
 	envmcb.SetPSPSeg(psp_seg);	// MCB of the command shell environment
 	envmcb.SetSize(0x28);
 	envmcb.SetType(0x4d);
-
+	
 	/* Setup environment */
 	PhysPt env_write=PhysMake(env_seg,0);
 	MEM_BlockWrite(env_write,path_string,(Bitu)(strlen(path_string)+1));
@@ -638,7 +638,7 @@ void SHELL_Init() {
 	DOS_PSP psp(psp_seg);
 	psp.MakeNew(0);
 	dos.psp(psp_seg);
-
+   
 	/* The start of the filetable in the psp must look like this:
 	 * 01 01 01 00 02
 	 * In order to achieve this: First open 2 files. Close the first and
@@ -660,14 +660,13 @@ void SHELL_Init() {
 	tail.count=(Bit8u)strlen(init_line);
 	strcpy(tail.buffer,init_line);
 	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
-
+	
 	/* Setup internal DOS Variables */
 	dos.dta(RealMake(psp_seg,0x80));
 	dos.psp(psp_seg);
 
-
+	
 	SHELL_ProgramStart(&first_shell);
-
 	first_shell->Run();
 	delete first_shell;
 	first_shell = 0;//Make clear that it shouldn't be used anymore
