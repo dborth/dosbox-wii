@@ -116,7 +116,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
 #else
 	screenshot = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, 0);
-#endif	
+#endif
 
 	// create screenshot for fade effect
 	int rs = screenshot->format->Rshift, gs = screenshot->format->Gshift, bs = screenshot->format->Bshift, am = GUI::Color::AlphaMask;
@@ -134,7 +134,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
 #else
 	background = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, GUI::Color::RedMask, GUI::Color::GreenMask, GUI::Color::BlueMask, GUI::Color::AlphaMask);
-#endif	
+#endif
 	// use a blurred and sepia-toned screenshot as menu background
 	for (int y = 0; y < h; y++) {
 		Bit32u *bg = (Bit32u*)(y*background->pitch + (char*)background->pixels);
@@ -165,7 +165,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 16, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
 #else
 	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 32, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
-#endif	
+#endif
 	if (sdlscreen == NULL) E_Exit("Could not initialize video mode %ix%ix32 for UI: %s", w, h, SDL_GetError());
 
 	// fade out
@@ -584,7 +584,7 @@ public:
 			Section_prop *section = static_cast<Section_prop *>(sec);
 			new SectionEditor(getScreen(), 50, 30, section);
 		} else if (arg == "About") {
-			new GUI::MessageBox(getScreen(), 200, 150, 280, "About DOSBox", "\nDOSBox 0.72\nAn emulator for old DOS Games\n\nCopyright 2002-2009\nThe DOSBox Team");
+			new GUI::MessageBox(getScreen(), 200, 150, 280, "About DOSBox", "\nDOSBox 0.73\nAn emulator for old DOS Games\n\nCopyright 2002-2009\nThe DOSBox Team");
 		} else if (arg == "Introduction") {
 			new GUI::MessageBox(getScreen(), 20, 50, 600, "Introduction", MSG_Get("PROGRAM_INTRO"));
 		} else if (arg == "Getting Started") {
