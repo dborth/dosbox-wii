@@ -32,6 +32,8 @@
 	//DUNNO Keyon in 4op, switch to 2op without keyoff.
 */
 
+/* $Id: dbopl.cpp,v 1.10 2009/06/10 19:54:51 harekiet Exp $ */
+
 
 #include <math.h>
 #include <stdlib.h>
@@ -472,7 +474,7 @@ void Operator::Write20( const Chip* chip, Bit8u val ) {
 	}
 }
 
-void Operator::Write40( const Chip* chip, Bit8u val ) {
+void Operator::Write40( const Chip* /*chip*/, Bit8u val ) {
 	if (!(reg40 ^ val )) 
 		return;
 	reg40 = val;
@@ -803,46 +805,33 @@ INLINE void Channel::GeneratePercussion( Chip* chip, Bit32s* output ) {
 	}
 	Bit32s sample = Op(1)->GetSample( mod ); 
 
-	Operator* op2 = ( this + 1 )->Op(0);
-	Operator* op4 = ( this + 2 )->Op(0);
 
 	//Precalculate stuff used by other outputs
-	Bit32u noiseBit = (chip->ForwardNoise() & 0x1) << 1;
-	Bit32u c2 = op2->ForwardWave();
-	//(bit 7 ^ bit 2) | bit 3 -> combined in bit 1
-	Bit32u phaseBit = ( (c2 >> 6) ^ ( c2 >> 1 ) ) | ( c2 >> 2 );
-	Bit32u c4 = op4->ForwardWave();
-	//bit 5 ^ bit 3 to bit 1
-	Bit32u gateBit = ( c4 >> 4 ) ^ ( c4 >> 3 );
-	phaseBit = (phaseBit | gateBit) & 0x2;
+	Bit32u noiseBit = chip->ForwardNoise() & 0x1;
+	Bit32u c2 = Op(2)->ForwardWave();
+	Bit32u c5 = Op(5)->ForwardWave();
+	Bit32u phaseBit = (((c2 & 0x88) ^ ((c2<<5) & 0x80)) | ((c5 ^ (c5<<2)) & 0x20)) ? 0x02 : 0x00;
 
 	//Hi-Hat
-	Bit32u hhVol = op2->ForwardVolume();
+	Bit32u hhVol = Op(2)->ForwardVolume();
 	if ( !ENV_SILENT( hhVol ) ) {
-		/* when phase & 0x200 is set and noise=1 then phase = 0x200|0xd0 */
-		/* when phase & 0x200 is set and noise=0 then phase = 0x200|(0xd0>>2), ie no change */
-		Bit32u hhIndex = ( phaseBit << 8 ) | ( 0xd0 >> ( phaseBit ^ noiseBit ) ); 
-		sample += op2->GetWave( hhIndex, hhVol );
+		Bit32u hhIndex = (phaseBit<<8) | (0x34 << ( phaseBit ^ (noiseBit << 1 )));
+		sample += Op(2)->GetWave( hhIndex, hhVol );
 	}
 	//Snare Drum
-	Operator* op3 = ( this + 1 )->Op(1);
-	Bit32u sdVol = op3->ForwardVolume();
+	Bit32u sdVol = Op(3)->ForwardVolume();
 	if ( !ENV_SILENT( sdVol ) ) {
-		Bit32u sdBits = 0x100 + (c2 & 0x100);
-		Bit32u sdIndex = sdBits ^ ( noiseBit << 7 );
-		sample += op3->GetWave( sdIndex, sdVol );
+		Bit32u sdIndex = ( 0x100 + (c2 & 0x100) ) ^ ( noiseBit << 8 );
+		sample += Op(3)->GetWave( sdIndex, sdVol );
 	}
 	//Tom-tom
-	Bit32u ttVol = op4->ForwardVolume();
-	if ( !ENV_SILENT( ttVol ) ) {
-		sample += op4->GetWave( c4, ttVol );
-	}
+	sample += Op(4)->GetSample( 0 );
+
 	//Top-Cymbal
-	Operator* op5 = ( this + 2 )->Op(1);
-	Bit32u tcVol = op5->ForwardVolume();
+	Bit32u tcVol = Op(5)->ForwardVolume();
 	if ( !ENV_SILENT( tcVol ) ) {
 		Bit32u tcIndex = (1 + phaseBit) << 8;
-		sample += op5->GetWave( tcIndex, tcVol );
+		sample += Op(5)->GetWave( tcIndex, tcVol );
 	}
 	sample <<= 1;
 	if ( opl3Mode ) {
@@ -1261,7 +1250,7 @@ void Chip::Setup( Bit32u rate ) {
 		Bit32s original = (Bit32u)( (AttackSamplesTable[ index ] << shift) / scale);
 		 
 		Bit32s guessAdd = (Bit32u)( scale * (EnvelopeIncreaseTable[ index ] << ( RATE_SH - shift - 3 )));
-		Bit32s bestAdd;
+		Bit32s bestAdd = guessAdd;
 		Bit32u bestDiff = 1 << 30;
 		for( Bit32u passes = 0; passes < 16; passes ++ ) {
 			Bit32s volume = ENV_MAX;
@@ -1368,7 +1357,7 @@ void InitTables( void ) {
 	for ( int i = 0; i < 384; i++ ) {
 		int s = i * 8;
 		//TODO maybe keep some of the precision errors of the original table?
-		double val = ( 0.5 + ( pow(2, -1 + ( 255 - s) * ( 1.0 /256 ) )) * ( 1 << MUL_SH ));
+		double val = ( 0.5 + ( pow(2.0, -1.0 + ( 255 - s) * ( 1.0 /256 ) )) * ( 1 << MUL_SH ));
 		MulTable[i] = (Bit16u)(val);
 	}
 
@@ -1379,7 +1368,7 @@ void InitTables( void ) {
 	}
 	//Exponential wave
 	for ( int i = 0; i < 256; i++ ) {
-		WaveTable[ 0x700 + i ] = (Bit16s)( 0.5 + ( pow(2, -1 + ( 255 - i * 8) * ( 1.0 /256 ) ) ) * 4085 );
+		WaveTable[ 0x700 + i ] = (Bit16s)( 0.5 + ( pow(2.0, -1.0 + ( 255 - i * 8) * ( 1.0 /256 ) ) ) * 4085 );
 		WaveTable[ 0x6ff - i ] = -WaveTable[ 0x700 + i ];
 	}
 #endif
