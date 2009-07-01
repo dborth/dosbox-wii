@@ -12,7 +12,8 @@
 
 char appPath[1024];
 
-void WiiInit() {
+void WiiInit()
+{
 	fatInitDefault();
 	appPath[0] = 0;
 }
@@ -37,20 +38,7 @@ void CreateAppPath(char origpath[])
 		sprintf(appPath, "sd:/%s", &(path[pos]));
 }
 
-bool WiiMessagePause(const char *s) {
-	if (s) printf(s);
-#ifdef HW_RVL
-	while (1) {
-		WPAD_ScanPads();
-		u16 buttonsDown = WPAD_ButtonsDown(0);
-		if( buttonsDown & WPAD_BUTTON_A ) return false;
-		if( buttonsDown & WPAD_BUTTON_HOME ) return true;
-  	}
-#else
-	return false;
-#endif
-}
-
-void WiiFinished() {
+void WiiFinished()
+{
 
 }
