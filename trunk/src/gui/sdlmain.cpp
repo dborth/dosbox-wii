@@ -1330,7 +1330,7 @@ void GFX_Events() {
 	{
 		btns = WPAD_ButtonsHeld(i);
 		if((btns & WPAD_BUTTON_HOME) || (btns & WPAD_CLASSIC_BUTTON_HOME))
-			throw(0);
+			WiiMenu ();
 	}
 #endif
 
