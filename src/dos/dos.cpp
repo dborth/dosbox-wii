@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.117 2009/04/16 12:16:52 qbix79 Exp $ */
+/* $Id: dos.cpp,v 1.120 2009/10/04 14:28:07 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,6 +70,9 @@ static Bitu DOS_21Handler(void) {
 	char name1[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
 	char name2[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
 	switch (reg_ah) {
+	case 0x00:		/* Terminate Program */
+		DOS_Terminate(mem_readw(SegPhys(ss)+reg_sp+2),false,0);
+		break;
 	case 0x01:		/* Read character from STDIN, with echo */
 		{	
 			Bit8u c;Bit16u n=1;
@@ -83,6 +86,8 @@ static Bitu DOS_21Handler(void) {
 		{
 			Bit8u c=reg_dl;Bit16u n=1;
 			DOS_WriteFile(STDOUT,&c,&n);
+			//Not in the official specs, but happens nonetheless. (last written character)
+			reg_al = c;// reg_al=(c==9)?0x20:c; //Officially: tab to spaces
 		}
 		break;
 	case 0x03:		/* Read character from STDAUX */
@@ -115,7 +120,7 @@ static Bitu DOS_21Handler(void) {
 		switch (reg_dl) {
 		case 0xFF:	/* Input */
 			{	
-//TODO Make this better according to standards
+				//TODO Make this better according to standards
 				if (!DOS_GetSTDINStatus()) {
 					reg_al=0;
 					CALLBACK_SZF(true);
@@ -388,17 +393,17 @@ static Bitu DOS_21Handler(void) {
 		reg_cx=0x0000;
 		break;
 	case 0x31:		/* Terminate and stay resident */
-		//TODO First get normal files executing
 		// Important: This service does not set the carry flag!
 		DOS_ResizeMemory(dos.psp(),&reg_dx);
-		DOS_Terminate(true,reg_al);
-		dos.return_mode=RETURN_TSR;
+		DOS_Terminate(dos.psp(),true,reg_al);
 		break;
 	case 0x1f: /* Get drive parameter block for default drive */
 	case 0x32: /* Get drive parameter block for specific drive */
 		{	/* Officially a dpb should be returned as well. The disk detection part is implemented */
-			Bitu drive=reg_dl;if(!drive || reg_ah==0x1f) drive = DOS_GetDefaultDrive();else drive--;
-			if(Drives[drive]) {
+			Bit8u drive=reg_dl;
+			if (!drive || reg_ah==0x1f) drive = DOS_GetDefaultDrive();
+			else drive--;
+			if (Drives[drive]) {
 				reg_al = 0x00;
 				SegSet16(ds,dos.tables.dpb);
 				reg_bx = drive;//Faking only the first entry (that is the driveletter)
@@ -704,18 +709,9 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 //TODO Check for use of execution state AL=5
-	case 0x00:
-		reg_ax=0x4c00;				/* Terminate Program */
 	case 0x4c:					/* EXIT Terminate with return code */
-	        {
-			if (DOS_Terminate(false,reg_al)) {
-				/* This can't ever return false normally */
-			} else {            
-				reg_ax=dos.errorcode;
-				CALLBACK_SCF(true);
-			}
-			break;
-		}
+		DOS_Terminate(dos.psp(),false,reg_al);
+		break;
 	case 0x4d:					/* Get Return code */
 		reg_al=dos.return_code;/* Officially read from SDA and clear when read */
 		reg_ah=dos.return_mode;
@@ -813,6 +809,8 @@ static Bitu DOS_21Handler(void) {
 			break;
 		default:
 			LOG(LOG_DOSMISC,LOG_ERROR)("DOS:58:Not Supported Set//Get memory allocation call %X",reg_al);
+			reg_ax=1;
+			CALLBACK_SCF(true);
 		}
 		break;
 	case 0x59:					/* Get Extended error information */
@@ -945,7 +943,7 @@ static Bitu DOS_21Handler(void) {
 				{
 					int in  = reg_dl;
 					int out = toupper(in);
-					reg_dl  = out;
+					reg_dl  = (Bit8u)out;
 				}
 				CALLBACK_SCF(false);
 				break;
@@ -960,8 +958,8 @@ static Bitu DOS_21Handler(void) {
 					MEM_BlockRead(data,dos_copybuf,len);
 					dos_copybuf[len] = 0;
 					//No upcase as String(0x21) might be multiple asciz strings
-					for(Bitu count = 0; count < len;count++)
-						dos_copybuf[count] = toupper(*reinterpret_cast<unsigned char*>(dos_copybuf+count));
+					for (Bitu count = 0; count < len;count++)
+						dos_copybuf[count] = (Bit8u)toupper(*reinterpret_cast<unsigned char*>(dos_copybuf+count));
 					MEM_BlockWrite(data,dos_copybuf,len);
 				}
 				CALLBACK_SCF(false);
@@ -1045,7 +1043,7 @@ static Bitu DOS_21Handler(void) {
 
 
 static Bitu DOS_20Handler(void) {
-	reg_ax=0x4c00;
+	reg_ah=0x00;
 	DOS_21Handler();
 	return CBRET_NONE;
 }
@@ -1053,7 +1051,8 @@ static Bitu DOS_20Handler(void) {
 static Bitu DOS_27Handler(void) {
 	// Terminate & stay resident
 	Bit16u para = (reg_dx/16)+((reg_dx % 16)>0);
-	if (DOS_ResizeMemory(dos.psp(),&para)) DOS_Terminate(true,0);
+	Bit16u psp = mem_readw(SegPhys(ss)+reg_sp+2);
+	if (DOS_ResizeMemory(psp,&para)) DOS_Terminate(psp,true,0);
 	return CBRET_NONE;
 }
 
@@ -1149,7 +1148,7 @@ public:
 
 static DOS* test;
 
-void DOS_ShutDown(Section* sec) {
+void DOS_ShutDown(Section* /*sec*/) {
 	delete test;
 }
 

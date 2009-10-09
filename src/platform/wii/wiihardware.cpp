@@ -20,22 +20,27 @@ void WiiInit()
 
 void CreateAppPath(char origpath[])
 {
-	char path[1024];
-	strncpy(path, origpath, 1024); // make a copy
+	char * path = strdup(origpath); // make a copy so we don't mess up original
 
-	char * loc;
-	int pos = -1;
+	if(!path)
+		return;
 
-	loc = strrchr(path,'/');
+	char * loc = strrchr(path,'/');
 	if (loc != NULL)
 		*loc = 0; // strip file name
 
-	loc = strchr(path,'/'); // looking for / from fat:/ (or sd:/)
-	if (loc != NULL)
-		pos = loc - path + 1;
+	int pos = 0;
 
-	if(pos >= 0 && pos < 1024)
-		sprintf(appPath, "sd:/%s", &(path[pos]));
+	// replace fat:/ with sd:/
+	if(strncmp(path, "fat:/", 5) == 0)
+	{
+		pos++;
+		path[1] = 's';
+		path[2] = 'd';
+	}
+	strncpy(appPath, &path[pos], MAXPATHLEN);
+	appPath[MAXPATHLEN-1] = 0;
+	free(path);
 }
 
 void WiiFinished()

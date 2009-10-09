@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_files.cpp,v 1.111 2009/06/18 18:17:54 c2woody Exp $ */
+/* $Id: dos_files.cpp,v 1.113 2009/08/31 18:03:08 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -188,7 +188,7 @@ bool DOS_MakeName(char const * const name,char * const fullname,Bit8u * drive) {
 bool DOS_GetCurrentDir(Bit8u drive,char * const buffer) {
 	if (drive==0) drive=DOS_GetDefaultDrive();
 	else drive--;
-	if ((drive>DOS_DRIVES) || (!Drives[drive])) {
+	if ((drive>=DOS_DRIVES) || (!Drives[drive])) {
 		DOS_SetError(DOSERR_INVALID_DRIVE);
 		return false;
 	}
@@ -665,7 +665,7 @@ bool DOS_Canonicalize(char const * const name,char * const big) {
 bool DOS_GetFreeDiskSpace(Bit8u drive,Bit16u * bytes,Bit8u * sectors,Bit16u * clusters,Bit16u * free) {
 	if (drive==0) drive=DOS_GetDefaultDrive();
 	else drive--;
-	if ((drive>DOS_DRIVES) || (!Drives[drive])) {
+	if ((drive>=DOS_DRIVES) || (!Drives[drive])) {
 		DOS_SetError(DOSERR_INVALID_DRIVE);
 		return false;
 	}
@@ -768,11 +768,17 @@ static bool isvalid(const char in){
 #define PARSE_RET_BADDRIVE      0xff
 
 Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *change) {
-	char * string_begin=string;Bit8u ret=0;
-	DOS_FCB fcb(seg,offset);
+	char * string_begin=string;
+	Bit8u ret=0;
+	if (!(parser & PARSE_DFLT_DRIVE)) {
+		// default drive forced, this intentionally invalidates an extended FCB
+		mem_writeb(PhysMake(seg,offset),0);
+	}
+	DOS_FCB fcb(seg,offset,false);	// always a non-extended FCB
 	bool hasdrive,hasname,hasext,finished;
 	hasdrive=hasname=hasext=finished=false;
-	Bitu index=0;Bit8u fill=' ';
+	Bitu index=0;
+	Bit8u fill=' ';
 /* First get the old data from the fcb */
 #ifdef _MSC_VER
 #pragma pack (1)

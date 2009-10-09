@@ -1566,21 +1566,12 @@ int main(int argc, char *argv[])
 
 	atexit(SDL_Quit);
 
-#ifdef HW_RVL
-	screen = SDL_SetVideoMode(640, 480, 16, SDL_SWSURFACE);
-	if (screen == NULL) {
-		fprintf(stderr, "Couldn't set 640x480x16 video mode: %s\n", SDL_GetError());
-		exit(1);
-	}
-	printf("GUI:: color depth %i\n",screen->format->BitsPerPixel);
-#else
 	screen = SDL_SetVideoMode(640, 480, 32, SDL_SWSURFACE);
 	if (screen == NULL) {
 		fprintf(stderr, "Couldn't set 640x480x32 video mode: %s\n", SDL_GetError());
 		exit(1);
 	}
 	printf("GUI:: color depth %i\n",screen->format->BitsPerPixel);
-#endif
 
 	SDL_EnableUNICODE(true);
 	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
