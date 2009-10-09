@@ -26,7 +26,9 @@
 
 
 #include <math.h>
+#ifdef HW_RVL
 #include <string.h>
+#endif
 #include <stdlib.h> // rand()
 #include "dosbox.h"
 #include "opl.h"

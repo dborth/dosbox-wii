@@ -28,7 +28,7 @@
 #define C_DYNREC 0
 
 /* Enable memory function inlining in */
-#define C_CORE_INLINE 0
+#define C_CORE_INLINE 1
 
 /* Enable the FPU module, still only for beta testing */
 #define C_FPU 1

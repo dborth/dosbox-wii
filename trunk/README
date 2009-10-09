@@ -1,39 +1,5 @@
-DOSBox Wii (Port of DOSBox v0.73)
-http://code.google.com/p/dosbox-wii/
+DOSBox v0.73
 
-====
-WII:
-====
-
-Report bugs at: http://code.google.com/p/dosbox-wii/issues/list
-You can also view and download the source code from there.
-
-To run homebrew applications, such as this one, on your Wii, 
-please see http://www.wiibrew.org/wiki/Main_Page
-
-See the wiki for more information:
-http://www.wiibrew.org/wiki/DOSBox_Wii
-
-You currently need a USB keyboard to use DOSBox.
-The Wii Remote can be used as a mouse by pointing and using the A
-and B buttons. The Wii Remote, Nunchuk, Classic Controller and
-Gamecube Controller can also be used as a joystick.
-HOME will exit back to the homebrew channel, as will the RESET
-button on the console. 
-
-The C: drive will automatically be mounted to sd:/DOSBox/ if loaded
-from apps/dosbox-wii/. Otherwise, the directory the dol is loaded 
-from will be mounted as C, and sd:/DOSBox as D (if present).
-The Z: driver is a virtual drive that is part of DOSBox.
-Other drives can be mounted using the MOUNT command.
-Prefix sd: for an SD card, and usb: for a USB drive.
-The Wii's DVD drive and network folders can't be mounted at this time.
- 
-The configuration is loaded from the directory the dol is located in
-(if present) and sd:/DOSBox/dosbox.conf otherwise
-This file will be created automatically after you start DOSBox.
-Please edit it with a text editor to choose settings appropriate
-for each game.
 
 =====
 NOTE: 
