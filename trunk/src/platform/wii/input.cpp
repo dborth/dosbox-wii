@@ -27,7 +27,7 @@ static int rumbleCount[4] = {0,0,0,0};
 /****************************************************************************
  * UpdatePads
  *
- * called by postRetraceCallback in InitGCVideo - scans pad and wpad
+ * Scans pad and wpad
  ***************************************************************************/
 void UpdatePads()
 {
