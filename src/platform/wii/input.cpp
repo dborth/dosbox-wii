@@ -101,8 +101,8 @@ bool MenuRequested()
 {
 	for(int i=0; i<4; i++)
 	{
-		if ((userInput[i].wpad.btns_h & WPAD_BUTTON_HOME) ||
-			(userInput[i].wpad.btns_h & WPAD_CLASSIC_BUTTON_HOME))
+		if ((userInput[i].wpad->btns_h & WPAD_BUTTON_HOME) ||
+			(userInput[i].wpad->btns_h & WPAD_CLASSIC_BUTTON_HOME))
 		{
 			return true;
 		}
