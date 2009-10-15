@@ -85,6 +85,8 @@ void ResetVideo_Menu ()
 	GX_SetViewport(0,0,vmode->fbWidth,vmode->efbHeight,0,1);
 	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 	GX_SetAlphaUpdate(GX_TRUE);
+
+	WPAD_SetVRes(WPAD_CHAN_ALL, 640, 480);
 }
 
 /****************************************************************************
