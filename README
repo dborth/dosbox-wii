@@ -15,6 +15,7 @@ A port of DOSBox to the Wii using SDL Wii.
 * Wiimote pointer support
 * SD/USB mounting
 * Most DOS games are playable
+* me menu, with onscreen keyboard
 
 -=[ Update History ]=-
 
