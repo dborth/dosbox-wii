@@ -133,7 +133,7 @@ class GuiSound
 		//!\param s Pointer to the sound data
 		//!\param l Length of sound data
 		//!\param t Sound format type (SOUND_PCM or SOUND_OGG)
-		GuiSound(const u8 * s, s32 l, int t);
+		GuiSound(const u8 * s, int l, int t);
 		//!Destructor
 		~GuiSound();
 		//!Start sound playback
@@ -210,8 +210,7 @@ class GuiTrigger
 
 		u8 type; //!< trigger type (TRIGGER_SIMPLE,	TRIGGER_HELD, TRIGGER_BUTTON_ONLY, TRIGGER_BUTTON_ONLY_IN_FOCUS)
 		s32 chan; //!< Trigger controller channel (0-3, -1 for all)
-		WPADData * wpad; //!< Wii controller trigger
-		WPADData wpaddata; //!< Wii controller trigger data
+		WPADData wpad; //!< Wii controller trigger data
 		PADData pad; //!< GameCube controller trigger data
 };
 
@@ -292,8 +291,8 @@ class GuiElement
 		//!\param c Clickable
 		void SetClickable(bool c);
 		//!Sets whether or not the element is holdable
-		//!\param h Holdable
-		void SetHoldable(bool h);
+		//!\param c Holdable
+		void SetHoldable(bool d);
 		//!Gets the element's current state
 		//!\return state
 		int GetState();
@@ -592,7 +591,7 @@ class GuiText : public GuiElement
 		//!\param c Font color
 		GuiText(const char * t, int s, GXColor c);
 		//!\overload
-		//!Assumes SetPresets() has been called to setup preferred text attributes
+		//!\Assumes SetPresets() has been called to setup preferred text attributes
 		//!\param t Text
 		GuiText(const char * t);
 		//!Destructor
@@ -614,7 +613,7 @@ class GuiText : public GuiElement
 		void SetFontSize(int s);
 		//!Sets the maximum width of the drawn texture image
 		//!\param w Maximum width
-		void SetMaxWidth(int w);
+		void SetMaxWidth(int width);
 		//!Enables/disables text scrolling
 		//!\param s Scrolling on/off
 		void SetScroll(int s);

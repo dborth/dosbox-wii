@@ -27,7 +27,7 @@ static int rumbleCount[4] = {0,0,0,0};
 /****************************************************************************
  * UpdatePads
  *
- * Scans pad and wpad
+ * called by postRetraceCallback in InitGCVideo - scans pad and wpad
  ***************************************************************************/
 void UpdatePads()
 {
@@ -36,6 +36,9 @@ void UpdatePads()
 
 	for(int i=3; i >= 0; i--)
 	{
+		memcpy(&userInput[i].wpad, WPAD_Data(i), sizeof(WPADData));
+
+		userInput[i].chan = i;
 		userInput[i].pad.btns_d = PAD_ButtonsDown(i);
 		userInput[i].pad.btns_u = PAD_ButtonsUp(i);
 		userInput[i].pad.btns_h = PAD_ButtonsHeld(i);
@@ -45,20 +48,6 @@ void UpdatePads()
 		userInput[i].pad.substickY = PAD_SubStickY(i);
 		userInput[i].pad.triggerL = PAD_TriggerL(i);
 		userInput[i].pad.triggerR = PAD_TriggerR(i);
-	}
-}
-
-/****************************************************************************
- * SetupPads
- *
- * Sets up userInput triggers for use
- ***************************************************************************/
-void SetupPads()
-{
-	for(int i=0; i < 4; i++)
-	{
-		userInput[i].chan = i;
-		userInput[i].wpad = WPAD_Data(i);
 	}
 }
 
@@ -101,8 +90,8 @@ bool MenuRequested()
 {
 	for(int i=0; i<4; i++)
 	{
-		if ((userInput[i].wpad->btns_h & WPAD_BUTTON_HOME) ||
-			(userInput[i].wpad->btns_h & WPAD_CLASSIC_BUTTON_HOME))
+		if ((userInput[i].wpad.btns_h & WPAD_BUTTON_HOME) ||
+			(userInput[i].wpad.btns_h & WPAD_CLASSIC_BUTTON_HOME))
 		{
 			return true;
 		}

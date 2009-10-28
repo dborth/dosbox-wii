@@ -1074,11 +1074,7 @@ static void GUI_StartUp(Section * sec) {
 			}
 		}
 	}
-#ifdef HW_RVL
-	sdl.desktop.doublebuf=false;
-#else
 	sdl.desktop.doublebuf=section->Get_bool("fulldouble");
-#endif
 	if (!sdl.desktop.full.width) {
 #ifdef WIN32
 		sdl.desktop.full.width=(Bit16u)GetSystemMetrics(SM_CXSCREEN);

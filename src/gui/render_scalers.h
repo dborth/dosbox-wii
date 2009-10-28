@@ -21,29 +21,18 @@
 
 //#include "render.h"
 #include "video.h"
-
-#ifdef HW_RVL
-	#define SCALER_MAXWIDTH		640 
-	#define SCALER_MAXHEIGHT	480
-
-	#if RENDER_USE_ADVANCED_SCALERS>1
-	#define SCALER_COMPLEXWIDTH		640
-	#define SCALER_COMPLEXHEIGHT	480
-	#endif
+#if RENDER_USE_ADVANCED_SCALERS>0
+#define SCALER_MAXWIDTH		1280 
+#define SCALER_MAXHEIGHT	1024
 #else
-	#if RENDER_USE_ADVANCED_SCALERS>0
-	#define SCALER_MAXWIDTH		1280 
-	#define SCALER_MAXHEIGHT	1024
-	#else
-	// reduced to save some memory
-	#define SCALER_MAXWIDTH		800 
-	#define SCALER_MAXHEIGHT	600
-	#endif
+// reduced to save some memory
+#define SCALER_MAXWIDTH		800 
+#define SCALER_MAXHEIGHT	600
+#endif
 
-	#if RENDER_USE_ADVANCED_SCALERS>1
-	#define SCALER_COMPLEXWIDTH		800
-	#define SCALER_COMPLEXHEIGHT	600
-	#endif
+#if RENDER_USE_ADVANCED_SCALERS>1
+#define SCALER_COMPLEXWIDTH		800
+#define SCALER_COMPLEXHEIGHT	600
 #endif
 
 #define SCALER_BLOCKSIZE	16

@@ -20,7 +20,6 @@ extern int rumbleRequest[4];
 
 void ShutoffRumble();
 void DoRumble(int i);
-void SetupPads();
 void UpdatePads();
 bool MenuRequested();
 

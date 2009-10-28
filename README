@@ -1,7 +1,7 @@
 ¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤
  
                                  - DOSBox Wii -
-                                   Version 1.1
+                                   Version 1.0
                        http://code.google.com/p/dosbox-wii   
                                (Under GPL License)
  
@@ -17,12 +17,6 @@ A port of DOSBox to the Wii using SDL Wii.
 * Most DOS games are playable
 
 -=[ Update History ]=-
-
-[1.1 - October 27, 2009]
-
-* Fixed "black screen" issue with numerous games
-* Minor optimizations and bug fixes
-* Updated to latest DOSBox SVN
 
 [1.0 - October 9, 2009]
 

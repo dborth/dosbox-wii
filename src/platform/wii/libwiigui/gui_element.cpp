@@ -69,7 +69,11 @@ GuiElement * GuiElement::GetParent()
 {
 	return parentElement;
 }
-
+/**
+ * Get the left position of the GuiElement.
+ * @see SetLeft()
+ * @return Left position in pixel.
+ */
 int GuiElement::GetLeft()
 {
 	int x = 0;
@@ -100,6 +104,11 @@ int GuiElement::GetLeft()
 	return x + xoffset;
 }
 
+/**
+ * Get the top position of the GuiElement.
+ * @see SetTop()
+ * @return Top position in pixel.
+ */
 int GuiElement::GetTop()
 {
 	int y = 0;
@@ -170,16 +179,33 @@ int GuiElement::GetMaxY()
 	return ymax;
 }
 
+/**
+ * Get the width of the GuiElement.
+ * @see SetWidth()
+ * @return Width of the GuiElement.
+ */
 int GuiElement::GetWidth()
 {
 	return width;
 }
 
+/**
+ * Get the height of the GuiElement.
+ * @see SetHeight()
+ * @return Height of the GuiElement.
+ */
 int GuiElement::GetHeight()
 {
 	return height;
 }
 
+/**
+ * Set the width and height of the GuiElement.
+ * @param[in] Width Width in pixel.
+ * @param[in] Height Height in pixel.
+ * @see SetWidth()
+ * @see SetHeight()
+ */
 void GuiElement::SetSize(int w, int h)
 {
 
@@ -187,11 +213,21 @@ void GuiElement::SetSize(int w, int h)
 	height = h;
 }
 
+/**
+ * Get visible.
+ * @see SetVisible()
+ * @return true if visible, false otherwise.
+ */
 bool GuiElement::IsVisible()
 {
 	return visible;
 }
 
+/**
+ * Set visible.
+ * @param[in] Visible Set to true to show GuiElement.
+ * @see IsVisible()
+ */
 void GuiElement::SetVisible(bool v)
 {
 	visible = v;
@@ -520,6 +556,11 @@ void GuiElement::Draw()
 {
 }
 
+/**
+ * Check if a position is inside the GuiElement.
+ * @param[in] x X position in pixel.
+ * @param[in] y Y position in pixel.
+ */
 bool GuiElement::IsInside(int x, int y)
 {
 	if(x > this->GetLeft() && x < (this->GetLeft()+width)

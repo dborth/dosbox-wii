@@ -18,7 +18,6 @@
 
 #include "wiihardware.h"
 #include "FreeTypeGX.h"
-#include "input.h"
 #include "filelist.h"
 #include "SDL_events.h"
 
@@ -206,7 +205,6 @@ void WiiInit()
 	__exception_setreload(8);
 	fatInitDefault();
 	ASND_Init();
-	SetupPads();
 	InitFreeType((u8*)font_ttf, font_ttf_size);
 	LWP_CreateThread (&keythread, PressKeys, NULL, NULL, 0, 65);
 	appPath[0] = 0;

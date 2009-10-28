@@ -13,16 +13,16 @@
 /**
  * Constructor for the GuiImageData class.
  */
-GuiImageData::GuiImageData(const u8 * i)
+GuiImageData::GuiImageData(const u8 * img)
 {
 	data = NULL;
 	width = 0;
 	height = 0;
 
-	if(i)
+	if(img)
 	{
 		PNGUPROP imgProp;
-		IMGCTX ctx = PNGU_SelectImageFromBuffer(i);
+		IMGCTX ctx = PNGU_SelectImageFromBuffer(img);
 
 		if(!ctx)
 			return;

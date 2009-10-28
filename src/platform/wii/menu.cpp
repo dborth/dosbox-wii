@@ -20,7 +20,7 @@
 #include "wiihardware.h"
 
 #define THREAD_SLEEP 100
-#define APPVERSION 		"1.1"
+#define APPVERSION 		"1.0"
 
 static GuiImageData * pointer[4];
 static GuiWindow * mainWindow = NULL;
@@ -51,9 +51,9 @@ static void * UpdateGUI (void *arg)
 
 		for(i=3; i >= 0; i--) // so that player 1's cursor appears on top!
 		{
-			if(userInput[i].wpad->ir.valid)
-				Menu_DrawImg(userInput[i].wpad->ir.x-48, userInput[i].wpad->ir.y-48,
-					96, 96, pointer[i]->GetImage(), userInput[i].wpad->ir.angle, 1, 1, 255);
+			if(userInput[i].wpad.ir.valid)
+				Menu_DrawImg(userInput[i].wpad.ir.x-48, userInput[i].wpad.ir.y-48,
+					96, 96, pointer[i]->GetImage(), userInput[i].wpad.ir.angle, 1, 1, 255);
 			DoRumble(i);
 		}
 
@@ -274,7 +274,7 @@ static void * WindowCredits(void *arg)
 	{
 		for(i=0; i < 4; i++)
 		{
-			if(userInput[i].wpad->btns_d || userInput[i].pad.btns_d)
+			if(userInput[i].wpad.btns_d || userInput[i].pad.btns_d)
 				exit = true;
 		}
 		usleep(THREAD_SLEEP);
@@ -492,7 +492,7 @@ void HomeMenu ()
 			if(WPAD_Probe(i, NULL) == WPAD_ERR_NONE)
 			{
 				newStatus = true;
-				newLevel = (userInput[i].wpad->battery_level / 100.0) * 4;
+				newLevel = (userInput[i].wpad.battery_level / 100.0) * 4;
 				if(newLevel > 4) newLevel = 4;
 			}
 			else
