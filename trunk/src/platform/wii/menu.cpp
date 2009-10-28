@@ -20,7 +20,7 @@
 #include "wiihardware.h"
 
 #define THREAD_SLEEP 100
-#define APPVERSION 		"1.0"
+#define APPVERSION 		"1.1"
 
 static GuiImageData * pointer[4];
 static GuiWindow * mainWindow = NULL;
