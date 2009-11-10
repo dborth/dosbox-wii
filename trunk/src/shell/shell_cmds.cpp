@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_cmds.cpp,v 1.93 2009/09/21 21:04:25 h-a-l-9000 Exp $ */
+/* $Id: shell_cmds.cpp,v 1.93 2009-09-21 21:04:25 h-a-l-9000 Exp $ */
 
 #include "dosbox.h"
 #include "shell.h"

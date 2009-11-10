@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_batch.cpp,v 1.36 2009/07/03 19:36:56 qbix79 Exp $ */
+/* $Id: shell_batch.cpp,v 1.36 2009-07-03 19:36:56 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>

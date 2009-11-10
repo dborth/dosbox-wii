@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.100 2009/07/08 20:05:41 c2woody Exp $ */
+/* $Id: shell.cpp,v 1.100 2009-07-08 20:05:41 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>

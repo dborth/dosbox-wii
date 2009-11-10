@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cross.cpp,v 1.7 2009/05/26 17:43:39 qbix79 Exp $ */
+/* $Id: cross.cpp,v 1.7 2009-05-26 17:43:39 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "cross.h"
