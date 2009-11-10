@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dev_con.h,v 1.35 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: dev_con.h,v 1.35 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dos_inc.h"
 #include "../ints/int10.h"

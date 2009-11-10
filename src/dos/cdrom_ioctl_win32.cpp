@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_ioctl_win32.cpp,v 1.16 2009/01/07 22:39:18 c2woody Exp $ */
+/* $Id: cdrom_ioctl_win32.cpp,v 1.16 2009-01-07 22:39:18 c2woody Exp $ */
 
 #if defined (WIN32)
 

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_misc.cpp,v 1.21 2009/05/27 09:15:42 qbix79 Exp $ */
+/* $Id: int10_misc.cpp,v 1.21 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"

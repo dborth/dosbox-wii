@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_aspi_win32.cpp,v 1.21 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: cdrom_aspi_win32.cpp,v 1.21 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #if defined (WIN32)
 

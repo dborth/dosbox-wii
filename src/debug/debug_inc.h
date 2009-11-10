@@ -18,7 +18,7 @@
 
 /* Local Debug Function */
 
-/* $Id: debug_inc.h,v 1.12 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: debug_inc.h,v 1.12 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <curses.h>
 #include "mem.h"

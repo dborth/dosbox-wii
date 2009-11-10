@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: fpu_instructions_x86.h,v 1.7 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: fpu_instructions_x86.h,v 1.7 2009-05-27 09:15:41 qbix79 Exp $ */
 
 
 // #define WEAK_EXCEPTIONS

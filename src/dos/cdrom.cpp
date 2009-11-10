@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom.cpp,v 1.27 2009/04/26 18:24:36 qbix79 Exp $ */
+/* $Id: cdrom.cpp,v 1.27 2009-04-26 18:24:36 qbix79 Exp $ */
 
 // ******************************************************
 // SDL CDROM 
