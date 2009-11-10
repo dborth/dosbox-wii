@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: render.cpp,v 1.60 2009/04/26 19:14:50 harekiet Exp $ */
+/* $Id: render.cpp,v 1.60 2009-04-26 19:14:50 harekiet Exp $ */
 
 #include <sys/types.h>
 #include <assert.h>

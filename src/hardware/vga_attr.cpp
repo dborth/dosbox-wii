@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga_attr.cpp,v 1.31 2009/06/28 14:56:13 c2woody Exp $ */
+/* $Id: vga_attr.cpp,v 1.31 2009-06-28 14:56:13 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "inout.h"

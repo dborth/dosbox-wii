@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga_other.cpp,v 1.28 2009/07/11 10:25:24 c2woody Exp $ */
+/* $Id: vga_other.cpp,v 1.28 2009-07-11 10:25:24 c2woody Exp $ */
 
 #include <string.h>
 #include <math.h>

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: serialport.cpp,v 1.14 2009/10/01 17:25:28 h-a-l-9000 Exp $ */
+/* $Id: serialport.cpp,v 1.14 2009-10-01 17:25:28 h-a-l-9000 Exp $ */
 
 #include <string.h>
 #include <ctype.h>

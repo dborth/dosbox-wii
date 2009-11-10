@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga_memory.cpp,v 1.53 2009/07/04 21:23:35 qbix79 Exp $ */
+/* $Id: vga_memory.cpp,v 1.53 2009-07-04 21:23:35 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>

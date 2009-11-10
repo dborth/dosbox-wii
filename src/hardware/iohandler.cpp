@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: iohandler.cpp,v 1.30 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: iohandler.cpp,v 1.30 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"

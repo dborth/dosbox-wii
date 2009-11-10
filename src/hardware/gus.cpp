@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: gus.cpp,v 1.37 2009/09/03 16:03:01 c2woody Exp $ */
+/* $Id: gus.cpp,v 1.37 2009-09-03 16:03:01 c2woody Exp $ */
 
 #include <string.h>
 #include <iomanip>

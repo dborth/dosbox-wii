@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.154 2009/06/01 10:25:51 qbix79 Exp $ */
+/* $Id: sdlmain.cpp,v 1.154 2009-06-01 10:25:51 qbix79 Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -291,6 +291,7 @@ Bitu GFX_GetBestMode(Bitu flags) {
 	switch (sdl.desktop.want_type) {
 	case SCREEN_SURFACE:
 check_surface:
+		flags &= ~GFX_LOVE_8;		//Disable love for 8bpp modes
 		/* Check if we can satisfy the depth it loves */
 		if (flags & GFX_LOVE_8) testbpp=8;
 		else if (flags & GFX_LOVE_15) testbpp=15;

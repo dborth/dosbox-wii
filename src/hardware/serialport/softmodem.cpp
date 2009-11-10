@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: softmodem.cpp,v 1.12 2009/10/04 20:57:40 h-a-l-9000 Exp $ */
+/* $Id: softmodem.cpp,v 1.12 2009-10-04 20:57:40 h-a-l-9000 Exp $ */
 
 #include "dosbox.h"
 
