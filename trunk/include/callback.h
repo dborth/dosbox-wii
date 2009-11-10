@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: callback.h,v 1.26 2009/08/23 17:24:54 c2woody Exp $ */
+/* $Id: callback.h,v 1.26 2009-08-23 17:24:54 c2woody Exp $ */
 
 #ifndef DOSBOX_CALLBACK_H
 #define DOSBOX_CALLBACK_H

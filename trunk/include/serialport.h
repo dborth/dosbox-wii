@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: serialport.h,v 1.18 2009/09/25 23:40:48 h-a-l-9000 Exp $ */
+/* $Id: serialport.h,v 1.18 2009-09-25 23:40:48 h-a-l-9000 Exp $ */
 
 #ifndef DOSBOX_SERIALPORT_H
 #define DOSBOX_SERIALPORT_H

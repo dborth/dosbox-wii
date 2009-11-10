@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cpu.cpp,v 1.116 2009/03/16 18:10:08 c2woody Exp $ */
+/* $Id: cpu.cpp,v 1.116 2009-03-16 18:10:08 c2woody Exp $ */
 
 #include <assert.h>
 #include <sstream>

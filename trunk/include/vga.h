@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga.h,v 1.48 2009/11/03 21:06:59 h-a-l-9000 Exp $ */
+/* $Id: vga.h,v 1.48 2009-11-03 21:06:59 h-a-l-9000 Exp $ */
 
 #ifndef DOSBOX_VGA_H
 #define DOSBOX_VGA_H

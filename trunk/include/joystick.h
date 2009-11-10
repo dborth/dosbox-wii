@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: joystick.h,v 1.13 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: joystick.h,v 1.13 2009-05-27 09:15:41 qbix79 Exp $ */
 #ifndef DOSBOX_JOYSTICK_H
 #define DOSBOX_JOYSTICK_H
 void JOYSTICK_Enable(Bitu which,bool enabled);
