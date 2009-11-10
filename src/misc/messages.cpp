@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: messages.cpp,v 1.23 2009/06/17 08:52:35 qbix79 Exp $ */
+/* $Id: messages.cpp,v 1.23 2009-06-17 08:52:35 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
