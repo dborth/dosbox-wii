@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_gui.cpp,v 1.11 2009/02/25 19:58:11 c2woody Exp $ */
+/* $Id: sdl_gui.cpp,v 1.11 2009-02-25 19:58:11 c2woody Exp $ */
 
 #if 0
 #include "SDL.h"
@@ -155,7 +155,9 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
 	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 16, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
 #else
 	SDL_Surface* sdlscreen = SDL_SetVideoMode(w, h, 32, SDL_SWSURFACE|(fs?SDL_FULLSCREEN:0));
-#endif	if (sdlscreen == NULL) E_Exit("Could not initialize video mode %ix%ix32 for UI: %s", w, h, SDL_GetError());
+#endif
+
+	if (sdlscreen == NULL) E_Exit("Could not initialize video mode %ix%ix32 for UI: %s", w, h, SDL_GetError());
 
 	// fade out
 	SDL_Event event;

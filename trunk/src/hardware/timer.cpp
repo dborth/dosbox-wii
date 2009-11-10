@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: timer.cpp,v 1.49 2009/04/10 09:53:04 c2woody Exp $ */
+/* $Id: timer.cpp,v 1.49 2009-04-10 09:53:04 c2woody Exp $ */
 
 #include <math.h>
 #include "dosbox.h"

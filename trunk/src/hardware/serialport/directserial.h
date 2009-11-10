@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: directserial.h,v 1.2 2009/09/26 09:15:19 h-a-l-9000 Exp $ */
+/* $Id: directserial.h,v 1.2 2009-09-26 09:15:19 h-a-l-9000 Exp $ */
 
 // include guard
 #ifndef DOSBOX_DIRECTSERIAL_WIN32_H

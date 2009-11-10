@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: misc_util.h,v 1.5 2009/09/25 23:40:47 h-a-l-9000 Exp $ */
+/* $Id: misc_util.h,v 1.5 2009-09-25 23:40:47 h-a-l-9000 Exp $ */
 
 #ifndef SDLNETWRAPPER_H
 #define SDLNETWRAPPER_H

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: hardware.cpp,v 1.23 2009/10/11 18:09:22 qbix79 Exp $ */
+/* $Id: hardware.cpp,v 1.23 2009-10-11 18:09:22 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>

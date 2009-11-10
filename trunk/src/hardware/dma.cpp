@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dma.cpp,v 1.41 2009/07/24 09:56:14 c2woody Exp $ */
+/* $Id: dma.cpp,v 1.41 2009-07-24 09:56:14 c2woody Exp $ */
 
 #include <string.h>
 #include "dosbox.h"

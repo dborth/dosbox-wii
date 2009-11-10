@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: adlib.h,v 1.5 2009/04/28 21:45:43 c2woody Exp $ */
+/* $Id: adlib.h,v 1.5 2009-04-28 21:45:43 c2woody Exp $ */
 
 #ifndef DOSBOX_ADLIB_H
 #define DOSBOX_ADLIB_H

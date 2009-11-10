@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: libserial.cpp,v 1.4 2009/11/02 09:51:02 h-a-l-9000 Exp $ */
+/* $Id: libserial.cpp,v 1.4 2009-11-02 09:51:02 h-a-l-9000 Exp $ */
 
 #include "libserial.h"
 

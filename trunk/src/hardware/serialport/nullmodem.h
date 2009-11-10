@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: nullmodem.h,v 1.4 2009/09/25 23:40:47 h-a-l-9000 Exp $ */
+/* $Id: nullmodem.h,v 1.4 2009-09-25 23:40:47 h-a-l-9000 Exp $ */
 
 // include guard
 #ifndef DOSBOX_NULLMODEM_WIN32_H

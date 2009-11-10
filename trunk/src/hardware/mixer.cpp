@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mixer.cpp,v 1.54 2009/09/05 11:10:04 qbix79 Exp $ */
+/* $Id: mixer.cpp,v 1.54 2009-09-05 11:10:04 qbix79 Exp $ */
 
 /* 
 	Remove the sdl code from here and have it handeld in the sdlmain.
