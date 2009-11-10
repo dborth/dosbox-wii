@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_char.cpp,v 1.60 2009/10/15 20:36:56 c2woody Exp $ */
+/* $Id: int10_char.cpp,v 1.60 2009-10-15 20:36:56 c2woody Exp $ */
 
 /* Character displaying moving functions */
 

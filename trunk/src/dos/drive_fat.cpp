@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_fat.cpp,v 1.28 2009/06/19 18:28:10 c2woody Exp $ */
+/* $Id: drive_fat.cpp,v 1.28 2009-06-19 18:28:10 c2woody Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>

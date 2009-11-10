@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_programs.cpp,v 1.94 2009/06/12 20:10:09 c2woody Exp $ */
+/* $Id: dos_programs.cpp,v 1.94 2009-06-12 20:10:09 c2woody Exp $ */
 
 #include "dosbox.h"
 #include <stdlib.h>
@@ -49,6 +49,7 @@ Bitu DEBUG_EnableDebugger(void);
 #endif
 
 void MSCDEX_SetCDInterface(int intNr, int forceCD);
+
 
 // Mounts a folder as a harddrive before starting the shell
 // Designed for the Wii

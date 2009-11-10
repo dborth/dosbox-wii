@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_misc.cpp,v 1.24 2009/09/25 20:51:21 qbix79 Exp $ */
+/* $Id: dos_misc.cpp,v 1.24 2009-09-25 20:51:21 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"

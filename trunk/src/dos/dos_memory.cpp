@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_memory.cpp,v 1.45 2009/07/15 17:05:07 c2woody Exp $ */
+/* $Id: dos_memory.cpp,v 1.45 2009-07-15 17:05:07 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: fpu.cpp,v 1.31 2009/09/16 18:01:53 qbix79 Exp $ */
+/* $Id: fpu.cpp,v 1.31 2009-09-16 18:01:53 qbix79 Exp $ */
 
 #include "dosbox.h"
 #if C_FPU

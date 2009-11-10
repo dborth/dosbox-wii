@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mouse.cpp,v 1.80 2009/06/16 19:00:26 qbix79 Exp $ */
+/* $Id: mouse.cpp,v 1.80 2009-06-16 19:00:26 qbix79 Exp $ */
 
 #include <string.h>
 #include <math.h>

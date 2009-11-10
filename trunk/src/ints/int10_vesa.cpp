@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_vesa.cpp,v 1.40 2009/07/31 15:36:01 c2woody Exp $ */
+/* $Id: int10_vesa.cpp,v 1.40 2009-07-31 15:36:01 c2woody Exp $ */
 
 #include <string.h>
 #include <stddef.h>

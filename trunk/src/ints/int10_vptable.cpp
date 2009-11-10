@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_vptable.cpp,v 1.6 2009/08/01 13:39:48 c2woody Exp $ */
+/* $Id: int10_vptable.cpp,v 1.6 2009-08-01 13:39:48 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"

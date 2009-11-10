@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_mscdex.cpp,v 1.59 2009/04/16 12:28:30 qbix79 Exp $ */
+/* $Id: dos_mscdex.cpp,v 1.59 2009-04-16 12:28:30 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>

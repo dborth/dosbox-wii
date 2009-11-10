@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_execute.cpp,v 1.68 2009/10/04 14:28:07 c2woody Exp $ */
+/* $Id: dos_execute.cpp,v 1.68 2009-10-04 14:28:07 c2woody Exp $ */
 
 #include <string.h>
 #include <ctype.h>
