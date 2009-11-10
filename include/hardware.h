@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: hardware.h,v 1.17 2009/06/23 17:46:05 c2woody Exp $ */
+/* $Id: hardware.h,v 1.17 2009-06-23 17:46:05 c2woody Exp $ */
 
 #ifndef DOSBOX_HARDWARE_H
 #define DOSBOX_HARDWARE_H

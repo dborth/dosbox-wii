@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: paging.h,v 1.33 2009/05/27 09:15:41 qbix79 Exp $ */
+/* $Id: paging.h,v 1.33 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef DOSBOX_PAGING_H
 #define DOSBOX_PAGING_H

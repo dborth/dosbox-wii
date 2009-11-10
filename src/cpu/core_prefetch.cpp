@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: core_prefetch.cpp,v 1.3 2009/06/26 16:43:30 c2woody Exp $ */
+/* $Id: core_prefetch.cpp,v 1.3 2009-06-26 16:43:30 c2woody Exp $ */
 
 #include <stdio.h>
 

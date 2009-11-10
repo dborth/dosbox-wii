@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mixer.h,v 1.19 2009/04/28 21:48:24 harekiet Exp $ */
+/* $Id: mixer.h,v 1.19 2009-04-28 21:48:24 harekiet Exp $ */
 
 #ifndef DOSBOX_MIXER_H
 #define DOSBOX_MIXER_H

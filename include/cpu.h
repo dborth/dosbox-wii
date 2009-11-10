@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cpu.h,v 1.57 2009/05/27 09:15:40 qbix79 Exp $ */
+/* $Id: cpu.h,v 1.57 2009-05-27 09:15:40 qbix79 Exp $ */
 
 #ifndef DOSBOX_CPU_H
 #define DOSBOX_CPU_H

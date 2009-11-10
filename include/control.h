@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: control.h,v 1.2 2009/05/27 09:15:40 qbix79 Exp $ */
+/* $Id: control.h,v 1.2 2009-05-27 09:15:40 qbix79 Exp $ */
 
 #ifndef DOSBOX_CONTROL_H
 #define DOSBOX_CONTROL_H

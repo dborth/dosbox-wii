@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: core_dyn_x86.cpp,v 1.36 2009/07/20 17:55:52 c2woody Exp $ */
+/* $Id: core_dyn_x86.cpp,v 1.36 2009-07-20 17:55:52 c2woody Exp $ */
 
 #include "dosbox.h"
 
