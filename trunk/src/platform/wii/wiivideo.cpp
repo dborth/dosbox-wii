@@ -104,7 +104,7 @@ void Menu_Render()
 	VIDEO_SetNextFramebuffer(xfb[whichfb]);
 	VIDEO_Flush();
 	VIDEO_WaitVSync();
-	FrameTimer++;
+	++FrameTimer;
 }
 
 /****************************************************************************
@@ -119,7 +119,6 @@ void Menu_DrawImg(f32 xpos, f32 ypos, u16 width, u16 height, u8 data[],
 		return;
 
 	GXTexObj texObj;
-	guVector axis = (guVector) {0, 0, 1 };
 
 	GX_InitTexObj(&texObj, data, width,height, GX_TF_RGBA8,GX_CLAMP, GX_CLAMP,GX_FALSE);
 	GX_LoadTexObj(&texObj, GX_TEXMAP0);
@@ -129,12 +128,14 @@ void Menu_DrawImg(f32 xpos, f32 ypos, u16 width, u16 height, u8 data[],
 	GX_SetVtxDesc (GX_VA_TEX0, GX_DIRECT);
 
 	Mtx m,m1,m2, mv;
-	width *=.5;
-	height*=.5;
+	width  >>= 1;
+	height >>= 1;
+
 	guMtxIdentity (m1);
-	guMtxRotAxisDeg (m2, &axis, degrees);
 	guMtxScaleApply(m1,m1,scaleX,scaleY,1.0);
-	guMtxConcat(m2,m1,m); // change me?
+	guVector axis = (guVector) {0 , 0, 1 };
+	guMtxRotAxisDeg (m2, &axis, degrees);
+	guMtxConcat(m2,m1,m);
 
 	guMtxTransApply(m,m, xpos+width,ypos+height,0);
 	guMtxConcat (GXmodelView2D, m, mv);
@@ -170,26 +171,20 @@ void Menu_DrawImg(f32 xpos, f32 ypos, u16 width, u16 height, u8 data[],
  ***************************************************************************/
 void Menu_DrawRectangle(f32 x, f32 y, f32 width, f32 height, GXColor color, u8 filled)
 {
-	u8 fmt;
-	long n;
-	int i;
+	long n = 4;
 	f32 x2 = x+width;
 	f32 y2 = y+height;
 	guVector v[] = {{x,y,0.0f}, {x2,y,0.0f}, {x2,y2,0.0f}, {x,y2,0.0f}, {x,y,0.0f}};
+	u8 fmt = GX_TRIANGLEFAN;
 
 	if(!filled)
 	{
 		fmt = GX_LINESTRIP;
 		n = 5;
 	}
-	else
-	{
-		fmt = GX_TRIANGLEFAN;
-		n = 4;
-	}
 
 	GX_Begin(fmt, GX_VTXFMT0, n);
-	for(i=0; i<n; i++)
+	for(long i=0; i<n; ++i)
 	{
 		GX_Position3f32(v[i].x, v[i].y,  v[i].z);
 		GX_Color4u8(color.r, color.g, color.b, color.a);
