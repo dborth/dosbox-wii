@@ -53,7 +53,7 @@ CPUBlock cpu;
 Segments Segs;
 
 Bit32s CPU_Cycles = 0;
-Bit32s CPU_CycleLeft = 0;
+Bit32s CPU_CycleLeft = 3000;
 Bit32s CPU_CycleMax = 3000;
 Bit32s CPU_OldCycleMax = 3000;
 Bit32s CPU_CyclePercUsed = 100;
@@ -2226,7 +2226,7 @@ public:
 	bool Change_Config(Section* newconfig){
 		Section_prop * section=static_cast<Section_prop *>(newconfig);
 		CPU_AutoDetermineMode=CPU_AUTODETERMINE_NONE;
-		CPU_CycleLeft=0;//needed ?
+		//CPU_CycleLeft=0;//needed ?
 		CPU_Cycles=0;
 		CPU_SkipCycleAutoAdjust=false;
 
