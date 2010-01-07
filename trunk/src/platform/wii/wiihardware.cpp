@@ -202,6 +202,9 @@ void USBGeckoOutput()
 
 void WiiInit()
 {
+	extern const devoptab_t dotab_stdnull;
+	devoptab_list[STD_OUT] = &dotab_stdnull;
+	devoptab_list[STD_ERR] = &dotab_stdnull;
 	//USBGeckoOutput(); // uncomment to enable USB gecko output
 	__exception_setreload(8);
 	fatInitDefault();
