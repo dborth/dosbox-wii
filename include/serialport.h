@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -100,8 +100,9 @@ public:
 	Bit8u getb() {
 		if (!used) return data[pos];
 		Bitu where=pos;
-		if (++pos>=size) pos-=size;
 		used--;
+		if(used) pos++;
+		if (pos>=size) pos-=size;
 		return data[where];
 	}
 	Bit8u getTop() {

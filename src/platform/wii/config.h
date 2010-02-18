@@ -53,6 +53,7 @@
 
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))
 #define GCC_UNLIKELY(x) __builtin_expect((x), 0)
+#define GCC_LIKELY(x) __builtin_expect((x), 1)
 
 #define INLINE inline
 //#define DB_FASTCALL __fastcall

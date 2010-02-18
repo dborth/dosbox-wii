@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -120,7 +120,6 @@ int MountDOSBoxDir(char DriveLetter, const char *path) {
 }
 
 
-
 class MOUNT : public Program {
 public:
 	void Run(void)
@@ -160,7 +159,7 @@ public:
 						Drives[i_drive] = 0;
 						if(i_drive == DOS_GetDefaultDrive()) 
 							DOS_SetDrive(toupper('Z') - 'A');
-						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCES"),umount[0]);
+						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCESS"),umount[0]);
 						break;
 					case 1:
 						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL"));
@@ -391,7 +390,11 @@ public:
 		}
 		return;
 showusage:
-		WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"));
+#if defined (WIN32) || defined(OS2)
+	   WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"),"d:\\dosprogs","d:\\dosprogs");
+#else
+	   WriteOut(MSG_Get("PROGRAM_MOUNT_USAGE"),"~/dosprogs","~/dosprogs");		   
+#endif
 		return;
 	}
 };
@@ -1062,7 +1065,7 @@ public:
 						Drives[i_drive] = 0;
 						if (i_drive == DOS_GetDefaultDrive()) 
 							DOS_SetDrive(toupper('Z') - 'A');
-						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCES"),umount[0]);
+						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCESS"),umount[0]);
 						break;
 					case 1:
 						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL"));
@@ -1177,12 +1180,11 @@ public:
 							WriteOut(MSG_Get("PROGRAM_IMGMOUNT_FILE_NOT_FOUND"));
 							return;
 						}
-
-						if ((test.st_mode & S_IFDIR)) {
-							WriteOut(MSG_Get("PROGRAM_IMGMOUNT_MOUNT"));
-							return;
-						}
 					}
+				}
+				if ((test.st_mode & S_IFDIR)) {
+					WriteOut(MSG_Get("PROGRAM_IMGMOUNT_MOUNT"));
+					return;
 				}
 				paths.push_back(temp_line);
 			}
@@ -1228,7 +1230,7 @@ public:
 				}
 
 				newdrive=new fatDrive(temp_line.c_str(),sizes[0],sizes[1],sizes[2],sizes[3],0);
-				if(!(dynamic_cast<fatDrive*>(newdrive))->created_succesfully) {
+				if(!(dynamic_cast<fatDrive*>(newdrive))->created_successfully) {
 					delete newdrive;
 					newdrive = 0;
 				}
@@ -1339,7 +1341,7 @@ void IMGMOUNT_ProgramStart(Program * * make) {
 }
 
 
-Bitu DOS_SwitchKeyboardLayout(const char* new_layout);
+Bitu DOS_SwitchKeyboardLayout(const char* new_layout, Bit32s& tried_cp);
 Bitu DOS_LoadKeyboardLayout(const char * layoutname, Bit32s codepage, const char * codepagefile);
 const char* DOS_GetLoadedLayout(void);
 
@@ -1356,9 +1358,10 @@ void KEYB::Run(void) {
 			/* first parameter is layout ID */
 			Bitu keyb_error=0;
 			std::string cp_string;
+			Bit32s tried_cp = -1;
 			if (cmd->FindCommand(2,cp_string)) {
 				/* second parameter is codepage number */
-				Bit32s par_cp=atoi(cp_string.c_str());
+				tried_cp=atoi(cp_string.c_str());
 				char cp_file_name[256];
 				if (cmd->FindCommand(3,cp_string)) {
 					/* third parameter is codepage file */
@@ -1368,8 +1371,10 @@ void KEYB::Run(void) {
 					strcpy(cp_file_name, "auto");
 				}
 
-				keyb_error=DOS_LoadKeyboardLayout(temp_line.c_str(), par_cp, cp_file_name);
-			} else keyb_error=DOS_SwitchKeyboardLayout(temp_line.c_str());
+				keyb_error=DOS_LoadKeyboardLayout(temp_line.c_str(), tried_cp, cp_file_name);
+			} else {
+				keyb_error=DOS_SwitchKeyboardLayout(temp_line.c_str(), tried_cp);
+			}
 			switch (keyb_error) {
 				case KEYB_NOERROR:
 					WriteOut(MSG_Get("PROGRAM_KEYB_NOERROR"),temp_line.c_str(),dos.loaded_codepage);
@@ -1382,7 +1387,7 @@ void KEYB::Run(void) {
 					WriteOut(MSG_Get("PROGRAM_KEYB_INVALIDFILE"),temp_line.c_str());
 					break;
 				case KEYB_LAYOUTNOTFOUND:
-					WriteOut(MSG_Get("PROGRAM_KEYB_LAYOUTNOTFOUND"),temp_line.c_str(),dos.loaded_codepage);
+					WriteOut(MSG_Get("PROGRAM_KEYB_LAYOUTNOTFOUND"),temp_line.c_str(),tried_cp);
 					break;
 				case KEYB_INVALIDCPFILE:
 					WriteOut(MSG_Get("PROGRAM_KEYB_INVCPFILE"),temp_line.c_str());
@@ -1422,10 +1427,14 @@ void DOS_SetupPrograms(void) {
 #ifdef HW_RVL
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT d usb:/windows mounts windows directory on USB as the d: drive\n");
 #else
-	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT c c:\\windows mounts windows directory as the c: drive in DOSBox\n");
+	MSG_Add("PROGRAM_MOUNT_USAGE",
+		"Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\n"
+		"For example: MOUNT c %s\n"
+		"This makes the directory %s act as the C: drive inside DOSBox.\n"
+		"The directory has to exist.\n");
 #endif
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NOT_MOUNTED","Drive %c isn't mounted.\n");
-	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCES","Drive %c has succesfully been removed.\n");
+	MSG_Add("PROGRAM_MOUNT_UMOUNT_SUCCESS","Drive %c has successfully been removed.\n");
 	MSG_Add("PROGRAM_MOUNT_UMOUNT_NO_VIRTUAL","Virtual Drives can not be unMOUNTed.\n");
 	MSG_Add("PROGRAM_MOUNT_WARNING_WIN","\033[31;1mMounting c:\\ is NOT recommended. Please mount a (sub)directory next time.\033[0m\n");
 	MSG_Add("PROGRAM_MOUNT_WARNING_OTHER","\033[31;1mMounting / is NOT recommended. Please mount a (sub)directory next time.\033[0m\n");
@@ -1458,7 +1467,7 @@ void DOS_SetupPrograms(void) {
 		"For information about basic mount type \033[34;1mintro mount\033[0m\n"
 		"For information about CD-ROM support type \033[34;1mintro cdrom\033[0m\n"
 		"For information about special keys type \033[34;1mintro special\033[0m\n"
-		"For more information about DOSBox, go to \033[34;1mhttp://dosbox.sourceforge.net/wiki\033[0m\n"
+		"For more information about DOSBox, go to \033[34;1mhttp://www.dosbox.com/wiki\033[0m\n"
 		"\n"
 		"\033[31;1mDOSBox will stop/exit without a warning if an error occured!\033[0m\n"
 		"\n"
@@ -1473,38 +1482,27 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_INTRO_MOUNT_WINDOWS",
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
-		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mmount c c:\\dosprog\\\033[37m will create a C drive with c:\\dosprog as contents. \xBA\n"
-		"\xBA                                                                        \xBA\n"
-		"\xBA \033[32mc:\\dosprog\\\033[37m is an example. Replace it with your own games directory.  \033[37m \xBA\n"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
+		"\xBA \033[32mmount c c:\\dosprogs\\\033[37m will create a C drive with c:\\dosprogs as contents.\xBA\n"
+		"\xBA                                                                         \xBA\n"
+		"\xBA \033[32mc:\\dosprogs\\\033[37m is an example. Replace it with your own games directory.  \033[37m \xBA\n"
 		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
-		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 		);
-	MSG_Add("PROGRAM_INTRO_MOUNT_WII",
-		"\033[44;1m==========================="
-		"============================"
-		"=======================\n"
-		"| \033[32mmount c usb:/dosprog/\033[37m will create a C drive with usb:/dosprog as contents. |\n"
-		"|                                                                            |\n"
-		"| \033[32musb:/dosprog/\033[37m is an example. Possible drives are sd: usb: carda: cardb: \033[37m   |\n"
-		"==========================="
-		"============================"
-		"=======================\033[0m\n"
-		);
 	MSG_Add("PROGRAM_INTRO_MOUNT_OTHER",
-		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mmount c ~/dosprog\033[37m will create a C drive with ~/dosprog as contents. \xBA\n"
-		"\xBA                                                                     \xBA\n"
-		"\xBA \033[32m~/dosprog\033[37m is an example. Replace it with your own games directory. \033[37m \xBA\n"
-		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
+		"\xBA \033[32mmount c ~/dosprogs\033[37m will create a C drive with ~/dosprogs as contents.\xBA\n"
+		"\xBA                                                                      \xBA\n"
+		"\xBA \033[32m~/dosprogs\033[37m is an example. Replace it with your own games directory.\033[37m  \xBA\n"
+		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 		);
 	MSG_Add("PROGRAM_INTRO_MOUNT_END",
-		"When the mount has succesfully completed you can type \033[34;1mc:\033[0m to go to your freshly\n"
+		"When the mount has successfully completed you can type \033[34;1mc:\033[0m to go to your freshly\n"
 		"mounted C-drive. Typing \033[34;1mdir\033[0m there will show its contents."
 		" \033[34;1mcd\033[0m will allow you to\n"
 		"enter a directory (recognised by the \033[33;1m[]\033[0m in a directory listing).\n"
