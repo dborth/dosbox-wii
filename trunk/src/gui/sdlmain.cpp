@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1474,7 +1474,6 @@ static BOOL WINAPI ConsoleEventHandler(DWORD event) {
 /* static variable to show wether there is not a valid stdout.
  * Fixes some bugs when -noconsole is used in a read only directory */
 static bool no_stdout = false;
-
 void GFX_ShowMsg(char const* format,...) {
 	char buf[512];
 	va_list msg;
@@ -1549,7 +1548,7 @@ void Config_Add_SDL() {
 	Pstring = Pmulti->GetSection()->Add_string("inactive",Property::Changeable::Always,"normal");
 	Pstring->Set_values(inactt);
 
-	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,"mapper.txt");
+	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,"mapper.conf");
 	Pstring->Set_help("File used to load/save the key/event mappings from.");
 
 	Pbool = sdl_sec->Add_bool("usescancodes",Property::Changeable::Always,true);
@@ -1726,7 +1725,7 @@ int main(int argc, char* argv[]) {
 #endif  //defined(WIN32) && !(C_DEBUG)
 		if (control->cmdline->FindExist("-version") ||
 		    control->cmdline->FindExist("--version") ) {
-			printf("\nDOSBox version %s, copyright 2002-2009 DOSBox Team.\n\n",VERSION);
+			printf("\nDOSBox version %s, copyright 2002-2010 DOSBox Team.\n\n",VERSION);
 			printf("DOSBox is written by the DOSBox Team (See AUTHORS file))\n");
 			printf("DOSBox comes with ABSOLUTELY NO WARRANTY.  This is free software,\n");
 			printf("and you are welcome to redistribute it under certain conditions;\n");
@@ -1754,11 +1753,13 @@ int main(int argc, char* argv[]) {
 
 	/* Display Welcometext in the console */
 	LOG_MSG("DOSBox version %s",VERSION);
-	LOG_MSG("Copyright 2002-2009 DOSBox Team, published under GNU GPL.");
+	LOG_MSG("Copyright 2002-2010 DOSBox Team, published under GNU GPL.");
 	LOG_MSG("---");
 
 	/* Init SDL */
-	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1")); //Workaround debian/ubuntu fixes for SDL.
+#if SDL_VERSION_ATLEAST(1, 2, 14)
+	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1"));
+#endif
 	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
 		|SDL_INIT_NOPARACHUTE
 		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());

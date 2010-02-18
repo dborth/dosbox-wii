@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -188,7 +188,7 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 	char end[2]={CROSS_FILESPLIT,0};
 	if (tempDir[strlen(tempDir)-1]!=CROSS_FILESPLIT) strcat(tempDir,end);
 	
-	Bitu id;
+	Bit16u id;
 	if (!dirCache.FindFirst(tempDir,id)) {
 		DOS_SetError(DOSERR_PATH_NOT_FOUND);
 		return false;
@@ -239,7 +239,7 @@ bool localDrive::FindNext(DOS_DTA & dta) {
 	Bit8u find_attr;
 
 	dta.GetSearchParams(srch_attr,srch_pattern);
-	Bitu id = dta.GetDirID();
+	Bit16u id = dta.GetDirID();
 
 again:
 	if (!dirCache.FindNext(id,dir_ent)) {

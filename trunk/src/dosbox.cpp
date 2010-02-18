@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.149 2009/05/20 18:07:06 qbix79 Exp $ */
+/* $Id: dosbox.cpp,v 1.150 2009-11-03 20:17:42 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -130,10 +130,10 @@ static Bitu Normal_Loop(void) {
 	while (1) {
 		if (PIC_RunQueue()) {
 			ret=(*cpudecoder)();
-			if (ret<0) return 1;
+			if (GCC_UNLIKELY(ret<0)) return 1;
 			if (ret>0) {
 				Bitu blah=(*CallBack_Handlers[ret])();
-				if (blah) return blah;
+				if (GCC_UNLIKELY(blah)) return blah;
 			}
 #if C_DEBUG
 			if (DEBUG_ExitLoop()) return 0;
@@ -415,7 +415,7 @@ void DOSBOX_Init(void) {
 		"                  It usually works, but can fail for certain games.\n"
 		"  'fixed #number' will set a fixed amount of cycles. This is what you usually need if 'auto' fails.\n"
 		"                  (Example: fixed 4000)\n"
-		"  'max'           will allocate as much cycles as your computer is able to handle\n");
+		"  'max'           will allocate as much cycles as your computer is able to handle.\n");
 
 	const char* cyclest[] = { "auto","fixed","max","%u",0 };
 	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::Always,"auto");
@@ -484,10 +484,10 @@ void DOSBOX_Init(void) {
 
 	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init,true);//done
 	
-	const char* sbtypes[] = { "sb1", "sb2", "sbpro1", "sbpro2", "sb16", "none", 0 };
+	const char* sbtypes[] = { "sb1", "sb2", "sbpro1", "sbpro2", "sb16", "gb", "none", 0 };
 	Pstring = secprop->Add_string("sbtype",Property::Changeable::WhenIdle,"sb16");
 	Pstring->Set_values(sbtypes);
-	Pstring->Set_help("Type of sblaster to emulate.");
+	Pstring->Set_help("Type of Soundblaster to emulate. gb is Gameblaster.");
 
 	Phex = secprop->Add_hex("sbbase",Property::Changeable::WhenIdle,0x220);
 	Phex->Set_values(ios);
@@ -513,10 +513,10 @@ void DOSBOX_Init(void) {
 	Pstring->Set_values(oplmodes);
 	Pstring->Set_help("Type of OPL emulation. On 'auto' the mode is determined by sblaster type. All OPL modes are Adlib-compatible, except for 'cms'.");
 
-	const char* oplemus[]={ "default", "compat", "fast", "old", 0};
+	const char* oplemus[]={ "default", "compat", "fast", 0};
 	Pstring = secprop->Add_string("oplemu",Property::Changeable::WhenIdle,"default");
 	Pstring->Set_values(oplemus);
-	Pstring->Set_help("Provider for the OPL emulation. compat or old might provide better quality (see oplrate as well).");
+	Pstring->Set_help("Provider for the OPL emulation. compat might provide better quality (see oplrate as well).");
 
 	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,22050);
 	Pint->Set_values(oplrates);
@@ -598,7 +598,7 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("swap34",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("swap the 3rd and the 4th axis. can be useful for certain joysticks.");
 
-	Pbool = secprop->Add_bool("buttonwrap",Property::Changeable::WhenIdle,true);
+	Pbool = secprop->Add_bool("buttonwrap",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("enable button wrapping at the number of emulated buttons.");
 
 	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
@@ -614,7 +614,7 @@ void DOSBOX_Init(void) {
 		"set type of device connected to com port.\n"
 		"Can be disabled, dummy, modem, nullmodem, directserial.\n"
 		"Additional parameters must be in the same line in the form of\n"
-		"parameter:value. Parameter for all types is irq.\n"
+		"parameter:value. Parameter for all types is irq (optional).\n"
 		"for directserial: realport (required), rxdelay (optional).\n"
 		"                 (realport:COM1 realport:ttyS0).\n"
 		"for modem: listenport (optional).\n"
