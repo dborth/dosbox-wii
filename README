@@ -1,3 +1,84 @@
+¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤
+ 
+                                 - DOSBox Wii -
+                                   Version 1.2
+                       http://code.google.com/p/dosbox-wii   
+                               (Under GPL License)
+ 
+¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤
+
+A port of DOSBox to the Wii using SDL Wii.
+
+-=[ Features ]=-
+
+* USB Keyboard and mouse support
+* Wiimote pointer support
+* SD/USB mounting
+* Most DOS games are playable
+* Home menu, with on-screen keyboard
+
+-=[ Update History ]=-
+
+[1.2 - February 18, 2010]
+
+* Updated to latest DOSBox SVN
+
+[1.1 - October 27, 2009]
+
+* Fixed "black screen" issue with numerous games
+* Minor optimizations and bug fixes
+* Updated to latest DOSBox SVN
+
+[1.0 - October 9, 2009]
+
+* Home menu and on-screen keyboard (a proof of concept showing SDL + libwiigui)
+* Small speed increases via SDL Wii improvements
+* Compiled with devkitPPC r18 and libogc 1.8.0
+* Updated to latest DOSBox SVN
+
+[0.73.02 - July 1, 2009]
+
+* Upgraded DOSBox engine to latest SVN 
+* Fixed lockup when only using the Wiimote (no attachments connected) 
+* Compiled with latest libogc and SDL Wii 
+
+[0.73.01 - June 3, 2009]
+
+* Upgraded DOSBox engine to 0.73 
+* Sound issues fixed 
+* Compiled with latest libogc and SDL Wii 
+
+[0.72.01 - May 14, 2009]
+
+* Initial release
+
+-=[ Instructions ]=-
+
+You need a Wii Remote and a USB keyboard. The C: drive will automatically be
+mounted to sd:/DOSBox/ if loaded from apps/dosbox-wii/. Otherwise, the 
+directory the dol is loaded from will be mounted as C, and sd:/DOSBox as D 
+(if present). The Z: driver is a virtual drive that is part of DOSBox. 
+
+Other drives can be mounted using the MOUNT command. Prefix sd: for an SD card,
+and usb: for a USB drive. The Wii's DVD drive and network folders can't be 
+mounted at this time. 
+
+The configuration file is loaded from the directory the dol is located in 
+(if present) and sd:/DOSBox/dosbox.conf otherwise. This file will be created 
+automatically after you start DOSBox. Please edit it with a text editor 
+to choose settings appropriate for each game. 
+
+Press the Home button, type "exit", press Ctrl+F9, or press Reset (on the 
+console) to exit. 
+
+-=[ Compatibility ]=-
+
+Most games work properly now; however, many games will require some sort 
+of adjustment to the dosbox.conf file. It is recommended to try the game 
+you want to play on the PC version of DOSBox first to discover the optimum 
+settings. 
+
+-------------------------------------------------------------------------------
 DOSBox v0.73
 
 
