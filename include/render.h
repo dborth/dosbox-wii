@@ -23,7 +23,7 @@
 // 1: complex scalers off, scaler cache off, all simple scalers on
 // 2: complex scalers off, scaler cache on
 // 3: complex scalers on
-#define RENDER_USE_ADVANCED_SCALERS 3
+#define RENDER_USE_ADVANCED_SCALERS 2
 
 #include "../src/gui/render_scalers.h"
 
@@ -91,7 +91,7 @@ extern Render_t render;
 extern ScalerLineHandler_t RENDER_DrawLine;
 void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double ratio,bool dblw,bool dblh);
 bool RENDER_StartUpdate(void);
-void RENDER_EndUpdate( );
+void RENDER_EndUpdate(bool abort);
 void RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue);
 
 

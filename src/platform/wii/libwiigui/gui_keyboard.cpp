@@ -1,7 +1,7 @@
 /****************************************************************************
  * libwiigui
  *
- * Tantric 2009
+ * Tantric 2009-2010
  *
  * gui_keyboard.cpp
  *
@@ -9,21 +9,52 @@
  ***************************************************************************/
 
 #include "gui.h"
+#include <string>
+
+using namespace std;
 
 static char tmptxt[MAX_KEYBOARD_DISPLAY];
 
-static char * GetDisplayText(char * t)
+static void str_replace(string &str, char *search, const char *replace)
 {
-	if(!t)
-		return NULL;
+	int searchLen = strlen(search);
+	int replaceLen = strlen(replace);
 
-	int len = strlen(t);
+	string::size_type pos=0;
 
-	if(len < MAX_KEYBOARD_DISPLAY)
+	while ((pos=str.find(search, pos)) != string::npos)
+	{
+		str.erase(pos, searchLen);
+		str.insert(pos, replace);
+		pos += replaceLen;
+	}
+}
+
+static char * GetDisplayText(char * t, int max)
+{
+	if(!t || t[0] == 0)
 		return t;
 
-	strncpy(tmptxt, &t[len-MAX_KEYBOARD_DISPLAY], MAX_KEYBOARD_DISPLAY);
-	tmptxt[MAX_KEYBOARD_DISPLAY-1] = 0;
+	string tempStr(t);
+	char txt[2] = { 0, 0 };
+	txt[0] = 13; str_replace(tempStr, txt, "<ENTER>");
+	txt[0] = 27; str_replace(tempStr, txt, "<ESC>");
+	txt[0] = 14; str_replace(tempStr, txt, "<F1>");
+	txt[0] = 15; str_replace(tempStr, txt, "<F2>");
+	txt[0] = 16; str_replace(tempStr, txt, "<F3>");
+	txt[0] = 17; str_replace(tempStr, txt, "<F4>");
+	txt[0] = 18; str_replace(tempStr, txt, "<F5>");
+	txt[0] = 19; str_replace(tempStr, txt, "<F6>");
+	txt[0] = 20; str_replace(tempStr, txt, "<F7>");
+	txt[0] = 21; str_replace(tempStr, txt, "<F8>");
+	txt[0] = 22; str_replace(tempStr, txt, "<F9>");
+	txt[0] = 23; str_replace(tempStr, txt, "<F10>");
+	txt[0] = 24; str_replace(tempStr, txt, "<F11>");
+	txt[0] = 25; str_replace(tempStr, txt, "<F12>");
+
+	int s = tempStr.length()-MAX_KEYBOARD_DISPLAY;
+	if(s < 0) s = 0;
+	snprintf(tmptxt, MAX_KEYBOARD_DISPLAY, "%s", &(tempStr.c_str()[s]));
 	return &tmptxt[0];
 }
 
@@ -33,8 +64,8 @@ static char * GetDisplayText(char * t)
 
 GuiKeyboard::GuiKeyboard(char * t, u32 max)
 {
-	width = 540;
-	height = 400;
+	width = 610;
+	height = 440;
 	shift = 0;
 	caps = 0;
 	selectable = true;
@@ -45,8 +76,23 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	kbtextstr[max] = 0;
 	kbtextmaxlen = max;
 
-	Key thekeys[4][11] = {
+	Key thekeys[5][12] = {
 	{
+		{14,0}, // F1
+		{15,0}, // F2
+		{16,0}, // F3
+		{17,0}, // F4
+		{18,0}, // F5
+		{19,0}, // F6
+		{20,0}, // F7
+		{21,0}, // F8
+		{22,0}, // F9
+		{23,0}, // F10
+		{24,0}, // F11
+		{25,0}, // F12
+	},
+	{
+		{'`','~'},
 		{'1','!'},
 		{'2','@'},
 		{'3','#'},
@@ -57,7 +103,7 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 		{'8','*'},
 		{'9','('},
 		{'0',')'},
-		{'\0','\0'}
+		{'-','_'}
 	},
 	{
 		{'q','Q'},
@@ -70,7 +116,8 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 		{'i','I'},
 		{'o','O'},
 		{'p','P'},
-		{'-','_'}
+		{'[','{'},
+		{']','}'}
 	},
 	{
 		{'a','A'},
@@ -83,7 +130,8 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 		{'k','K'},
 		{'l','L'},
 		{';',':'},
-		{'\'','"'}
+		{'\'','"'},
+		{'\\','|'}
 	},
 
 	{
@@ -97,6 +145,7 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 		{',','<'},
 		{'.','>'},
 		{'/','?'},
+		{'\0','\0'},
 		{'\0','\0'}
 	}
 	};
@@ -105,12 +154,12 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keyTextbox = new GuiImageData(keyboard_textbox_png);
 	keyTextboxImg = new GuiImage(keyTextbox);
 	keyTextboxImg->SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
-	keyTextboxImg->SetPosition(0, 0);
+	keyTextboxImg->SetPosition(0, 20);
 	this->Append(keyTextboxImg);
 
-	kbText = new GuiText(GetDisplayText(kbtextstr), 22, (GXColor){0, 0, 0, 0xff});
+	kbText = new GuiText(GetDisplayText(kbtextstr, max), 22, (GXColor){0, 0, 0, 0xff});
 	kbText->SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
-	kbText->SetPosition(0, 13);
+	kbText->SetPosition(0, 33);
 	this->Append(kbText);
 
 	key = new GuiImageData(keyboard_key_png);
@@ -124,6 +173,38 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keySoundClick = new GuiSound(button_click_pcm, button_click_pcm_size, SOUND_PCM);
 	trigA = new GuiTrigger;
 	trigA->SetSimpleTrigger(-1, WPAD_BUTTON_A | WPAD_CLASSIC_BUTTON_A, PAD_BUTTON_A);
+	trigB = new GuiTrigger;
+	trigB->SetButtonOnlyTrigger(-1, WPAD_BUTTON_B | WPAD_CLASSIC_BUTTON_B, PAD_BUTTON_B);
+	
+	int yoff = 80;
+	
+	keyEscImg = new GuiImage(keyMedium);
+	keyEscOverImg = new GuiImage(keyMediumOver);
+	keyEscText = new GuiText("Esc", 22, (GXColor){0, 0, 0, 0xff});
+	keyEsc = new GuiButton(keyMedium->GetWidth(), keyMedium->GetHeight());
+	keyEsc->SetImage(keyEscImg);
+	keyEsc->SetImageOver(keyEscOverImg);
+	keyEsc->SetLabel(keyEscText);
+	keyEsc->SetSoundOver(keySoundOver);
+	keyEsc->SetSoundClick(keySoundClick);
+	keyEsc->SetTrigger(trigA);
+	keyEsc->SetPosition(0, yoff);
+	keyEsc->SetEffectGrow();
+	this->Append(keyEsc);
+	
+	keyEnterImg = new GuiImage(keyMedium);
+	keyEnterOverImg = new GuiImage(keyMediumOver);
+	keyEnterText = new GuiText("Enter", 22, (GXColor){0, 0, 0, 0xff});
+	keyEnter = new GuiButton(keyMedium->GetWidth(), keyMedium->GetHeight());
+	keyEnter->SetImage(keyEnterImg);
+	keyEnter->SetImageOver(keyEnterOverImg);
+	keyEnter->SetLabel(keyEnterText);
+	keyEnter->SetSoundOver(keySoundOver);
+	keyEnter->SetSoundClick(keySoundClick);
+	keyEnter->SetTrigger(trigA);
+	keyEnter->SetPosition(12*42+18, 4*42+yoff);
+	keyEnter->SetEffectGrow();
+	this->Append(keyEnter);
 
 	keyBackImg = new GuiImage(keyMedium);
 	keyBackOverImg = new GuiImage(keyMediumOver);
@@ -135,7 +216,8 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keyBack->SetSoundOver(keySoundOver);
 	keyBack->SetSoundClick(keySoundClick);
 	keyBack->SetTrigger(trigA);
-	keyBack->SetPosition(10*42+40, 0*42+80);
+	keyBack->SetTrigger(trigB);
+	keyBack->SetPosition(11*42+40, 1*42+yoff);
 	keyBack->SetEffectGrow();
 	this->Append(keyBack);
 
@@ -149,7 +231,7 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keyCaps->SetSoundOver(keySoundOver);
 	keyCaps->SetSoundClick(keySoundClick);
 	keyCaps->SetTrigger(trigA);
-	keyCaps->SetPosition(0, 2*42+80);
+	keyCaps->SetPosition(0, 3*42+yoff);
 	keyCaps->SetEffectGrow();
 	this->Append(keyCaps);
 
@@ -163,7 +245,7 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keyShift->SetSoundOver(keySoundOver);
 	keyShift->SetSoundClick(keySoundClick);
 	keyShift->SetTrigger(trigA);
-	keyShift->SetPosition(21, 3*42+80);
+	keyShift->SetPosition(21, 4*42+yoff);
 	keyShift->SetEffectGrow();
 	this->Append(keyShift);
 
@@ -175,23 +257,41 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 	keySpace->SetSoundOver(keySoundOver);
 	keySpace->SetSoundClick(keySoundClick);
 	keySpace->SetTrigger(trigA);
-	keySpace->SetPosition(0, 4*42+80);
+	keySpace->SetPosition(0, 5*42+yoff);
 	keySpace->SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
 	keySpace->SetEffectGrow();
 	this->Append(keySpace);
 
 	char txt[2] = { 0, 0 };
 
-	for(int i=0; i<4; i++)
+	for(int i=0; i<5; i++)
 	{
-		for(int j=0; j<11; j++)
+		for(int j=0; j<12; j++)
 		{
 			if(keys[i][j].ch != '\0')
 			{
 				txt[0] = keys[i][j].ch;
 				keyImg[i][j] = new GuiImage(key);
 				keyImgOver[i][j] = new GuiImage(keyOver);
-				keyTxt[i][j] = new GuiText(txt, 22, (GXColor){0, 0, 0, 0xff});
+				switch(keys[i][j].ch)
+				{
+					case 14: keyTxt[i][j] = new GuiText("F1", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 15: keyTxt[i][j] = new GuiText("F2", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 16: keyTxt[i][j] = new GuiText("F3", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 17: keyTxt[i][j] = new GuiText("F4", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 18: keyTxt[i][j] = new GuiText("F5", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 19: keyTxt[i][j] = new GuiText("F6", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 20: keyTxt[i][j] = new GuiText("F7", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 21: keyTxt[i][j] = new GuiText("F8", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 22: keyTxt[i][j] = new GuiText("F9", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 23: keyTxt[i][j] = new GuiText("F10", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 24: keyTxt[i][j] = new GuiText("F11", 22, (GXColor){0, 0, 0, 0xff}); break;
+					case 25: keyTxt[i][j] = new GuiText("F12", 22, (GXColor){0, 0, 0, 0xff}); break;
+
+					default: 
+						keyTxt[i][j] = new GuiText(txt, 22, (GXColor){0, 0, 0, 0xff});
+						break;
+				}
 				keyTxt[i][j]->SetAlignment(ALIGN_CENTRE, ALIGN_BOTTOM);
 				keyTxt[i][j]->SetPosition(0, -10);
 				keyBtn[i][j] = new GuiButton(key->GetWidth(), key->GetHeight());
@@ -201,7 +301,16 @@ GuiKeyboard::GuiKeyboard(char * t, u32 max)
 				keyBtn[i][j]->SetSoundClick(keySoundClick);
 				keyBtn[i][j]->SetTrigger(trigA);
 				keyBtn[i][j]->SetLabel(keyTxt[i][j]);
-				keyBtn[i][j]->SetPosition(j*42+21*i+40, i*42+80);
+
+				int stagger;
+				switch(i)
+				{
+					case 0: stagger = 42; break;
+					case 1: stagger = -42; break;
+					default: stagger = 21*(i-1); break;
+				}
+
+				keyBtn[i][j]->SetPosition(j*42+stagger+40, i*42+yoff);
 				keyBtn[i][j]->SetEffectGrow();
 				this->Append(keyBtn[i][j]);
 			}
@@ -217,6 +326,14 @@ GuiKeyboard::~GuiKeyboard()
 	delete kbText;
 	delete keyTextbox;
 	delete keyTextboxImg;
+	delete keyEscText;
+	delete keyEscImg;
+	delete keyEscOverImg;
+	delete keyEsc;
+	delete keyEnterText;
+	delete keyEnterImg;
+	delete keyEnterOverImg;
+	delete keyEnter;
 	delete keyCapsText;
 	delete keyCapsImg;
 	delete keyCapsOverImg;
@@ -242,9 +359,9 @@ GuiKeyboard::~GuiKeyboard()
 	delete keySoundClick;
 	delete trigA;
 
-	for(int i=0; i<4; i++)
+	for(int i=0; i<5; i++)
 	{
-		for(int j=0; j<11; j++)
+		for(int j=0; j<12; j++)
 		{
 			if(keys[i][j].ch != '\0')
 			{
@@ -270,19 +387,37 @@ void GuiKeyboard::Update(GuiTrigger * t)
 
 	bool update = false;
 
-	if(keySpace->GetState() == STATE_CLICKED)
+	if(keyEsc->GetState() == STATE_CLICKED)
+	{
+		if(strlen(kbtextstr) < kbtextmaxlen)
+		{
+			kbtextstr[strlen(kbtextstr)] = 27; // Esc key code
+			kbText->SetText(GetDisplayText(kbtextstr, kbtextmaxlen));
+		}
+		keyEsc->SetState(STATE_SELECTED, t->chan);
+	}
+	else if(keyEnter->GetState() == STATE_CLICKED)
+	{
+		if(strlen(kbtextstr) < kbtextmaxlen)
+		{
+			kbtextstr[strlen(kbtextstr)] = 13; // Enter key code
+			kbText->SetText(GetDisplayText(kbtextstr, kbtextmaxlen));
+		}
+		keyEnter->SetState(STATE_SELECTED, t->chan);
+	}
+	else if(keySpace->GetState() == STATE_CLICKED)
 	{
 		if(strlen(kbtextstr) < kbtextmaxlen)
 		{
 			kbtextstr[strlen(kbtextstr)] = ' ';
-			kbText->SetText(kbtextstr);
+			kbText->SetText(GetDisplayText(kbtextstr, kbtextmaxlen));
 		}
 		keySpace->SetState(STATE_SELECTED, t->chan);
 	}
 	else if(keyBack->GetState() == STATE_CLICKED)
 	{
 		kbtextstr[strlen(kbtextstr)-1] = 0;
-		kbText->SetText(GetDisplayText(kbtextstr));
+		kbText->SetText(GetDisplayText(kbtextstr, kbtextmaxlen));
 		keyBack->SetState(STATE_SELECTED, t->chan);
 	}
 	else if(keyShift->GetState() == STATE_CLICKED)
@@ -302,13 +437,13 @@ void GuiKeyboard::Update(GuiTrigger * t)
 
 	startloop:
 
-	for(int i=0; i<4; i++)
+	for(int i=0; i<5; i++)
 	{
-		for(int j=0; j<11; j++)
+		for(int j=0; j<12; j++)
 		{
 			if(keys[i][j].ch != '\0')
 			{
-				if(update)
+				if(update && keys[i][j].ch > 31)
 				{
 					if(shift || caps)
 						txt[0] = keys[i][j].chShift;
@@ -331,7 +466,7 @@ void GuiKeyboard::Update(GuiTrigger * t)
 							kbtextstr[strlen(kbtextstr)] = keys[i][j].ch;
 						}
 					}
-					kbText->SetText(GetDisplayText(kbtextstr));
+					kbText->SetText(GetDisplayText(kbtextstr, kbtextmaxlen));
 					keyBtn[i][j]->SetState(STATE_SELECTED, t->chan);
 
 					if(shift)

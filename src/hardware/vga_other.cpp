@@ -49,8 +49,10 @@ static void write_crtc_data_other(Bitu /*port*/,Bitu val,Bitu /*iolen*/) {
 	case 0x02:		//Horizontal sync position
 		vga.other.hsyncp=(Bit8u)val;
 		break;
-	case 0x03:		//Horizontal and vertical sync width
-		vga.other.syncw=(Bit8u)val;
+	case 0x03:		//Horizontal sync width
+		if (machine==MCH_TANDY) vga.other.vsyncw=(Bit8u)(val >> 4);
+		else vga.other.vsyncw = 16; // The MC6845 has a fixed v-sync width of 16 lines
+		vga.other.hsyncw=(Bit8u)(val & 0xf);
 		break;
 	case 0x04:		//Vertical total
 		if (vga.other.vtotal ^ val) VGA_StartResize();
@@ -116,7 +118,9 @@ static Bitu read_crtc_data_other(Bitu /*port*/,Bitu /*iolen*/) {
 	case 0x02:		//Horizontal sync position
 		return vga.other.hsyncp;
 	case 0x03:		//Horizontal and vertical sync width
-		return vga.other.syncw;
+		if (machine==MCH_TANDY)
+			return vga.other.hsyncw | (vga.other.vsyncw << 4);
+		else return vga.other.hsyncw;
 	case 0x04:		//Vertical total
 		return vga.other.vtotal;
 	case 0x05:		//Vertical display adjust
@@ -152,6 +156,7 @@ static Bitu read_crtc_data_other(Bitu /*port*/,Bitu /*iolen*/) {
 static double hue_offset = 0.0;
 static Bit8u cga16_val = 0;
 static void update_cga16_color(void);
+static Bit8u herc_pal = 0;
 
 static void cga16_color_select(Bit8u val) {
 	cga16_val = val;
@@ -278,17 +283,21 @@ static void TANDY_FindMode(void) {
 	}
 }
 
+void VGA_SetModeNow(VGAModes mode);
+
 static void PCJr_FindMode(void) {
 	if (vga.tandy.mode_control & 0x2) {
 		if (vga.tandy.mode_control & 0x10) {
 			/* bit4 of mode control 1 signals 16 colour graphics mode */
-			VGA_SetMode(M_TANDY16);
+			if (vga.mode==M_TANDY4) VGA_SetModeNow(M_TANDY16); // TODO lowres mode only
+			else VGA_SetMode(M_TANDY16);
 		} else if (vga.tandy.gfx_control & 0x08) {
 			/* bit3 of mode control 2 signals 2 colour graphics mode */
 			VGA_SetMode(M_TANDY2);
 		} else {
 			/* otherwise some 4-colour graphics mode */
-			VGA_SetMode(M_TANDY4);
+			if (vga.mode==M_TANDY16) VGA_SetModeNow(M_TANDY4);
+			else VGA_SetMode(M_TANDY4);
 		}
 		write_color_select(vga.tandy.color_select);
 	} else {
@@ -318,6 +327,7 @@ static void write_tandy_reg(Bit8u val) {
 			vga.tandy.mode_control=val;
 			VGA_SetBlinking(val & 0x20);
 			PCJr_FindMode();
+			vga.attr.disabled = (val&0x8)? 0: 1;
 		} else {
 			LOG(LOG_VGAMISC,LOG_NORMAL)("Unhandled Write %2X to tandy reg %X",val,vga.tandy.reg_index);
 		}
@@ -359,6 +369,7 @@ static void write_cga(Bitu port,Bitu val,Bitu /*iolen*/) {
 	switch (port) {
 	case 0x3d8:
 		vga.tandy.mode_control=(Bit8u)val;
+		vga.attr.disabled = (val&0x8)? 0: 1; 
 		if (vga.tandy.mode_control & 0x2) {
 			if (vga.tandy.mode_control & 0x10) {
 				if (!(val & 0x4) && machine==MCH_CGA) {
@@ -446,6 +457,30 @@ static void write_pcjr(Bitu port,Bitu val,Bitu /*iolen*/) {
 	}
 }
 
+static void CycleHercPal(bool pressed) {
+	if (!pressed) return;
+	if (++herc_pal>2) herc_pal=0;
+	Herc_Palette();
+	VGA_DAC_CombineColor(1,7);
+}
+	
+void Herc_Palette(void) {	
+	switch (herc_pal) {
+	case 0:	// White
+		VGA_DAC_SetEntry(0x7,0x2a,0x2a,0x2a);
+		VGA_DAC_SetEntry(0xf,0x3f,0x3f,0x3f);
+		break;
+	case 1:	// Amber
+		VGA_DAC_SetEntry(0x7,0x34,0x20,0x00);
+		VGA_DAC_SetEntry(0xf,0x3f,0x34,0x00);
+		break;
+	case 2:	// Green
+		VGA_DAC_SetEntry(0x7,0x00,0x26,0x00);
+		VGA_DAC_SetEntry(0xf,0x00,0x3f,0x00);
+		break;
+	}
+}
+
 static void write_hercules(Bitu port,Bitu val,Bitu /*iolen*/) {
 	switch (port) {
 	case 0x3b8: {
@@ -522,7 +557,7 @@ Bitu read_herc_status(Bitu /*port*/,Bitu /*iolen*/) {
 void VGA_SetupOther(void) {
 	Bitu i;
 	memset( &vga.tandy, 0, sizeof( vga.tandy ));
-	vga.attr.enabled = true;
+	vga.attr.disabled = 0;
 	vga.config.bytes_skip=0;
 
 	//Initialize values common for most machines, can be overwritten
@@ -541,6 +576,7 @@ void VGA_SetupOther(void) {
 		extern Bit8u int10_font_14[256 * 14];
 		for (i=0;i<256;i++)	memcpy(&vga.draw.font[i*32],&int10_font_14[i*14],14);
 		vga.draw.font_tables[0]=vga.draw.font_tables[1]=vga.draw.font;
+		MAPPER_AddHandler(CycleHercPal,MK_f11,0,"hercpal","Herc Pal");
 	}
 	if (machine==MCH_CGA) {
 		IO_RegisterWriteHandler(0x3d8,write_cga,IO_MB);

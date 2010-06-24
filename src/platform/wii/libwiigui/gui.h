@@ -51,8 +51,9 @@
 
 extern FreeTypeGX *fontSystem[];
 
-#define SCROLL_INITIAL_DELAY 	20
-#define SCROLL_LOOP_DELAY		3
+#define SCROLL_DELAY_INITIAL	200000
+#define SCROLL_DELAY_LOOP		30000
+#define SCROLL_DELAY_DECREASE	300
 #define MAX_KEYBOARD_DISPLAY	32
 
 typedef void (*UpdateCallback)(void * e);
@@ -190,11 +191,19 @@ class GuiTrigger
 		//!\param wiibtns Wii controller trigger button(s) - classic controller buttons are considered separately
 		//!\param gcbtns GameCube controller trigger button(s)
 		void SetButtonOnlyInFocusTrigger(s32 ch, u32 wiibtns, u16 gcbtns);
-		//!Get X/Y value from Wii Joystick (classic, nunchuk) input
-		//!\param right Controller stick (left = 0, right = 1)
+		//!Get X or Y value from Wii Joystick (classic, nunchuk) input
+		//!\param stick Controller stick (left = 0, right = 1)
 		//!\param axis Controller stick axis (x-axis = 0, y-axis = 1)
 		//!\return Stick value
-		s8 WPAD_Stick(u8 right, int axis);
+		s8 WPAD_Stick(u8 stick, int axis);
+		//!Get X value from Wii Joystick (classic, nunchuk) input
+		//!\param stick Controller stick (left = 0, right = 1)
+		//!\return Stick value
+		s8 WPAD_StickX(u8 stick);
+		//!Get Y value from Wii Joystick (classic, nunchuk) input
+		//!\param stick Controller stick (left = 0, right = 1)
+		//!\return Stick value
+		s8 WPAD_StickY(u8 stick);
 		//!Move menu selection left (via pad/joystick). Allows scroll delay and button overriding
 		//!\return true if selection should be moved left, false otherwise
 		bool Left();
@@ -208,11 +217,11 @@ class GuiTrigger
 		//!\return true if selection should be moved down, false otherwise
 		bool Down();
 
-		u8 type; //!< trigger type (TRIGGER_SIMPLE,	TRIGGER_HELD, TRIGGER_BUTTON_ONLY, TRIGGER_BUTTON_ONLY_IN_FOCUS)
-		s32 chan; //!< Trigger controller channel (0-3, -1 for all)
-		WPADData * wpad; //!< Wii controller trigger
 		WPADData wpaddata; //!< Wii controller trigger data
 		PADData pad; //!< GameCube controller trigger data
+		WPADData * wpad; //!< Wii controller trigger
+		s32 chan; //!< Trigger controller channel (0-3, -1 for all)
+		u8 type; //!< trigger type (TRIGGER_SIMPLE,	TRIGGER_HELD, TRIGGER_BUTTON_ONLY, TRIGGER_BUTTON_ONLY_IN_FOCUS)
 };
 
 extern GuiTrigger userInput[4];
@@ -307,12 +316,28 @@ class GuiElement
 		//!Considers alpha, alphaDyn, and the parent element's GetAlpha() value
 		//!\return alpha
 		int GetAlpha();
-		//!Sets the element's scale
+		//!Sets the element's x and y scale
 		//!\param s scale (1 is 100%)
 		void SetScale(float s);
+		//!Sets the element's x scale
+		//!\param s scale (1 is 100%)
+		void SetScaleX(float s);
+		//!Sets the element's y scale
+		//!\param s scale (1 is 100%)
+		void SetScaleY(float s);
+		//!Sets the element's x and y scale, using the provided max width/height
+		//!\param w Maximum width
+		//!\param h Maximum height
+		void SetScale(int w, int h);
 		//!Gets the element's current scale
 		//!Considers scale, scaleDyn, and the parent element's GetScale() value
 		float GetScale();
+		//!Gets the element's current x scale
+		//!Considers scale, scaleDyn, and the parent element's GetScale() value
+		float GetScaleX();
+		//!Gets the element's current y scale
+		//!Considers scale, scaleDyn, and the parent element's GetScale() value
+		float GetScaleY();
 		//!Set a new GuiTrigger for the element
 		//!\param t Pointer to GuiTrigger
 		void SetTrigger(GuiTrigger * t);
@@ -378,13 +403,19 @@ class GuiElement
 		//!\param hor Horizontal alignment (ALIGN_LEFT, ALIGN_RIGHT, ALIGN_CENTRE)
 		//!\param vert Vertical alignment (ALIGN_TOP, ALIGN_BOTTOM, ALIGN_MIDDLE)
 		virtual void SetAlignment(int hor, int vert);
+		//!Called when the language has changed, to obtain new text values for all text elements
+		virtual void ResetText();
 		//!Called constantly to allow the element to respond to the current input data
 		//!\param t Pointer to a GuiTrigger, containing the current input data from PAD/WPAD
 		virtual void Update(GuiTrigger * t);
 		//!Called constantly to redraw the element
 		virtual void Draw();
+		//!Called constantly to redraw the element's tooltip
+		virtual void DrawTooltip();
 	protected:
-		bool visible; //!< Visibility of the element. If false, Draw() is skipped
+		GuiTrigger * trigger[3]; //!< GuiTriggers (input actions) that this element responds to
+		UpdateCallback updateCB; //!< Callback function to call when this element is updated
+		GuiElement * parentElement; //!< Parent element
 		int focus; //!< Element focus (-1 = focus disabled, 0 = not focused, 1 = focused)
 		int width; //!< Element width
 		int height; //!< Element height
@@ -397,10 +428,10 @@ class GuiElement
 		int xoffsetDyn; //!< Element X offset, dynamic (added to xoffset value for animation effects)
 		int yoffsetDyn; //!< Element Y offset, dynamic (added to yoffset value for animation effects)
 		int alpha; //!< Element alpha value (0-255)
-		f32 scale; //!< Element scale (1 = 100%)
 		int alphaDyn; //!< Element alpha, dynamic (multiplied by alpha value for blending/fading effects)
+		f32 xscale; //!< Element X scale (1 = 100%)
+		f32 yscale; //!< Element Y scale (1 = 100%)
 		f32 scaleDyn; //!< Element scale, dynamic (multiplied by alpha value for blending/fading effects)
-		bool rumble; //!< Wiimote rumble (on/off) - set to on when this element requests a rumble event
 		int effects; //!< Currently enabled effect(s). 0 when no effects are enabled
 		int effectAmount; //!< Effect amount. Used by different effects for different purposes
 		int effectTarget; //!< Effect target amount. Used by different effects for different purposes
@@ -414,9 +445,8 @@ class GuiElement
 		bool selectable; //!< Whether or not this element selectable (can change to SELECTED state)
 		bool clickable; //!< Whether or not this element is clickable (can change to CLICKED state)
 		bool holdable; //!< Whether or not this element is holdable (can change to HELD state)
-		GuiTrigger * trigger[2]; //!< GuiTriggers (input actions) that this element responds to
-		GuiElement * parentElement; //!< Parent element
-		UpdateCallback updateCB; //!< Callback function to call when this element is updated
+		bool visible; //!< Visibility of the element. If false, Draw() is skipped
+		bool rumble; //!< Wiimote rumble (on/off) - set to on when this element requests a rumble event
 };
 
 //!Allows GuiElements to be grouped together into a "window"
@@ -443,6 +473,10 @@ class GuiWindow : public GuiElement
 		void Remove(GuiElement* e);
 		//!Removes all GuiElements
 		void RemoveAll();
+		//!Looks for the specified GuiElement
+		//!\param e The GuiElement to find
+		//!\return true if found, false otherwise
+		bool Find(GuiElement* e);
 		//!Returns the GuiElement at the specified index
 		//!\param index The index of the element
 		//!\return A pointer to the element at the index, NULL on error (eg: out of bounds)
@@ -480,8 +514,12 @@ class GuiWindow : public GuiElement
 		//!Moves the selected element to the element above or below
 		//!\param d Direction to move (-1 = up, 1 = down)
 		void MoveSelectionVert(int d);
+		//!Resets the text for all contained elements
+		void ResetText();
 		//!Draws all the elements in this GuiWindow
 		void Draw();
+		//!Draws all of the tooltips in this GuiWindow
+		void DrawTooltip();
 		//!Updates the window and all elements contains within
 		//!Allows the GuiWindow and all elements to respond to the input data specified
 		//!\param t Pointer to a GuiTrigger, containing the current input data from PAD/WPAD
@@ -497,7 +535,9 @@ class GuiImageData
 		//!Constructor
 		//!Converts the image data to RGBA8 - expects PNG format
 		//!\param i Image data
-		GuiImageData(const u8 * i);
+		//!\param w Max image width (0 = not set)
+		//!\param h Max image height (0 = not set)
+		GuiImageData(const u8 * i, int w=0, int h=0);
 		//!Destructor
 		~GuiImageData();
 		//!Gets a pointer to the image data
@@ -600,6 +640,11 @@ class GuiText : public GuiElement
 		//!Sets the text of the GuiText element
 		//!\param t Text
 		void SetText(const char * t);
+		//!Sets the text of the GuiText element
+		//!\param t UTF-8 Text
+		void SetWText(wchar_t * t);
+		//!Gets the translated text length of the GuiText element
+		int GetLength();
 		//!Sets up preset values to be used by GuiText(t)
 		//!Useful when printing multiple text elements, all with the same attributes set
 		//!\param sz Font size
@@ -615,6 +660,8 @@ class GuiText : public GuiElement
 		//!Sets the maximum width of the drawn texture image
 		//!\param w Maximum width
 		void SetMaxWidth(int w);
+		//!Gets the width of the text when rendered
+		int GetTextWidth();
 		//!Enables/disables text scrolling
 		//!\param s Scrolling on/off
 		void SetScroll(int s);
@@ -632,21 +679,50 @@ class GuiText : public GuiElement
 		//!\param hor Horizontal alignment (ALIGN_LEFT, ALIGN_RIGHT, ALIGN_CENTRE)
 		//!\param vert Vertical alignment (ALIGN_TOP, ALIGN_BOTTOM, ALIGN_MIDDLE)
 		void SetAlignment(int hor, int vert);
+		//!Updates the text to the selected language
+		void ResetText();
 		//!Constantly called to draw the text
 		void Draw();
 	protected:
-		char * origText; //!< Original text data
-		wchar_t* text; //!< Unicode text value
+		GXColor color; //!< Font color
+		wchar_t* text; //!< Translated Unicode text value
+		wchar_t *textDyn[20]; //!< Text value, if max width, scrolling, or wrapping enabled
+		int textDynNum; //!< Number of text lines
+		char * origText; //!< Original text data (English)
 		int size; //!< Font size
 		int maxWidth; //!< Maximum width of the generated text object (for text wrapping)
-		bool wrap; //!< Wrapping toggle
-		wchar_t* textDyn; //!< Wrapped text value
 		int textScroll; //!< Scrolling toggle
 		int textScrollPos; //!< Current starting index of text string for scrolling
 		int textScrollInitialDelay; //!< Delay to wait before starting to scroll
 		int textScrollDelay; //!< Scrolling speed
 		u16 style; //!< FreeTypeGX style attributes
-		GXColor color; //!< Font color
+		bool wrap; //!< Wrapping toggle
+};
+
+//!Display, manage, and manipulate tooltips in the GUI
+class GuiTooltip : public GuiElement
+{
+	public:
+		//!Constructor
+		//!\param t Text
+		GuiTooltip(const char *t);
+		//!Destructor
+		~GuiTooltip();
+		//!Gets the element's current scale
+		float GetScale();
+		//!Sets the text of the GuiTooltip element
+		//!\param t Text
+		void SetText(const char * t);
+		//!Constantly called to draw the GuiTooltip
+		void DrawTooltip();
+	
+		time_t time1, time2; //!< Tooltip times
+
+	protected:
+		GuiImage leftImage; //!< Tooltip left image
+		GuiImage tileImage; //!< Tooltip tile image
+		GuiImage rightImage; //!< Tooltip right image
+		GuiText *text; //!< Tooltip text
 };
 
 //!Display, manage, and manipulate buttons in the GUI. Buttons can have images, icons, text, and sound set (all of which are optional)
@@ -656,7 +732,7 @@ class GuiButton : public GuiElement
 		//!Constructor
 		//!\param w Width
 		//!\param h Height
-		GuiButton(int w, int h);
+		GuiButton(int w = 0, int h = 0);
 		//!Destructor
 		~GuiButton();
 		//!Sets the button's image
@@ -708,8 +784,15 @@ class GuiButton : public GuiElement
 		//!Sets the sound to play on click
 		//!\param s Pointer to GuiSound object
 		void SetSoundClick(GuiSound * s);
+		//!Sets the tooltip for the button
+		//!\param t Tooltip
+		void SetTooltip(GuiTooltip * t);
 		//!Constantly called to draw the GuiButton
 		void Draw();
+		//!Constantly called to draw the GuiButton's tooltip
+		void DrawTooltip();
+		//!Resets the text for all contained elements
+		void ResetText();
 		//!Constantly called to allow the GuiButton to respond to updated input data
 		//!\param t Pointer to a GuiTrigger, containing the current input data from PAD/WPAD
 		void Update(GuiTrigger * t);
@@ -729,10 +812,11 @@ class GuiButton : public GuiElement
 		GuiSound * soundOver; //!< Sound to play for STATE_SELECTED
 		GuiSound * soundHold; //!< Sound to play for STATE_HELD
 		GuiSound * soundClick; //!< Sound to play for STATE_CLICKED
+		GuiTooltip * tooltip; //!< Tooltip to display on over
 };
 
 typedef struct _keytype {
-	char ch, chShift;
+	unsigned char ch, chShift;
 } Key;
 
 //!On-screen keyboard
@@ -745,11 +829,18 @@ class GuiKeyboard : public GuiWindow
 		char kbtextstr[256];
 	protected:
 		u32 kbtextmaxlen;
-		Key keys[4][11];
 		int shift;
 		int caps;
 		GuiText * kbText;
 		GuiImage * keyTextboxImg;
+		GuiText * keyEscText;
+		GuiImage * keyEscImg;
+		GuiImage * keyEscOverImg;
+		GuiButton * keyEsc;
+		GuiText * keyEnterText;
+		GuiImage * keyEnterImg;
+		GuiImage * keyEnterOverImg;
+		GuiButton * keyEnter;
 		GuiText * keyCapsText;
 		GuiImage * keyCapsImg;
 		GuiImage * keyCapsOverImg;
@@ -765,10 +856,10 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keySpaceImg;
 		GuiImage * keySpaceOverImg;
 		GuiButton * keySpace;
-		GuiButton * keyBtn[4][11];
-		GuiImage * keyImg[4][11];
-		GuiImage * keyImgOver[4][11];
-		GuiText * keyTxt[4][11];
+		GuiButton * keyBtn[5][12];
+		GuiImage * keyImg[5][12];
+		GuiImage * keyImgOver[5][12];
+		GuiText * keyTxt[5][12];
 		GuiImageData * keyTextbox;
 		GuiImageData * key;
 		GuiImageData * keyOver;
@@ -779,6 +870,8 @@ class GuiKeyboard : public GuiWindow
 		GuiSound * keySoundOver;
 		GuiSound * keySoundClick;
 		GuiTrigger * trigA;
+		GuiTrigger * trigB;
+		Key keys[5][12]; // two chars = less space than one pointer
 };
 
 #endif

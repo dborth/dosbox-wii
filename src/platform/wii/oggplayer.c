@@ -1,38 +1,43 @@
 /*
  Copyright (c) 2008 Francisco Muñoz 'Hermes' <www.elotrolado.net>
  All rights reserved.
-
+ 
  Proper (standard) vorbis usage by Tantric, 2009
  Threading modifications/corrections by Tantric, 2009
 
- Redistribution and use in source and binary forms, with or without modification, are
- permitted provided that the following conditions are met:
+ Redistribution and use in source and binary forms, with or without 
+ modification, are permitted provided that the following conditions are met:
 
- - Redistributions of source code must retain the above copyright notice, this list of
- conditions and the following disclaimer.
- - Redistributions in binary form must reproduce the above copyright notice, this list
- of conditions and the following disclaimer in the documentation and/or other
- materials provided with the distribution.
- - The names of the contributors may not be used to endorse or promote products derived
- from this software without specific prior written permission.
+ - Redistributions of source code must retain the above copyright notice, this
+ list of conditions and the following disclaimer.
+ - Redistributions in binary form must reproduce the above copyright notice, 
+ this list of conditions and the following disclaimer in the documentation 
+ and/or other materials provided with the distribution.
+ - The names of the contributors may not be used to endorse or promote products 
+ derived from this software without specific prior written permission.
 
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
- EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
- THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
- THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE 
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifndef NO_SOUND
 
-#include "oggplayer.h"
+#include <asndlib.h>
+#include <tremor/ivorbiscodec.h>
+#include <tremor/ivorbisfile.h>
 #include <gccore.h>
 #include <unistd.h>
 #include <string.h>
+
+#include "oggplayer.h"
 
 /* functions to read the Ogg file from memory */
 
@@ -46,14 +51,13 @@ static struct
 static int f_read(void * punt, int bytes, int blocks, int *f)
 {
 	int b;
-	int c;
+	int c = 0;
 	int d;
 
 	if (bytes * blocks <= 0)
 		return 0;
 
-	blocks = bytes * blocks;
-	c = 0;
+	blocks *= bytes;
 
 	while (blocks > 0)
 	{
@@ -61,9 +65,9 @@ static int f_read(void * punt, int bytes, int blocks, int *f)
 		if (b > 4096)
 			b = 4096;
 
-		if (*f >= 0x666 && *f <= 0x669)
+		d = (*f) - 0x666;
+		if((unsigned)(d) <= (0x669 - 0x666))
 		{
-			d = (*f) - 0x666;
 			if (file[d].size == 0)
 				return -1;
 			if ((file[d].pos + b) > file[d].size)
@@ -91,11 +95,12 @@ static int f_seek(int *f, ogg_int64_t offset, int mode)
 {
 	if(f==NULL) return(-1);
 
-	int k, d;
+	int k;
 	mode &= 3;
-	if (*f >= 0x666 && *f <= 0x669)
+
+	int d = (*f) - 0x666;
+	if((unsigned)(d) <= (0x669 - 0x666))
 	{
-		d = (*f) - 0x666;
 		k = 0;
 
 		if (file[d].size == 0)
@@ -116,7 +121,7 @@ static int f_seek(int *f, ogg_int64_t offset, int mode)
 			else
 				file[d].pos = offset;
 		}
-		if (mode == 1)
+		else if (mode == 1)
 		{
 			if ((file[d].pos + offset) >= file[d].size)
 			{
@@ -131,7 +136,7 @@ static int f_seek(int *f, ogg_int64_t offset, int mode)
 			else
 				file[d].pos += offset;
 		}
-		if (mode == 2)
+		else if (mode == 2)
 		{
 
 			if ((file[d].size + offset) >= file[d].size)
@@ -161,10 +166,9 @@ static int f_seek(int *f, ogg_int64_t offset, int mode)
 
 static int f_close(int *f)
 {
-	int d;
-	if (*f >= 0x666 && *f <= 0x669)
+	int d = (*f) - 0x666;
+	if((unsigned)(d) <= (0x669 - 0x666))
 	{
-		d = (*f) - 0x666;
 		file[d].size = 0;
 		file[d].pos = 0;
 		if (file[d].mem)
@@ -180,11 +184,11 @@ static int f_close(int *f)
 
 static long f_tell(int *f)
 {
-	int k, d;
+	int k;
 
-	if (*f >= 0x666 && *f <= 0x669)
+	int d = (*f) - 0x666;
+	if((unsigned)(d) <= (0x669 - 0x666))
 	{
-		d = (*f) - 0x666;
 		k = file[d].pos;
 	}
 	else
@@ -200,8 +204,15 @@ static int mem_open(char * ogg, int size)
 	if (one)
 	{
 		one = 0;
-		for (n = 0; n < 4; n++)
-			file[n].size = 0;
+
+		file[0].size = 0;
+		file[1].size = 0;
+		file[2].size = 0;
+		file[3].size = 0;
+		file[0].mem = ogg;
+		file[0].size = size;
+		file[0].pos = 0;
+		return (0x666);
 	}
 
 	for (n = 0; n < 4; n++)
@@ -219,7 +230,7 @@ static int mem_open(char * ogg, int size)
 
 static int mem_close(int fd)
 {
-	if (fd >= 0x666 && fd <= 0x669) // it is a memory file descriptor?
+	if((unsigned)((fd) - 0x666) <= (0x669 - 0x666)) // it is a memory file descriptor?
 	{
 		fd -= 0x666;
 		file[fd].size = 0;
@@ -348,8 +359,7 @@ static void * ogg_player_thread(private_data_ogg * priv)
 					priv[0].seek_time = -1;
 				}
 
-				ret
-						= ov_read(
+				ret	= ov_read(
 								&priv[0].vf,
 								(void *) &priv[0].pcmout[priv[0].pcmout_pos][priv[0].pcm_indx],
 								MAX_PCMOUT,/*0,2,1,*/&priv[0].current_section);
@@ -440,11 +450,11 @@ void StopOgg()
 	}
 }
 
-int PlayOgg(char * buf, int buflen, int time_pos, int mode)
+int PlayOgg(const void *buffer, s32 len, int time_pos, int mode)
 {
 	StopOgg();
 
-	private_ogg.fd = mem_open(buf, buflen);
+	private_ogg.fd = mem_open((char *)buffer, len);
 	
 	if (private_ogg.fd < 0)
 	{
@@ -508,8 +518,7 @@ int StatusOgg()
 		return 255; // EOF
 	else if (private_ogg.flag & 128)
 		return 2; // paused
-	else
-		return 1; // running
+	return 1; // running
 }
 
 void SetVolumeOgg(int volume)
@@ -522,10 +531,8 @@ s32 GetTimeOgg()
 {
 	int ret;
 	if (ogg_thread_running == 0 || private_ogg.fd < 0)
-		return 0;
+		return -1;
 	ret = ((s32) ov_time_tell(&private_ogg.vf));
-	if (ret < 0)
-		ret = 0;
 
 	return ret;
 }

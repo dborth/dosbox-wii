@@ -54,6 +54,7 @@
 #include "cross.h"
 #include "control.h"
 
+#define MAPPERFILE "mapper-" VERSION ".map"
 //#define DISABLE_JOYSTICK
 
 #if C_OPENGL
@@ -238,12 +239,9 @@ void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	if(cycles != -1) internal_cycles = cycles;
 	if(frameskip != -1) internal_frameskip = frameskip;
 	if(CPU_CycleAutoAdjust) {
-		if (internal_cycles>=100)
-			sprintf(title,"DOSBox %s, Cpu Cycles:      max, Frameskip %2d, Program: %8s",VERSION,internal_frameskip,RunningProgram);
-		else
-			sprintf(title,"DOSBox %s, Cpu Cycles:   [%3d%%], Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+		sprintf(title,"DOSBox %s, Cpu speed: max %3d%% cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
 	} else {
-		sprintf(title,"DOSBox %s, Cpu Cycles: %8d, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+		sprintf(title,"DOSBox %s, Cpu speed: %8d cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
 	}
 
 	if(paused) strcat(title," PAUSED");
@@ -1505,13 +1503,16 @@ void Config_Add_SDL() {
 #else
 	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,false);
 #endif
-	Pbool->Set_help("Use double buffering in fullscreen.");
+	Pbool->Set_help("Use double buffering in fullscreen. It can reduce screen flickering, but it can also result in a slow DOSBox.");
 
 	Pstring = sdl_sec->Add_string("fullresolution",Property::Changeable::Always,"original");
-	Pstring->Set_help("What resolution to use for fullscreen: original or fixed size (e.g. 1024x768).");
+	Pstring->Set_help("What resolution to use for fullscreen: original or fixed size (e.g. 1024x768).\n"
+	                  "  Using your monitor's native resolution with aspect=true might give the best results.\n"
+			  "  If you end up with small window on a large screen, try an output different from surface.");
 
 	Pstring = sdl_sec->Add_string("windowresolution",Property::Changeable::Always,"original");
-	Pstring->Set_help("Scale the window to this size IF the output device supports hardware scaling.");
+	Pstring->Set_help("Scale the window to this size IF the output device supports hardware scaling.\n"
+	                  "  (output=surface does not!)");
 
 	const char* outputs[] = {
 		"surface", "overlay",
@@ -1527,7 +1528,7 @@ void Config_Add_SDL() {
 	Pstring->Set_values(outputs);
 
 	Pbool = sdl_sec->Add_bool("autolock",Property::Changeable::Always,true);
-	Pbool->Set_help("Mouse will automatically lock, if you click on the screen.");
+	Pbool->Set_help("Mouse will automatically lock, if you click on the screen. (Press CTRL-F10 to unlock)");
 
 	Pint = sdl_sec->Add_int("sensitivity",Property::Changeable::Always,100);
 	Pint->SetMinMax(1,1000);
@@ -1538,7 +1539,8 @@ void Config_Add_SDL() {
 
 	Pmulti = sdl_sec->Add_multi("priority", Property::Changeable::Always, ",");
 	Pmulti->SetValue("higher,normal");
-	Pmulti->Set_help("Priority levels for dosbox. Second entry behind the comma is for when dosbox is not focused/minimized. (pause is only valid for the second entry)");
+	Pmulti->Set_help("Priority levels for dosbox. Second entry behind the comma is for when dosbox is not focused/minimized.\n"
+	                 "  pause is only valid for the second entry.");
 
 	const char* actt[] = { "lowest", "lower", "normal", "higher", "highest", "pause", 0};
 	Pstring = Pmulti->GetSection()->Add_string("active",Property::Changeable::Always,"higher");
@@ -1548,8 +1550,8 @@ void Config_Add_SDL() {
 	Pstring = Pmulti->GetSection()->Add_string("inactive",Property::Changeable::Always,"normal");
 	Pstring->Set_values(inactt);
 
-	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,"mapper.conf");
-	Pstring->Set_help("File used to load/save the key/event mappings from.");
+	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,MAPPERFILE);
+	Pstring->Set_help("File used to load/save the key/event mappings from. Resetmapper only works with the defaul value.");
 
 	Pbool = sdl_sec->Add_bool("usescancodes",Property::Changeable::Always,true);
 	Pbool->Set_help("Avoid usage of symkeys, might not work on all operating systems.");
@@ -1594,7 +1596,7 @@ static void show_warning(char const * const message) {
    
 	SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
 	SDL_Flip(sdl.surface);
-	SDL_Delay(10000);
+	SDL_Delay(12000);
 }
    
 static void launcheditor() {
@@ -1666,7 +1668,7 @@ static void eraseconfigfile() {
 	FILE* f = fopen("dosbox.conf","r");
 	if(f) {
 		fclose(f);
-		//show_warning("Warning: dosbox.conf exists in current working directory.\nThis will override the configuration file at runtime.\n");
+		show_warning("Warning: dosbox.conf exists in current working directory.\nThis will override the configuration file at runtime.\n");
 	}
 	std::string path,file;
 	Cross::GetPlatformConfigDir(path);
@@ -1679,7 +1681,27 @@ static void eraseconfigfile() {
 	exit(0);
 }
 
+static void erasemapperfile() {
+	FILE* g = fopen("dosbox.conf","r");
+	if(g) {
+		fclose(g);
+		show_warning("Warning: dosbox.conf exists in current working directory.\nKeymapping might not be properly reset.\n"
+		             "Please reset configuration as well and delete the dosbox.conf.\n");
+	}
+
+	std::string path,file=MAPPERFILE;
+	Cross::GetPlatformConfigDir(path);
+	path += file;
+	FILE* f = fopen(path.c_str(),"r");
+	if(!f) exit(0);
+	fclose(f);
+	unlink(path.c_str());
+	exit(0);
+}
+
+#ifdef HW_RVL
 int MountDOSBoxDir(char DriveLetter, const char *path);
+#endif
 
 //extern void UI_Init(void);
 int main(int argc, char* argv[]) {
@@ -1700,6 +1722,9 @@ int main(int argc, char* argv[]) {
 		if(control->cmdline->FindString("-editconf",editor,false)) launcheditor();
 		if(control->cmdline->FindString("-opencaptures",editor,true)) launchcaptures(editor);
 		if(control->cmdline->FindExist("-eraseconf")) eraseconfigfile();
+		if(control->cmdline->FindExist("-resetconf")) eraseconfigfile();
+		if(control->cmdline->FindExist("-erasemapper")) erasemapperfile();
+		if(control->cmdline->FindExist("-resetmapper")) erasemapperfile();
 
 		/* Can't disable the console with debugger enabled */
 #if defined(WIN32) && !(C_DEBUG)
@@ -1808,7 +1833,28 @@ int main(int argc, char* argv[]) {
 	/* Parse configuration files */
 	std::string config_file,config_path;
 	bool parsed_anyconfigfile = false;
-	//First Parse -conf switches
+	//First Parse -userconf
+	if(control->cmdline->FindExist("-userconf",true)){
+		config_file.clear();
+		Cross::GetPlatformConfigDir(config_path);
+		Cross::GetPlatformConfigName(config_file);
+		config_path += config_file;
+		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+		if(!parsed_anyconfigfile) {
+			//Try to create the userlevel configfile.
+			config_file.clear();
+			Cross::CreatePlatformConfigDir(config_path);
+			Cross::GetPlatformConfigName(config_file);
+			config_path += config_file;
+			if(control->PrintConfig(config_path.c_str())) {
+				LOG_MSG("CONFIG: Generating default configuration.\nWriting it to %s",config_path.c_str());
+				//Load them as well. Makes relative paths much easier
+				if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+			}
+		}
+	}
+
+	//Second parse -conf entries
 	while(control->cmdline->FindString("-conf",config_file,true))
 		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
 
