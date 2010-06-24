@@ -1,6 +1,6 @@
 /****************************************************************************
  * DOSBox Wii
- * Tantric 2009
+ * Tantric 2009-2010
  ***************************************************************************/
 
 #include <gccore.h>
@@ -111,14 +111,19 @@ static void * PressKeys (void *arg)
 				MAPPER_CheckEvent(&event);
 				usleep(600);
 			}
+			
+			// hack to allow mappings of SDL keys > 127
+			int keyoffset = 0;
+			if(dosboxCommand[i] >= 14 && dosboxCommand[i] <= 25)
+				keyoffset = 268; // F1-F12 (282-293)
 
 			event.type = SDL_KEYDOWN;
-			event.key.keysym.sym = (SDLKey)dosboxCommand[i];
+			event.key.keysym.sym = (SDLKey)((int)dosboxCommand[i]+keyoffset);
 			MAPPER_CheckEvent(&event);
 			usleep(600);
 
 			event.type = SDL_KEYUP;
-			event.key.keysym.sym = (SDLKey)dosboxCommand[i];
+			event.key.keysym.sym = (SDLKey)((int)dosboxCommand[i]+keyoffset);
 			MAPPER_CheckEvent(&event);
 			usleep(600);
 
@@ -130,17 +135,6 @@ static void * PressKeys (void *arg)
 				usleep(600);
 			}
 		}
-
-		event.type = SDL_KEYDOWN;
-		event.key.keysym.sym = SDLK_RETURN;
-		MAPPER_CheckEvent(&event);
-		usleep(600);
-
-		event.type = SDL_KEYUP;
-		event.key.keysym.sym = SDLK_RETURN;
-		MAPPER_CheckEvent(&event);
-		usleep(600);
-
 		dosboxCommand[0] = 0;
 	}
 	return NULL;

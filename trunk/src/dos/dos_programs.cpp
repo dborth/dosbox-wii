@@ -50,7 +50,7 @@ Bitu DEBUG_EnableDebugger(void);
 
 void MSCDEX_SetCDInterface(int intNr, int forceCD);
 
-
+#ifdef HW_RVL
 // Mounts a folder as a harddrive before starting the shell
 // Designed for the Wii
 int MountDOSBoxDir(char DriveLetter, const char *path) {
@@ -118,7 +118,7 @@ int MountDOSBoxDir(char DriveLetter, const char *path) {
 	newdrive->dirCache.SetLabel(label.c_str(),false,true);
 	return 1;
 }
-
+#endif
 
 class MOUNT : public Program {
 public:
@@ -1142,7 +1142,7 @@ public:
 					return;
 				}
 			} else {
-				WriteOut_NoParsing(MSG_Get("PROGRAM_IMGMOUNT_FORMAT_UNSUPPORTED"));
+				WriteOut(MSG_Get("PROGRAM_IMGMOUNT_FORMAT_UNSUPPORTED"),fstype.c_str());
 				return;
 			}
 			
@@ -1292,7 +1292,7 @@ public:
 					case 0  :	break;
 					case 1  :	WriteOut(MSG_Get("MSCDEX_ERROR_MULTIPLE_CDROMS"));	break;
 					case 2  :	WriteOut(MSG_Get("MSCDEX_ERROR_NOT_SUPPORTED"));	break;
-					case 3  :	WriteOut(MSG_Get("MSCDEX_ERROR_PATH"));				break;
+					case 3  :	WriteOut(MSG_Get("MSCDEX_ERROR_OPEN"));				break;
 					case 4  :	WriteOut(MSG_Get("MSCDEX_TOO_MANY_DRIVES"));		break;
 					case 5  :	WriteOut(MSG_Get("MSCDEX_LIMITED_SUPPORT"));		break;
 					case 6  :	WriteOut(MSG_Get("MSCDEX_INVALID_FILEFORMAT"));		break;
@@ -1452,7 +1452,7 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("MSCDEX_SUCCESS","MSCDEX installed.\n");
 	MSG_Add("MSCDEX_ERROR_MULTIPLE_CDROMS","MSCDEX: Failure: Drive-letters of multiple CDRom-drives have to be continuous.\n");
 	MSG_Add("MSCDEX_ERROR_NOT_SUPPORTED","MSCDEX: Failure: Not yet supported.\n");
-	MSG_Add("MSCDEX_ERROR_PATH","MSCDEX: Failure: Path not valid.\n");
+	MSG_Add("MSCDEX_ERROR_OPEN","MSCDEX: Failure: Invalid file or unable to open.\n");
 	MSG_Add("MSCDEX_TOO_MANY_DRIVES","MSCDEX: Failure: Too many CDRom-drives (max: 5). MSCDEX Installation failed.\n");
 	MSG_Add("MSCDEX_LIMITED_SUPPORT","MSCDEX: Mounted subdirectory: limited support.\n");
 	MSG_Add("MSCDEX_INVALID_FILEFORMAT","MSCDEX: Failure: File is either no iso/cue image or contains errors.\n");
@@ -1553,7 +1553,7 @@ void DOS_SetupPrograms(void) {
 		"\033[33;1mCTRL-F10\033[0m    : Capture/Release the mouse.\n"
 		"\033[33;1mCTRL-F11\033[0m    : Slow down emulation (Decrease DOSBox Cycles).\n"
 		"\033[33;1mCTRL-F12\033[0m    : Speed up emulation (Increase DOSBox Cycles).\n"
-		"\033[33;1mALT-F12\033[0m     : Unlock speed (turbo button).\n"
+		"\033[33;1mALT-F12\033[0m     : Unlock speed (turbo button/fast forward).\n"
 		);
 	MSG_Add("PROGRAM_BOOT_NOT_EXIST","Bootdisk file does not exist.  Failing.\n");
 	MSG_Add("PROGRAM_BOOT_NOT_OPEN","Cannot open bootdisk file.  Failing.\n");

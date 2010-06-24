@@ -111,6 +111,12 @@ typedef struct {
 	Bit32u full_enable_and_set_reset;
 } VGA_Config;
 
+typedef enum {
+	PART,
+	LINE,
+	//EGALINE
+} Drawmode;
+
 typedef struct {
 	bool resizing;
 	Bitu width;
@@ -144,6 +150,7 @@ typedef struct {
 		double hdend, htotal;
 		double parts;
 	} delay;
+	Bitu bpp;
 	double aspect_ratio;
 	bool double_scan;
 	bool doublewidth,doubleheight;
@@ -156,6 +163,7 @@ typedef struct {
 		Bit8u count,delay;
 		Bit8u enabled;
 	} cursor;
+	Drawmode mode;
 	bool vret_triggered;
 } VGA_Draw;
 
@@ -216,7 +224,7 @@ typedef struct {
 	Bit8u htotal;
 	Bit8u hdend;
 	Bit8u hsyncp;
-	Bit8u syncw;
+	Bit8u hsyncw;
 	Bit8u vtotal;
 	Bit8u vdend;
 	Bit8u vadjust;
@@ -262,7 +270,12 @@ typedef struct {
 	Bit8u color_plane_enable;
 	Bit8u color_select;
 	Bit8u index;
-	Bit8u enabled;
+	Bit8u disabled; // Used for disabling the screen.
+					// Bit0: screen disabled by attribute controller index
+					// Bit1: screen disabled by sequencer index 1 bit 5
+					// These are put together in one variable for performance reasons:
+					// the line drawing function is called maybe 60*480=28800 times/s,
+					// and we only need to check one variable for zero this way.
 } VGA_Attr;
 
 typedef struct {
@@ -367,8 +380,6 @@ typedef struct {
 
 typedef struct {
 	VGAModes mode;								/* The mode the vga system is in */
-	VGAModes lastmode;
-	Bits screenflip;
 	Bit8u misc_output;
 	VGA_Draw draw;
 	VGA_Config config;
@@ -397,6 +408,8 @@ typedef struct {
 } VGA_Type;
 
 
+/* Hercules Palette function */
+void Herc_Palette(void);
 
 /* Functions for different resolutions */
 void VGA_SetMode(VGAModes mode);

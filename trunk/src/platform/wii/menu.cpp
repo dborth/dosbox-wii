@@ -1,6 +1,6 @@
 /****************************************************************************
  * DOSBox Wii Home Menu
- * Tantric 2009
+ * Tantric 2009-2010
  *
  * menu.cpp
  *
@@ -20,7 +20,7 @@
 #include "wiihardware.h"
 
 #define THREAD_SLEEP 100
-#define APPVERSION 		"1.2"
+#define APPVERSION 		"1.3"
 
 static GuiImageData * pointer[4];
 static GuiWindow * mainWindow = NULL;
@@ -70,7 +70,7 @@ static void * UpdateGUI (void *arg)
 
 		if(ExitRequested)
 		{
-			for(i = 0; i < 255; i += 15)
+			for(i = 0; i <= 255; i += 15)
 			{
 				mainWindow->Draw();
 				Menu_DrawRectangle(0,0,screenwidth,screenheight,(GXColor){0, 0, 0, i},1);

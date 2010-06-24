@@ -305,6 +305,7 @@ void DOS_Shell::Run(void) {
 	WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
 #endif
 	if (machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+	if (machine == MCH_HERC) WriteOut(MSG_Get("SHELL_STARTUP_HERC"));
 	WriteOut(MSG_Get("SHELL_STARTUP_END"));
 
 	if (cmd->FindString("/INIT",line,true)) {
@@ -503,7 +504,7 @@ void SHELL_Init() {
 		"| For a short introduction for new users type: \033[33mINTRO\033[37m                 |\n"
 		"| For supported shell commands type: \033[33mHELP\033[37m                            |\n"
 		"|                                                                    |\n"
-		"| If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  |\n"
+		"| To adjust the emulated CPU speed, use \033[31mctrl-F11\033[37m and \033[31mctrl-F12\033[37m.       |\n"
 		"| To activate the keymapper \033[31mctrl-F1\033[37m.                                 |\n"
 		"| For more information read the \033[36mREADME\033[37m file in the DOSBox directory. |\n"
 		"|                                                                    |\n"
@@ -511,6 +512,9 @@ void SHELL_Init() {
 	MSG_Add("SHELL_STARTUP_CGA","| DOSBox supports Composite CGA mode.                                |\n"
 	        "| Use \033[31m(alt-)F11\033[37m to change the colours when in this mode.             |\n"
 	        "|                                                                    |\n"
+	);
+	MSG_Add("SHELL_STARTUP_HERC","\xBA Use \033[31mF11\033[37m to cycle through white, amber, and green monochrome color. \xBA\n"
+	        "\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_DEBUG",
 	        "| Press \033[31malt-Pause\033[37m to enter the debugger or start the exe with \033[33mDEBUG\033[37m. |\n"
@@ -535,13 +539,16 @@ void SHELL_Init() {
 		"\xBA For a short introduction for new users type: \033[33mINTRO\033[37m                 \xBA\n"
 		"\xBA For supported shell commands type: \033[33mHELP\033[37m                            \xBA\n"
 		"\xBA                                                                    \xBA\n"
-		"\xBA If you want more speed, try \033[31mctrl-F8\033[37m and \033[31mctrl-F12\033[37m.                  \xBA\n"
+		"\xBA To adjust the emulated CPU speed, use \033[31mctrl-F11\033[37m and \033[31mctrl-F12\033[37m.       \xBA\n"
 		"\xBA To activate the keymapper \033[31mctrl-F1\033[37m.                                 \xBA\n"
 		"\xBA For more information read the \033[36mREADME\033[37m file in the DOSBox directory. \xBA\n"
 		"\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_CGA","\xBA DOSBox supports Composite CGA mode.                                \xBA\n"
 	        "\xBA Use \033[31m(alt-)F11\033[37m to change the colours when in this mode.             \xBA\n"
+	        "\xBA                                                                    \xBA\n"
+	);
+	MSG_Add("SHELL_STARTUP_HERC","\xBA Use \033[31mF11\033[37m to cycle through white, amber, and green monochrome color. \xBA\n"
 	        "\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_DEBUG",
