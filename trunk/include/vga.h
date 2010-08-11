@@ -114,7 +114,7 @@ typedef struct {
 typedef enum {
 	PART,
 	LINE,
-	//EGALINE
+	EGALINE
 } Drawmode;
 
 typedef struct {
@@ -157,6 +157,8 @@ typedef struct {
 	Bit8u font[64*1024];
 	Bit8u * font_tables[2];
 	Bitu blinking;
+	bool blink;
+	bool char9dot;
 	struct {
 		Bitu address;
 		Bit8u sline,eline;
