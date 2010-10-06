@@ -36,7 +36,7 @@ void HomeMenu();
 char appPath[1024];
 char dosboxCommand[1024] = { 0 };
 static lwp_t keythread = LWP_THREAD_NULL;
-static char shiftkey[100];
+static char shiftkey[130];
 
 /****************************************************************************
  * SwitchAudioMode
@@ -82,6 +82,7 @@ static void * PressKeys (void *arg)
 	shiftkey[64] = 50;
 	shiftkey[94] = 54;
 	shiftkey[95] = 45;
+	shiftkey[126] = 96;
 
 	while(1)
 	{
@@ -97,7 +98,7 @@ static void * PressKeys (void *arg)
 				dosboxCommand[i] += 32;
 				shift = 1;
 			}
-			else if(dosboxCommand[i] > 0 && dosboxCommand[i] < 100 && 
+			else if(dosboxCommand[i] > 0 && dosboxCommand[i] < 130 && 
 					shiftkey[(int)dosboxCommand[i]] > 0)
 			{
 				dosboxCommand[i] = shiftkey[(int)dosboxCommand[i]];
