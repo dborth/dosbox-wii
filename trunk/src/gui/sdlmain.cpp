@@ -730,7 +730,7 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 		return true;
 #endif
 	case SCREEN_OVERLAY:
-		SDL_LockYUVOverlay(sdl.overlay);
+		if (SDL_LockYUVOverlay(sdl.overlay)) return false;
 		pixels=(Bit8u *)*(sdl.overlay->pixels);
 		pitch=*(sdl.overlay->pitches);
 		sdl.updating=true;
@@ -992,6 +992,8 @@ static unsigned char logo[32*32*4]= {
 #include "dosbox_splash.h"
 
 //extern void UI_Run(bool);
+void Restart(bool pressed);
+
 static void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
@@ -1185,7 +1187,7 @@ static void GUI_StartUp(Section * sec) {
 //#endif
 
 /* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
-/*
+/*	
 	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
 	if (splash_surf) {
 		SDL_FillRect(splash_surf, NULL, SDL_MapRGB(splash_surf->format, 0, 0, 0));
@@ -1250,6 +1252,7 @@ static void GUI_StartUp(Section * sec) {
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
 	MAPPER_AddHandler(CaptureMouse,MK_f10,MMOD1,"capmouse","Cap Mouse");
 	MAPPER_AddHandler(SwitchFullScreen,MK_return,MMOD2,"fullscr","Fullscreen");
+	MAPPER_AddHandler(Restart,MK_home,MMOD1|MMOD2,"restart","Restart");
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else
@@ -1496,8 +1499,8 @@ void Config_Add_SDL() {
 #else
 	Pbool = sdl_sec->Add_bool("fullscreen",Property::Changeable::Always,false);
 #endif
-	Pbool->Set_help("Start dosbox directly in fullscreen.");
-
+	Pbool->Set_help("Start dosbox directly in fullscreen. (Press ALT-Enter to go back)");
+     
 #ifdef HW_RVL
 	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,true);
 #else
@@ -1621,6 +1624,33 @@ static void launcheditor() {
 	printf("can't find editor(s) specified at the command line.\n");
 	exit(1);
 }
+#if C_DEBUG
+extern void DEBUG_ShutDown(Section * /*sec*/);
+#endif
+
+void restart_program(std::vector<std::string> & parameters) {
+	char** newargs = new char* [parameters.size()+1];
+	// parameter 0 is the executable path
+	// contents of the vector follow
+	// last one is NULL
+	for(Bitu i = 0; i < parameters.size(); i++) newargs[i]=(char*)parameters[i].c_str();
+	newargs[parameters.size()] = NULL;
+	SDL_CloseAudio();
+	SDL_Delay(50);
+	SDL_Quit();
+#if C_DEBUG
+	// shutdown curses
+	DEBUG_ShutDown(NULL);
+#endif
+#ifndef HW_RVL
+	execvp(newargs[0], newargs);
+#endif
+	free(newargs);
+}
+void Restart(bool pressed) { // mapper handler
+	restart_program(control->startup_params);
+}
+
 static void launchcaptures(std::string const& edit) {
 	std::string path,file;
 	Section* t = control->GetSection("dosbox");
@@ -1832,15 +1862,16 @@ int main(int argc, char* argv[]) {
 
 	/* Parse configuration files */
 	std::string config_file,config_path;
-	bool parsed_anyconfigfile = false;
-	//First Parse -userconf
+	Cross::GetPlatformConfigDir(config_path);
+	
+	//First parse -userconf
 	if(control->cmdline->FindExist("-userconf",true)){
 		config_file.clear();
 		Cross::GetPlatformConfigDir(config_path);
 		Cross::GetPlatformConfigName(config_file);
 		config_path += config_file;
-		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
-		if(!parsed_anyconfigfile) {
+		control->ParseConfigFile(config_path.c_str());
+		if(!control->configfiles.size()) {
 			//Try to create the userlevel configfile.
 			config_file.clear();
 			Cross::CreatePlatformConfigDir(config_path);
@@ -1849,35 +1880,29 @@ int main(int argc, char* argv[]) {
 			if(control->PrintConfig(config_path.c_str())) {
 				LOG_MSG("CONFIG: Generating default configuration.\nWriting it to %s",config_path.c_str());
 				//Load them as well. Makes relative paths much easier
-				if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+				control->ParseConfigFile(config_path.c_str());
 			}
 		}
 	}
 
-	//Second parse -conf entries
-	while(control->cmdline->FindString("-conf",config_file,true))
-		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
+	//Second parse -conf switches
+	while(control->cmdline->FindString("-conf",config_file,true)) {
+		if(!control->ParseConfigFile(config_file.c_str())) {
+			// try to load it from the user directory
+			control->ParseConfigFile((config_path + config_file).c_str());
+		}
+	}
+	// if none found => parse localdir conf
+	if(!control->configfiles.size()) control->ParseConfigFile("dosbox.conf");
 
-	//if none found => parse localdir conf
-#ifdef HW_RVL
-	char wiiconf[1024];
-	sprintf(wiiconf, "%s/dosbox.conf", appPath);
-	config_file.assign(wiiconf);
-#else
-	config_file = "dosbox.conf";
-#endif
-	if (!parsed_anyconfigfile && control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
-
-	//if none found => parse userlevel conf
-	if(!parsed_anyconfigfile) {
+	// if none found => parse userlevel conf
+	if(!control->configfiles.size()) {
 		config_file.clear();
-		Cross::GetPlatformConfigDir(config_path);
 		Cross::GetPlatformConfigName(config_file);
-		config_path += config_file;
-		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+		control->ParseConfigFile((config_path + config_file).c_str());
 	}
 
-	if(!parsed_anyconfigfile) {
+	if(!control->configfiles.size()) {
 		//Try to create the userlevel configfile.
 		config_file.clear();
 		Cross::CreatePlatformConfigDir(config_path);
