@@ -206,11 +206,15 @@ bool DOS_ChangeDir(char const * const dir) {
 	const char * testdir=dir;
 	if (strlen(testdir) && testdir[1]==':') testdir+=2;
 	size_t len=strlen(testdir);
-	if (!len || (len>1 && testdir[len-1]=='\\')) {
+	if (!len) {
 		DOS_SetError(DOSERR_PATH_NOT_FOUND);
 		return false;
 	}
 	if (!DOS_MakeName(dir,fulldir,&drive)) return false;
+	if (strlen(fulldir) && testdir[len-1]=='\\') {
+		DOS_SetError(DOSERR_PATH_NOT_FOUND);
+		return false;
+	}
 	
 	if (Drives[drive]->TestDir(fulldir)) {
 		strcpy(Drives[drive]->curdir,fulldir);
@@ -1166,9 +1170,29 @@ bool DOS_FCBDeleteFile(Bit16u seg,Bit16u offset){
 bool DOS_FCBRenameFile(Bit16u seg, Bit16u offset){
 	DOS_FCB fcbold(seg,offset);
 	DOS_FCB fcbnew(seg,offset+16);
+	if(!fcbold.Valid()) return false;
 	char oldname[DOS_FCBNAME];
 	char newname[DOS_FCBNAME];
 	fcbold.GetName(oldname);fcbnew.GetName(newname);
+
+	/* Check, if sourcefile is still open. This was possible in DOS, but modern oses don't like this */
+	Bit8u drive; char fullname[DOS_PATHLENGTH];
+	if (!DOS_MakeName(oldname,fullname,&drive)) return false;
+	
+	DOS_PSP psp(dos.psp());
+	for (Bit8u i=0;i<DOS_FILES;i++) {
+		if (Files[i] && Files[i]->IsOpen() && Files[i]->IsName(fullname)) {
+			Bit16u handle = psp.FindEntryByHandle(i);
+			if (handle == 0xFF) {
+				// This shouldnt happen
+				LOG(LOG_FILES,LOG_ERROR)("DOS: File %s is opened but has no psp entry.",oldname);
+				return false;
+			}
+			DOS_CloseFile(handle);
+		}
+	}
+
+	/* Rename the file */
 	return DOS_Rename(oldname,newname);
 }
 
