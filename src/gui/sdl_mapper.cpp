@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_mapper.cpp,v 1.60 2009-06-01 10:25:51 qbix79 Exp $ */
 
 #include <vector>
 #include <list>
@@ -2362,17 +2361,21 @@ void MAPPER_Init(void) {
 	if (!MAPPER_LoadBinds()) CreateDefaultBinds();
 	if (SDL_GetModState()&KMOD_CAPS) {
 		for (CBindList_it bit=caps_lock_event->bindlist.begin();bit!=caps_lock_event->bindlist.end();bit++) {
-			(*bit)->ActivateBind(32767,true,true);
 #if SDL_VERSION_ATLEAST(1, 2, 14)
+			(*bit)->ActivateBind(32767,true,false);
 			(*bit)->DeActivateBind(false);
+#else
+			(*bit)->ActivateBind(32767,true,true); //Skip the action itself as bios_keyboard.cpp handles the startup state.
 #endif
 		}
 	}
 	if (SDL_GetModState()&KMOD_NUM) {
 		for (CBindList_it bit=num_lock_event->bindlist.begin();bit!=num_lock_event->bindlist.end();bit++) {
-			(*bit)->ActivateBind(32767,true,true);
 #if SDL_VERSION_ATLEAST(1, 2, 14)
+			(*bit)->ActivateBind(32767,true,false);
 			(*bit)->DeActivateBind(false);
+#else
+			(*bit)->ActivateBind(32767,true,true);
 #endif
 		}
 	}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_cmds.cpp,v 1.93 2009-09-21 21:04:25 h-a-l-9000 Exp $ */
 
 #include "dosbox.h"
 #include "shell.h"
@@ -30,6 +29,7 @@
 #include <cstdlib>
 #include <vector>
 #include <string>
+#include <time.h>
 
 static SHELL_Cmd cmd_list[]={
 {	"DIR",		0,			&DOS_Shell::CMD_DIR,		"SHELL_CMD_DIR_HELP"},
@@ -40,6 +40,7 @@ static SHELL_Cmd cmd_list[]={
 {	"CHOICE",	1,			&DOS_Shell::CMD_CHOICE,		"SHELL_CMD_CHOICE_HELP"},
 {	"CLS",		0,			&DOS_Shell::CMD_CLS,		"SHELL_CMD_CLS_HELP"},
 {	"COPY",		0,			&DOS_Shell::CMD_COPY,		"SHELL_CMD_COPY_HELP"},
+{	"DATE",		0,			&DOS_Shell::CMD_DATE,		"SHELL_CMD_DATE_HELP"},
 {	"DEL",		0,			&DOS_Shell::CMD_DELETE,		"SHELL_CMD_DELETE_HELP"},
 {	"DELETE",	1,			&DOS_Shell::CMD_DELETE,		"SHELL_CMD_DELETE_HELP"},
 {	"ERASE",	1,			&DOS_Shell::CMD_DELETE,		"SHELL_CMD_DELETE_HELP"},
@@ -62,6 +63,7 @@ static SHELL_Cmd cmd_list[]={
 {	"SET",		1,			&DOS_Shell::CMD_SET,		"SHELL_CMD_SET_HELP"},
 {	"SHIFT",	1,			&DOS_Shell::CMD_SHIFT,		"SHELL_CMD_SHIFT_HELP"},
 {	"SUBST",	1,			&DOS_Shell::CMD_SUBST,		"SHELL_CMD_SUBST_HELP"},
+{	"TIME",		0,			&DOS_Shell::CMD_TIME,		"SHELL_CMD_TIME_HELP"},
 {	"TYPE",		0,			&DOS_Shell::CMD_TYPE,		"SHELL_CMD_TYPE_HELP"},
 {	"VER",		0,			&DOS_Shell::CMD_VER,		"SHELL_CMD_VER_HELP"},
 {0,0,0,0}
@@ -586,6 +588,14 @@ void DOS_Shell::CMD_COPY(char * args) {
 	while ( (source_p = StripWord(args)) && *source_p ) {
 		do {
 			char* plus = strchr(source_p,'+');
+			// If StripWord() previously cut at a space before a plus then
+			// set concatenate flag on last source and remove leading plus.
+			if (plus == source_p && sources.size()) {
+				sources[sources.size()-1].concat = true;
+				// If spaces also followed plus then item is only a plus.
+				if (strlen(++source_p)==0) break;
+				plus = strchr(source_p,'+');
+			}
 			if (plus) *plus++ = 0;
 			safe_strncpy(source_x,source_p,CROSS_LEN);
 			bool has_drive_spec = false;
@@ -593,10 +603,10 @@ void DOS_Shell::CMD_COPY(char * args) {
 			if (source_x_len>0) {
 				if (source_x[source_x_len-1]==':') has_drive_spec = true;
 			}
-			if (!has_drive_spec) {
+			if (!has_drive_spec  && !strpbrk(source_p,"*?") ) { //doubt that fu*\*.* is valid
 				if (DOS_FindFirst(source_p,0xffff & ~DOS_ATTR_VOLUME)) {
 					dta.GetResult(name,size,date,time,attr);
-					if (attr & DOS_ATTR_DIRECTORY && !strstr(source_p,"*.*"))
+					if (attr & DOS_ATTR_DIRECTORY)
 						strcat(source_x,"\\*.*");
 				}
 			}
@@ -929,6 +939,107 @@ void DOS_Shell::CMD_CALL(char * args){
 	this->ParseLine(args);
 	this->call=false;
 }
+
+void DOS_Shell::CMD_DATE(char * args) {
+	HELP("DATE");	
+	if(ScanCMDBool(args,"h")) {
+		// synchronize date with host parameter
+		time_t curtime;
+		struct tm *loctime;
+		curtime = time (NULL);
+		loctime = localtime (&curtime);
+		
+		reg_cx = loctime->tm_year+1900;
+		reg_dh = loctime->tm_mon+1;
+		reg_dl = loctime->tm_mday;
+
+		reg_ah=0x2b; // set system date
+		CALLBACK_RunRealInt(0x21);
+		return;
+	}
+	// check if a date was passed in command line
+	Bitu newday,newmonth,newyear;
+	if(sscanf(args,"%u-%u-%u",&newmonth,&newday,&newyear)==3) {
+		reg_cx = newyear;
+		reg_dh = newmonth;
+		reg_dl = newday;
+
+		reg_ah=0x2b; // set system date
+		CALLBACK_RunRealInt(0x21);
+		if(reg_al==0xff) WriteOut(MSG_Get("SHELL_CMD_DATE_ERROR"));
+		return;
+	}
+	// display the current date
+	reg_ah=0x2a; // get system date
+	CALLBACK_RunRealInt(0x21);
+
+	const char* datestring = MSG_Get("SHELL_CMD_DATE_DAYS");
+	Bit8u length;
+	char day[6] = {0};
+	if(sscanf(datestring,"%u",&length) && (length<5) && (strlen(datestring)==(length*7+1))) {
+		// date string appears valid
+		for(int i = 0; i < length; i++) day[i] = datestring[reg_al*length+1+i];
+	}
+	bool dateonly = ScanCMDBool(args,"t");
+	if(!dateonly) WriteOut(MSG_Get("SHELL_CMD_DATE_NOW"));
+
+	const char* formatstring = MSG_Get("SHELL_CMD_DATE_FORMAT");
+	if(strlen(formatstring)!=5) return;
+	char buffer[15] = {0};
+	Bitu bufferptr=0;
+	for(Bitu i = 0; i < 5; i++) {
+		if(i==1 || i==3) {
+			buffer[bufferptr] = formatstring[i];
+			bufferptr++;
+		} else {
+			if(formatstring[i]=='M') bufferptr += sprintf(buffer+bufferptr,"%02u",(Bitu)reg_dh);
+			if(formatstring[i]=='D') bufferptr += sprintf(buffer+bufferptr,"%02u",(Bitu)reg_dl);
+			if(formatstring[i]=='Y') bufferptr += sprintf(buffer+bufferptr,"%04u",(Bitu)reg_cx);
+		}
+	}
+	WriteOut("%s %s\n",day, buffer);
+	if(!dateonly) WriteOut(MSG_Get("SHELL_CMD_DATE_SETHLP"));
+};
+
+void DOS_Shell::CMD_TIME(char * args) {
+	HELP("TIME");
+	if(ScanCMDBool(args,"h")) {
+		// synchronize time with host parameter
+		time_t curtime;
+		struct tm *loctime;
+		curtime = time (NULL);
+		loctime = localtime (&curtime);
+		
+		//reg_cx = loctime->;
+		//reg_dh = loctime->;
+		//reg_dl = loctime->;
+
+		// reg_ah=0x2d; // set system time TODO
+		// CALLBACK_RunRealInt(0x21);
+		
+		Bit32u ticks=(Bit32u)(((double)(loctime->tm_hour*3600+
+										loctime->tm_min*60+
+										loctime->tm_sec))*18.206481481);
+		mem_writed(BIOS_TIMER,ticks);
+		return;
+	}
+	bool timeonly = ScanCMDBool(args,"t");
+
+	reg_ah=0x2c; // get system time
+	CALLBACK_RunRealInt(0x21);
+/*
+		reg_dl= // 1/100 seconds
+		reg_dh= // seconds
+		reg_cl= // minutes
+		reg_ch= // hours
+*/
+	if(timeonly) {
+		WriteOut("%2u:%02u\n",reg_ch,reg_cl);
+	} else {
+		WriteOut(MSG_Get("SHELL_CMD_TIME_NOW"));
+		WriteOut("%2u:%02u:%02u,%02u\n",reg_ch,reg_cl,reg_dh,reg_dl);
+	}
+};
 
 void DOS_Shell::CMD_SUBST (char * args) {
 /* If more that one type can be substed think of something else 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_files.cpp,v 1.113 2009-08-31 18:03:08 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -93,7 +92,7 @@ bool DOS_MakeName(char const * const name,char * const fullname,Bit8u * drive) {
 		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
 		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
 		case '\'':	case '+':	case '^':	case 246:	case 255:	case 0xa0:
-		case 0xe5:	case 0xbd:
+		case 0xe5:	case 0xbd:	case 0x9d:
 			upname[w++]=c;
 			break;
 		default:
@@ -891,7 +890,7 @@ savefcb:
 
 static void DTAExtendName(char * const name,char * const filename,char * const ext) {
 	char * find=strchr(name,'.');
-	if (find) {
+	if (find && find!=name) {
 		strcpy(ext,find+1);
 		*find=0;
 	} else ext[0]=0;
@@ -909,12 +908,15 @@ static void SaveFindResult(DOS_FCB & find_fcb) {
 	char file_name[9];char ext[4];
 	find_dta.GetResult(name,size,date,time,attr);
 	drive=find_fcb.GetDrive()+1;
+	Bit8u find_attr = DOS_ATTR_ARCHIVE;
+	find_fcb.GetAttr(find_attr); /* Gets search attributes if extended */
 	/* Create a correct file and extention */
 	DTAExtendName(name,file_name,ext);	
 	DOS_FCB fcb(RealSeg(dos.dta()),RealOff(dos.dta()));//TODO
 	fcb.Create(find_fcb.Extended());
 	fcb.SetName(drive,file_name,ext);
-	fcb.SetAttr(attr);      /* Only adds attribute if fcb is extended */
+	fcb.SetAttr(find_attr);      /* Only adds attribute if fcb is extended */
+	fcb.SetResultAttr(attr);
 	fcb.SetSizeDateTime(size,date,time);
 }
 
@@ -991,6 +993,11 @@ Bit8u DOS_FCBRead(Bit16u seg,Bit16u offset,Bit16u recno) {
 	DOS_FCB fcb(seg,offset);
 	Bit8u fhandle,cur_rec;Bit16u cur_block,rec_size;
 	fcb.GetSeqData(fhandle,rec_size);
+	if (fhandle==0xff && rec_size!=0) {
+		if (!DOS_FCBOpen(seg,offset)) return FCB_READ_NODATA;
+		LOG(LOG_FCB,LOG_WARN)("Reopened closed FCB");
+		fcb.GetSeqData(fhandle,rec_size);
+	}
 	fcb.GetRecord(cur_block,cur_rec);
 	Bit32u pos=((cur_block*128)+cur_rec)*rec_size;
 	if (!DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET)) return FCB_READ_NODATA; 
@@ -1013,6 +1020,11 @@ Bit8u DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u recno) {
 	DOS_FCB fcb(seg,offset);
 	Bit8u fhandle,cur_rec;Bit16u cur_block,rec_size;
 	fcb.GetSeqData(fhandle,rec_size);
+	if (fhandle==0xff && rec_size!=0) {
+		if (!DOS_FCBOpen(seg,offset)) return FCB_READ_NODATA;
+		LOG(LOG_FCB,LOG_WARN)("Reopened closed FCB");
+		fcb.GetSeqData(fhandle,rec_size);
+	}
 	fcb.GetRecord(cur_block,cur_rec);
 	Bit32u pos=((cur_block*128)+cur_rec)*rec_size;
 	if (!DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET)) return FCB_ERR_WRITE; 
@@ -1067,32 +1079,30 @@ Bit8u DOS_FCBIncreaseSize(Bit16u seg,Bit16u offset) {
 	return FCB_SUCCESS;
 }
 
-Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
+Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u * numRec,bool restore) {
 /* if restore is true :random read else random blok read. 
  * random read updates old block and old record to reflect the random data
  * before the read!!!!!!!!! and the random data is not updated! (user must do this)
  * Random block read updates these fields to reflect the state after the read!
  */
-
-/* BUG: numRec should return the amount of records read! 
- * Not implemented yet as I'm unsure how to count on error states (partial/failed) 
- */
-
 	DOS_FCB fcb(seg,offset);
 	Bit32u random;
 	Bit16u old_block=0;
 	Bit8u old_rec=0;
 	Bit8u error=0;
+	Bit16u count;
 
 	/* Set the correct record from the random data */
 	fcb.GetRandom(random);
 	fcb.SetRecord((Bit16u)(random / 128),(Bit8u)(random & 127));
 	if (restore) fcb.GetRecord(old_block,old_rec);//store this for after the read.
 	// Read records
-	for (int i=0; i<numRec; i++) {
-		error = DOS_FCBRead(seg,offset,(Bit16u)i);
-		if (error!=0x00) break;
+	for (count=0; count<*numRec; count++) {
+		error = DOS_FCBRead(seg,offset,count);
+		if (error!=FCB_SUCCESS) break;
 	}
+	if (error==FCB_READ_PARTIAL) count++;	//partial read counts
+	*numRec=count;
 	Bit16u new_block;Bit8u new_rec;
 	fcb.GetRecord(new_block,new_rec);
 	if (restore) fcb.SetRecord(old_block,old_rec);
@@ -1101,13 +1111,14 @@ Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
 	return error;
 }
 
-Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
+Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u * numRec,bool restore) {
 /* see FCB_RandomRead */
 	DOS_FCB fcb(seg,offset);
 	Bit32u random;
 	Bit16u old_block=0;
 	Bit8u old_rec=0;
 	Bit8u error=0;
+	Bit16u count;
 
 	/* Set the correct record from the random data */
 	fcb.GetRandom(random);
@@ -1115,10 +1126,11 @@ Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore) {
 	if (restore) fcb.GetRecord(old_block,old_rec);
 	if (numRec>0) {
 		/* Write records */
-		for (int i=0; i<numRec; i++) {
-			error = DOS_FCBWrite(seg,offset,(Bit16u)i);// dos_fcbwrite return 0 false when true...
-			if (error!=0x00) break;
+		for (count=0; count<*numRec; count++) {
+			error = DOS_FCBWrite(seg,offset,count);// dos_fcbwrite return 0 false when true...
+			if (error!=FCB_SUCCESS) break;
 		}
+		*numRec=count;
 	} else {
 		DOS_FCBIncreaseSize(seg,offset);
 	}

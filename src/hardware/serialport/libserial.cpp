@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: libserial.cpp,v 1.4 2009-11-02 09:51:02 h-a-l-9000 Exp $ */
 
 #include "libserial.h"
 
@@ -45,6 +44,7 @@ bool SERIAL_open(const char* portname, COMPORT* port) {
 	int len = strlen(portname);
 	if(len > 240) {
 		SetLastError(ERROR_BUFFER_OVERFLOW);
+		free(cp);
 		return false;
 	}
 	char extended_portname[256] = "\\\\.\\";
