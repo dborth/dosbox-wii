@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.cpp,v 1.37 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <vector>
 #include <sstream>
@@ -777,7 +776,7 @@ void PROGRAMS_Init(Section* /*sec*/) {
 		"-l lists configuration parameters.\n"\
 		"-h, -help, -? sections / sectionname / propertyname\n"\
 		" Without parameters, displays this help screen. Add \"sections\" for a list of\n sections."\
-		" For info about a specific section or property add it's name behind.\n"\
+		" For info about a specific section or property add its name behind.\n"\
 		"-axclear clears the autoexec section.\n"\
 		"-axadd [line] adds a line to the autoexec section.\n"\
 		"-axtype prints the content of the autoexec section.\n"\

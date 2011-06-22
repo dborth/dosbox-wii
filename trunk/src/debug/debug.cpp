@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug.cpp,v 1.97 2009-04-11 19:49:52 c2woody Exp $ */
 
 #include "dosbox.h"
 #if C_DEBUG
@@ -1726,7 +1725,10 @@ Bit32u DEBUG_CheckKeys(void) {
 		}
 		if (ret<0) return ret;
 		if (ret>0) {
-			ret=(*CallBack_Handlers[ret])();
+			if (GCC_UNLIKELY(ret >= CB_MAX)) 
+				ret = 0;
+			else
+				ret = (*CallBack_Handlers[ret])();
 			if (ret) {
 				exitLoop=true;
 				CPU_Cycles=CPU_CycleLeft=0;
@@ -2174,11 +2176,11 @@ CDebugVar* CDebugVar::FindVar(PhysPt pt)
 	return 0;
 };
 
-bool CDebugVar::SaveVars(char* name)
-{
+bool CDebugVar::SaveVars(char* name) {
+	if (varList.size()>65535) return false;
+
 	FILE* f = fopen(name,"wb+");
 	if (!f) return false;
-	if (varList.size()>65535) return false;
 
 	// write number of vars
 	Bit16u num = (Bit16u)varList.size();

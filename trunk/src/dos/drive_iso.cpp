@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_iso.cpp,v 1.27 2009-09-22 21:48:08 c2woody Exp $ */
 
 #include <cctype>
 #include <cstring>
@@ -494,13 +493,13 @@ int isoDrive :: readDirEntry(isoDirEntry *de, Bit8u *data) {
 			if (de->ident[tmp - 1] == '.') de->ident[tmp - 1] = 0;
 		}
 	}
-	const char* dotpos = strchr((char*)de->ident, '.');
+	char* dotpos = strchr((char*)de->ident, '.');
 	if (dotpos!=NULL) {
+		if (strlen(dotpos)>4) dotpos[4]=0;
 		if (dotpos-(char*)de->ident>8) {
 			strcpy((char*)(&de->ident[8]),dotpos);
 		}
-	}
-	if (strlen((char*)de->ident)>12) de->ident[12]=0;
+	} else if (strlen((char*)de->ident)>8) de->ident[8]=0;
 	return de->length;
 }
 

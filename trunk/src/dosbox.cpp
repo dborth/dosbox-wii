@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dosbox.cpp,v 1.150 2009-11-03 20:17:42 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -42,6 +41,7 @@
 #include "mapper.h"
 #include "ints/int10.h"
 #include "render.h"
+#include "pci_bus.h"
 
 Config * control;
 MachineType machine;
@@ -73,6 +73,10 @@ void DMA_Init(Section*);
 void MIXER_Init(Section*);
 void MIDI_Init(Section*);
 void HARDWARE_Init(Section*);
+
+#if defined(PCI_FUNCTIONALITY_ENABLED)
+void PCI_Init(Section*);
+#endif
 
 
 void KEYBOARD_Init(Section*);	//TODO This should setup INT 16 too but ok ;)
@@ -129,10 +133,11 @@ static Bitu Normal_Loop(void) {
 	Bits ret;
 	while (1) {
 		if (PIC_RunQueue()) {
-			ret=(*cpudecoder)();
+			ret = (*cpudecoder)();
 			if (GCC_UNLIKELY(ret<0)) return 1;
 			if (ret>0) {
-				Bitu blah=(*CallBack_Handlers[ret])();
+				if (GCC_UNLIKELY(ret >= CB_MAX)) return 0;
+				Bitu blah = (*CallBack_Handlers[ret])();
 				if (GCC_UNLIKELY(blah)) return blah;
 			}
 #if C_DEBUG
@@ -451,6 +456,12 @@ void DOSBOX_Init(void) {
 	secprop->AddInitFunction(&VGA_Init);
 	secprop->AddInitFunction(&KEYBOARD_Init);
 
+
+#if defined(PCI_FUNCTIONALITY_ENABLED)
+	secprop=control->AddSection_prop("pci",&PCI_Init,false); //PCI bus
+#endif
+
+
 	secprop=control->AddSection_prop("mixer",&MIXER_Init);
 	Pbool = secprop->Add_bool("nosound",Property::Changeable::OnlyAtStart,false);
 	Pbool->Set_help("Enable silent mode, sound is still emulated though.");
@@ -495,6 +506,8 @@ void DOSBOX_Init(void) {
 
 	Pstring = secprop->Add_string("midiconfig",Property::Changeable::WhenIdle,"");
 	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
+	                  "  When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
+	                  "  In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
 	                  "  See the README/Manual for more details.");
 
 #if C_DEBUG

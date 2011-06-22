@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.100 2009-07-08 20:05:41 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -468,6 +467,23 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_2","directoryname is longer than 8 characters and/or contains spaces.\nTry \033[31mcd %s\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_3","You are still on drive Z:, change to a mounted drive with \033[31mC:\033[0m.\n");
+	MSG_Add("SHELL_CMD_DATE_HELP","Displays or changes the internal date.\n");
+	MSG_Add("SHELL_CMD_DATE_ERROR","The specified date is not correct.\n");
+	MSG_Add("SHELL_CMD_DATE_DAYS","3SunMonTueWedThuFriSat"); // "2SoMoDiMiDoFrSa"
+	MSG_Add("SHELL_CMD_DATE_NOW","Current date: ");
+	MSG_Add("SHELL_CMD_DATE_SETHLP","Type 'date MM-DD-YYYY' to change.\n");
+	MSG_Add("SHELL_CMD_DATE_FORMAT","M/D/Y");
+	MSG_Add("SHELL_CMD_DATE_HELP_LONG","DATE [[/T] [/H] [/S] | MM-DD-YYYY]\n"\
+									"  MM-DD-YYYY: new date to set\n"\
+									"  /S:         Permanently use host time and date as DOS time\n"\
+                                    "  /F:         Switch back to DOSBox internal time (opposite of /S)\n"\
+									"  /T:         Only display date\n"\
+									"  /H:         Synchronize with host\n");
+	MSG_Add("SHELL_CMD_TIME_HELP","Displays the internal time.\n");
+	MSG_Add("SHELL_CMD_TIME_NOW","Current time: ");
+	MSG_Add("SHELL_CMD_TIME_HELP_LONG","TIME [/T] [/H]\n"\
+									"  /T:         Display simple time\n"\
+									"  /H:         Synchronize with host\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s.\n");
 	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s.\n");
 	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s.\n");
@@ -498,7 +514,7 @@ void SHELL_Init() {
 		"\033[44;1m========================"
 		"========================"
 		"======================\n"
-		"| \033[32mWelcome to DOSBox v%-8s\033[37m                                        |\n"
+		"| \033[32mWelcome to DOSBox %-8s\033[37m                                        |\n"
 		"|                                                                    |\n"
 //		"| DOSBox runs real and protected mode games.                         |\n"
 		"| For a short introduction for new users type: \033[33mINTRO\033[37m                 |\n"
@@ -533,7 +549,7 @@ void SHELL_Init() {
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mWelcome to DOSBox v%-8s\033[37m                                        \xBA\n"
+		"\xBA \033[32mWelcome to DOSBox %-8s\033[37m                                         \xBA\n"
 		"\xBA                                                                    \xBA\n"
 //		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
 		"\xBA For a short introduction for new users type: \033[33mINTRO\033[37m                 \xBA\n"

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: pic.cpp,v 1.44 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <list>
 
@@ -92,9 +91,9 @@ static void write_command(Bitu port,Bitu val,Bitu iolen) {
 			else pic->request_issr=false;			/* select read interrupt request register */
 		}
 		if (val&0x40) {		// special mask select
-			if (val&0x20) pic->special=true;
-			else pic->special=false;
-			if(pic[0].special || pics[1].special) 
+			if (val&0x20) pic->special = true;
+			else pic->special = false;
+			if (pics[0].special || pics[1].special) 
 				PIC_Special_Mode = true; else 
 				PIC_Special_Mode = false;
 			if (PIC_IRQCheck) { //Recheck irqs
@@ -244,6 +243,17 @@ static Bitu read_data(Bitu port,Bitu iolen) {
 
 
 void PIC_ActivateIRQ(Bitu irq) {
+	if (GCC_UNLIKELY(CPU_Cycles)) {
+		// CPU_Cycles nonzero means the interrupt was triggered by an I/O
+		// register write rather than an event.
+		// Real hardware executes 0 to ~13 NOPs or comparable instructions
+		// before the processor picks up the interrupt. Let's try with 2
+		// cycles here.
+		// Required by Panic demo (irq0), It came from the desert (MPU401)
+		// Does it matter if CPU_CycleLeft becomes negative?
+		CPU_CycleLeft += (CPU_Cycles-2);
+		CPU_Cycles=2;
+	}
 	if( irq < 8 ) {
 		irqs[irq].active = true;
 		if (!irqs[irq].masked) {
