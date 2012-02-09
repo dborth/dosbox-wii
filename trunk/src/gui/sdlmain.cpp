@@ -174,6 +174,8 @@ struct SDL_Block {
 		} window;
 		Bit8u bpp;
 		bool fullscreen;
+		bool lazy_fullscreen;
+		bool lazy_fullscreen_req;
 		bool doublebuf;
 		SCREEN_TYPES type;
 		SCREEN_TYPES want_type;
@@ -247,6 +249,12 @@ void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	SDL_WM_SetCaption(title,VERSION);
 }
 
+static void KillSwitch(bool pressed) {
+	if (!pressed)
+		return;
+	throw 1;
+}
+
 static void PauseDOSBox(bool pressed) {
 	if (!pressed)
 		return;
@@ -263,15 +271,22 @@ static void PauseDOSBox(bool pressed) {
 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
 		switch (event.type) {
 
-			case SDL_QUIT: throw(0); break;
+			case SDL_QUIT: KillSwitch(true); break;
 			case SDL_KEYDOWN:   // Must use Pause/Break Key to resume.
 			case SDL_KEYUP:
-			if(event.key.keysym.sym==SDLK_PAUSE) {
+			if(event.key.keysym.sym == SDLK_PAUSE) {
 
-				paused=false;
+				paused = false;
 				GFX_SetTitle(-1,-1,false);
 				break;
 			}
+#if defined (MACOSX)
+			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+				/* On macs, all aps exit when pressing cmd-q */
+				KillSwitch(true);
+				break;
+			} 
+#endif
 		}
 	}
 }
@@ -356,6 +371,16 @@ void GFX_ResetScreen(void) {
 	CPU_Reset_AutoAdjust();
 }
 
+void GFX_ForceFullscreenExit(void) {
+	if (sdl.desktop.lazy_fullscreen) {
+//		sdl.desktop.lazy_fullscreen_req=true;
+		LOG_MSG("GFX LF: invalid screen change");
+	} else {
+		sdl.desktop.fullscreen=false;
+		GFX_ResetScreen();
+	}
+}
+
 static int int_log2 (int val) {
     int log = 0;
     while ((val >>= 1) != 0)
@@ -405,6 +430,16 @@ static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp) {
 		sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley);
 		sdl.surface=SDL_SetVideoMode(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
 		return sdl.surface;
+	}
+}
+
+void GFX_TearDown(void) {
+	if (sdl.updating)
+		GFX_EndUpdate( 0 );
+
+	if (sdl.blit.surface) {
+		SDL_FreeSurface(sdl.blit.surface);
+		sdl.blit.surface=0;
 	}
 }
 
@@ -673,6 +708,18 @@ void GFX_CaptureMouse(void) {
         mouselocked=sdl.mouse.locked;
 }
 
+void GFX_UpdateSDLCaptureState(void) {
+	if (sdl.mouse.locked) {
+		SDL_WM_GrabInput(SDL_GRAB_ON);
+		SDL_ShowCursor(SDL_DISABLE);
+	} else {
+		SDL_WM_GrabInput(SDL_GRAB_OFF);
+		if (sdl.mouse.autoenable || !sdl.mouse.autolock) SDL_ShowCursor(SDL_ENABLE);
+	}
+	CPU_Reset_AutoAdjust();
+	GFX_SetTitle(-1,-1,false);
+}
+
 bool mouselocked; //Global variable for mapper
 static void CaptureMouse(bool pressed) {
 	if (!pressed)
@@ -680,12 +727,40 @@ static void CaptureMouse(bool pressed) {
 	GFX_CaptureMouse();
 }
 
+#if defined (WIN32)
+STICKYKEYS stick_keys = {sizeof(STICKYKEYS), 0};
+void sticky_keys(bool restore){
+	static bool inited = false;
+	if (!inited){
+		inited = true;
+		SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &stick_keys, 0);
+	} 
+	if (restore) {
+		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &stick_keys, 0);
+		return;
+	}
+	//Get current sticky keys layout:
+	STICKYKEYS s = {sizeof(STICKYKEYS), 0};
+	SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &s, 0);
+	if ( !(s.dwFlags & SKF_STICKYKEYSON)) { //Not on already
+		s.dwFlags &= ~SKF_HOTKEYACTIVE;
+		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &s, 0);
+	}
+}
+#endif
+
 void GFX_SwitchFullScreen(void) {
 	sdl.desktop.fullscreen=!sdl.desktop.fullscreen;
 	if (sdl.desktop.fullscreen) {
 		if (!sdl.mouse.locked) GFX_CaptureMouse();
+#if defined (WIN32)
+		sticky_keys(false); //disable sticky keys in fullscreen mode
+#endif
 	} else {
 		if (sdl.mouse.locked) GFX_CaptureMouse();
+#if defined (WIN32)		
+		sticky_keys(true); //restore sticky keys to default state in windowed mode.
+#endif
 	}
 	GFX_ResetScreen();
 }
@@ -693,7 +768,32 @@ void GFX_SwitchFullScreen(void) {
 static void SwitchFullScreen(bool pressed) {
 	if (!pressed)
 		return;
-	GFX_SwitchFullScreen();
+
+	if (sdl.desktop.lazy_fullscreen) {
+//		sdl.desktop.lazy_fullscreen_req=true;
+		LOG_MSG("GFX LF: fullscreen switching not supported");
+	} else {
+		GFX_SwitchFullScreen();
+	}
+}
+
+void GFX_SwitchLazyFullscreen(bool lazy) {
+	sdl.desktop.lazy_fullscreen=lazy;
+	sdl.desktop.lazy_fullscreen_req=false;
+}
+
+void GFX_SwitchFullscreenNoReset(void) {
+	sdl.desktop.fullscreen=!sdl.desktop.fullscreen;
+}
+
+bool GFX_LazyFullscreenRequested(void) {
+	if (sdl.desktop.lazy_fullscreen) return sdl.desktop.lazy_fullscreen_req;
+	return false;
+}
+
+void GFX_RestoreMode(void) {
+	GFX_SetSize(sdl.draw.width,sdl.draw.height,sdl.draw.flags,sdl.draw.scalex,sdl.draw.scaley,sdl.draw.callback);
+	GFX_UpdateSDLCaptureState();
 }
 
 
@@ -907,11 +1007,6 @@ static void GUI_ShutDown(Section * /*sec*/) {
 	if (sdl.desktop.fullscreen) GFX_SwitchFullScreen();
 }
 
-static void KillSwitch(bool pressed) {
-	if (!pressed)
-		return;
-	throw 1;
-}
 
 static void SetPriority(PRIORITY_LEVELS level) {
 
@@ -1009,6 +1104,9 @@ static void GUI_StartUp(Section * sec) {
 #endif
 	SDL_WM_SetIcon(logos,NULL);
 #endif
+
+	sdl.desktop.lazy_fullscreen=false;
+	sdl.desktop.lazy_fullscreen_req=false;
 
 	sdl.desktop.fullscreen=section->Get_bool("fullscreen");
 	sdl.wait_on_error=section->Get_bool("waitonerror");
@@ -1186,7 +1284,7 @@ static void GUI_StartUp(Section * sec) {
 //#endif
 
 /* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
-/*	
+#ifndef HW_RVL
 	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
 	if (splash_surf) {
 		SDL_FillRect(splash_surf, NULL, SDL_MapRGB(splash_surf->format, 0, 0, 0));
@@ -1246,7 +1344,7 @@ static void GUI_StartUp(Section * sec) {
 		delete [] tmpbufp;
 
 	}
-*/
+#endif
 	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
 	MAPPER_AddHandler(CaptureMouse,MK_f10,MMOD1,"capmouse","Cap Mouse");
@@ -1327,6 +1425,10 @@ void GFX_LosingFocus(void) {
 	MAPPER_LosingFocus();
 }
 
+bool GFX_IsFullscreen(void) {
+	return sdl.desktop.fullscreen;
+}
+
 void GFX_Events() {
 #ifdef HW_RVL
 	// check for home button
@@ -1363,8 +1465,7 @@ void GFX_Events() {
 #ifdef WIN32
 						if (sdl.desktop.fullscreen) {
 							VGA_KillDrawing();
-							sdl.desktop.fullscreen=false;
-							GFX_ResetScreen();
+							GFX_ForceFullscreenExit();
 						}
 #endif
 						GFX_CaptureMouse();
@@ -1446,6 +1547,15 @@ void GFX_Events() {
 			if (event.key.keysym.sym==SDLK_RALT) sdl.raltstate = event.key.type;
 			if (((event.key.keysym.sym==SDLK_TAB)) &&
 				((sdl.laltstate==SDL_KEYDOWN) || (sdl.raltstate==SDL_KEYDOWN))) break;
+#endif
+#if defined (MACOSX)			
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+			/* On macs CMD-Q is the default key to close an application */
+			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+				KillSwitch(true);
+				break;
+			} 
 #endif
 		default:
 			void MAPPER_CheckEvent(SDL_Event * event);
@@ -1755,7 +1865,7 @@ int main(int argc, char* argv[]) {
 		if(control->cmdline->FindExist("-resetconf")) eraseconfigfile();
 		if(control->cmdline->FindExist("-erasemapper")) erasemapperfile();
 		if(control->cmdline->FindExist("-resetmapper")) erasemapperfile();
-
+		
 		/* Can't disable the console with debugger enabled */
 #if defined(WIN32) && !(C_DEBUG)
 		if (control->cmdline->FindExist("-noconsole")) {
@@ -1933,7 +2043,7 @@ int main(int argc, char* argv[]) {
 		Section_prop * sdl_sec=static_cast<Section_prop *>(control->GetSection("sdl"));
 
 		if (control->cmdline->FindExist("-fullscreen") || sdl_sec->Get_bool("fullscreen")) {
-			if(!sdl.desktop.fullscreen) { //only switch if not allready in fullscreen
+			if(!sdl.desktop.fullscreen) { //only switch if not already in fullscreen
 				GFX_SwitchFullScreen();
 			}
 		}
@@ -1957,6 +2067,9 @@ int main(int argc, char* argv[]) {
 		control->StartUp();
 		/* Shutdown everything */
 	} catch (char * error) {
+#if defined (WIN32)
+		sticky_keys(true);
+#endif
 		GFX_ShowMsg("Exit to error: %s",error);
 		fflush(NULL);
 		if(sdl.wait_on_error) {
@@ -1975,11 +2088,17 @@ int main(int argc, char* argv[]) {
 		;//nothing pressed killswitch
 	}
 	catch(...){
+#if defined (WIN32)
+		sticky_keys(true);
+#endif
 		//Force visible mouse to end user. Somehow this sometimes doesn't happen
 		SDL_WM_GrabInput(SDL_GRAB_OFF);
 		SDL_ShowCursor(SDL_ENABLE);
 		throw;//dunno what happened. rethrow for sdl to catch
 	}
+#if defined (WIN32)
+	sticky_keys(true); //Might not be needed if the shutdown function switches to windowed mode, but it doesn't hurt
+#endif 
 	//Force visible mouse to end user. Somehow this sometimes doesn't happen
 	SDL_WM_GrabInput(SDL_GRAB_OFF);
 	SDL_ShowCursor(SDL_ENABLE);

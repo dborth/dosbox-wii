@@ -38,7 +38,6 @@
 #include <ogc/lwp_watchdog.h>
 #endif
 
-
 /* if mem_systems 0 then size_extended is reported as the real size else 
  * zero is reported. ems and xms can increase or decrease the other_memsystems
  * counter using the BIOS_ZeroExtendedSize call */
@@ -850,6 +849,7 @@ static Bitu INT15_Handler(void) {
 				CALLBACK_Idle();
 			}
 			CALLBACK_SCF(false);
+			break;
 		}
 	case 0x87:	/* Copy extended memory */
 		{

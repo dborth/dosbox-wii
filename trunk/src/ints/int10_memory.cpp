@@ -49,7 +49,7 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 	PhysPt ftwhere=PhysMake(0xa000,map_offset[map & 0x7]+(Bit16u)(offset*32));
 	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x4);	//Enable plane 2
 	IO_Write(0x3ce,0x6);Bitu old_6=IO_Read(0x3cf);
-	IO_Write(0x3cf,0x0);	//Disable odd/even and a0000 adressing
+	IO_Write(0x3cf,0x0);	//Disable odd/even and a0000 addressing
 	for (Bitu i=0;i<count;i++) {
 		MEM_BlockCopy(ftwhere,font,height);
 		ftwhere+=32;
@@ -57,7 +57,7 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 	}
 	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x3);	//Enable textmode planes (0,1)
 	IO_Write(0x3ce,0x6);
-	if (IS_VGA_ARCH) IO_Write(0x3cf,(Bit8u)old_6);	//odd/even and b8000 adressing
+	if (IS_VGA_ARCH) IO_Write(0x3cf,(Bit8u)old_6);	//odd/even and b8000 addressing
 	else IO_Write(0x3cf,0x0e);
 	/* Reload tables and registers with new values based on this height */
 	if (reload) {
@@ -154,7 +154,7 @@ void INT10_SetupRomMemory(void) {
 			int10.rom.video_dcc_table=RealMake(0xC000,int10.rom.used);
 			phys_writeb(rom_base+int10.rom.used++,0x10);	// number of entries
 			phys_writeb(rom_base+int10.rom.used++,1);		// version number
-			phys_writeb(rom_base+int10.rom.used++,8);		// maximal display code
+			phys_writeb(rom_base+int10.rom.used++,8);		// maximum display code
 			phys_writeb(rom_base+int10.rom.used++,0);		// reserved
 			// display combination codes
 			phys_writew(rom_base+int10.rom.used,0x0000);	int10.rom.used+=2;

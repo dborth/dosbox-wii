@@ -77,20 +77,20 @@ static Bitu temp[643]={0};
 
 static Bit8u * VGA_Draw_CGA16_Line(Bitu vidstart, Bitu line) {
 	const Bit8u *base = vga.tandy.draw_base + ((line & vga.tandy.line_mask) << vga.tandy.line_shift);
-	const Bit8u *reader = base + vidstart;
+#define CGA16_READER(OFF) (base[(vidstart +(OFF))& (8*1024 -1)])
 	Bit32u * draw=(Bit32u *)TempLine;
 	//Generate a temporary bitline to calculate the avarage
 	//over bit-2  bit-1  bit  bit+1.
 	//Combine this number with the current colour to get 
-	//an unigue index in the pallete. Or it with bit 7 as they are stored 
+	//an unique index in the pallette. Or it with bit 7 as they are stored
 	//in the upperpart to keep them from interfering the regular cga stuff
 
 	for(Bitu x = 0; x < 640; x++)
-		temp[x+2] = (( reader[(x>>3)] >> (7-(x&7)) )&1) << 4;
+		temp[x+2] = (( CGA16_READER(x>>3)>> (7-(x&7)) )&1) << 4;
 		//shift 4 as that is for the index.
 	Bitu i = 0,temp1,temp2,temp3,temp4;
 	for (Bitu x=0;x<vga.draw.blocks;x++) {
-		Bitu val1 = *reader++;
+		Bitu val1 = CGA16_READER(x);
 		Bitu val2 = val1&0xf;
 		val1 >>= 4;
 
@@ -113,6 +113,7 @@ static Bit8u * VGA_Draw_CGA16_Line(Bitu vidstart, Bitu line) {
 		          ((temp4|val2) <<24);
 	}
 	return TempLine;
+#undef CGA16_READER
 }
 
 static Bit8u * VGA_Draw_4BPP_Line(Bitu vidstart, Bitu line) {
@@ -824,7 +825,7 @@ static void VGA_VerticalTimer(Bitu /*val*/) {
 		break;
 	}
 	//Check if we can actually render, else skip the rest (frameskip)
-	if (!RENDER_StartUpdate())
+	if (vga.draw.vga_override || !RENDER_StartUpdate())
 		return;
 
 	vga.draw.address_line = vga.config.hlines_skip;
@@ -1556,7 +1557,9 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		LOG(LOG_VGA,LOG_NORMAL)("%s width, %s height aspect %f",
 			doublewidth ? "double":"normal",doubleheight ? "double":"normal",aspect_ratio);
 #endif
-		RENDER_SetSize(width,height,bpp,(float)fps,aspect_ratio,doublewidth,doubleheight);
+		if (!vga.draw.vga_override) 
+			RENDER_SetSize(width, height, bpp, (float)fps, aspect_ratio,
+			doublewidth, doubleheight);
 	}
 }
 
@@ -1566,5 +1569,19 @@ void VGA_KillDrawing(void) {
 	PIC_RemoveEvents(VGA_DrawEGASingleLine);
 	vga.draw.parts_left = 0;
 	vga.draw.lines_done = ~0;
-	RENDER_EndUpdate(true);
+	if (!vga.draw.vga_override) RENDER_EndUpdate(true);
+}
+
+void VGA_SetOverride(bool vga_override) {
+	if (vga.draw.vga_override!=vga_override) {
+		
+		if (vga_override) {
+			VGA_KillDrawing();
+			vga.draw.vga_override=true;
+		} else {
+			vga.draw.vga_override=false;
+			vga.draw.width=0; // change it so the output window gets updated
+			VGA_SetupDrawing(0);
+		}
+	}
 }

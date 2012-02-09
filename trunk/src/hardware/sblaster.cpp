@@ -871,6 +871,11 @@ static void DSP_DoCommand(void) {
 	case 0x76:  /* 074h : Single Cycle 3-bit(2.6bit) ADPCM */
 		DSP_PrepareDMA_Old(DSP_DMA_3,false,false);
 		break;
+	case 0x7d:	/* Auto Init 4-bit ADPCM Reference */
+		DSP_SB2_ABOVE;
+		sb.adpcm.haveref=true;
+		DSP_PrepareDMA_Old(DSP_DMA_4,true,false);
+		break;
 	case 0x17:	/* 017h : Single Cycle 2-bit ADPCM Reference*/
 		sb.adpcm.haveref=true;
 	case 0x16:  /* 074h : Single Cycle 2-bit ADPCM */
@@ -996,7 +1001,7 @@ static void DSP_DoCommand(void) {
 		DSP_SB2_ABOVE;
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unimplemented MIDI UART command %2X",sb.dsp.cmd);
 		break;
-	case 0x7d: case 0x7f: case 0x1f:
+	case 0x7f: case 0x1f:
 		DSP_SB2_ABOVE;
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unimplemented auto-init DMA ADPCM command %2X",sb.dsp.cmd);
 		break;
@@ -1158,10 +1163,15 @@ static void CTMIXER_Write(Bit8u val) {
 		break;
 	case 0x08:		/* CDA Volume (SB2 Only) */
 		SETPROVOL(sb.mixer.cda,(val&0xf)|(val<<4));
+		CTMIXER_UpdateVolumes();
 		break;
 	case 0x0a:		/* Mic Level (SBPRO) or DAC Volume (SB2): 2-bit, 3-bit on SB16 */
-		if (sb.type==SBT_2) sb.mixer.dac[0]=sb.mixer.dac[1]=((val & 0x6) << 2)|3;
-		else sb.mixer.mic=((val & 0x7) << 2)|(sb.type==SBT_16?1:3);
+		if (sb.type==SBT_2) {
+			sb.mixer.dac[0]=sb.mixer.dac[1]=((val & 0x6) << 2)|3;
+			CTMIXER_UpdateVolumes();
+		} else {
+			sb.mixer.mic=((val & 0x7) << 2)|(sb.type==SBT_16?1:3);
+		}
 		break;
 	case 0x0e:		/* Output/Stereo Select */
 		sb.mixer.stereo=(val & 0x2) > 0;
@@ -1179,6 +1189,7 @@ static void CTMIXER_Write(Bit8u val) {
 		break;
 	case 0x28:		/* CD Audio Volume (SBPRO) */
 		SETPROVOL(sb.mixer.cda,val);
+		CTMIXER_UpdateVolumes();
 		break;
 	case 0x2e:		/* Line-in Volume (SBPRO) */
 		SETPROVOL(sb.mixer.lin,val);
