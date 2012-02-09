@@ -52,14 +52,14 @@ typedef std::list<std::string>::iterator auto_it;
 void VFILE_Remove(const char *name);
 
 void AutoexecObject::Install(const std::string &in) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: already created %s",buf.c_str());
 	installed = true;
 	buf = in;
 	autoexec_strings.push_back(buf);
 	this->CreateAutoexec();
 
 	//autoexec.bat is normally created AUTOEXEC_Init.
-	//But if we are allready running (first_shell)
+	//But if we are already running (first_shell)
 	//we have to update the envirionment to display changes
 
 	if(first_shell)	{
@@ -80,7 +80,7 @@ void AutoexecObject::Install(const std::string &in) {
 }
 
 void AutoexecObject::InstallBefore(const std::string &in) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: already created %s",buf.c_str());
 	installed = true;
 	buf = in;
 	autoexec_strings.push_front(buf);
@@ -288,7 +288,7 @@ void DOS_Shell::RunInternal(void)
 void DOS_Shell::Run(void) {
 	char input_line[CMD_MAXLINE] = {0};
 	std::string line;
-	if (cmd->FindStringRemain("/C",line)) {
+	if (cmd->FindStringRemainBegin("/C",line)) {
 		strcpy(input_line,line.c_str());
 		char* sep = strpbrk(input_line,"\r\n"); //GTA installer
 		if (sep) *sep = 0;

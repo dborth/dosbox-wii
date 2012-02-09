@@ -506,6 +506,7 @@ void DOSBOX_Init(void) {
 
 	Pstring = secprop->Add_string("midiconfig",Property::Changeable::WhenIdle,"");
 	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
+	                  "  or in the case of coreaudio, you can specify a soundfont here.\n"
 	                  "  When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
 	                  "  In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
 	                  "  See the README/Manual for more details.");
@@ -733,8 +734,8 @@ void DOSBOX_Init(void) {
 		"You can put your MOUNT lines here.\n"
 	);
 	MSG_Add("CONFIGFILE_INTRO",
-	        "# This is the configurationfile for DOSBox %s. (Please use the latest version of DOSBox)\n"
-	        "# Lines starting with a # are commentlines and are ignored by DOSBox.\n"
+	        "# This is the configuration file for DOSBox %s. (Please use the latest version of DOSBox)\n"
+	        "# Lines starting with a # are comment lines and are ignored by DOSBox.\n"
 	        "# They are used to (briefly) document the effect of each option.\n");
 	MSG_Add("CONFIG_SUGGESTED_VALUES", "Possible values");
 

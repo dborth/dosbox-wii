@@ -123,11 +123,12 @@ void DOS_Shell::DoCommand(char * line) {
 	char cmd_buffer[CMD_MAXLINE];
 	char * cmd_write=cmd_buffer;
 	while (*line) {
-		if (*line==32) break;
-		if (*line=='/') break;
-		if (*line=='\t') break;
-		if (*line=='=') break;
-		if ((*line=='.') ||(*line =='\\')) {  //allow stuff like cd.. and dir.exe cd\kees
+		if (*line == 32) break;
+		if (*line == '/') break;
+		if (*line == '\t') break;
+		if (*line == '=') break;
+//		if (*line == ':') break; //This breaks drive switching as that is handled at a later stage. 
+		if ((*line == '.') ||(*line == '\\')) {  //allow stuff like cd.. and dir.exe cd\kees
 			*cmd_write=0;
 			Bit32u cmd_index=0;
 			while (cmd_list[cmd_index].name) {
@@ -287,7 +288,7 @@ void DOS_Shell::CMD_ECHO(char * args){
 	args++;//skip first character. either a slash or dot or space
 	size_t len = strlen(args); //TODO check input of else ook nodig is.
 	if(len && args[len - 1] == '\r') {
-		LOG(LOG_MISC,LOG_WARN)("Hu ? carriage return allready present. Is this possible?");
+		LOG(LOG_MISC,LOG_WARN)("Hu ? carriage return already present. Is this possible?");
 		WriteOut("%s\n",args);
 	} else WriteOut("%s\r\n",args);
 }
@@ -573,6 +574,7 @@ void DOS_Shell::CMD_COPY(char * args) {
 	while(ScanCMDBool(args,"A")) ;
 	ScanCMDBool(args,"Y");
 	ScanCMDBool(args,"-Y");
+	ScanCMDBool(args,"V");
 
 	char * rem=ScanCMDRemain(args);
 	if (rem) {
