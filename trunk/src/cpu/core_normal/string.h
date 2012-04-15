@@ -32,7 +32,7 @@ static void DoString(STRING_OP type) {
 	PhysPt  si_base,di_base;
 	Bitu	si_index,di_index;
 	Bitu	add_mask;
-	Bitu	count,count_left;
+	Bitu	count,count_left = 0;
 	Bits	add_index;
 	
 	si_base=BaseDS;

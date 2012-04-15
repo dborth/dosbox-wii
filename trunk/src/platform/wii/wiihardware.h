@@ -7,12 +7,16 @@
 #define WIIHARDWARE_H
 #include <wiiuse/wpad.h>
 
+#define MAX_APP_DRIVE_LEN		16
+#define MAX_APP_PATH_LEN		128
+
 void WiiInit();
 void WiiMenu();
 void CreateAppPath(char origpath[]);
 void WiiFinished();
 
-extern char appPath[1024];
+extern char appDrive[MAX_APP_DRIVE_LEN];
+extern char appPath[MAX_APP_PATH_LEN];
 extern char dosboxCommand[1024];
 
 #endif
