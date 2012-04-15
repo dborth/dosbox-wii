@@ -33,7 +33,8 @@ extern void WII_VideoStop();
 void MAPPER_CheckEvent(SDL_Event * event);
 void HomeMenu();
 
-char appPath[1024];
+char appDrive[MAX_APP_DRIVE_LEN];
+char appPath[MAX_APP_PATH_LEN];
 char dosboxCommand[1024] = { 0 };
 static lwp_t keythread = LWP_THREAD_NULL;
 static char shiftkey[130];
@@ -221,17 +222,16 @@ void CreateAppPath(char origpath[])
 	if (loc != NULL)
 		*loc = 0; // strip file name
 
-	int pos = 0;
+	strncpy(appPath, path, MAX_APP_PATH_LEN);
+	appPath[MAX_APP_PATH_LEN - 1] = 0;
 
-	// replace fat:/ with sd:/
-	if(strncmp(path, "fat:/", 5) == 0)
-	{
-		pos++;
-		path[1] = 's';
-		path[2] = 'd';
-	}
-	strncpy(appPath, &path[pos], MAXPATHLEN);
-	appPath[MAXPATHLEN-1] = 0;
+	loc = strchr(path,'/');
+	if (loc != NULL)
+		*loc = 0; // strip path
+
+	strncpy(appDrive, path, MAX_APP_DRIVE_LEN);
+	appDrive[MAX_APP_DRIVE_LEN - 1] = 0;
+
 	free(path);
 }
 

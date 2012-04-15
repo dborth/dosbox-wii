@@ -66,7 +66,7 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 	in = "~/Library/Preferences";
 	ResolveHomedir(in);
 #elif defined(HW_RVL)
-	in = "sd:/DOSBox";
+	in = std::string(appDrive) + "/DOSBox";
 #else
 	in = "~/.dosbox";
 	ResolveHomedir(in);
@@ -97,7 +97,7 @@ void Cross::CreatePlatformConfigDir(std::string& in) {
 	ResolveHomedir(in);
 	//Don't create it. Assume it exists
 #elif defined(HW_RVL)
-	in = "sd:/DOSBox";
+	in = std::string(appDrive) + "/DOSBox";
 	CreateDir(in);
 #else
 	in = "~/.dosbox";

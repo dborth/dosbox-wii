@@ -1976,8 +1976,9 @@ int main(int argc, char* argv[]) {
 
 	/* Parse configuration files */
 	std::string config_file,config_path;
+
 	Cross::GetPlatformConfigDir(config_path);
-	
+
 	//First parse -userconf
 	if(control->cmdline->FindExist("-userconf",true)){
 		config_file.clear();
@@ -2052,16 +2053,8 @@ int main(int argc, char* argv[]) {
 		MAPPER_Init();
 		if (control->cmdline->FindExist("-startmapper")) MAPPER_RunInternal();
 #ifdef HW_RVL
-		bool cMounted = false;
-
-		// mount the current directory as C, if not loading from apps/dosbox-wii
-		if(strlen(appPath) > 0 && strcmp(appPath, "apps/dosbox-wii") != 0)
-			if(MountDOSBoxDir('C', appPath))
-				cMounted = true;
-		if(cMounted)
-			MountDOSBoxDir('D', "sd:/DOSBox");
-		else
-			MountDOSBoxDir('C', "sd:/DOSBox");
+		Cross::GetPlatformConfigDir(config_path);
+		MountDOSBoxDir('C', config_path.c_str());
 #endif
 		/* Start up main machine */
 		control->StartUp();
