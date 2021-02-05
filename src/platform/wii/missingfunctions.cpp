@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <libgen.h>
 #include <sys/stat.h>
+#include <sys/param.h>
 #include "dos_inc.h"
 
 static char tmp[MAXPATHLEN];

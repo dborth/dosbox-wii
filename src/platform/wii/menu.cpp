@@ -15,6 +15,7 @@
 #include <wiiuse/wpad.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/param.h>
 
 #include "libwiigui/gui.h"
 #include "wiihardware.h"
