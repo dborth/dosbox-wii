@@ -1,11 +1,11 @@
-¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤
+==============================================================================
  
                                  - DOSBox Wii -
                                    Version 1.7
                        http://code.google.com/p/dosbox-wii   
                                (Under GPL License)
  
-¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤°`°¤ø,¸,ø¤°`°¤ø,¸¸,ø¤
+==============================================================================
 
 A port of DOSBox to the Wii using SDL Wii.
 
@@ -18,6 +18,10 @@ A port of DOSBox to the Wii using SDL Wii.
 * Home menu, with on-screen keyboard
 
 -=[ Update History ]=-
+
+[current master - 2021]
+* Updated to latest libogc and devkitPPC
+* Convert CRLF line terminators to unix line terminators (like at original SVN repo)
 
 [1.7 - June 30, 2012]
 
