@@ -28,7 +28,7 @@
 #define C_DYNAMIC_X86 0
 
 /* Define to 1 to use recompiling cpu core. Can not be used together with the dynamic-x86 core */
-#define C_DYNREC 0
+#define C_DYNREC 1
 
 /* Enable memory function inlining in */
 #define C_CORE_INLINE 1
@@ -53,6 +53,8 @@
 
 /* Define to 1 if you want serial passthrough support (Win32 only). */
 #define C_DIRECTSERIAL 0
+
+#define WORDS_BIGENDIAN 1
 
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))
 #define GCC_UNLIKELY(x) __builtin_expect((x), 0)

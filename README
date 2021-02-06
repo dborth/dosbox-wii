@@ -23,6 +23,8 @@ A port of DOSBox to the Wii using SDL Wii.
 * Updated to latest libogc and devkitPPC
 * Convert CRLF line terminators to unix line terminators (like at original SVN repo)
 * Sync to DOSBox SVN r4301
+* Add PowerPC Dynamic Recompiler patch from jmarsh (ppc_dynrec.diff and drive_fat_BE.diff)
+  see: https://www.vogons.org/viewtopic.php?t=65057
 
 [1.7 - June 30, 2012]
 
