@@ -1,7 +1,10 @@
-#define VERSION "0.74"
+#define VERSION "SVN-r4301"
 
 /* Define to 1 to enable internal debugger, requires libcurses */
 #define C_DEBUG 0
+
+/* Define to 1 to enable output=ddraw */
+#define C_DDRAW 0
 
 /* Define to 1 to enable screenshots, requires libpng */
 #define C_SSHOT 0
@@ -68,6 +71,11 @@ typedef  unsigned long		Bit32u;
 typedef    int				Bit32s;
 typedef unsigned long long	Bit64u;
 typedef   signed long long	Bit64s;
+#define sBit32t
+#define sBit64t "I64"
+#define sBit32fs(a) sBit32t #a
+#define sBit64fs(a) sBit64t #a
 typedef unsigned int		Bitu;
 typedef signed int			Bits;
+#define sBitfs sBit32fs
 

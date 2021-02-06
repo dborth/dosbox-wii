@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -361,7 +361,7 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 		}
 #ifdef PNG_TEXT_SUPPORTED
 		int fields = 1;
-		png_text text[1];
+		png_text text[1] = {};
 		const char* text_s = "DOSBox " VERSION;
 		size_t strl = strlen(text_s);
 		char* ptext_s = new char[strl + 1];
@@ -490,7 +490,7 @@ skip_shot:
 			if (!capture.video.buf)
 				goto skip_video;
 			capture.video.index = (Bit8u*)malloc( 16*4096 );
-			if (!capture.video.buf)
+			if (!capture.video.index)
 				goto skip_video;
 			capture.video.indexsize = 16*4096;
 			capture.video.indexused = 8;

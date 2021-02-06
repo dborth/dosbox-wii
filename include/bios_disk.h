@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 #ifndef DOSBOX_BIOS_DISK_H
@@ -54,18 +54,20 @@ public:
 	void Get_Geometry(Bit32u * getHeads, Bit32u *getCyl, Bit32u *getSect, Bit32u *getSectSize);
 	Bit8u GetBiosType(void);
 	Bit32u getSectSize(void);
-	imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHardDisk);
+	imageDisk(FILE *imgFile, const char *imgName, Bit32u imgSizeK, bool isHardDisk);
 	~imageDisk() { if(diskimg != NULL) { fclose(diskimg); }	};
 
 	bool hardDrive;
 	bool active;
 	FILE *diskimg;
-	Bit8u diskname[512];
+	char diskname[512];
 	Bit8u floppytype;
 
 	Bit32u sector_size;
 	Bit32u heads,cylinders,sectors;
+private:
 	Bit32u current_fpos;
+	enum { NONE,READ,WRITE } last_action;
 };
 
 void updateDPT(void);
@@ -73,9 +75,11 @@ void incrementFDD(void);
 
 #define MAX_HDD_IMAGES 2
 
-extern imageDisk *imageDiskList[2 + MAX_HDD_IMAGES];
-extern imageDisk *diskSwap[20];
-extern Bits swapPosition;
+#define MAX_DISK_IMAGES (2 + MAX_HDD_IMAGES)
+
+extern imageDisk *imageDiskList[MAX_DISK_IMAGES];
+extern imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
+extern Bit32s swapPosition;
 extern Bit16u imgDTASeg; /* Real memory location of temporary DTA pointer for fat image disk access */
 extern RealPt imgDTAPtr; /* Real memory location of temporary DTA pointer for fat image disk access */
 extern DOS_DTA *imgDTA;

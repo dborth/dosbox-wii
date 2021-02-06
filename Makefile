@@ -18,7 +18,8 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
 SOURCES		:=	src src/cpu src/debug src/dos src/fpu src/gui \
-				src/hardware src/hardware/serialport src/ints src/libs \
+				src/hardware src/hardware/mame \
+				src/hardware/serialport src/ints src/libs \
 				src/misc src/platform/wii src/platform/wii/fonts \
 				src/platform/wii/images src/platform/wii/libwiigui \
 				src/platform/wii/sounds src/shell
