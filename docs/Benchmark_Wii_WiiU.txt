@@ -1,0 +1,41 @@
+
+
+
+PCPBench 1.03c on Wii
+
+---------o---------------------------------------o-------------------o
+version: |     Dosbox WII r4301 with dynrec      |  Dosbox WII 1.7   |
+         |             master branch             |                   |
+---------o---------o---------o---------o---------o---------o---------o
+core:    | dynamic | dynamic | normal  | normal  | normal  | normal  |
+cylces:  |   max   |   max   |   max   |   max   |   max   |   max   |
+extender:| Dos/32A | DOS4GW  | Dos/32A | DOS4GW  | Dos/32A | DOS4GW  |
+result 1:| 3.0 fps | 2.8 fps | 0.7 fps | 0.3 fps | 0.3 fps | 0.2 fps |
+result 2:| 3.1 fps | 2.9 fps | 0.8 fps | 0.5 fps | 0.2 fps | 0.3 fps |
+result 3:| 3.1 fps | 2.8 fps | 0.6 fps | 0.5 fps | 0.3 fps | 0.2 fps |
+
+PCPBench 1.03c on WiiU/vWii
+
+---------o-------------------------------------------------o-------------------o
+version: |     Dosbox WII r4301 with dynrec                | Retroarch Dosbox  |
+         |             master branch                       |      on WiiU      |
+         |                                       | original|                   |
+         |           Overclocked vWii            |   vWii  |         |         |
+         |      1.24 GHz instead of 729 MHz      | 729 MHz |   SVN   | non-SVN |
+         |          per WiiVC (cafe2wii)         | no over.| Version | Version |
+---------o---------o---------o---------o---------o---------o---------o---------o
+core:    | dynamic | dynamic | normal  | normal  | dynamic | normal  | normal  |
+cylces:  |   max   |   max   |   max   |   max   |   max   |   max   |   max   |
+extender:| Dos/32A | DOS4GW  | Dos/32A | DOS4GW  | Dos/32A | Dos/32A | DOS/32A |
+result 1:| 5.7 fps | 5.6 fps | 2.1 fps | 2.0 fps | 3.2 fps | 2.3 fps | 0.2 fps |
+result 2:| 5.7 fps | 5.6 fps | 2.1 fps | 2.0 fps | 3.1 fps |         |         |
+result 3:| 5.8 fps | 5.6 fps | 2.1 fps | 2.0 fps | 3.1 fps |         |         |
+
+
+PC classes from PCPBench 1.03c:
+class 1:   486 DX/33 System        minimum 2.5 fps
+class 2:   486 DX2/66 System       minimum 4.0 fps
+class 3:   486 DX4/100 System      minimum 7.5 fps
+class 4:   Pentium 90 System       minimum 10.0 fps
+class 5:   Pentium 133 System      minimum 16.0 fps
+

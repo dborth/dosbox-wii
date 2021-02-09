@@ -9,6 +9,23 @@ endif
 
 include $(DEVKITPPC)/wii_rules
 
+
+#---------------------------------------------------------------------------------
+# LIBS_VER can be CUR or OLD
+#---------------------------------------------------------------------------------
+LIBS_VER=CUR
+
+INCLUDES_EXTRA_CUR := -I$(PORTLIBS_PATH)/wii/include/SDL
+CFLAGS_EXTRA_CUR :=	`freetype-config --cflags` -DDEFINE_GLOBALS -DNEW_DEVOPTAB_API
+LIBS_CUR	:=	-lSDL -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
+			-lvorbisidec -logg -laesnd \
+			`freetype-config --libs`
+
+INCLUDES_EXTRA_OLD := -I$(LIBOGC_INC)/SDL -I$(PORTLIBS)/include/freetype2
+CFLAGS_EXTRA_OLD :=
+LIBS_OLD	:=	-lSDL -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
+			-lpng -lvorbisidec -lfreetype -lz
+
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
 # BUILD is the directory where object files & intermediate files will be placed
@@ -30,16 +47,15 @@ INCLUDES 	:=  include src/platform/wii
 #---------------------------------------------------------------------------------
 
 CFLAGS		=	-g -O3 -Wall $(MACHDEP) $(INCLUDE) \
-				-Wno-strict-aliasing -DWORDS_BIGENDIAN
+				-Wno-strict-aliasing -DWORDS_BIGENDIAN \
+				$(CFLAGS_EXTRA_$(LIBS_VER))
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
-			-lpng -lvorbisidec -lfreetype -lz \
-			-lm -logg -lbz2 -laesnd
+LIBS	:=	$(LIBS_$(LIBS_VER))
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -93,7 +109,8 @@ export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC) -I$(LIBOGC_INC)/SDL -I$(PORTLIBS)/include/freetype2
+					-I$(LIBOGC_INC) \
+					$(INCLUDES_EXTRA_$(LIBS_VER))
 
 #---------------------------------------------------------------------------------
 # build a list of library paths
