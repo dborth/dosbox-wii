@@ -43,14 +43,29 @@ does not exist either, it will be created in the DOSBox root directory
 To use different configurations for different DOS games for the Dosbox Wii,
 you can simply use multiple Dosbox Wii installations.
 
-1. the configuration file in the DOSBox root directory should not exist (no sd:/DOSBox/dosbox.conf file). Best is to move the configuration file from sd:/DOSBox/dosbox.conf to sd:/apps/dosbox-wii/dosbox.conf.
-  Create desired number of copies of the directory sd:/apps/dosbox-wii. For example, sd:/apps/dosbox-wii-game1, sd:/apps/dosbox-wii-game2, sd:/apps/dosbox-wii-game3, etc. All Dosbox Wii installations (copies) share the same DOSBox root directory (sd:/DOSBox), which is not a problem.
+1. The configuration file in the DOSBox root directory should not exist
+(no sd:/DOSBox/dosbox.conf file). Best is to move the configuration file
+from sd:/DOSBox/dosbox.conf to sd:/apps/dosbox-wii/dosbox.conf.
+  Create desired number of copies of the directory sd:/apps/dosbox-wii.
+For example, sd:/apps/dosbox-wii-game1, sd:/apps/dosbox-wii-game2,
+sd:/apps/dosbox-wii-game3, etc. All Dosbox Wii installations (copies) share
+the same DOSBox root directory (sd:/DOSBox), which is not a problem.
 
-2. The directories (copies) sd:/apps/dosbox-wii, sd:/apps/dosbox-wii-game1, sd:/apps/dosbox-wii-game2, etc. should each contain the files boot.dol, dosbox.conf, icon.png and meta.xml.
+2. The directories (copies) sd:/apps/dosbox-wii, sd:/apps/dosbox-wii-game1,
+sd:/apps/dosbox-wii-game2, etc. should each contain the files boot.dol,
+dosbox.conf, icon.png and meta.xml.
 
-3. per Dosbox Wii installation (sd:/apps/dosbox-wii, sd:/apps/dosbox-wii-game1, sd:/apps/dosbox-wii-game2, etc.) the title in the file meta.xml should be adjusted in the XML tag `<name>`, so that the different installations are also listed with different titles in the Homebrew Channel.
+3. Per Dosbox Wii installation (sd:/apps/dosbox-wii, sd:/apps/dosbox-wii-game1,
+sd:/apps/dosbox-wii-game2, etc.) the title in the file meta.xml should be
+adjusted in the XML tag `<name>`, so that the different installations are also
+listed with different titles in the Homebrew Channel.
 
-4. different configurations can now be made per Dosbox Wii installation. The configuration is to be made in the files sd:/apps/dosbox-wii/dosbox.conf, sd:/apps/dosbox-wii-game1/dosbox.conf, sd:/apps/dosbox-wii-game2/dosbox.conf, etc.. In the section `[autoexec]` you can also start the respective game. If the game is terminated, one can also terminate the dosbox automatically. For example, an entry for the game SC2000 could look like this:
+4. Different configurations can now be made per Dosbox Wii installation.
+The configuration is to be made in the files sd:/apps/dosbox-wii/dosbox.conf,
+sd:/apps/dosbox-wii-game1/dosbox.conf, sd:/apps/dosbox-wii-game2/dosbox.conf,
+etc.. In the section `[autoexec]` you can also start the respective game.
+If the game is terminated, it can also terminate the dosbox automatically.
+For example, an entry for the game SC2000 could look like this:
 
    ```
    # ... other stuff ...
@@ -62,5 +77,7 @@ you can simply use multiple Dosbox Wii installations.
    exit
    ```
 
-   The individual configurations per Dosbox Wii installation can also use a different mapper per installation. Accordingly in the section `[sdl]` with **mapperfile =** *path-to-mapper-file*.
+   The individual configurations per Dosbox Wii installation can also use a
+   different mapper per installation. Accordingly in the section `[sdl]` with
+   **mapperfile =** *path-to-mapper-file*.
 
