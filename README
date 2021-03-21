@@ -129,7 +129,9 @@ automatically after you start DOSBox. Please edit it with a text editor
 to choose settings appropriate for each game. 
 
 Press the Home button, type "exit", press Ctrl+F9, or press Reset (on the 
-console) to exit. 
+console) to exit.
+
+For more informations see docs/Wii_user_manual.md.
 
 -=[ Compatibility ]=-
 
