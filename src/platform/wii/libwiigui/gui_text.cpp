@@ -9,6 +9,7 @@
  ***************************************************************************/
 
 #include "gui.h"
+//#include "../gettext.h"
 
 static GXColor presetColor = (GXColor){255, 255, 255, 255};
 static int currentSize = 0;
@@ -20,6 +21,12 @@ static u16 presetStyle = 0;
 
 #define TEXT_SCROLL_DELAY			8
 #define	TEXT_SCROLL_INITIAL_DELAY	6
+
+
+static const char *gettext(const char *msg)
+{
+	return msg;
+}
 
 /**
  * Constructor for the GuiText class.
@@ -46,7 +53,7 @@ GuiText::GuiText(const char * t, int s, GXColor c)
 	if(t)
 	{
 		origText = strdup(t);
-		text = charToWideChar(t);
+		text = charToWideChar(gettext(t));
 	}
 
 	for(int i=0; i < 20; i++)
@@ -78,7 +85,7 @@ GuiText::GuiText(const char * t)
 	if(t)
 	{
 		origText = strdup(t);
-		text = charToWideChar(t);
+		text = charToWideChar(gettext(t));
 	}
 
 	for(int i=0; i < 20; i++)
@@ -126,7 +133,7 @@ void GuiText::SetText(const char * t)
 	if(t)
 	{
 		origText = strdup(t);
-		text = charToWideChar(t);
+		text = charToWideChar(gettext(t));
 	}
 }
 
@@ -300,7 +307,7 @@ void GuiText::ResetText()
 	if(text)
 		delete[] text;
 
-	text = charToWideChar(origText);
+	text = charToWideChar(gettext(origText));
 
 	for(int i=0; i < textDynNum; i++)
 	{

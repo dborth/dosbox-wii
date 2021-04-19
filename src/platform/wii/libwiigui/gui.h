@@ -54,7 +54,21 @@ extern FreeTypeGX *fontSystem[];
 #define SCROLL_DELAY_INITIAL	200000
 #define SCROLL_DELAY_LOOP		30000
 #define SCROLL_DELAY_DECREASE	300
+#define FILE_PAGESIZE 			8
+#define PAGESIZE 				8
+#define MAX_OPTIONS 			150
 #define MAX_KEYBOARD_DISPLAY	32
+
+// define this marco to enable/add ESC, ENTER, F1, F2, etc. buttons
+#define EXTENDED_KEYBOARD
+
+#ifdef EXTENDED_KEYBOARD
+#define KB_ROWS 5
+#define KB_COLUMNS 12
+#else
+#define KB_ROWS 4
+#define KB_COLUMNS 11
+#endif
 
 typedef void (*UpdateCallback)(void * e);
 
@@ -233,7 +247,7 @@ class GuiElement
 		//!Constructor
 		GuiElement();
 		//!Destructor
-		~GuiElement();
+		virtual ~GuiElement();
 		//!Set the element's parent
 		//!\param e Pointer to parent element
 		void SetParent(GuiElement * e);
@@ -460,7 +474,7 @@ class GuiWindow : public GuiElement
 		//!\param h Height of window
 		GuiWindow(int w, int h);
 		//!Destructor
-		~GuiWindow();
+		virtual ~GuiWindow();
 		//!Appends a GuiElement to the GuiWindow
 		//!\param e The GuiElement to append. If it is already in the GuiWindow, it is removed first
 		void Append(GuiElement* e);
@@ -816,7 +830,7 @@ class GuiButton : public GuiElement
 };
 
 typedef struct _keytype {
-	unsigned char ch, chShift;
+	char ch, chShift;
 } Key;
 
 //!On-screen keyboard
@@ -833,6 +847,7 @@ class GuiKeyboard : public GuiWindow
 		int caps;
 		GuiText * kbText;
 		GuiImage * keyTextboxImg;
+#ifdef EXTENDED_KEYBOARD
 		GuiText * keyEscText;
 		GuiImage * keyEscImg;
 		GuiImage * keyEscOverImg;
@@ -841,6 +856,7 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keyEnterImg;
 		GuiImage * keyEnterOverImg;
 		GuiButton * keyEnter;
+#endif
 		GuiText * keyCapsText;
 		GuiImage * keyCapsImg;
 		GuiImage * keyCapsOverImg;
@@ -856,10 +872,10 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keySpaceImg;
 		GuiImage * keySpaceOverImg;
 		GuiButton * keySpace;
-		GuiButton * keyBtn[5][12];
-		GuiImage * keyImg[5][12];
-		GuiImage * keyImgOver[5][12];
-		GuiText * keyTxt[5][12];
+		GuiButton * keyBtn[KB_ROWS][KB_COLUMNS];
+		GuiImage * keyImg[KB_ROWS][KB_COLUMNS];
+		GuiImage * keyImgOver[KB_ROWS][KB_COLUMNS];
+		GuiText * keyTxt[KB_ROWS][KB_COLUMNS];
 		GuiImageData * keyTextbox;
 		GuiImageData * key;
 		GuiImageData * keyOver;
@@ -870,8 +886,9 @@ class GuiKeyboard : public GuiWindow
 		GuiSound * keySoundOver;
 		GuiSound * keySoundClick;
 		GuiTrigger * trigA;
-		GuiTrigger * trigB;
-		Key keys[5][12]; // two chars = less space than one pointer
+		GuiTrigger * trig2;
+		Key keys[KB_ROWS][KB_COLUMNS]; // two chars = less space than one pointer
 };
+
 
 #endif
