@@ -175,4 +175,3 @@ If the compilation is successful the file `dosbox-wii.dol` is created.
 
 Now `dosbox-wii.dol` can be executed on the Wii. The easiest way is to replace the `boot.dol` file of an existing dosbox-wii installation (sd:/apps/dosbox-wii) with this file. In this case the name `dosbox-wii.dol` must also be renamed to `boot.dol` accordingly.
 
-If you want do compile Dosbox with older devkitPro and lib versions (like the dosbox-wii 1.7 version was compiled) then open the Makefile and change `LIBS_VER:=CUR` to `LIBS_VER:=OLD`. This would only work if you really have the old versions installed. If you change this use `make clean`  after changing.
