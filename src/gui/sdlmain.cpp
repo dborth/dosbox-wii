@@ -33,6 +33,7 @@
 #endif
 #ifdef HW_RVL
 #include <wiihardware.h>
+#include <menu.h>
 #endif
 
 #include "cross.h"
@@ -293,8 +294,22 @@ void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 	char title[200] = { 0 };
 	static Bit32s internal_cycles = 0;
 	static int internal_frameskip = 0;
-	if (cycles != -1) internal_cycles = cycles;
-	if (frameskip != -1) internal_frameskip = frameskip;
+	if (cycles != -1)
+	{
+		internal_cycles = cycles;
+#ifdef HW_RVL
+		MENU_CyclesDisplay = cycles;
+#endif
+	}
+	if (frameskip != -1)
+	{
+		internal_frameskip = frameskip;
+#ifdef HW_RVL
+		MENU_FrameskipDisplay = frameskip;
+#endif
+	}
+
+#ifndef HW_RVL // set title only if it is NOT the wii. For wii it makes no sense
 	if(CPU_CycleAutoAdjust) {
 		sprintf(title,"DOSBox %s, CPU speed: max %3d%% cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
 	} else {
@@ -303,6 +318,7 @@ void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 
 	if (paused) strcat(title," PAUSED");
 	SDL_WM_SetCaption(title,VERSION);
+#endif
 }
 
 static unsigned char logo[32*32*4]= {

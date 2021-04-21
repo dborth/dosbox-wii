@@ -19,9 +19,16 @@
 
 #include "libwiigui/gui.h"
 #include "wiihardware.h"
+#include "menu.h"
+#include "cpu.h"
 
 #define THREAD_SLEEP 100
 #define APPVERSION 		"1.7"
+
+
+int MENU_CyclesDisplay = 0;
+int MENU_FrameskipDisplay = 0;
+
 
 static GuiImageData * pointer[4];
 static GuiWindow * mainWindow = NULL;
@@ -305,6 +312,25 @@ static void DisplayCredits(void * ptr)
 		LWP_CreateThread (&creditsthread, WindowCredits, NULL, NULL, 0, 60);
 }
 
+static void updateCyclesText(GuiText * cycleText)
+{
+	char tmpCyclesTxt[15];
+	if (CPU_CycleAutoAdjust) {
+		sprintf(tmpCyclesTxt, "%d%%", MENU_CyclesDisplay);
+	}
+	else {
+		sprintf(tmpCyclesTxt, "%d", MENU_CyclesDisplay);
+	}
+	cycleText->SetText(tmpCyclesTxt);
+}
+
+static void updateFskipText(GuiText * fskipText)
+{
+	char tmpFskipTxt[15];
+	sprintf(tmpFskipTxt, "%d", MENU_FrameskipDisplay);
+	fskipText->SetText(tmpFskipTxt);
+}
+
 /****************************************************************************
  * HomeMenu
  ***************************************************************************/
@@ -366,6 +392,70 @@ void HomeMenu ()
 	logoBtn->SetSoundClick(&btnSoundClick);
 	logoBtn->SetTrigger(&trigA);
 	logoBtn->SetUpdateCallback(DisplayCredits);
+
+	GuiText cycleText(NULL, 20, (GXColor){255, 255, 255, 255});
+	cycleText.SetPosition(-215, -180);
+	updateCyclesText(&cycleText);
+
+	GuiText fskipText(NULL, 20, (GXColor){255, 255, 255, 255});
+	fskipText.SetPosition(-45, -180);
+	updateFskipText(&fskipText);
+
+	GuiText cycleDecBtnTxt("-", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData cycleDec(keyboard_key_png);
+	GuiImage cycleDecImg(&cycleDec);
+	GuiImageData cycleDecOver(keyboard_key_over_png);
+	GuiImage cycleDecOverImg(&cycleDecOver);
+	GuiButton cycleDecBtn(cycleDec.GetWidth(), cycleDec.GetHeight());
+	cycleDecBtn.SetImage(&cycleDecImg);
+	cycleDecBtn.SetImageOver(&cycleDecOverImg);
+	cycleDecBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	cycleDecBtn.SetPosition(-270, -180);
+	cycleDecBtn.SetLabel(&cycleDecBtnTxt);
+	cycleDecBtn.SetTrigger(&trigA);
+	cycleDecBtn.SetEffectGrow();
+
+	GuiText cycleIncBtnTxt("+", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData cycleInc(keyboard_key_png);
+	GuiImage cycleIncImg(&cycleInc);
+	GuiImageData cycleIncOver(keyboard_key_over_png);
+	GuiImage cycleIncOverImg(&cycleIncOver);
+	GuiButton cycleIncBtn(cycleInc.GetWidth(), cycleInc.GetHeight());
+	cycleIncBtn.SetImage(&cycleIncImg);
+	cycleIncBtn.SetImageOver(&cycleIncOverImg);
+	cycleIncBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	cycleIncBtn.SetPosition(-160, -180);
+	cycleIncBtn.SetLabel(&cycleIncBtnTxt);
+	cycleIncBtn.SetTrigger(&trigA);
+	cycleIncBtn.SetEffectGrow();
+
+	GuiText fskipDecBtnTxt("-", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData fskipDec(keyboard_key_png);
+	GuiImage fskipDecImg(&fskipDec);
+	GuiImageData fskipDecOver(keyboard_key_over_png);
+	GuiImage fskipDecOverImg(&fskipDecOver);
+	GuiButton fskipDecBtn(fskipDec.GetWidth(), fskipDec.GetHeight());
+	fskipDecBtn.SetImage(&fskipDecImg);
+	fskipDecBtn.SetImageOver(&fskipDecOverImg);
+	fskipDecBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	fskipDecBtn.SetPosition(-80, -180);
+	fskipDecBtn.SetLabel(&fskipDecBtnTxt);
+	fskipDecBtn.SetTrigger(&trigA);
+	fskipDecBtn.SetEffectGrow();
+
+	GuiText fskipIncBtnTxt("+", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData fskipInc(keyboard_key_png);
+	GuiImage fskipIncImg(&fskipInc);
+	GuiImageData fskipIncOver(keyboard_key_over_png);
+	GuiImage fskipIncOverImg(&fskipIncOver);
+	GuiButton fskipIncBtn(fskipInc.GetWidth(), fskipInc.GetHeight());
+	fskipIncBtn.SetImage(&fskipIncImg);
+	fskipIncBtn.SetImageOver(&fskipIncOverImg);
+	fskipIncBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	fskipIncBtn.SetPosition(0, -180);
+	fskipIncBtn.SetLabel(&fskipIncBtnTxt);
+	fskipIncBtn.SetTrigger(&trigA);
+	fskipIncBtn.SetEffectGrow();
 
 	GuiText exitBtnTxt("Exit", 24, (GXColor){0, 0, 0, 255});
 	GuiImage exitBtnImg(&btnLargeOutline);
@@ -464,6 +554,12 @@ void HomeMenu ()
 	w.Append(logoBtn);
 	w.Append(&closeBtn);
 	w.Append(&exitBtn);
+	w.Append(&cycleText);
+	w.Append(&fskipText);
+	w.Append(&cycleDecBtn);
+	w.Append(&cycleIncBtn);
+	w.Append(&fskipDecBtn);
+	w.Append(&fskipIncBtn);
 	w.Append(&keyboardBtn);
 	
 	mainWindow->Append(&screenImg);
@@ -554,6 +650,30 @@ void HomeMenu ()
 			
 			if(dosboxCommand[0] != 0)
 				break;
+		}
+		else if (cycleDecBtn.GetState() == STATE_CLICKED)
+		{
+			cycleDecBtn.ResetState();
+			MENU_CycleIncreaseOrDecrease(false);
+			updateCyclesText(&cycleText);
+		}
+		else if (cycleIncBtn.GetState() == STATE_CLICKED)
+		{
+			cycleIncBtn.ResetState();
+			MENU_CycleIncreaseOrDecrease(true);
+			updateCyclesText(&cycleText);
+		}
+		else if (fskipDecBtn.GetState() == STATE_CLICKED)
+		{
+			fskipDecBtn.ResetState();
+			MENU_IncreaseOrDecreaseFrameSkip(false);
+			updateFskipText(&fskipText);
+		}
+		else if (fskipIncBtn.GetState() == STATE_CLICKED)
+		{
+			fskipIncBtn.ResetState();
+			MENU_IncreaseOrDecreaseFrameSkip(true);
+			updateFskipText(&fskipText);
 		}
 	}
 

@@ -2432,3 +2432,17 @@ void CPU_Init(Section* sec) {
 }
 //initialize static members
 bool CPU::inited=false;
+
+#ifdef HW_RVL
+void MENU_CycleIncreaseOrDecrease(bool increase)
+{
+	if (increase)
+	{
+		CPU_CycleIncrease(true);
+	}
+	else
+	{
+		CPU_CycleDecrease(true);
+	}
+}
+#endif

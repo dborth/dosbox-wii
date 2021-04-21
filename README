@@ -15,8 +15,10 @@ A port of DOSBox to the Wii using SDL Wii.
 * Wiimote pointer support
 * SD/USB mounting
 * Most DOS games are playable
-* Home menu, with on-screen keyboard
 * Dynamic Recompiler support with core=dynamic for high performance emulation
+* Home menu with:
+    * On-screen keyboard
+    * Increase/decrease cycles and frameskip
 
 -=[ Performance on Wii and vWii ]=-
 
@@ -49,6 +51,8 @@ A port of DOSBox to the Wii using SDL Wii.
   For more informations about sync r4301 see docs/PORTING_Wii.txt.
 * Add PowerPC Dynamic Recompiler patch from jmarsh (ppc_dynrec.diff and drive_fat_BE.diff)
   see: https://www.vogons.org/viewtopic.php?t=65057
+* Start including features from modified Version 1.7 R1 (wiimpathy)
+    * New top menu buttons for cycles and frameskip.
 
 [1.7 - June 30, 2012]
 
