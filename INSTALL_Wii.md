@@ -175,3 +175,17 @@ If the compilation is successful the file `dosbox-wii.dol` is created.
 
 Now `dosbox-wii.dol` can be executed on the Wii. The easiest way is to replace the `boot.dol` file of an existing dosbox-wii installation (sd:/apps/dosbox-wii) with this file. In this case the name `dosbox-wii.dol` must also be renamed to `boot.dol` accordingly.
 
+
+# Compilation with old devkitPPC, libogc, etc.
+
+Download and install the following files from https://wii.leseratte10.de/devkitPro/
+
+* devkitppc-amd64_26.tar.xz
+* libogc-1.8.11-22.04.2012.zip
+* libfat-ogc-1.0.11.tar.bz2
+* freetype-2.3.11-ppc.tar.bz2
+* ppc-zlib-1.2.11-1-any.pkg.tar.xz
+* tremor-lowmem-ppc.tar.bz2
+* ppc-libpng-1.6.34-1-any.pkg.tar.xz
+* SDL.Wii.10-28-2013.zip
+

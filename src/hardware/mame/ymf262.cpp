@@ -58,6 +58,9 @@ differences between OPL2 and OPL3 shown in datasheets:
 #include "emu.h"
 #include "ymf262.h"
 
+#ifdef OLD_LIBS
+#include <string.h>
+#endif
 
 /* output final shift */
 #if (OPL3_SAMPLE_BITS==16)
