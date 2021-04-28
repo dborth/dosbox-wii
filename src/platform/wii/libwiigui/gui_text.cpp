@@ -22,7 +22,6 @@ static u16 presetStyle = 0;
 #define TEXT_SCROLL_DELAY			8
 #define	TEXT_SCROLL_INITIAL_DELAY	6
 
-
 static const char *gettext(const char *msg)
 {
 	return msg;
@@ -73,6 +72,7 @@ GuiText::GuiText(const char * t)
 	style = presetStyle;
 	maxWidth = presetMaxWidth;
 	wrap = false;
+	monoPercentage = 100;
 	textDynNum = 0;
 	textScroll = SCROLL_NONE;
 	textScrollPos = 0;
@@ -214,7 +214,7 @@ int GuiText::GetTextWidth()
 
 		currentSize = size;
 	}
-	return fontSystem[size]->getWidth(text);
+	return fontSystem[size]->getWidth(text, style, monoPercentage);
 }
 
 void GuiText::SetWrap(bool w, int width)
@@ -265,6 +265,12 @@ void GuiText::SetColor(GXColor c)
 void GuiText::SetStyle(u16 s)
 {
 	style = s;
+}
+
+void GuiText::SetPseudoMonospace(int monoPercentage)
+{
+	style |= FTGX_MONOSPACE_FAKE;
+	this->monoPercentage = monoPercentage;
 }
 
 void GuiText::SetAlignment(int hor, int vert)
@@ -351,7 +357,7 @@ void GuiText::Draw()
 
 	if(maxWidth == 0)
 	{
-		fontSystem[currentSize]->drawText(this->GetLeft(), this->GetTop(), text, c, style);
+		fontSystem[currentSize]->drawText(this->GetLeft(), this->GetTop(), text, c, style, monoPercentage);
 		this->UpdateEffects();
 		return;
 	}
@@ -377,7 +383,7 @@ void GuiText::Draw()
 
 				if(text[ch] == ' ' || ch == textlen-1)
 				{
-					if(fontSystem[currentSize]->getWidth(textDyn[linenum]) > maxWidth)
+					if(fontSystem[currentSize]->getWidth(textDyn[linenum], style, monoPercentage) > maxWidth)
 					{
 						if(lastSpace >= 0)
 						{
@@ -415,7 +421,7 @@ void GuiText::Draw()
 		int top  = this->GetTop() + voffset;
 
 		for(int i=0; i < textDynNum; ++i)
-			fontSystem[currentSize]->drawText(left, top+i*lineheight, textDyn[i], c, style);
+			fontSystem[currentSize]->drawText(left, top+i*lineheight, textDyn[i], c, style, monoPercentage);
 	}
 	else
 	{
@@ -425,13 +431,13 @@ void GuiText::Draw()
 			textDyn[0] = wcsdup(text);
 			int len = wcslen(textDyn[0]);
 
-			while(fontSystem[currentSize]->getWidth(textDyn[0]) > maxWidth)
+			while(fontSystem[currentSize]->getWidth(textDyn[0], style, monoPercentage) > maxWidth)
 				textDyn[0][--len] = 0;
 		}
 
 		if(textScroll == SCROLL_HORIZONTAL)
 		{
-			if(fontSystem[currentSize]->getWidth(text) > maxWidth && (FrameTimer % textScrollDelay == 0))
+			if(fontSystem[currentSize]->getWidth(text, style, monoPercentage) > maxWidth && (FrameTimer % textScrollDelay == 0))
 			{
 				if(textScrollInitialDelay)
 				{
@@ -457,22 +463,22 @@ void GuiText::Draw()
 						dynlen += 2;
 					}
 
-					if(fontSystem[currentSize]->getWidth(textDyn[0]) > maxWidth)
+					if(fontSystem[currentSize]->getWidth(textDyn[0], style, monoPercentage) > maxWidth)
 					{
-						while(fontSystem[currentSize]->getWidth(textDyn[0]) > maxWidth)
+						while(fontSystem[currentSize]->getWidth(textDyn[0], style, monoPercentage) > maxWidth)
 							textDyn[0][--dynlen] = 0;
 					}
 					else
 					{
 						int i = 0;
 
-						while(fontSystem[currentSize]->getWidth(textDyn[0]) < maxWidth && dynlen+1 < textlen)
+						while(fontSystem[currentSize]->getWidth(textDyn[0], style, monoPercentage) < maxWidth && dynlen+1 < textlen)
 						{
 							textDyn[0][dynlen] = text[i++];
 							textDyn[0][++dynlen] = 0;
 						}
 
-						if(fontSystem[currentSize]->getWidth(textDyn[0]) > maxWidth)
+						if(fontSystem[currentSize]->getWidth(textDyn[0], style, monoPercentage) > maxWidth)
 							textDyn[0][dynlen-2] = 0;
 						else
 							textDyn[0][dynlen-1] = 0;
@@ -480,7 +486,7 @@ void GuiText::Draw()
 				}
 			}
 		}
-		fontSystem[currentSize]->drawText(this->GetLeft(), this->GetTop(), textDyn[0], c, style);
+		fontSystem[currentSize]->drawText(this->GetLeft(), this->GetTop(), textDyn[0], c, style, monoPercentage);
 	}
 	this->UpdateEffects();
 }

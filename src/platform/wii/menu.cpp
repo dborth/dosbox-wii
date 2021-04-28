@@ -395,10 +395,12 @@ void HomeMenu ()
 
 	GuiText cycleText(NULL, 20, (GXColor){255, 255, 255, 255});
 	cycleText.SetPosition(-215, -180);
+	cycleText.SetPseudoMonospace(70);
 	updateCyclesText(&cycleText);
 
 	GuiText fskipText(NULL, 20, (GXColor){255, 255, 255, 255});
 	fskipText.SetPosition(-45, -180);
+	fskipText.SetPseudoMonospace(70);
 	updateFskipText(&fskipText);
 
 	GuiText cycleDecBtnTxt("-", 24, (GXColor){0, 0, 0, 255});

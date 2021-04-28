@@ -689,6 +689,7 @@ class GuiText : public GuiElement
 		//!Sets the FreeTypeGX style attributes
 		//!\param s Style attributes
 		void SetStyle(u16 s);
+		void SetPseudoMonospace(int monoPercentage);
 		//!Sets the text alignment
 		//!\param hor Horizontal alignment (ALIGN_LEFT, ALIGN_RIGHT, ALIGN_CENTRE)
 		//!\param vert Vertical alignment (ALIGN_TOP, ALIGN_BOTTOM, ALIGN_MIDDLE)
@@ -711,6 +712,7 @@ class GuiText : public GuiElement
 		int textScrollDelay; //!< Scrolling speed
 		u16 style; //!< FreeTypeGX style attributes
 		bool wrap; //!< Wrapping toggle
+		int monoPercentage;
 };
 
 //!Display, manage, and manipulate tooltips in the GUI
