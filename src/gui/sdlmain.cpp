@@ -34,6 +34,7 @@
 #ifdef HW_RVL
 #include <wiihardware.h>
 #include <menu.h>
+#include <wiiio.h>
 #endif
 
 #include "cross.h"
@@ -53,6 +54,9 @@
 #include "cpu.h"
 #include "cross.h"
 #include "control.h"
+#ifdef HW_RVL
+#include <stdio_wrapper.h>
+#endif
 
 #define MAPPERFILE "mapper-" VERSION ".map"
 //#define DISABLE_JOYSTICK
@@ -1770,6 +1774,16 @@ static BOOL WINAPI ConsoleEventHandler(DWORD event) {
  * Fixes some bugs when -noconsole is used in a read only directory */
 static bool no_stdout = false;
 void GFX_ShowMsg(char const* format,...) {
+#ifdef HW_RVL
+	if (no_stdout) {
+		return;
+	}
+	va_list msg;
+	va_start(msg,format);
+	wiiio_vprintf(format, msg);
+	va_end(msg);
+	wiiio_print("\n");
+#else
 	char buf[512];
 
 	va_list msg;
@@ -1779,6 +1793,7 @@ void GFX_ShowMsg(char const* format,...) {
 
 	buf[sizeof(buf) - 1] = '\0';
 	if (!no_stdout) puts(buf); //Else buf is parsed again. (puts adds end of line)
+#endif
 }
 
 
@@ -2052,6 +2067,18 @@ int main(int argc, char* argv[]) {
 	try {
 #ifdef HW_RVL
 		WiiInit();
+		if (argc > 0) {
+			wiiio_print("args:");
+			for (int i = 0; i < argc; ++i) {
+				if (argv[i] != NULL) {
+					wiiio_printf(" %s", argv[i]);
+				}
+				else {
+					wiiio_print(" (null)");
+				}
+			}
+			wiiio_print("\n\n");
+		}
 		if(argc > 0 && argv[0] != NULL)
 			CreateAppPath(argv[0]);
 #endif

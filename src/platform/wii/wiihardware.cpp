@@ -21,6 +21,7 @@
 #include "input.h"
 #include "filelist.h"
 #include "SDL_events.h"
+#include "wiiio.h"
 
 extern "C" {
 extern void __exception_setreload(int t);
@@ -205,6 +206,7 @@ void WiiInit()
 	extern const devoptab_t dotab_stdnull;
 	devoptab_list[STD_OUT] = &dotab_stdnull;
 	devoptab_list[STD_ERR] = &dotab_stdnull;
+	wiiio_init();
 	//USBGeckoOutput(); // uncomment to enable USB gecko output
 	__exception_setreload(8);
 	fatInitDefault();

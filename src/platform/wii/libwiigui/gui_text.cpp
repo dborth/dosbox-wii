@@ -38,6 +38,7 @@ GuiText::GuiText(const char * t, int s, GXColor c)
 	color = c;
 	alpha = c.a;
 	style = FTGX_JUSTIFY_CENTER | FTGX_ALIGN_MIDDLE;
+	monoPercentage = 100;
 	maxWidth = 0;
 	wrap = false;
 	textDynNum = 0;

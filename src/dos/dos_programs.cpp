@@ -38,6 +38,9 @@
 #include "control.h"
 #include "inout.h"
 #include "dma.h"
+#ifdef HW_RVL
+#include <stdio_wrapper.h>
+#endif
 
 
 #if defined(OS2)

@@ -21,6 +21,8 @@
 #include "wiihardware.h"
 #include "menu.h"
 #include "cpu.h"
+#include "vconsole.h"
+#include "wiiio.h"
 
 #define THREAD_SLEEP 100
 #define APPVERSION 		"1.7"
@@ -129,6 +131,81 @@ HaltGui()
 	// wait for thread to finish
 	LWP_JoinThread(guithread, NULL);
 	guithread = LWP_THREAD_NULL;
+}
+
+static void OnScreenConsole()
+{
+	vconsole_t& vc = *wiiio_get_vconsole();
+	GuiWindow terminal(screenwidth, screenheight);
+
+	GuiImageData backgroundData(bg_console_png);
+	GuiImage backgroundImg(&backgroundData);
+	backgroundImg.SetParent(&terminal);
+	backgroundImg.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	backgroundImg.SetPosition(23, 38);
+	terminal.Append(&backgroundImg);
+
+	GuiImageData fontData(font8x8_basic_png);
+	GuiMonoText terminalOutput(&fontData,
+			16, //glyphCountX
+			6, //glyphCountY
+			32, //firstGlyphAsciiCode
+			8, //glyphWidth
+			8, //glyphHeight
+			1, //glyphMarginLeft
+			1, //glyphMarginRight
+			1, //glyphMarginTop
+			1); //glyphMarginBottom
+	terminalOutput.SetParent(&terminal);
+	terminalOutput.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	terminalOutput.SetPosition(31, 48);
+	terminalOutput.SetVirtualConsole(&vc, 2.0f);
+	terminal.Append(&terminalOutput);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND_PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+	GuiTrigger trigA;
+
+	trigA.SetSimpleTrigger(-1, WPAD_BUTTON_A | WPAD_CLASSIC_BUTTON_A, PAD_BUTTON_A);
+	GuiText okBtnTxt("Close", 22, (GXColor){0, 0, 0, 255});
+	GuiImage okBtnImg(&btnOutline);
+	GuiImage okBtnImgOver(&btnOutlineOver);
+	GuiButton okBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
+
+	okBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	okBtn.SetPosition(80, -35);
+
+	okBtn.SetLabel(&okBtnTxt);
+	okBtn.SetImage(&okBtnImg);
+	okBtn.SetImageOver(&okBtnImgOver);
+	okBtn.SetSoundOver(&btnSoundOver);
+	okBtn.SetTrigger(&trigA);
+	okBtn.SetEffectGrow();
+
+	terminal.Append(&okBtn);
+
+	HaltGui();
+	mainWindow->SetState(STATE_DISABLED);
+	mainWindow->Append(&terminal);
+	mainWindow->ChangeFocus(&terminal);
+	ResumeGui();
+
+	for (;;) {
+		usleep(THREAD_SLEEP);
+
+		if(okBtn.GetState() == STATE_CLICKED) {
+			break;
+			// for testing: comment the break and uncomment this.
+			//okBtn.ResetState();
+			//vconsole_print(&vc, "012345678901234567890123456789");
+		}
+	}
+
+	HaltGui();
+	mainWindow->Remove(&terminal);
+	mainWindow->SetState(STATE_DEFAULT);
+	ResumeGui();
 }
 
 /****************************************************************************
@@ -473,6 +550,20 @@ void HomeMenu ()
 	exitBtn.SetTrigger(&trigA);
 	exitBtn.SetEffectGrow();
 
+	GuiText logBtnTxt("Logging", 24, (GXColor){0, 0, 0, 255});
+	GuiImage logBtnImg(&btnLargeOutline);
+	GuiImage logBtnImgOver(&btnLargeOutlineOver);
+	GuiButton logBtn(btnLargeOutline.GetWidth(), btnLargeOutline.GetHeight());
+	logBtn.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	logBtn.SetPosition(-125, 240);
+	logBtn.SetLabel(&logBtnTxt);
+	logBtn.SetImage(&logBtnImg);
+	logBtn.SetImageOver(&logBtnImgOver);
+	logBtn.SetSoundOver(&btnSoundOver);
+	logBtn.SetSoundClick(&btnSoundClick);
+	logBtn.SetTrigger(&trigA);
+	logBtn.SetEffectGrow();
+
 	GuiText keyboardBtnTxt("Keyboard", 24, (GXColor){0, 0, 0, 255});
 	GuiImage keyboardBtnImg(&btnLargeOutline);
 	GuiImage keyboardBtnImgOver(&btnLargeOutlineOver);
@@ -556,6 +647,7 @@ void HomeMenu ()
 	w.Append(logoBtn);
 	w.Append(&closeBtn);
 	w.Append(&exitBtn);
+	w.Append(&logBtn);
 	w.Append(&cycleText);
 	w.Append(&fskipText);
 	w.Append(&cycleDecBtn);
@@ -644,6 +736,11 @@ void HomeMenu ()
 		else if(exitBtn.GetState() == STATE_CLICKED)
 		{
 			ExitRequested = 1;
+		}
+		else if(logBtn.GetState() == STATE_CLICKED)
+		{
+			logBtn.ResetState();
+			OnScreenConsole();
 		}
 		else if(keyboardBtn.GetState() == STATE_CLICKED)
 		{

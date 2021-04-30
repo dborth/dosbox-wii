@@ -1,0 +1,131 @@
+// a simple hack for convert the monospace font from font8x8_basic.h into a png file
+
+// rename font8x8_to_png.c.txt to font8x8_to_png.c and
+// compile with gcc -Wall font8x8_to_png.c -lpng -o font8x8_to_png
+// to create the png file font8x8_basic.png execute following command:
+// ./font8x8_to_png font8x8_basic.png
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <png.h>
+#include "font8x8_basic.h"
+
+// return 1 for error
+int writeImage(char* filename, int width, int height, float *buffer, char* title)
+{
+	FILE *fp = fopen(filename, "wb");
+	if (!fp) {
+		fprintf(stderr, "Could not open file %s for writing\n", filename);
+		return 1;
+	}
+
+	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if (!png_ptr) {
+		fprintf(stderr, "Could not allocate write struct\n");
+		fclose(fp);
+		return 1;
+	}
+
+	png_infop info_ptr = png_create_info_struct(png_ptr);
+	if (!info_ptr) {
+		fprintf(stderr, "Could not allocate info struct\n");
+		png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+		fclose(fp);
+		return 1;
+	}
+
+	if (setjmp(png_jmpbuf(png_ptr))) {
+		fprintf(stderr, "Error during png creation\n");
+		png_free_data(png_ptr, info_ptr, PNG_FREE_ALL, -1);
+		png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+		fclose(fp);
+		return 1;
+	}
+
+	png_init_io(png_ptr, fp);
+
+	// Write header
+	png_set_IHDR(png_ptr, info_ptr, width, height, 8,
+			PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE,
+			PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+
+	if (title) {
+		png_text title_text;
+		title_text.compression = PNG_TEXT_COMPRESSION_NONE;
+		title_text.key = "Title";
+		title_text.text = title;
+		png_set_text(png_ptr, info_ptr, &title_text, 1);
+	}
+
+	png_write_info(png_ptr, info_ptr);
+
+	png_bytep row = (png_bytep) malloc(4 * width * sizeof(png_byte));
+
+	for (int y = 0 ; y < height ; ++y) {
+		for (int x = 0 ; x < width ; ++x) {
+			row[x*4] = buffer[(y*width + x)*4];
+			row[x*4+1] = buffer[(y*width + x)*4+1];
+			row[x*4+2] = buffer[(y*width + x)*4+2];
+			row[x*4+3] = buffer[(y*width + x)*4+3];
+		}
+		png_write_row(png_ptr, row);
+	}
+
+	// End write
+	png_write_end(png_ptr, NULL);
+
+
+	free(row);
+	png_free_data(png_ptr, info_ptr, PNG_FREE_ALL, -1);
+	png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+	fclose(fp);
+
+	return 0;
+}
+
+#define FONT_WIDTH 8
+#define FONT_HEIGHT 8
+#define SPACE_LEFT 1
+#define SPACE_RIGHT 1
+#define SPACE_TOP 1
+#define SPACE_BOTTOM 1
+
+#define CHARCOUNT_X 16
+#define CHARCOUNT_Y 6
+#define FIRST_CHAR 32 // space 0x20
+
+int main(int argc, char**argv) {
+	if (argc < 2) {
+		printf("no filename for writing a png file\n");
+		return 1;
+	}
+	// 96 chars from 32 to 127
+	// 16 chars per row
+	// --> 16x6
+	int width = (FONT_WIDTH + SPACE_LEFT + SPACE_RIGHT) * CHARCOUNT_X;
+	int height = (FONT_HEIGHT + SPACE_TOP + SPACE_BOTTOM) * CHARCOUNT_Y;
+	float *buffer = calloc(sizeof(float), width * height * 4);
+	for (int ci = FIRST_CHAR; ci < 128; ++ci) {
+		int cx = (ci - FIRST_CHAR) % CHARCOUNT_X;
+		int cy = (ci - FIRST_CHAR) / CHARCOUNT_X;
+		unsigned char* glyph = font8x8_basic[ci];
+		for (int gy = 0; gy < FONT_HEIGHT; ++gy) {
+			unsigned char glyph_row = glyph[gy];
+			for (int gx = 0; gx < FONT_WIDTH; ++gx) {
+				unsigned char bitflag = 1 << gx;
+				int is_used = (glyph_row & bitflag);
+				int x = cx * (FONT_WIDTH + SPACE_LEFT + SPACE_RIGHT) + SPACE_LEFT + gx;
+				int y = cy * (FONT_HEIGHT + SPACE_TOP + SPACE_BOTTOM) + SPACE_TOP + gy;
+				int offset = (y*width +x)*4;
+				//buffer[offset] = is_used ?  255.0f : 0.0f;
+				buffer[offset] = 255.0f;
+				buffer[offset + 1] = 255.0f;
+				buffer[offset + 2] = 255.0f;
+				buffer[offset + 3] = is_used ?  255.0f : 0.0f;
+			}
+		}
+
+	}
+	writeImage(argv[1], width, height, buffer, "font8x8_basic");
+	return 0;
+}

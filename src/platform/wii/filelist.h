@@ -72,6 +72,12 @@ extern const u32	battery_bar_png_size;
 extern const u8		credits_box_png[];
 extern const u32	credits_box_png_size;
 
+extern const u8		bg_console_png[];
+extern const u32	bg_console_png_size;
+
+extern const u8		font8x8_basic_png[];
+extern const u32	font8x8_basic_png_size;
+
 extern const u8		keyboard_textbox_png[];
 extern const u32	keyboard_textbox_png_size;
 
@@ -134,6 +140,8 @@ extern const u32	player4_point_png_size;
 #include "battery_bar_png.h"
 
 #include "credits_box_png.h"
+#include "bg_console_png.h"
+#include "font8x8_basic_png.h"
 
 #include "keyboard_textbox_png.h"
 #include "keyboard_key_png.h"
