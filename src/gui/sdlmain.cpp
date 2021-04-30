@@ -1577,17 +1577,12 @@ bool GFX_IsFullscreen(void) {
 
 void GFX_Events() {
 #ifdef HW_RVL
-
-#ifdef OLD_LIBS
-	// nothing to do
-	// on old libogc version it looks like it also works without
-	// and extra scan call.
-#else
 	// Very important to update/scan the current pad/button states.
 	// Otherwise on newer libogc versions the button states are not updated.
+	// On old libogc version it looks like it also works without
+	// an extra scan call.
 	WPAD_ScanPads();
 	PAD_ScanPads();
-#endif
 
 	// check for home button
 	u32 btns;
