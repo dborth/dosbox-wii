@@ -6,8 +6,6 @@
 #include "vconsole.h"
 
 #include <gccore.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
 
 #define MAX_PRINTF_LEN 512
@@ -86,7 +84,8 @@ int vconsole_print(vconsole_t* vc, const char* text)
 void vconsole_write(vconsole_t* vc, const void* buf, unsigned int len)
 {
 	const char* text = buf;
-	for (unsigned int i = 0; i < len; ++i) {
+	unsigned int i;
+	for (i = 0; i < len; ++i) {
 		char ch = text[i];
 		if (ch == '\0') {
 			// ignore it

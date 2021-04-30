@@ -8,7 +8,6 @@
 #endif
 #include "wiiio.h"
 #include "vconsole.h"
-#include <stdarg.h>
 #include <stdlib.h>
 
 static vconsole_t* vc = NULL;

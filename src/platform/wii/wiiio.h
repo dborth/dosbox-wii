@@ -6,6 +6,7 @@
 #ifndef WIIIO_H
 #define WIIIO_H
 
+#include <stdarg.h>
 #include <stdio.h>
 
 #ifdef __cplusplus

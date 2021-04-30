@@ -6,6 +6,7 @@
 #ifndef VCONSOLE_H
 #define VCONSOLE_H
 
+#include <stdarg.h>
 #include <stdio.h>
 
 #define VCONSOLE_WIDTH  73 // usable are 72
