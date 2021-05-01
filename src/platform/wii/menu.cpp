@@ -37,10 +37,8 @@ static GuiWindow * mainWindow = NULL;
 static GuiButton * logoBtn = NULL;
 
 static lwp_t guithread = LWP_THREAD_NULL;
-static lwp_t creditsthread = LWP_THREAD_NULL;
 static bool guiHalt = true;
 static bool ExitRequested = false;
-static bool creditsOpen = false;
 
 /****************************************************************************
  * UpdateGUI
@@ -72,12 +70,6 @@ static void * UpdateGUI (void *arg)
 		for(i=3; i >= 0; i--)
 			mainWindow->Update(&userInput[i]);
 		
-		if(!creditsOpen && creditsthread != LWP_THREAD_NULL)
-		{
-			LWP_JoinThread(creditsthread, NULL);
-			creditsthread = LWP_THREAD_NULL;
-		}
-
 		if(ExitRequested)
 		{
 			for(i = 0; i <= 255; i += 15)
@@ -293,7 +285,7 @@ static void OnScreenKeyboard(char * var, u32 maxlen)
  *
  * THIS MUST NOT BE REMOVED OR DISABLED IN ANY DERIVATIVE WORK
  ***************************************************************************/
-static void * WindowCredits(void *arg)
+static void WindowCredits()
 {
 	bool exit = false;
 	int i = 0;
@@ -372,21 +364,6 @@ static void * WindowCredits(void *arg)
 	
 	for(i=0; i < numEntries; i++)
 		delete txt[i];
-	creditsOpen = false;
-	return NULL;
-}
-
-static void DisplayCredits(void * ptr)
-{
-	if(logoBtn->GetState() != STATE_CLICKED)
-		return;
-
-	logoBtn->ResetState();
-	
-	// spawn a new thread to handle the Credits
-	creditsOpen = true;
-	if(creditsthread == LWP_THREAD_NULL)
-		LWP_CreateThread (&creditsthread, WindowCredits, NULL, NULL, 0, 60);
 }
 
 static void updateCyclesText(GuiText * cycleText)
@@ -468,7 +445,6 @@ void HomeMenu ()
 	logoBtn->SetSoundOver(&btnSoundOver);
 	logoBtn->SetSoundClick(&btnSoundClick);
 	logoBtn->SetTrigger(&trigA);
-	logoBtn->SetUpdateCallback(DisplayCredits);
 
 	GuiText cycleText(NULL, 20, (GXColor){255, 255, 255, 255});
 	cycleText.SetPosition(-215, -180);
@@ -773,6 +749,11 @@ void HomeMenu ()
 			fskipIncBtn.ResetState();
 			MENU_IncreaseOrDecreaseFrameSkip(true);
 			updateFskipText(&fskipText);
+		}
+		else if (logoBtn->GetState() == STATE_CLICKED)
+		{
+			logoBtn->ResetState();
+			WindowCredits();
 		}
 	}
 
