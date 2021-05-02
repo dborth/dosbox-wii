@@ -30,7 +30,7 @@ INCLUDES 	:=  include src/platform/wii
 #---------------------------------------------------------------------------------
 
 CFLAGS		=	-g -O3 -Wall $(MACHDEP) $(INCLUDE) \
-				-Wno-strict-aliasing -DWORDS_BIGENDIAN
+				-Wno-strict-aliasing -DWORDS_BIGENDIAN -DOLD_LIBS
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
@@ -38,7 +38,7 @@ LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
 LIBS	:=	-lSDL -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
-			-lpng -lvorbisidec -logg -lfreetype -lbz2 -lz
+			-lpng -lvorbisidec -lfreetype -lz
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -67,9 +67,10 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
-BINFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.ttf) \
-					$(wildcard $(dir)/*.lang) $(wildcard $(dir)/*.png) \
-					$(wildcard $(dir)/*.ogg) $(wildcard $(dir)/*.pcm)))
+TTFFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.ttf)))
+PNGFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.png)))
+OGGFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.ogg)))
+PCMFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.pcm)))
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -80,11 +81,10 @@ else
 	export LD	:=	$(CXX)
 endif
 
-export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
-export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(sFILES:.s=.o) $(SFILES:.S=.o)
-export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
-
-export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
+export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
+					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) \
+					$(TTFFILES:.ttf=.ttf.o) $(PNGFILES:.png=.png.o) \
+					$(OGGFILES:.ogg=.ogg.o) $(PCMFILES:.pcm=.pcm.o)
 
 #---------------------------------------------------------------------------------
 # build a list of include paths
@@ -92,7 +92,7 @@ export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC) -I$(PORTLIBS_PATH)/wii/include/SDL -I$(PORTLIBS_PATH)/ppc/include/freetype2
+					-I$(LIBOGC_INC) -I$(LIBOGC_INC)/SDL -I$(PORTLIBS)/include/freetype2
 
 #---------------------------------------------------------------------------------
 # build a list of library paths
@@ -106,7 +106,7 @@ export OUTPUT	:=	$(CURDIR)/$(TARGET)
 #---------------------------------------------------------------------------------
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	@make --no-print-directory -j4 -C $(BUILD) -f $(CURDIR)/Makefile.currentDevkitPPC
+	@make --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.oldDevkitPPC
 
 #---------------------------------------------------------------------------------
 clean:
@@ -132,27 +132,22 @@ DEPENDS	:=	$(OFILES:.o=.d)
 $(OUTPUT).dol: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
 
-$(OFILES_SOURCES): $(HFILES)
 #---------------------------------------------------------------------------------
 # This rule links in binary data with .ttf, .png, and .mp3 extensions
 #---------------------------------------------------------------------------------
-%.ttf.o %_ttf.h : %.ttf
+%.ttf.o : %.ttf
 	@echo $(notdir $<)
 	$(bin2o)
 
-%.lang.o %_lang.h : %.lang
+%.png.o : %.png
 	@echo $(notdir $<)
 	$(bin2o)
-
-%.png.o %_png.h : %.png
+	
+%.ogg.o : %.ogg
 	@echo $(notdir $<)
 	$(bin2o)
-
-%.ogg.o %_ogg.h : %.ogg
-	@echo $(notdir $<)
-	$(bin2o)
-
-%.pcm.o %_pcm.h : %.pcm
+	
+%.pcm.o : %.pcm
 	@echo $(notdir $<)
 	$(bin2o)
 
