@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -88,7 +88,7 @@ void MPU401_Init(Section*);
 void PCSPEAKER_Init(Section*);
 void TANDYSOUND_Init(Section*);
 void DISNEY_Init(Section*);
-void SERIAL_Init(Section*); 
+void SERIAL_Init(Section*);
 
 
 #if C_IPX
@@ -128,6 +128,7 @@ static Bit32u ticksAdded;
 Bit32s ticksDone;
 Bit32u ticksScheduled;
 bool ticksLocked;
+void increaseticks();
 
 static Bitu Normal_Loop(void) {
 	Bits ret;
@@ -148,91 +149,161 @@ static Bitu Normal_Loop(void) {
 			if (ticksRemain>0) {
 				TIMER_AddTick();
 				ticksRemain--;
-			} else goto increaseticks;
+			} else {increaseticks();return 0;}
 		}
 	}
-increaseticks:
-	if (GCC_UNLIKELY(ticksLocked)) {
+}
+
+//For trying other delays
+#define wrap_delay(a) SDL_Delay(a)
+
+void increaseticks() { //Make it return ticksRemain and set it in the function above to remove the global variable.
+	if (GCC_UNLIKELY(ticksLocked)) { // For Fast Forward Mode
 		ticksRemain=5;
 		/* Reset any auto cycle guessing for this frame */
 		ticksLast = GetTicks();
 		ticksAdded = 0;
 		ticksDone = 0;
 		ticksScheduled = 0;
-	} else {
-		Bit32u ticksNew;
-		ticksNew=GetTicks();
-		ticksScheduled += ticksAdded;
-		if (ticksNew > ticksLast) {
-			ticksRemain = ticksNew-ticksLast;
-			ticksLast = ticksNew;
-			ticksDone += ticksRemain;
-			if ( ticksRemain > 20 ) {
-				ticksRemain = 20;
-			}
-			ticksAdded = ticksRemain;
-			if (CPU_CycleAutoAdjust && !CPU_SkipCycleAutoAdjust) {
-				if (ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) ) {
-					if(ticksDone < 1) ticksDone = 1; // Protect against div by zero
-					/* ratio we are aiming for is around 90% usage*/
-					Bit32s ratio = (ticksScheduled * (CPU_CyclePercUsed*90*1024/100/100)) / ticksDone;
-					Bit32s new_cmax = CPU_CycleMax;
-					Bit64s cproc = (Bit64s)CPU_CycleMax * (Bit64s)ticksScheduled;
-					if (cproc > 0) {
-						/* ignore the cycles added due to the io delay code in order
-						   to have smoother auto cycle adjustments */
-						double ratioremoved = (double) CPU_IODelayRemoved / (double) cproc;
-						if (ratioremoved < 1.0) {
-							ratio = (Bit32s)((double)ratio * (1 - ratioremoved));
-							/* Don't allow very high ratio which can cause us to lock as we don't scale down
-							 * for very low ratios. High ratio might result because of timing resolution */
-							if (ticksScheduled >= 250 && ticksDone < 10 && ratio > 20480) 
-								ratio = 20480;
-							Bit64s cmax_scaled = (Bit64s)CPU_CycleMax * (Bit64s)ratio;
-							if (ratio <= 1024) 
-								new_cmax = (Bit32s)(cmax_scaled / (Bit64s)1024);
-							else 
-								new_cmax = (Bit32s)(1 + (CPU_CycleMax >> 1) + cmax_scaled / (Bit64s)2048);
-						}
-					}
+		return;
+	}
+	
+	static Bit32s lastsleepDone = -1;
+	static Bitu sleep1count = 0;
 
-					if (new_cmax<CPU_CYCLES_LOWER_LIMIT)
-						new_cmax=CPU_CYCLES_LOWER_LIMIT;
+	Bit32u ticksNew;
+	ticksNew = GetTicks();
+	ticksScheduled += ticksAdded;
+	if (ticksNew <= ticksLast) { //lower should not be possible, only equal.
+		ticksAdded = 0;
 
-					/* ratios below 1% are considered to be dropouts due to
-					   temporary load imbalance, the cycles adjusting is skipped */
-					if (ratio>10) {
-						/* ratios below 12% along with a large time since the last update
-						   has taken place are most likely caused by heavy load through a
-						   different application, the cycles adjusting is skipped as well */
-						if ((ratio>120) || (ticksDone<700)) {
-							CPU_CycleMax = new_cmax;
-							if (CPU_CycleLimit > 0) {
-								if (CPU_CycleMax>CPU_CycleLimit) CPU_CycleMax = CPU_CycleLimit;
-							}
-						}
-					}
-					CPU_IODelayRemoved = 0;
-					ticksDone = 0;
-					ticksScheduled = 0;
-				} else if (ticksAdded > 15) {
-					/* ticksAdded > 15 but ticksScheduled < 5, lower the cycles
-					   but do not reset the scheduled/done ticks to take them into
-					   account during the next auto cycle adjustment */
-					CPU_CycleMax /= 3;
-					if (CPU_CycleMax < CPU_CYCLES_LOWER_LIMIT)
-						CPU_CycleMax = CPU_CYCLES_LOWER_LIMIT;
+		if (!CPU_CycleAutoAdjust || CPU_SkipCycleAutoAdjust || sleep1count < 3) {
+			wrap_delay(1);
+		} else {
+			/* Certain configurations always give an exact sleepingtime of 1, this causes problems due to the fact that
+			   dosbox keeps track of full blocks.
+			   This code introduces some randomness to the time slept, which improves stability on those configurations
+			 */
+			static const Bit32u sleeppattern[] = { 2, 2, 3, 2, 2, 4, 2};
+			static Bit32u sleepindex = 0;
+			if (ticksDone != lastsleepDone) sleepindex = 0;
+			wrap_delay(sleeppattern[sleepindex++]);
+			sleepindex %= sizeof(sleeppattern) / sizeof(sleeppattern[0]);
+		}
+		Bit32s timeslept = GetTicks() - ticksNew;
+		// Count how many times in the current block (of 250 ms) the time slept was 1 ms
+		if (CPU_CycleAutoAdjust && !CPU_SkipCycleAutoAdjust && timeslept == 1) sleep1count++;
+		lastsleepDone = ticksDone;
+
+		// Update ticksDone with the time spent sleeping
+		ticksDone -= timeslept;
+		if (ticksDone < 0)
+			ticksDone = 0;
+		return; //0
+
+		// If we do work this tick and sleep till the next tick, then ticksDone is decreased, 
+		// despite the fact that work was done as well in this tick. Maybe make it depend on an extra parameter.
+		// What do we know: ticksRemain = 0 (condition to enter this function)
+		// ticksNew = time before sleeping
+		
+		// maybe keep track of sleeped time in this frame, and use sleeped and done as indicators. (and take care of the fact there
+		// are frames that have both.
+	}
+
+	//TicksNew > ticksLast
+	ticksRemain = ticksNew-ticksLast;
+	ticksLast = ticksNew;
+	ticksDone += ticksRemain;
+	if ( ticksRemain > 20 ) {
+//		LOG(LOG_MISC,LOG_ERROR)("large remain %d",ticksRemain);
+		ticksRemain = 20;
+	}
+	ticksAdded = ticksRemain;
+
+	// Is the system in auto cycle mode guessing ? If not just exit. (It can be temporary disabled)
+	if (!CPU_CycleAutoAdjust || CPU_SkipCycleAutoAdjust) return;
+	
+	if (ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) ) {
+		if(ticksDone < 1) ticksDone = 1; // Protect against div by zero
+		/* ratio we are aiming for is around 90% usage*/
+		Bit32s ratio = (ticksScheduled * (CPU_CyclePercUsed*90*1024/100/100)) / ticksDone;
+		Bit32s new_cmax = CPU_CycleMax;
+		Bit64s cproc = (Bit64s)CPU_CycleMax * (Bit64s)ticksScheduled;
+		double ratioremoved = 0.0; //increase scope for logging
+		if (cproc > 0) {
+			/* ignore the cycles added due to the IO delay code in order
+			   to have smoother auto cycle adjustments */
+			ratioremoved = (double) CPU_IODelayRemoved / (double) cproc;
+			if (ratioremoved < 1.0) {
+				double ratio_not_removed = 1 - ratioremoved;
+				ratio = (Bit32s)((double)ratio * ratio_not_removed);
+
+				/* Don't allow very high ratio which can cause us to lock as we don't scale down
+				 * for very low ratios. High ratio might result because of timing resolution */
+				if (ticksScheduled >= 250 && ticksDone < 10 && ratio > 16384)
+					ratio = 16384;
+
+				// Limit the ratio even more when the cycles are already way above the realmode default.
+				if (ticksScheduled >= 250 && ticksDone < 10 && ratio > 5120 && CPU_CycleMax > 50000)
+					ratio = 5120;
+
+				// When downscaling multiple times in a row, ensure a minimum amount of downscaling
+				if (ticksAdded > 15 && ticksScheduled >= 5 && ticksScheduled <= 20 && ratio > 800)
+					ratio = 800;
+
+				if (ratio <= 1024) {
+					// ratio_not_removed = 1.0; //enabling this restores the old formula
+					double r = (1.0 + ratio_not_removed) /(ratio_not_removed + 1024.0/(static_cast<double>(ratio)));
+					new_cmax = 1 + static_cast<Bit32s>(CPU_CycleMax * r);
+				} else {
+					Bit64s ratio_with_removed = (Bit64s) ((((double)ratio - 1024.0) * ratio_not_removed) + 1024.0);
+					Bit64s cmax_scaled = (Bit64s)CPU_CycleMax * ratio_with_removed;
+					new_cmax = (Bit32s)(1 + (CPU_CycleMax >> 1) + cmax_scaled / (Bit64s)2048);
 				}
 			}
-		} else {
-			ticksAdded = 0;
-			SDL_Delay(1);
-			ticksDone -= GetTicks() - ticksNew;
-			if (ticksDone < 0)
-				ticksDone = 0;
 		}
-	}
-	return 0;
+
+		if (new_cmax < CPU_CYCLES_LOWER_LIMIT)
+			new_cmax = CPU_CYCLES_LOWER_LIMIT;
+		/*
+		LOG(LOG_MISC,LOG_ERROR)("cyclelog: current %06d   cmax %06d   ratio  %05d  done %03d   sched %03d Add %d rr %4.2f",
+			CPU_CycleMax,
+			new_cmax,
+			ratio,
+			ticksDone,
+			ticksScheduled,
+			ticksAdded,
+			ratioremoved);
+		*/
+
+		/* ratios below 1% are considered to be dropouts due to
+		   temporary load imbalance, the cycles adjusting is skipped */
+		if (ratio > 10) {
+			/* ratios below 12% along with a large time since the last update
+			   has taken place are most likely caused by heavy load through a
+			   different application, the cycles adjusting is skipped as well */
+			if ((ratio > 120) || (ticksDone < 700)) {
+				CPU_CycleMax = new_cmax;
+				if (CPU_CycleLimit > 0) {
+					if (CPU_CycleMax > CPU_CycleLimit) CPU_CycleMax = CPU_CycleLimit;
+				} else if (CPU_CycleMax > 2000000) CPU_CycleMax = 2000000; //Hardcoded limit, if no limit was specified.
+			}
+		}
+
+		//Reset cycleguessing parameters.
+		CPU_IODelayRemoved = 0;
+		ticksDone = 0;
+		ticksScheduled = 0;
+		lastsleepDone = -1;
+		sleep1count = 0;
+	} else if (ticksAdded > 15) {
+		/* ticksAdded > 15 but ticksScheduled < 5, lower the cycles
+		   but do not reset the scheduled/done ticks to take them into
+		   account during the next auto cycle adjustment */
+		CPU_CycleMax /= 3;
+		if (CPU_CycleMax < CPU_CYCLES_LOWER_LIMIT)
+			CPU_CycleMax = CPU_CYCLES_LOWER_LIMIT;
+	} //if (ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) )
 }
 
 void DOSBOX_SetLoop(LoopHandler * handler) {
@@ -289,7 +360,7 @@ static void DOSBOX_RealInit(Section * sec) {
 	}
 
 	std::string mtype(section->Get_string("machine"));
-	svgaCard = SVGA_None; 
+	svgaCard = SVGA_None;
 	machine = MCH_VGA;
 	int10.vesa_nolfb = false;
 	int10.vesa_oldvbe = false;
@@ -355,10 +426,10 @@ void DOSBOX_Init(void) {
 	Pstring = secprop->Add_path("captures",Property::Changeable::Always,"capture");
 	Pstring->Set_help("Directory where things like wave, midi, screenshot get captured.");
 
-#if C_DEBUG	
+#if C_DEBUG
 	LOG_StartUp();
 #endif
-	
+
 	secprop->AddInitFunction(&IO_Init);//done
 	secprop->AddInitFunction(&PAGING_Init);//done
 	secprop->AddInitFunction(&MEM_Init);//done
@@ -367,9 +438,9 @@ void DOSBOX_Init(void) {
 	Pint->SetMinMax(1,63);
 	Pint->Set_help(
 		"Amount of memory DOSBox has in megabytes.\n"
-		"  This value is best left at its default to avoid problems with some games,\n"
-		"  though few games might require a higher value.\n"
-		"  There is generally no speed advantage when raising this value.");
+		"This value is best left at its default to avoid problems with some games,\n"
+		"though few games might require a higher value.\n"
+		"There is generally no speed advantage when raising this value.");
 	secprop->AddInitFunction(&CALLBACK_Init);
 	secprop->AddInitFunction(&PIC_Init);//done
 	secprop->AddInitFunction(&PROGRAMS_Init);
@@ -382,15 +453,17 @@ void DOSBOX_Init(void) {
 	Pint->Set_help("How many frames DOSBox skips before drawing one.");
 
 	Pbool = secprop->Add_bool("aspect",Property::Changeable::Always,false);
-	Pbool->Set_help("Do aspect correction, if your output method doesn't support scaling this can slow things down!.");
+	Pbool->Set_help("Do aspect correction, if your output method doesn't support scaling this can slow things down!");
 
 	Pmulti = secprop->Add_multi("scaler",Property::Changeable::Always," ");
 	Pmulti->SetValue("normal2x");
 	Pmulti->Set_help("Scaler used to enlarge/enhance low resolution modes. If 'forced' is appended,\n"
-	                 "then the scaler will be used even if the result might not be desired.");
+	                 "then the scaler will be used even if the result might not be desired.\n"
+					 "To fit a scaler in the resolution used at full screen may require a border or side bars,\n"
+					 "to fill the screen entirely, depending on your hardware, a different scaler/fullresolution might work.");
 	Pstring = Pmulti->GetSection()->Add_string("type",Property::Changeable::Always,"normal2x");
 
-	const char *scalers[] = { 
+	const char *scalers[] = {
 		"none", "normal2x", "normal3x",
 #if RENDER_USE_ADVANCED_SCALERS>2
 		"advmame2x", "advmame3x", "advinterp2x", "advinterp3x", "hq2x", "hq3x", "2xsai", "super2xsai", "supereagle",
@@ -440,7 +513,7 @@ void DOSBOX_Init(void) {
 	Pstring->Set_values(cyclest);
 
 	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::Always,"");
-	
+
 	Pint = secprop->Add_int("cycleup",Property::Changeable::Always,10);
 	Pint->SetMinMax(1,1000000);
 	Pint->Set_help("Amount of cycles to decrease/increase with keycombos.(CTRL-F11/CTRL-F12)");
@@ -448,7 +521,7 @@ void DOSBOX_Init(void) {
 	Pint = secprop->Add_int("cycledown",Property::Changeable::Always,20);
 	Pint->SetMinMax(1,1000000);
 	Pint->Set_help("Setting it lower than 100 will be a percentage.");
-		
+
 #if C_FPU
 	secprop->AddInitFunction(&FPU_Init);
 #endif
@@ -486,13 +559,13 @@ void DOSBOX_Init(void) {
 	Pint->Set_values(blocksizes);
 	Pint->Set_help("Mixer block size, larger blocks might help sound stuttering but sound will also be more lagged.");
 
-	Pint = secprop->Add_int("prebuffer",Property::Changeable::OnlyAtStart,20);
+	Pint = secprop->Add_int("prebuffer",Property::Changeable::OnlyAtStart,25);
 	Pint->SetMinMax(0,100);
 	Pint->Set_help("How many milliseconds of data to keep on top of the blocksize.");
 
 	secprop=control->AddSection_prop("midi",&MIDI_Init,true);//done
 	secprop->AddInitFunction(&MPU401_Init,true);//done
-	
+
 	const char* mputypes[] = { "intelligent", "uart", "none",0};
 	// FIXME: add some way to offer the actually available choices.
 	const char *devices[] = { "default", "win32", "alsa", "oss", "coreaudio", "coremidi","none", 0};
@@ -505,18 +578,18 @@ void DOSBOX_Init(void) {
 	Pstring->Set_help("Device that will receive the MIDI data from MPU-401.");
 
 	Pstring = secprop->Add_string("midiconfig",Property::Changeable::WhenIdle,"");
-	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
-	                  "  or in the case of coreaudio, you can specify a soundfont here.\n"
-	                  "  When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
-	                  "  In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
-	                  "  See the README/Manual for more details.");
+	Pstring->Set_help("Special configuration options for the device driver. This is usually the id or part of the name of the device you want to use (find the id/name with mixer/listmidi).\n"
+	                  "Or in the case of coreaudio, you can specify a soundfont here.\n"
+	                  "When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
+	                  "In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
+	                  "See the README/Manual for more details.");
 
 #if C_DEBUG
 	secprop=control->AddSection_prop("debug",&DEBUG_Init);
 #endif
 
 	secprop=control->AddSection_prop("sblaster",&SBLASTER_Init,true);//done
-	
+
 	const char* sbtypes[] = { "sb1", "sb2", "sbpro1", "sbpro2", "sb16", "gb", "none", 0 };
 	Pstring = secprop->Add_string("sbtype",Property::Changeable::WhenIdle,"sb16");
 	Pstring->Set_values(sbtypes);
@@ -541,12 +614,12 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("sbmixer",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Allow the soundblaster mixer to modify the DOSBox mixer.");
 
-	const char* oplmodes[]={ "auto", "cms", "opl2", "dualopl2", "opl3", "none", 0};
+	const char* oplmodes[]={ "auto", "cms", "opl2", "dualopl2", "opl3", "opl3gold", "none", 0};
 	Pstring = secprop->Add_string("oplmode",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(oplmodes);
 	Pstring->Set_help("Type of OPL emulation. On 'auto' the mode is determined by sblaster type. All OPL modes are Adlib-compatible, except for 'cms'.");
 
-	const char* oplemus[]={ "default", "compat", "fast", 0};
+	const char* oplemus[]={ "default", "compat", "fast", "mame", 0};
 	Pstring = secprop->Add_string("oplemu",Property::Changeable::WhenIdle,"default");
 	Pstring->Set_values(oplemus);
 	Pstring->Set_help("Provider for the OPL emulation. compat might provide better quality (see oplrate as well).");
@@ -561,7 +634,7 @@ void DOSBOX_Init(void) {
 
 
 	secprop=control->AddSection_prop("gus",&GUS_Init,true); //done
-	Pbool = secprop->Add_bool("gus",Property::Changeable::WhenIdle,false); 	
+	Pbool = secprop->Add_bool("gus",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("Enable the Gravis Ultrasound emulation.");
 
 #ifdef HW_RVL
@@ -608,7 +681,7 @@ void DOSBOX_Init(void) {
 	Pstring = secprop->Add_string("tandy",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(tandys);
 	Pstring->Set_help("Enable Tandy Sound System emulation. For 'auto', emulation is present only if machine is set to 'tandy'.");
-	
+
 #ifdef HW_RVL
 	Pint = secprop->Add_int("tandyrate",Property::Changeable::WhenIdle,22050);
 #else	
@@ -618,14 +691,14 @@ void DOSBOX_Init(void) {
 	Pint->Set_help("Sample rate of the Tandy 3-Voice generation.");
 
 	secprop->AddInitFunction(&DISNEY_Init,true);//done
-	
+
 	Pbool = secprop->Add_bool("disney",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Enable Disney Sound Source emulation. (Covox Voice Master and Speech Thing compatible).");
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
 	secprop->AddInitFunction(&INT10_Init);
 	secprop->AddInitFunction(&MOUSE_Init); //Must be after int10 as it uses CurMode
-	secprop->AddInitFunction(&JOYSTICK_Init);
+	secprop->AddInitFunction(&JOYSTICK_Init,true);
 	const char* joytypes[] = { "auto", "2axis", "4axis", "4axis_2", "fcs", "ch", "none",0};
 	Pstring = secprop->Add_string("joysticktype",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(joytypes);
@@ -644,17 +717,25 @@ void DOSBOX_Init(void) {
 
 	Pbool = secprop->Add_bool("autofire",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("continuously fires as long as you keep the button pressed.");
-	
+
 	Pbool = secprop->Add_bool("swap34",Property::Changeable::WhenIdle,false);
-	Pbool->Set_help("swap the 3rd and the 4th axis. can be useful for certain joysticks.");
+	Pbool->Set_help("swap the 3rd and the 4th axis. Can be useful for certain joysticks.");
 
 	Pbool = secprop->Add_bool("buttonwrap",Property::Changeable::WhenIdle,false);
 	Pbool->Set_help("enable button wrapping at the number of emulated buttons.");
+	
+	Pbool = secprop->Add_bool("circularinput",Property::Changeable::WhenIdle,false);
+	Pbool->Set_help("enable translation of circular input to square output.\n"
+	                "Try enabling this if your left analog stick can only move in a circle.");
+
+	Pint = secprop->Add_int("deadzone",Property::Changeable::WhenIdle,10);
+	Pint->SetMinMax(0,100);
+	Pint->Set_help("the percentage of motion to ignore. 100 turns the stick into a digital one.");
 
 	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
 	const char* serials[] = { "dummy", "disabled", "modem", "nullmodem",
 	                          "directserial",0 };
-   
+
 	Pmulti_remain = secprop->Add_multiremain("serial1",Property::Changeable::WhenIdle," ");
 	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"dummy");
 	Pmulti_remain->SetValue("dummy");

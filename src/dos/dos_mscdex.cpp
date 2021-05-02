@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -113,11 +113,9 @@ public:
 	void		GetDrives			(PhysPt data);
 	void		GetDriverInfo		(PhysPt data);
 	bool		GetVolumeName		(Bit8u subUnit, char* name);
-	bool		GetCopyrightName	(Bit16u drive, PhysPt data);
-	bool		GetAbstractName		(Bit16u drive, PhysPt data);
-	bool		GetDocumentationName(Bit16u drive, PhysPt data);
+	bool		GetFileName			(Bit16u drive, Bit16u pos, PhysPt data);	
 	bool		GetDirectoryEntry	(Bit16u drive, bool copyFlag, PhysPt pathname, PhysPt buffer, Bit16u& error);
-	bool		ReadVTOC			(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error);
+	bool		ReadVTOC			(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& offset, Bit16u& error);
 	bool		ReadSectors			(Bit16u drive, Bit32u sector, Bit16u num, PhysPt data);
 	bool		ReadSectors			(Bit8u subUnit, bool raw, Bit32u sector, Bit16u num, PhysPt data);
 	bool		ReadSectorsMSF		(Bit8u subUnit, bool raw, Bit32u sector, Bit16u num, PhysPt data);
@@ -409,9 +407,11 @@ bool CMscdex::HasDrive(Bit16u drive) {
 }
 
 void CMscdex::ReplaceDrive(CDROM_Interface* newCdrom, Bit8u subUnit) {
-	delete cdrom[subUnit];
+	if (cdrom[subUnit] != NULL) {
+		StopAudio(subUnit);
+		delete cdrom[subUnit];
+	}
 	cdrom[subUnit] = newCdrom;
-	StopAudio(subUnit);
 }
 
 PhysPt CMscdex::GetDefaultBuffer(void) {
@@ -506,16 +506,21 @@ bool CMscdex::GetAudioStatus(Bit8u subUnit, bool& playing, bool& pause, TMSF& st
 	if (subUnit>=numDrives) return false;
 	dinfo[subUnit].lastResult = cdrom[subUnit]->GetAudioStatus(playing,pause);
 	if (dinfo[subUnit].lastResult) {
-		// Start
-		Bit32u addr	= dinfo[subUnit].audioStart + 150;
-		start.fr	= (Bit8u)(addr%75);	addr/=75;
-		start.sec	= (Bit8u)(addr%60); 
-		start.min	= (Bit8u)(addr/60);
-		// End
-		addr		= dinfo[subUnit].audioEnd + 150;
-		end.fr		= (Bit8u)(addr%75);	addr/=75;
-		end.sec		= (Bit8u)(addr%60); 
-		end.min		= (Bit8u)(addr/60);
+		if (playing) {
+			// Start
+			Bit32u addr	= dinfo[subUnit].audioStart + 150;
+			start.fr	= (Bit8u)(addr%75);	addr/=75;
+			start.sec	= (Bit8u)(addr%60); 
+			start.min	= (Bit8u)(addr/60);
+			// End
+			addr		= dinfo[subUnit].audioEnd + 150;
+			end.fr		= (Bit8u)(addr%75);	addr/=75;
+			end.sec		= (Bit8u)(addr%60); 
+			end.min		= (Bit8u)(addr/60);
+		} else {
+			memset(&start,0,sizeof(start));
+			memset(&end,0,sizeof(end));
+		}
 	} else {
 		playing		= false;
 		pause		= false;
@@ -572,7 +577,7 @@ Bit32u CMscdex::GetVolumeSize(Bit8u subUnit) {
 	return 0;
 }
 
-bool CMscdex::ReadVTOC(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error) { 
+bool CMscdex::ReadVTOC(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& offset, Bit16u& error) {
 	Bit8u subunit = GetSubUnit(drive);
 /*	if (subunit>=numDrives) {
 		error=MSCDEX_ERROR_UNKNOWN_DRIVE;
@@ -584,11 +589,16 @@ bool CMscdex::ReadVTOC(Bit16u drive, Bit16u volume, PhysPt data, Bit16u& error) 
 	}
 	char id[5];
 	MEM_BlockRead(data + 1, id, 5);
-	if (strncmp("CD001",id, 5)!=0) {
-		error = MSCDEX_ERROR_BAD_FORMAT;
-		return false;
+	if (strncmp("CD001", id, 5)==0) offset = 0;
+	else {
+		MEM_BlockRead(data + 9, id, 5);
+		if (strncmp("CDROM", id, 5)==0) offset = 8;
+		else {
+			error = MSCDEX_ERROR_BAD_FORMAT;
+			return false;
+		}
 	}
-	Bit8u type = mem_readb(data);
+	Bit8u type = mem_readb(data + offset);
 	error = (type == 1) ? 1 : (type == 0xFF) ? 0xFF : 0;
 	return true;
 }
@@ -597,12 +607,12 @@ bool CMscdex::GetVolumeName(Bit8u subUnit, char* data) {
 	if (subUnit>=numDrives) return false;
 	Bit16u drive = dinfo[subUnit].drive;
 
-	Bit16u error;
+	Bit16u offset = 0, error;
 	bool success = false;
 	PhysPt ptoc = GetTempBuffer();
-	success = ReadVTOC(drive,0x00,ptoc,error);
+	success = ReadVTOC(drive,0x00,ptoc,offset,error);
 	if (success) {
-		MEM_StrCopy(ptoc+40,data,31);
+		MEM_StrCopy(ptoc+offset+40,data,31);
 		data[31] = 0;
 		rtrim(data);
 	};
@@ -610,38 +620,19 @@ bool CMscdex::GetVolumeName(Bit8u subUnit, char* data) {
 	return success; 
 }
 
-bool CMscdex::GetCopyrightName(Bit16u drive, PhysPt data) {	
-	Bit16u error;
+bool CMscdex::GetFileName(Bit16u drive, Bit16u pos, PhysPt data) {
+	Bit16u offset = 0, error;
 	bool success = false;
 	PhysPt ptoc = GetTempBuffer();
-	success = ReadVTOC(drive,0x00,ptoc,error);
+	success = ReadVTOC(drive,0x00,ptoc,offset,error);
 	if (success) {
-		MEM_BlockCopy(data,ptoc+702,37);
-		mem_writeb(data+37,0);
-	};
-	return success; 
-}
-
-bool CMscdex::GetAbstractName(Bit16u drive, PhysPt data) { 
-	Bit16u error;
-	bool success = false;
-	PhysPt ptoc = GetTempBuffer();
-	success = ReadVTOC(drive,0x00,ptoc,error);
-	if (success) {
-		MEM_BlockCopy(data,ptoc+739,37);
-		mem_writeb(data+37,0);
-	};
-	return success; 
-}
-
-bool CMscdex::GetDocumentationName(Bit16u drive, PhysPt data) { 
-	Bit16u error;
-	bool success = false;
-	PhysPt ptoc = GetTempBuffer();
-	success = ReadVTOC(drive,0x00,ptoc,error);
-	if (success) {
-		MEM_BlockCopy(data,ptoc+776,37);
-		mem_writeb(data+37,0);
+		Bitu len;
+		for (len=0;len<37;len++) {
+			Bit8u c=mem_readb(ptoc+offset+pos+len);
+			if (c==0 || c==0x20) break;
+		}
+		MEM_BlockCopy(data,ptoc+offset+pos,len);
+		mem_writeb(data+len,0);
 	};
 	return success; 
 }
@@ -698,13 +689,16 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 	// read vtoc
 	PhysPt defBuffer = GetDefaultBuffer();
 	if (!ReadSectors(GetSubUnit(drive),false,16,1,defBuffer)) return false;
-	// TODO: has to be iso 9960
 	MEM_StrCopy(defBuffer+1,volumeID,5); volumeID[5] = 0;
 	bool iso = (strcmp("CD001",volumeID)==0);
-	if (!iso) E_Exit("MSCDEX: GetDirEntry: Not an ISO 9960 CD.");
+	if (!iso) {
+		MEM_StrCopy(defBuffer+9,volumeID,5);
+		if (strcmp("CDROM",volumeID)!=0) E_Exit("MSCDEX: GetDirEntry: Not an ISO 9660 or HSF CD.");
+	}
+	Bit16u offset = iso ? 156:180;
 	// get directory position
-	Bitu dirEntrySector	= mem_readd(defBuffer+156+2);
-	Bits dirSize		= mem_readd(defBuffer+156+10);
+	Bitu dirEntrySector	= mem_readd(defBuffer+offset+2);
+	Bits dirSize		= mem_readd(defBuffer+offset+10);
 	Bitu index;
 	while (dirSize>0) {
 		index = 0;
@@ -723,24 +717,24 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 		do {
 			entryLength = mem_readb(defBuffer+index);
 			if (entryLength==0) break;
+			if (mem_readb(defBuffer + index + (iso?0x19:0x18) ) & 4) {
+				// skip associated files
+				index += entryLength;
+				continue;
+			}
 			nameLength  = mem_readb(defBuffer+index+32);
 			MEM_StrCopy(defBuffer+index+33,entryName,nameLength);
+			// strip separator and file version number
+			char* separator = strchr(entryName,';');
+			if (separator) *separator = 0;
+			// strip trailing period
+			size_t entrylen = strlen(entryName);
+			if (entrylen>0 && entryName[entrylen-1]=='.') entryName[entrylen-1] = 0;
+
 			if (strcmp(entryName,useName)==0) {
 				//LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Found : %s",useName);
 				foundName = true;
 				break;
-			}
-			/* Xcom Apocalipse searches for MUSIC. and expects to find MUSIC;1
-			 * All Files on the CDROM are of the kind blah;1
-			 */
-			char* longername = strchr(entryName,';');
-			if(longername) {
-				*longername = 0;
-				if (strcmp(entryName,useName)==0) {
-					//LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Get DirEntry : Found : %s",useName);
-					foundName = true;
-					break;
-				}
 			}
 			index += entryLength;
 		} while (index+33<=2048);
@@ -758,8 +752,9 @@ bool CMscdex::GetDirectoryEntry(Bit16u drive, bool copyFlag, PhysPt pathname, Ph
 					memcpy( &writeBuf[1], &readBuf[0x2], 4);		// 01h	DWORD	Logical Block Number of file start
 					writeBuf[5] = 0;writeBuf[6] = 8;				// 05h	WORD	size of disk in logical blocks
 					memcpy( &writeBuf[7], &readBuf[0xa], 4);		// 07h	DWORD	file length in bytes
-					memcpy( &writeBuf[0xb], &readBuf[0x12], 7);		// 0bh	DWORD	date and time
-					writeBuf[0x12] = readBuf[0x19];					// 12h	BYTE	bit flags
+					memcpy( &writeBuf[0xb], &readBuf[0x12], 6);		// 0bh	BYTEs	date and time
+					writeBuf[0x11] = iso ? readBuf[0x18]:0;			// 11h	BYTE	time zone
+					writeBuf[0x12] = readBuf[iso ? 0x19:0x18];		// 12h	BYTE	bit flags
 					writeBuf[0x13] = readBuf[0x1a];					// 13h	BYTE	interleave size
 					writeBuf[0x14] = readBuf[0x1b];					// 14h	BYTE	interleave skip factor
 					memcpy( &writeBuf[0x15], &readBuf[0x1c], 2);	// 15h	WORD	volume set sequence number
@@ -904,7 +899,7 @@ static CMscdex* mscdex = 0;
 static PhysPt curReqheaderPtr = 0;
 
 static Bit16u MSCDEX_IOCTL_Input(PhysPt buffer,Bit8u drive_unit) {
-	Bitu ioctl_fct = mem_readb(buffer);
+	Bit8u ioctl_fct = mem_readb(buffer);
 	MSCDEX_LOG("MSCDEX: IOCTL INPUT Subfunction %02X",ioctl_fct);
 	switch (ioctl_fct) {
 		case 0x00 : /* Get Device Header address */
@@ -1021,7 +1016,7 @@ static Bit16u MSCDEX_IOCTL_Input(PhysPt buffer,Bit8u drive_unit) {
 }
 
 static Bit16u MSCDEX_IOCTL_Optput(PhysPt buffer,Bit8u drive_unit) {
-	Bitu ioctl_fct = mem_readb(buffer);
+	Bit8u ioctl_fct = mem_readb(buffer);
 //	MSCDEX_LOG("MSCDEX: IOCTL OUTPUT Subfunction %02X",ioctl_fct);
 	switch (ioctl_fct) {
 		case 0x00 :	// Unload /eject media
@@ -1129,6 +1124,7 @@ static Bitu MSCDEX_Interrupt_Handler(void) {
 static bool MSCDEX_Handler(void) {
 	if(reg_ah == 0x11) {
 		if(reg_al == 0x00) { 
+			if (mscdex->rootDriverHeaderSeg==0) return false;
 			PhysPt check = PhysMake(SegValue(ss),reg_sp);
 			if(mem_readw(check+6) == 0xDADA) {
 				//MSCDEX sets word on stack to ADAD if it DADA on entry.
@@ -1145,6 +1141,7 @@ static bool MSCDEX_Handler(void) {
 	}
 
 	if (reg_ah!=0x15) return false;		// not handled here, continue chain
+	if (mscdex->rootDriverHeaderSeg==0) return false;	// not handled if MSCDEX not installed
 
 	PhysPt data = PhysMake(SegValue(es),reg_bx);
 	MSCDEX_LOG("MSCDEX: INT 2F %04X BX= %04X CX=%04X",reg_ax,reg_bx,reg_cx);
@@ -1159,23 +1156,9 @@ static bool MSCDEX_Handler(void) {
 						mscdex->GetDriverInfo(data);
 						return true;
 		case 0x1502:	/* Get Copyright filename */
-						if (mscdex->GetCopyrightName(reg_cx,data)) {
-							CALLBACK_SCF(false);
-						} else {
-							reg_ax = MSCDEX_ERROR_UNKNOWN_DRIVE;
-							CALLBACK_SCF(true);							
-						};
-						return true;		
 		case 0x1503:	/* Get Abstract filename */
-						if (mscdex->GetAbstractName(reg_cx,data)) {
-							CALLBACK_SCF(false);
-						} else {
-							reg_ax = MSCDEX_ERROR_UNKNOWN_DRIVE;
-							CALLBACK_SCF(true);							
-						};
-						return true;		
 		case 0x1504:	/* Get Documentation filename */
-						if (mscdex->GetDocumentationName(reg_cx,data)) {
+						if (mscdex->GetFileName(reg_cx,702+(reg_al-2)*37,data)) {
 							CALLBACK_SCF(false);
 						} else {
 							reg_ax = MSCDEX_ERROR_UNKNOWN_DRIVE;
@@ -1183,8 +1166,8 @@ static bool MSCDEX_Handler(void) {
 						};
 						return true;		
 		case 0x1505: {	// read vtoc 
-						Bit16u error = 0;
-						if (mscdex->ReadVTOC(reg_cx,reg_dx,data,error)) {
+						Bit16u offset = 0, error = 0;
+						if (mscdex->ReadVTOC(reg_cx,reg_dx,data,offset,error)) {
 //							reg_ax = error;	// return code
 							CALLBACK_SCF(false);
 						} else {
@@ -1258,7 +1241,7 @@ static bool MSCDEX_Handler(void) {
 						}
 						return true;
 	};
-	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unknwon call : %04X",reg_ax);
+	LOG(LOG_MISC,LOG_ERROR)("MSCDEX: Unknown call : %04X",reg_ax);
 	return true;
 }
 
@@ -1315,6 +1298,11 @@ bool MSCDEX_HasDrive(char driveLetter)
 void MSCDEX_ReplaceDrive(CDROM_Interface* cdrom, Bit8u subUnit)
 {
 	mscdex->ReplaceDrive(cdrom, subUnit);
+}
+
+Bit8u MSCDEX_GetSubUnit(char driveLetter)
+{
+	return mscdex->GetSubUnit(driveLetter-'A');
 }
 
 bool MSCDEX_GetVolumeName(Bit8u subUnit, char* name)

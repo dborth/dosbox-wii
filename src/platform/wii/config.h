@@ -1,7 +1,10 @@
-#define VERSION "0.74"
+#define VERSION "SVN-r4301"
 
 /* Define to 1 to enable internal debugger, requires libcurses */
 #define C_DEBUG 0
+
+/* Define to 1 to enable output=ddraw */
+#define C_DDRAW 0
 
 /* Define to 1 to enable screenshots, requires libpng */
 #define C_SSHOT 0
@@ -25,7 +28,7 @@
 #define C_DYNAMIC_X86 0
 
 /* Define to 1 to use recompiling cpu core. Can not be used together with the dynamic-x86 core */
-#define C_DYNREC 0
+#define C_DYNREC 1
 
 /* Enable memory function inlining in */
 #define C_CORE_INLINE 1
@@ -51,6 +54,8 @@
 /* Define to 1 if you want serial passthrough support (Win32 only). */
 #define C_DIRECTSERIAL 0
 
+#define WORDS_BIGENDIAN 1
+
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))
 #define GCC_UNLIKELY(x) __builtin_expect((x), 0)
 #define GCC_LIKELY(x) __builtin_expect((x), 1)
@@ -68,6 +73,11 @@ typedef  unsigned long		Bit32u;
 typedef    int				Bit32s;
 typedef unsigned long long	Bit64u;
 typedef   signed long long	Bit64s;
+#define sBit32t
+#define sBit64t "I64"
+#define sBit32fs(a) sBit32t #a
+#define sBit64fs(a) sBit64t #a
 typedef unsigned int		Bitu;
 typedef signed int			Bits;
+#define sBitfs sBit32fs
 

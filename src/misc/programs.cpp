@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -78,7 +78,7 @@ static Bitu PROGRAMS_Handler(void) {
 	HostPt writer=(HostPt)&index;
 	for (;size>0;size--) *writer++=mem_readb(reader++);
 	Program * new_program;
-	if (index > internal_progs.size()) E_Exit("something is messing with the memory");
+	if (index >= internal_progs.size()) E_Exit("something is messing with the memory");
 	PROGRAMS_Main * handler = internal_progs[index];
 	(*handler)(&new_program);
 	new_program->Run();
@@ -138,6 +138,7 @@ void Program::WriteOut(const char * format,...) {
 	va_end(msg);
 
 	Bit16u size = (Bit16u)strlen(buf);
+	dos.internal_output=true;
 	for(Bit16u i = 0; i < size;i++) {
 		Bit8u out;Bit16u s=1;
 		if (buf[i] == 0xA && last_written_character != 0xD) {
@@ -146,6 +147,7 @@ void Program::WriteOut(const char * format,...) {
 		last_written_character = out = buf[i];
 		DOS_WriteFile(STDOUT,&out,&s);
 	}
+	dos.internal_output=false;
 	
 //	DOS_WriteFile(STDOUT,(Bit8u *)buf,&size);
 }
@@ -153,6 +155,7 @@ void Program::WriteOut(const char * format,...) {
 void Program::WriteOut_NoParsing(const char * format) {
 	Bit16u size = (Bit16u)strlen(format);
 	char const* buf = format;
+	dos.internal_output=true;
 	for(Bit16u i = 0; i < size;i++) {
 		Bit8u out;Bit16u s=1;
 		if (buf[i] == 0xA && last_written_character != 0xD) {
@@ -161,6 +164,7 @@ void Program::WriteOut_NoParsing(const char * format) {
 		last_written_character = out = buf[i];
 		DOS_WriteFile(STDOUT,&out,&s);
 	}
+	dos.internal_output=false;
 
 //	DOS_WriteFile(STDOUT,(Bit8u *)format,&size);
 }
@@ -216,9 +220,16 @@ Bitu Program::GetEnvCount(void) {
 }
 
 bool Program::SetEnv(const char * entry,const char * new_string) {
-	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
-	PhysPt env_write=env_read;
-	char env_string[1024+1];
+	PhysPt env_read = PhysMake(psp->GetEnvironment(),0);
+	
+	//Get size of environment.
+	DOS_MCB mcb(psp->GetEnvironment()-1);
+	Bit16u envsize = mcb.GetSize()*16;
+
+
+	PhysPt env_write = env_read;
+	PhysPt env_write_start = env_read;
+	char env_string[1024+1] = { 0 };
 	do 	{
 		MEM_StrCopy(env_read,env_string,1024);
 		if (!env_string[0]) break;
@@ -231,16 +242,19 @@ bool Program::SetEnv(const char * entry,const char * new_string) {
 	} while (1);
 /* TODO Maybe save the program name sometime. not really needed though */
 	/* Save the new entry */
+
+	//ensure room
+	if (envsize <= (env_write-env_write_start) + strlen(entry) + 1 + strlen(new_string) + 2) return false;
+
 	if (new_string[0]) {
 		std::string bigentry(entry);
 		for (std::string::iterator it = bigentry.begin(); it != bigentry.end(); ++it) *it = toupper(*it);
-		sprintf(env_string,"%s=%s",bigentry.c_str(),new_string); 
-//		sprintf(env_string,"%s=%s",entry,new_string); //oldcode
+		snprintf(env_string,1024+1,"%s=%s",bigentry.c_str(),new_string);
 		MEM_BlockWrite(env_write,env_string,(Bitu)(strlen(env_string)+1));
 		env_write += (PhysPt)(strlen(env_string)+1);
 	}
 	/* Clear out the final piece of the environment */
-	mem_writed(env_write,0);
+	mem_writeb(env_write,0);
 	return true;
 }
 
@@ -538,7 +552,7 @@ void CONFIG::Run(void) {
 			std::string::size_type spcpos = pvars[0].find_first_of(' ');
 			// split on the ' '
 			if (spcpos != std::string::npos) {
-				pvars.insert(++pvars.begin(),pvars[0].substr(spcpos+1));
+				pvars.insert(pvars.begin()+1,pvars[0].substr(spcpos+1));
 				pvars[0].erase(spcpos);
 			}
 			switch(pvars.size()) {
@@ -575,6 +589,7 @@ void CONFIG::Run(void) {
 					// it's a property name
 					std::string val = sec->GetPropValue(pvars[0].c_str());
 					WriteOut("%s",val.c_str());
+					first_shell->SetEnv("CONFIG",val.c_str());
 				}
 				break;
 			}
@@ -592,6 +607,7 @@ void CONFIG::Run(void) {
 					return;
 				}
 				WriteOut("%s",val.c_str());
+				first_shell->SetEnv("CONFIG",val.c_str());
 				break;
 			}
 			default:
@@ -630,7 +646,7 @@ void CONFIG::Run(void) {
 			if ((equpos != std::string::npos) && 
 				((spcpos == std::string::npos) || (equpos < spcpos))) {
 				// If we have a '=' possibly before a ' ' split on the =
-				pvars.insert(++pvars.begin(),pvars[0].substr(equpos+1));
+				pvars.insert(pvars.begin()+1,pvars[0].substr(equpos+1));
 				pvars[0].erase(equpos);
 				// As we had a = the first thing must be a property now
 				Section* sec=control->GetSectionFromProperty(pvars[0].c_str());
@@ -644,7 +660,7 @@ void CONFIG::Run(void) {
 				if ((spcpos != std::string::npos) &&
 					((equpos == std::string::npos) || (spcpos < equpos))) {
 					// ' ' before a possible '=', split on the ' '
-					pvars.insert(++pvars.begin(),pvars[0].substr(spcpos+1));
+					pvars.insert(pvars.begin()+1,pvars[0].substr(spcpos+1));
 					pvars[0].erase(spcpos);
 				}
 				// check if the first parameter is a section or property
@@ -703,9 +719,14 @@ void CONFIG::Run(void) {
 			// Input has been parsed (pvar[0]=section, [1]=property, [2]=value)
 			// now execute
 			Section* tsec = control->GetSection(pvars[0]);
-			std::string value;
-			value += pvars[2];
+			std::string value(pvars[2]);
+			//Due to parsing there can be a = at the start of value.
+			while (value.size() && (value.at(0) ==' ' ||value.at(0) =='=') ) value.erase(0,1);
 			for(Bitu i = 3; i < pvars.size(); i++) value += (std::string(" ") + pvars[i]);
+			if (value.empty() ) {
+				WriteOut(MSG_Get("PROGRAM_CONFIG_SET_SYNTAX"));
+				return;
+			}
 			std::string inputline = pvars[1] + "=" + value;
 			
 			tsec->ExecuteDestroy(false);

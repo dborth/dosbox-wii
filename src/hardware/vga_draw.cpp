@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -79,38 +79,28 @@ static Bit8u * VGA_Draw_CGA16_Line(Bitu vidstart, Bitu line) {
 	const Bit8u *base = vga.tandy.draw_base + ((line & vga.tandy.line_mask) << vga.tandy.line_shift);
 #define CGA16_READER(OFF) (base[(vidstart +(OFF))& (8*1024 -1)])
 	Bit32u * draw=(Bit32u *)TempLine;
-	//Generate a temporary bitline to calculate the avarage
-	//over bit-2  bit-1  bit  bit+1.
-	//Combine this number with the current colour to get 
-	//an unique index in the pallette. Or it with bit 7 as they are stored
-	//in the upperpart to keep them from interfering the regular cga stuff
+	//There are 640 hdots in each line of the screen.
+	//The color of an even hdot always depends on only 4 bits of video RAM.
+	//The color of an odd hdot depends on 4 bits of video RAM in
+	//1-hdot-per-pixel modes and 6 bits of video RAM in 2-hdot-per-pixel
+	//modes. We always assume 6 and use duplicate palette entries in
+	//1-hdot-per-pixel modes so that we can use the same routine for all
+	//composite modes.
+  temp[1] = (CGA16_READER(0) >> 6) & 3;
+	for(Bitu x = 2; x < 640; x+=2) {
+		temp[x] = (temp[x-1] & 0xf);
+		temp[x+1] = (temp[x] << 2) | ((( CGA16_READER(x>>3)) >> (6-(x&6)) )&3);
+	}
+	temp[640] = temp[639] & 0xf;
+	temp[641] = temp[640] << 2;
+	temp[642] = temp[641] & 0xf;
 
-	for(Bitu x = 0; x < 640; x++)
-		temp[x+2] = (( CGA16_READER(x>>3)>> (7-(x&7)) )&1) << 4;
-		//shift 4 as that is for the index.
-	Bitu i = 0,temp1,temp2,temp3,temp4;
+	Bitu i = 2;
 	for (Bitu x=0;x<vga.draw.blocks;x++) {
-		Bitu val1 = CGA16_READER(x);
-		Bitu val2 = val1&0xf;
-		val1 >>= 4;
-
-		temp1 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp2 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp3 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp4 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-
-		*draw++ = 0x80808080|(temp1|val1) |
-		          ((temp2|val1) << 8) |
-		          ((temp3|val1) <<16) |
-		          ((temp4|val1) <<24);
-		temp1 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp2 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp3 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		temp4 = temp[i] + temp[i+1] + temp[i+2] + temp[i+3]; i++;
-		*draw++ = 0x80808080|(temp1|val2) |
-		          ((temp2|val2) << 8) |
-		          ((temp3|val2) <<16) |
-		          ((temp4|val2) <<24);
+		*draw++ = 0xc0708030 | temp[i] | (temp[i+1] << 8) | (temp[i+2] << 16) | (temp[i+3] << 24);
+		i += 4;
+		*draw++ = 0xc0708030 | temp[i] | (temp[i+1] << 8) | (temp[i+2] << 16) | (temp[i+3] << 24);
+		i += 4;
 	}
 	return TempLine;
 #undef CGA16_READER
@@ -207,10 +197,30 @@ static Bit8u * VGA_Draw_Linear_Line(Bitu vidstart, Bitu /*line*/) {
 }
 
 static Bit8u * VGA_Draw_Xlat16_Linear_Line(Bitu vidstart, Bitu /*line*/) {
-	Bit8u *ret = &vga.draw.linear_base[ vidstart & vga.draw.linear_mask ];
+	Bitu offset = vidstart & vga.draw.linear_mask;
+	Bit8u *ret = &vga.draw.linear_base[offset];
 	Bit16u* temps = (Bit16u*) TempLine;
-	for(Bitu i = 0; i < vga.draw.line_length; i++) {
-		temps[i]=vga.dac.xlat16[ret[i]];
+
+	// see VGA_Draw_Linear_Line
+	if (GCC_UNLIKELY((vga.draw.line_length + offset)& ~vga.draw.linear_mask)) {
+		Bitu end = (offset + vga.draw.line_length) & vga.draw.linear_mask;
+		
+		// assuming lines not longer than 4096 pixels
+		Bitu wrapped_len = end & 0xFFF;
+		Bitu unwrapped_len = vga.draw.line_length-wrapped_len;
+		
+		// unwrapped chunk: to top of memory block
+		for(Bitu i = 0; i < unwrapped_len; i++)
+			temps[i]=vga.dac.xlat16[ret[i]];
+		
+		// wrapped chunk: from base of memory block
+		for(Bitu i = 0; i < wrapped_len; i++)
+			temps[i + unwrapped_len]=vga.dac.xlat16[vga.draw.linear_base[i]];
+
+	} else {
+		for(Bitu i = 0; i < vga.draw.line_length; i++) {
+			temps[i]=vga.dac.xlat16[ret[i]];
+		}
 	}
 	return TempLine;
 }
@@ -385,7 +395,7 @@ static Bit8u * VGA_TEXT_Draw_Line(Bitu vidstart, Bitu line) {
 		*draw++=(fg&mask1) | (bg&~mask1);
 		*draw++=(fg&mask2) | (bg&~mask2);
 	}
-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
+	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x10)) goto skip_cursor;
 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
 		if (line<vga.draw.cursor.sline) goto skip_cursor;
@@ -434,7 +444,7 @@ static Bit8u * VGA_TEXT_Herc_Draw_Line(Bitu vidstart, Bitu line) {
 			*draw++=(fg&mask2) | (bg&~mask2);
 		}
 	}
-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
+	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x10)) goto skip_cursor;
 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
 		if (line<vga.draw.cursor.sline) goto skip_cursor;
@@ -496,7 +506,7 @@ static Bit8u* VGA_TEXT_Draw_Line(Bitu vidstart, Bitu line) {
 		}
 	}
 	// draw the text mode cursor if needed
-	if ((vga.draw.cursor.count&0x8) && (line >= vga.draw.cursor.sline) &&
+	if ((vga.draw.cursor.count&0x10) && (line >= vga.draw.cursor.sline) &&
 		(line <= vga.draw.cursor.eline) && vga.draw.cursor.enabled) {
 		// the adress of the attribute that makes up the cell the cursor is in
 		Bits attr_addr = (vga.draw.cursor.address-vidstart) >> 1;
@@ -554,7 +564,7 @@ static Bit8u* VGA_TEXT_Xlat16_Draw_Line(Bitu vidstart, Bitu line) {
 		}
 	}
 	// draw the text mode cursor if needed
-	if ((vga.draw.cursor.count&0x8) && (line >= vga.draw.cursor.sline) &&
+	if ((vga.draw.cursor.count&0x10) && (line >= vga.draw.cursor.sline) &&
 		(line <= vga.draw.cursor.eline) && vga.draw.cursor.enabled) {
 		// the adress of the attribute that makes up the cell the cursor is in
 		Bits attr_addr = (vga.draw.cursor.address-vidstart) >> 1;
@@ -824,7 +834,9 @@ static void VGA_VerticalTimer(Bitu /*val*/) {
 		E_Exit("This new machine needs implementation in VGA_VerticalTimer too.");
 		break;
 	}
+
 	//Check if we can actually render, else skip the rest (frameskip)
+	vga.draw.cursor.count++; // Do this here, else the cursor speed depends on the frameskip
 	if (vga.draw.vga_override || !RENDER_StartUpdate())
 		return;
 
@@ -892,7 +904,7 @@ static void VGA_VerticalTimer(Bitu /*val*/) {
 		else vga.draw.linear_mask = 0x3fff; // CGA, Tandy 4 pages
 		vga.draw.cursor.address=vga.config.cursor_start*2;
 		vga.draw.address *= 2;
-		vga.draw.cursor.count++;
+		//vga.draw.cursor.count++; //Moved before the frameskip test.
 		/* check for blinking and blinking change delay */
 		FontMask[1]=(vga.draw.blinking & (vga.draw.cursor.count >> 4)) ?
 			0 : 0xffffffff;
@@ -902,7 +914,6 @@ static void VGA_VerticalTimer(Bitu /*val*/) {
 			|| !vga.draw.blinking) ? true:false;
 		break;
 	case M_HERC_GFX:
-		break;
 	case M_CGA4:case M_CGA2:
 		vga.draw.address=(vga.draw.address*2)&0x1fff;
 		break;
@@ -937,7 +948,7 @@ static void VGA_VerticalTimer(Bitu /*val*/) {
 		vga.draw.parts_left = vga.draw.parts_total;
 		PIC_AddEvent(VGA_DrawPart,(float)vga.draw.delay.parts + draw_skip,vga.draw.parts_lines);
 		break;
-	case LINE:
+	case DRAWLINE:
 	case EGALINE:
 		if (GCC_UNLIKELY(vga.draw.lines_done < vga.draw.lines_total)) {
 			LOG(LOG_VGAMISC,LOG_NORMAL)( "Lines left: %d", 
@@ -1033,7 +1044,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 	case MCH_CGA:
 	case MCH_PCJR:
 	case MCH_TANDY:
-		vga.draw.mode = LINE;
+		vga.draw.mode = DRAWLINE;
 		break;
 	case MCH_EGA:
 		// Note: The Paradise SVGA uses the same panning mechanism as EGA
@@ -1041,7 +1052,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		break;
 	case MCH_VGA:
 		if (svgaCard==SVGA_None) {
-			vga.draw.mode = LINE;
+			vga.draw.mode = DRAWLINE;
 			break;
 		}
 		// fall-through
@@ -1243,6 +1254,29 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 	// Display end
 	vga.draw.delay.vdend = vdend * vga.draw.delay.htotal;
 
+	// EGA frequency dependent monitor palette
+	if (machine == MCH_EGA) {
+		if (vga.misc_output & 1) {
+			// EGA card is in color mode
+			if ((1.0f/vga.draw.delay.htotal) > 19.0f) {
+				// 64 color EGA mode
+				VGA_ATTR_SetEGAMonitorPalette(EGA);
+			} else {
+				// 16 color CGA mode compatibility
+				VGA_ATTR_SetEGAMonitorPalette(CGA);
+			}
+		} else {
+			// EGA card in monochrome mode
+			// It is not meant to be autodetected that way, you either
+			// have a monochrome or color monitor connected and
+			// the EGA switches configured appropriately.
+			// But this would only be a problem if a program sets 
+			// the adapter to monochrome mode and still expects color output.
+			// Such a program should be shot to the moon...
+			VGA_ATTR_SetEGAMonitorPalette(MONO);
+		}
+	}
+
 	vga.draw.parts_total=VGA_PARTS;
 	/*
       6  Horizontal Sync Polarity. Negative if set
@@ -1278,7 +1312,9 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		break;
 	case 3:		//480 line mode, filled with 525 total
 	default:
-		pheight = (480.0 / 480.0) * ( 525.0 / vtotal );
+		//Allow 527 total ModeX to have exact 1:1 aspect
+		target_total = (vga.mode==M_VGA && vtotal==527) ? 527.0 : 525.0;
+		pheight = (480.0 / 480.0) * ( target_total / vtotal );
 		break;
 	}
 
@@ -1371,6 +1407,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		vga.draw.linear_mask = (vga.vmemwrap<<1) - 1;
 		break;
 	case M_CGA16:
+		aspect_ratio=1.2;
 		doubleheight=true;
 		vga.draw.blocks=width*2;
 		width<<=4;
@@ -1389,7 +1426,6 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		VGA_DrawLine=VGA_Draw_1BPP_Line;
 		break;
 	case M_TEXT:
-		aspect_ratio=1.0;
 		vga.draw.blocks=width;
 		doublewidth=(vga.seq.clocking_mode & 0x8) > 0;
 		if ((IS_VGA_ARCH) && (svgaCard==SVGA_None)) {
@@ -1400,6 +1436,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 			} else {
 				vga.draw.char9dot = true;
 				width*=9;
+				aspect_ratio*=1.125;
 			}
 			VGA_DrawLine=VGA_TEXT_Xlat16_Draw_Line;
 			bpp=16;
@@ -1411,9 +1448,9 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		}
 		break;
 	case M_HERC_GFX:
-		aspect_ratio=1.5;
 		vga.draw.blocks=width*2;
 		width*=16;
+		aspect_ratio=((double)width/(double)height)*(3.0/4.0);
 		VGA_DrawLine=VGA_Draw_1BPP_Line;
 		break;
 	case M_TANDY2:
@@ -1459,14 +1496,14 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		break;
 	case M_TANDY_TEXT:
 		doublewidth=(vga.tandy.mode_control & 0x1)==0;
-		aspect_ratio=1;
+		aspect_ratio=1.2;
 		doubleheight=true;
 		vga.draw.blocks=width;
 		width<<=3;
 		VGA_DrawLine=VGA_TEXT_Draw_Line;
 		break;
 	case M_HERC_TEXT:
-		aspect_ratio=1;
+		aspect_ratio=((double)480)/((double)350);
 		vga.draw.blocks=width;
 		width<<=3;
 		VGA_DrawLine=VGA_TEXT_Herc_Draw_Line;

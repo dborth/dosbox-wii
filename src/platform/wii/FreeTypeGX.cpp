@@ -34,7 +34,7 @@ void InitFreeType(uint8_t* fontBuffer, FT_Long bufferSize)
 	FT_New_Memory_Face(ftLibrary, (FT_Byte *)fontBuffer, bufferSize, 0, &ftFace);
 	ftSlot = ftFace->glyph;
 
-	for(int i=0; i<50; i++)
+	for(int i=0; i <= MAX_FONT_SIZE; i++)
 		fontSystem[i] = NULL;
 }
 
@@ -52,7 +52,7 @@ void ChangeFontSize(FT_UInt pixelSize)
 
 void ClearFontData()
 {
-	for(int i=0; i<50; i++)
+	for(int i=0; i <= MAX_FONT_SIZE; i++)
 	{
 		if(fontSystem[i])
 			delete fontSystem[i];
@@ -100,6 +100,12 @@ FreeTypeGX::FreeTypeGX(FT_UInt pixelSize, uint8_t vertexIndex)
 	this->setCompatibilityMode(FTGX_COMPATIBILITY_DEFAULT_TEVOP_GX_PASSCLR | FTGX_COMPATIBILITY_DEFAULT_VTXDESC_GX_NONE);
 	this->ftPointSize = pixelSize;
 	this->ftKerningEnabled = FT_HAS_KERNING(ftFace);
+	if (ftFace->size) {
+		this->ftMaxAdvanceX = ftFace->size->metrics.max_advance >> 6;
+	}
+	else {
+		this->ftMaxAdvanceX = ftFace->max_advance_width >> 6;
+	}
 }
 
 /**
@@ -391,17 +397,17 @@ int16_t FreeTypeGX::getStyleOffsetHeight(ftgxDataOffset *offset, uint16_t format
  * @param textStyle	Flags which specify any styling which should be applied to the rendered string.
  * @return The number of characters printed.
  */
-uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color, uint16_t textStyle)
+uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color, uint16_t textStyle, int monoPercent)
 {
-	uint16_t x_pos = x, printed = 0;
-	uint16_t x_offset = 0, y_offset = 0;
+	int16_t x_pos = x, printed = 0;
+	int16_t x_offset = 0, y_offset = 0;
 	GXTexObj glyphTexture;
 	FT_Vector pairDelta;
 	ftgxDataOffset offset;
 
 	if(textStyle & FTGX_JUSTIFY_MASK)
 	{
-		x_offset = this->getStyleOffsetWidth(this->getWidth(text), textStyle);
+		x_offset = this->getStyleOffsetWidth(this->getWidth(text, textStyle, monoPercent), textStyle);
 	}
 	if(textStyle & FTGX_ALIGN_MASK)
 	{
@@ -410,6 +416,11 @@ uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color
 	}
 
 	int i = 0;
+	int x_diff = 0;
+	int monoAdvanceX = 0;
+	if (textStyle & FTGX_MONOSPACE_FAKE) {
+		monoAdvanceX = (int)this->ftMaxAdvanceX * monoPercent / 100;
+	}
 	while (text[i])
 	{
 		ftgxCharData* glyphData = NULL;
@@ -424,16 +435,27 @@ uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color
 
 		if (glyphData != NULL)
 		{
-			if (this->ftKerningEnabled && i)
-			{
-				FT_Get_Kerning(ftFace, this->fontData[text[i - 1]].glyphIndex, glyphData->glyphIndex, FT_KERNING_DEFAULT, &pairDelta);
-				x_pos += pairDelta.x >> 6;
+			if (textStyle & FTGX_MONOSPACE_FAKE) {
+				x_diff = (monoAdvanceX - (int)glyphData->glyphAdvanceX) / 2;
+				x_pos += x_diff;
+			}
+			else {
+				if (this->ftKerningEnabled && i)
+				{
+					FT_Get_Kerning(ftFace, this->fontData[text[i - 1]].glyphIndex, glyphData->glyphIndex, FT_KERNING_DEFAULT, &pairDelta);
+					x_pos += pairDelta.x >> 6;
+				}
 			}
 
 			GX_InitTexObj(&glyphTexture, glyphData->glyphDataTexture, glyphData->textureWidth, glyphData->textureHeight, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
 			this->copyTextureToFramebuffer(&glyphTexture, glyphData->textureWidth, glyphData->textureHeight, x_pos + glyphData->renderOffsetX + x_offset, y - glyphData->renderOffsetY + y_offset, color);
 
-			x_pos += glyphData->glyphAdvanceX;
+			if (textStyle & FTGX_MONOSPACE_FAKE) {
+				x_pos += monoAdvanceX - x_diff;
+			}
+			else {
+				x_pos += glyphData->glyphAdvanceX;
+			}
 			++printed;
 		}
 		++i;
@@ -442,7 +464,7 @@ uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color
 	if(textStyle & FTGX_STYLE_MASK)
 	{
 		this->getOffset(text, &offset);
-		this->drawTextFeature(x + x_offset, y + y_offset, this->getWidth(text), &offset, textStyle, color);
+		this->drawTextFeature(x + x_offset, y + y_offset, this->getWidth(text, textStyle, monoPercent), &offset, textStyle, color);
 	}
 
 	return printed;
@@ -451,9 +473,9 @@ uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t *text, GXColor color
 /**
  * \overload
  */
-uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t const *text, GXColor color, uint16_t textStyle)
+uint16_t FreeTypeGX::drawText(int16_t x, int16_t y, wchar_t const *text, GXColor color, uint16_t textStyle, int monoPercent)
 {
-	return this->drawText(x, y, (wchar_t *)text, color, textStyle);
+	return this->drawText(x, y, (wchar_t *)text, color, textStyle, monoPercent);
 }
 
 void FreeTypeGX::drawTextFeature(int16_t x, int16_t y, uint16_t width, ftgxDataOffset *offsetData, uint16_t format, GXColor color)
@@ -476,12 +498,16 @@ void FreeTypeGX::drawTextFeature(int16_t x, int16_t y, uint16_t width, ftgxDataO
  * @param text	NULL terminated string to calculate.
  * @return The width of the text string in pixels.
  */
-uint16_t FreeTypeGX::getWidth(wchar_t *text)
+uint16_t FreeTypeGX::getWidth(wchar_t *text, uint16_t textStyle, int monoPercent)
 {
 	uint16_t strWidth = 0;
 	FT_Vector pairDelta;
 
 	int i = 0;
+	int monoAdvanceX = 0;
+	if (textStyle & FTGX_MONOSPACE_FAKE) {
+		monoAdvanceX = (int)this->ftMaxAdvanceX * monoPercent / 100;
+	}
 	while (text[i])
 	{
 		ftgxCharData* glyphData = NULL;
@@ -496,13 +522,18 @@ uint16_t FreeTypeGX::getWidth(wchar_t *text)
 
 		if (glyphData != NULL)
 		{
-			if (this->ftKerningEnabled && (i > 0))
-			{
-				FT_Get_Kerning(ftFace, this->fontData[text[i - 1]].glyphIndex, glyphData->glyphIndex, FT_KERNING_DEFAULT, &pairDelta);
-				strWidth += pairDelta.x >> 6;
+			if (textStyle & FTGX_MONOSPACE_FAKE) {
+				strWidth += monoAdvanceX;
 			}
+			else {
+				if (this->ftKerningEnabled && (i > 0))
+				{
+					FT_Get_Kerning(ftFace, this->fontData[text[i - 1]].glyphIndex, glyphData->glyphIndex, FT_KERNING_DEFAULT, &pairDelta);
+					strWidth += pairDelta.x >> 6;
+				}
 
-			strWidth += glyphData->glyphAdvanceX;
+				strWidth += glyphData->glyphAdvanceX;
+			}
 		}
 		++i;
 	}
@@ -513,9 +544,9 @@ uint16_t FreeTypeGX::getWidth(wchar_t *text)
  *
  * \overload
  */
-uint16_t FreeTypeGX::getWidth(wchar_t const *text)
+uint16_t FreeTypeGX::getWidth(wchar_t const *text, uint16_t textStyle, int monoPercent)
 {
-	return this->getWidth((wchar_t *)text);
+	return this->getWidth((wchar_t *)text, textStyle, monoPercent);
 }
 
 /**

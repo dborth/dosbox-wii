@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -34,13 +34,18 @@
 Bitu call_shellstop;
 /* Larger scope so shell_del autoexec can use it to
  * remove things from the environment */
-Program * first_shell = 0; 
+DOS_Shell * first_shell = 0;
 
 static Bitu shellstop_handler(void) {
 	return CBRET_STOP;
 }
 
 static void SHELL_ProgramStart(Program * * make) {
+	*make = new DOS_Shell;
+}
+//Repeat it with the correct type, could do it in the function below, but this way it should be 
+//clear that if the above function is changed, this function might need a change as well.
+static void SHELL_ProgramStart_First_shell(DOS_Shell * * make) {
 	*make = new DOS_Shell;
 }
 
@@ -94,14 +99,28 @@ void AutoexecObject::CreateAutoexec(void) {
 	//Create a new autoexec.bat
 	autoexec_data[0] = 0;
 	size_t auto_len;
-	for(auto_it it=  autoexec_strings.begin(); it != autoexec_strings.end(); it++) {
+	for(auto_it it = autoexec_strings.begin(); it != autoexec_strings.end(); it++) {
+
+		std::string linecopy = (*it);
+		std::string::size_type offset = 0;
+		//Lets have \r\n as line ends in autoexec.bat.
+		while(offset < linecopy.length()) {
+			std::string::size_type  n = linecopy.find("\n",offset);
+			if ( n == std::string::npos ) break;
+			std::string::size_type rn = linecopy.find("\r\n",offset);
+			if ( rn != std::string::npos && rn + 1 == n) {offset = n + 1; continue;}
+			// \n found without matching \r
+			linecopy.replace(n,1,"\r\n");
+			offset = n + 2;
+		}
+
 		auto_len = strlen(autoexec_data);
-		if ((auto_len+(*it).length()+3)>AUTOEXEC_SIZE) {
+		if ((auto_len+linecopy.length() + 3) > AUTOEXEC_SIZE) {
 			E_Exit("SYSTEM:Autoexec.bat file overflow");
 		}
-		sprintf((autoexec_data+auto_len),"%s\r\n",(*it).c_str());
+		sprintf((autoexec_data + auto_len),"%s\r\n",linecopy.c_str());
 	}
-	if(first_shell) VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
+	if (first_shell) VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
 }
 
 AutoexecObject::~AutoexecObject(){
@@ -109,21 +128,32 @@ AutoexecObject::~AutoexecObject(){
 
 	// Remove the line from the autoexecbuffer and update environment
 	for(auto_it it = autoexec_strings.begin(); it != autoexec_strings.end(); ) {
-		if((*it) == buf) {
-			it = autoexec_strings.erase(it);
+		if ((*it) == buf) {
 			std::string::size_type n = buf.size();
 			char* buf2 = new char[n + 1];
 			safe_strncpy(buf2, buf.c_str(), n + 1);
+			bool stringset = false;
 			// If it's a environment variable remove it from there as well
-			if((strncasecmp(buf2,"set ",4) == 0) && (strlen(buf2) > 4)){
+			if ((strncasecmp(buf2,"set ",4) == 0) && (strlen(buf2) > 4)){
 				char* after_set = buf2 + 4;//move to variable that is being set
 				char* test = strpbrk(after_set,"=");
-				if(!test) continue;
+				if (!test) {
+					delete [] buf2;
+					continue;
+				}
 				*test = 0;
+				stringset = true;
 				//If the shell is running/exists update the environment
-				if(first_shell) first_shell->SetEnv(after_set,"");
+				if (first_shell) first_shell->SetEnv(after_set,"");
 			}
 			delete [] buf2;
+			if (stringset && first_shell && first_shell->bf && first_shell->bf->filename.find("AUTOEXEC.BAT") != std::string::npos) {
+				//Replace entry with spaces if it is a set and from autoexec.bat, as else the location counter will be off.
+				*it = buf.assign(buf.size(),' ');
+				it++;
+			} else {
+				it = autoexec_strings.erase(it);
+			}
 		} else it++;
 	}
 	this->CreateAutoexec();
@@ -166,9 +196,9 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 			while (*lr && *lr!=' ' && *lr!='<' && *lr!='|') lr++;
 			//if it ends on a : => remove it.
 			if((*ofn != lr) && (lr[-1] == ':')) lr[-1] = 0;
-//			if(*lr && *(lr+1)) 
-//				*lr++=0; 
-//			else 
+//			if(*lr && *(lr+1))
+//				*lr++=0;
+//			else
 //				*lr=0;
 			t = (char*)malloc(lr-*ofn+1);
 			safe_strncpy(t,*ofn,lr-*ofn+1);
@@ -180,9 +210,9 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 			*ifn=lr;
 			while (*lr && *lr!=' ' && *lr!='>' && *lr != '|') lr++;
 			if((*ifn != lr) && (lr[-1] == ':')) lr[-1] = 0;
-//			if(*lr && *(lr+1)) 
-//				*lr++=0; 
-//			else 
+//			if(*lr && *(lr+1))
+//				*lr++=0;
+//			else
 //				*lr=0;
 			t = (char*)malloc(lr-*ifn+1);
 			safe_strncpy(t,*ifn,lr-*ifn+1);
@@ -196,7 +226,7 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 	}
 	*lw=0;
 	return num;
-}	
+}
 
 void DOS_Shell::ParseLine(char * line) {
 	LOG(LOG_EXEC,LOG_ERROR)("Parsing command line: %s",line);
@@ -205,7 +235,7 @@ void DOS_Shell::ParseLine(char * line) {
 	line = trim(line);
 
 	/* Do redirection and pipe checks */
-	
+
 	char * in  = 0;
 	char * out = 0;
 
@@ -215,23 +245,23 @@ void DOS_Shell::ParseLine(char * line) {
 	bool append;
 	bool normalstdin  = false;	/* wether stdin/out are open on start. */
 	bool normalstdout = false;	/* Bug: Assumed is they are "con"      */
-	
+
 	num = GetRedirection(line,&in, &out,&append);
-	if (num>1) LOG_MSG("SHELL:Multiple command on 1 line not supported");
+	if (num>1) LOG_MSG("SHELL: Multiple command on 1 line not supported");
 	if (in || out) {
-		normalstdin  = (psp->GetFileHandle(0) != 0xff); 
-		normalstdout = (psp->GetFileHandle(1) != 0xff); 
+		normalstdin  = (psp->GetFileHandle(0) != 0xff);
+		normalstdout = (psp->GetFileHandle(1) != 0xff);
 	}
 	if (in) {
 		if(DOS_OpenFile(in,OPEN_READ,&dummy)) {	//Test if file exists
 			DOS_CloseFile(dummy);
-			LOG_MSG("SHELL:Redirect input from %s",in);
+			LOG_MSG("SHELL: Redirect input from %s",in);
 			if(normalstdin) DOS_CloseFile(0);	//Close stdin
 			DOS_OpenFile(in,OPEN_READ,&dummy);	//Open new stdin
 		}
 	}
 	if (out){
-		LOG_MSG("SHELL:Redirect output to %s",out);
+		LOG_MSG("SHELL: Redirect output to %s",out);
 		if(normalstdout) DOS_CloseFile(1);
 		if(!normalstdin && !in) DOS_OpenFile("con",OPEN_READWRITE,&dummy);
 		bool status = true;
@@ -245,7 +275,7 @@ void DOS_Shell::ParseLine(char * line) {
 		} else {
 			status = DOS_OpenFileExtended(out,OPEN_READWRITE,DOS_ATTR_ARCHIVE,0x12,&dummy,&dummy2);
 		}
-		
+
 		if(!status && normalstdout) DOS_OpenFile("con",OPEN_READWRITE,&dummy); //Read only file, open con again
 		if(!normalstdin && !in) DOS_CloseFile(0);
 	}
@@ -268,21 +298,21 @@ void DOS_Shell::ParseLine(char * line) {
 
 
 
-void DOS_Shell::RunInternal(void)
-{
+void DOS_Shell::RunInternal(void) {
 	char input_line[CMD_MAXLINE] = {0};
-	while(bf && bf->ReadLine(input_line)) 
-	{
-		if (echo) {
+	while (bf) {
+		if (bf->ReadLine(input_line)) {
+			if (echo) {
 				if (input_line[0] != '@') {
 					ShowPrompt();
 					WriteOut_NoParsing(input_line);
 					WriteOut_NoParsing("\n");
-				};
-			};
-		ParseLine(input_line);
+				}
+			}
+			ParseLine(input_line);
+			if (echo) WriteOut_NoParsing("\n");
+		}
 	}
-	return;
 }
 
 void DOS_Shell::Run(void) {
@@ -299,18 +329,20 @@ void DOS_Shell::Run(void) {
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
-	WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
-#if C_DEBUG
-	WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
-#endif
-	if (machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
-	if (machine == MCH_HERC) WriteOut(MSG_Get("SHELL_STARTUP_HERC"));
-	WriteOut(MSG_Get("SHELL_STARTUP_END"));
-
 	if (cmd->FindString("/INIT",line,true)) {
+		WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
+#if C_DEBUG
+		WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
+#endif
+		if (machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+		if (machine == MCH_HERC) WriteOut(MSG_Get("SHELL_STARTUP_HERC"));
+		WriteOut(MSG_Get("SHELL_STARTUP_END"));
+
 		strcpy(input_line,line.c_str());
 		line.erase();
 		ParseLine(input_line);
+	} else {
+		WriteOut(MSG_Get("SHELL_STARTUP_SUB"),VERSION);
 	}
 	do {
 		if (bf){
@@ -355,14 +387,25 @@ public:
 		char * extra = const_cast<char*>(section->data.c_str());
 		if (extra && !secure && !control->cmdline->FindExist("-noautoexec",true)) {
 			/* detect if "echo off" is the first line */
+			size_t firstline_length = strcspn(extra,"\r\n");
 			bool echo_off  = !strncasecmp(extra,"echo off",8);
-			if (!echo_off) echo_off = !strncasecmp(extra,"@echo off",9);
+			if (echo_off && firstline_length == 8) extra += 8;
+			else {
+				echo_off = !strncasecmp(extra,"@echo off",9);
+				if (echo_off && firstline_length == 9) extra += 9;
+				else echo_off = false;
+			}
 
-			/* if "echo off" add it to the front of autoexec.bat */
-			if(echo_off) autoexec_echo.InstallBefore("@echo off");
+			/* if "echo off" move it to the front of autoexec.bat */
+			if (echo_off)  { 
+				autoexec_echo.InstallBefore("@echo off");
+				if (*extra == '\r') extra++; //It can point to \0
+				if (*extra == '\n') extra++; //same
+			}
 
-			/* Install the stuff from the configfile */
-			autoexec[0].Install(section->data);
+			/* Install the stuff from the configfile if anything left after moving echo off */
+
+			if (*extra) autoexec[0].Install(std::string(extra));
 		}
 
 		/* Check to see for extra command line options to be added (before the command specified on commandline) */
@@ -380,38 +423,42 @@ public:
 		bool addexit = control->cmdline->FindExist("-exit",true);
 
 		/* Check for first command being a directory or file */
-		char buffer[CROSS_LEN];
-		char orig[CROSS_LEN];
+		char buffer[CROSS_LEN+1];
+		char orig[CROSS_LEN+1];
 		char cross_filesplit[2] = {CROSS_FILESPLIT , 0};
-		/* Combining -securemode and no parameter leaves you with a lovely Z:\. */ 
-		if ( !control->cmdline->FindCommand(1,line) ) { 
-			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
-		} else {
+
+		Bitu dummy = 1;
+		bool command_found = false;
+		while (control->cmdline->FindCommand(dummy++,line) && !command_found) {
 			struct stat test;
+			if (line.length() > CROSS_LEN) continue;
 			strcpy(buffer,line.c_str());
-			if (stat(buffer,&test)){
-				getcwd(buffer,CROSS_LEN);
+			if (stat(buffer,&test)) {
+				if (getcwd(buffer,CROSS_LEN) == NULL) continue;
+				if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
 				strcat(buffer,cross_filesplit);
 				strcat(buffer,line.c_str());
-				if (stat(buffer,&test)) goto nomount;
+				if (stat(buffer,&test)) continue;
 			}
-			if (test.st_mode & S_IFDIR) { 
+			if (test.st_mode & S_IFDIR) {
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				if(secure) autoexec[14].Install("z:\\config.com -securemode");
+				command_found = true;
 			} else {
 				char* name = strrchr(buffer,CROSS_FILESPLIT);
-				if (!name) { //Only a filename 
+				if (!name) { //Only a filename
 					line = buffer;
-					getcwd(buffer,CROSS_LEN);
+					if (getcwd(buffer,CROSS_LEN) == NULL) continue;
+					if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
 					strcat(buffer,cross_filesplit);
 					strcat(buffer,line.c_str());
-					if(stat(buffer,&test)) goto nomount;
+					if(stat(buffer,&test)) continue;
 					name = strrchr(buffer,CROSS_FILESPLIT);
-					if(!name) goto nomount;
+					if(!name) continue;
 				}
 				*name++ = 0;
-				if (access(buffer,F_OK)) goto nomount;
+				if (access(buffer,F_OK)) continue;
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				/* Save the non-modified filename (so boot and imgmount can use it (long filenames, case sensivitive)) */
@@ -438,9 +485,14 @@ public:
 					autoexec[15].Install(name);
 					if(addexit) autoexec[16].Install("exit");
 				}
+				command_found = true;
 			}
 		}
-nomount:
+
+		/* Combining -securemode, noautoexec and no parameters leaves you with a lovely Z:\. */
+		if ( !command_found ) {
+			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
+		}
 		VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
 	}
 };
@@ -449,6 +501,41 @@ static AUTOEXEC* test;
 
 void AUTOEXEC_Init(Section * sec) {
 	test = new AUTOEXEC(sec);
+}
+
+static Bitu INT2E_Handler(void) {
+	/* Save return address and current process */
+	RealPt save_ret=real_readd(SegValue(ss),reg_sp);
+	Bit16u save_psp=dos.psp();
+
+	/* Set first shell as process and copy command */
+	dos.psp(DOS_FIRST_SHELL);
+	DOS_PSP psp(DOS_FIRST_SHELL);
+	psp.SetCommandTail(RealMakeSeg(ds,reg_si));
+	SegSet16(ss,RealSeg(psp.GetStack()));
+	reg_sp=2046;
+
+	/* Read and fix up command string */
+	CommandTail tail;
+	MEM_BlockRead(PhysMake(dos.psp(),128),&tail,128);
+	if (tail.count<127) tail.buffer[tail.count]=0;
+	else tail.buffer[126]=0;
+	char* crlf=strpbrk(tail.buffer,"\r\n");
+	if (crlf) *crlf=0;
+
+	/* Execute command */
+	if (strlen(tail.buffer)) {
+		DOS_Shell temp;
+		temp.ParseLine(tail.buffer);
+		temp.RunInternal();
+	}
+
+	/* Restore process and "return" to caller */
+	dos.psp(save_psp);
+	SegSet16(cs,RealSeg(save_ret));
+	reg_ip=RealOff(save_ret);
+	reg_ax=0;
+	return CBRET_NONE;
 }
 
 static char const * const path_string="PATH=Z:\\";
@@ -465,7 +552,7 @@ void SHELL_Init() {
 	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s.\n");
 	MSG_Add("SHELL_MISSING_PARAMETER","Required parameter missing.\n");
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s.\n");
-	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
+	MSG_Add("SHELL_CMD_CHDIR_HINT","Hint: To change to different drive type \033[31m%c:\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_2","directoryname is longer than 8 characters and/or contains spaces.\nTry \033[31mcd %s\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_3","You are still on drive Z:, change to a mounted drive with \033[31mC:\033[0m.\n");
 	MSG_Add("SHELL_CMD_DATE_HELP","Displays or changes the internal date.\n");
@@ -562,7 +649,8 @@ void SHELL_Init() {
 		"\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_CGA","\xBA DOSBox supports Composite CGA mode.                                \xBA\n"
-	        "\xBA Use \033[31m(alt-)F11\033[37m to change the colours when in this mode.             \xBA\n"
+	        "\xBA Use \033[31mF12\033[37m to set composite output ON, OFF, or AUTO (default).        \xBA\n"
+	        "\xBA \033[31m(Alt-)F11\033[37m changes hue; \033[31mctrl-alt-F11\033[37m selects early/late CGA model.  \xBA\n"
 	        "\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_HERC","\xBA Use \033[31mF11\033[37m to cycle through white, amber, and green monochrome color. \xBA\n"
@@ -581,6 +669,7 @@ void SHELL_Init() {
 	        //"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
 #endif
+	MSG_Add("SHELL_STARTUP_SUB","\n\n\033[32;1mDOSBox %s Command Shell\033[0m\n\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Displays/changes the current directory.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP_LONG","CHDIR [drive:][path]\n"
 	        "CHDIR [..]\n"
@@ -654,6 +743,12 @@ void SHELL_Init() {
 	/* Set up int 23 to "int 20" in the psp. Fixes what.exe */
 	real_writed(0,0x23*4,((Bit32u)psp_seg<<16));
 
+	/* Set up int 2e handler */
+	Bitu call_int2e=CALLBACK_Allocate();
+	RealPt addr_int2e=RealMake(psp_seg+16+1,8);
+	CALLBACK_Setup(call_int2e,&INT2E_Handler,CB_IRET_STI,Real2Phys(addr_int2e),"Shell Int 2e");
+	RealSetVec(0x2e,addr_int2e);
+
 	/* Setup MCBs */
 	DOS_MCB pspmcb((Bit16u)(psp_seg-1));
 	pspmcb.SetPSPSeg(psp_seg);	// MCB of the command shell psp
@@ -663,7 +758,7 @@ void SHELL_Init() {
 	envmcb.SetPSPSeg(psp_seg);	// MCB of the command shell environment
 	envmcb.SetSize(DOS_MEM_START-env_seg);
 	envmcb.SetType(0x4d);
-	
+
 	/* Setup environment */
 	PhysPt env_write=PhysMake(env_seg,0);
 	MEM_BlockWrite(env_write,path_string,(Bitu)(strlen(path_string)+1));
@@ -678,7 +773,7 @@ void SHELL_Init() {
 	DOS_PSP psp(psp_seg);
 	psp.MakeNew(0);
 	dos.psp(psp_seg);
-   
+
 	/* The start of the filetable in the psp must look like this:
 	 * 01 01 01 00 02
 	 * In order to achieve this: First open 2 files. Close the first and
@@ -690,7 +785,7 @@ void SHELL_Init() {
 	DOS_ForceDuplicateEntry(1,0);				/* "new" STDIN */
 	DOS_ForceDuplicateEntry(1,2);				/* STDERR */
 	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDAUX */
-	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDPRN */
+	DOS_OpenFile("PRN",OPEN_READWRITE,&dummy);	/* STDPRN */
 
 	psp.SetParent(psp_seg);
 	/* Set the environment */
@@ -698,15 +793,16 @@ void SHELL_Init() {
 	/* Set the command line for the shell start up */
 	CommandTail tail;
 	tail.count=(Bit8u)strlen(init_line);
+	memset(&tail.buffer,0,127);
 	strcpy(tail.buffer,init_line);
 	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
-	
+
 	/* Setup internal DOS Variables */
 	dos.dta(RealMake(psp_seg,0x80));
 	dos.psp(psp_seg);
 
-	
-	SHELL_ProgramStart(&first_shell);
+
+	SHELL_ProgramStart_First_shell(&first_shell);
 	first_shell->Run();
 	delete first_shell;
 	first_shell = 0;//Make clear that it shouldn't be used anymore

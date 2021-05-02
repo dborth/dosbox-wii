@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -911,6 +911,8 @@ Bitu keyboard_layout::read_codepage_file(const char* codepage_file_name, Bit32s 
 					for (Bitu i=0;i<256*16;i++) {
 						phys_writeb(font16pt+i,cpi_buf[font_data_start+i]);
 					}
+					// terminate alternate list to prevent loading
+					phys_writeb(Real2Phys(int10.rom.font_16_alternate),0);
 					font_changed=true;
 				} else if (font_height==0x0e) {
 					// 14x8 font
@@ -918,6 +920,8 @@ Bitu keyboard_layout::read_codepage_file(const char* codepage_file_name, Bit32s 
 					for (Bitu i=0;i<256*14;i++) {
 						phys_writeb(font14pt+i,cpi_buf[font_data_start+i]);
 					}
+					// terminate alternate list to prevent loading
+					phys_writeb(Real2Phys(int10.rom.font_14_alternate),0);
 					font_changed=true;
 				} else if (font_height==0x08) {
 					// 8x8 fonts

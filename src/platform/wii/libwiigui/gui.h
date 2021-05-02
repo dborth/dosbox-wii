@@ -35,6 +35,7 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <vector>
 #include <exception>
 #include <wchar.h>
@@ -54,7 +55,21 @@ extern FreeTypeGX *fontSystem[];
 #define SCROLL_DELAY_INITIAL	200000
 #define SCROLL_DELAY_LOOP		30000
 #define SCROLL_DELAY_DECREASE	300
+#define FILE_PAGESIZE 			8
+#define PAGESIZE 				8
+#define MAX_OPTIONS 			150
 #define MAX_KEYBOARD_DISPLAY	32
+
+// define this marco to enable/add ESC, ENTER, F1, F2, etc. buttons
+#define EXTENDED_KEYBOARD
+
+#ifdef EXTENDED_KEYBOARD
+#define KB_ROWS 5
+#define KB_COLUMNS 12
+#else
+#define KB_ROWS 4
+#define KB_COLUMNS 11
+#endif
 
 typedef void (*UpdateCallback)(void * e);
 
@@ -233,7 +248,7 @@ class GuiElement
 		//!Constructor
 		GuiElement();
 		//!Destructor
-		~GuiElement();
+		virtual ~GuiElement();
 		//!Set the element's parent
 		//!\param e Pointer to parent element
 		void SetParent(GuiElement * e);
@@ -460,7 +475,7 @@ class GuiWindow : public GuiElement
 		//!\param h Height of window
 		GuiWindow(int w, int h);
 		//!Destructor
-		~GuiWindow();
+		virtual ~GuiWindow();
 		//!Appends a GuiElement to the GuiWindow
 		//!\param e The GuiElement to append. If it is already in the GuiWindow, it is removed first
 		void Append(GuiElement* e);
@@ -622,6 +637,63 @@ class GuiImage : public GuiElement
 		int stripe; //!< Alpha value (0-255) to apply a stripe effect to the texture
 };
 
+typedef struct vconsole vconsole_t;
+
+// by retro100
+// The class GuiMonoText is dual licensed for you to choose from.
+// public domain. no warranty implied; use at your own risk.
+// also licensed under the zlib license.
+class GuiMonoText : public GuiImage
+{
+	public:
+		//! Constructor
+		//!
+		//! The full glyph width is glyphMarginLeft + glyphWidth + glyphMarginRight
+		//! The full glyph height is glyphMarginTop + glyphHeight + glyphMarginBottom
+		//!
+		//!\param glyphCountX Count of glyphs in X direction inside the image/tileset
+		//!\param glyphCountY Count of glyphs in Y direction inside the image/tileset
+		//!\param firstGlyphAsciiCode e.g. 0 if all 128 glyphs are inside or 32 if the first glyph is a blank
+		//!\param glyphWidth width of one glyph in pixels WITHOUT extra margin between glyphs
+		//!\param glyphHeight height of one glyph in pixels without margin
+		//!\param glyphMarginLeft extra margin at the left side of each glyph (e.g. 0 or 1 px)
+		//!\param glyphMarginRight extra margin at the right side of each glyph (e.g. 0 or 1 px)
+		//!\param glyphMarginTop extra margin at the top side of each glyph (e.g. 0 or 1 px)
+		//!\param glyphMarginBottom extra margin at the bottom side of each glyph (e.g. 0 or 1 px)
+		GuiMonoText(GuiImageData * img,
+				unsigned int glyphCountX,
+				unsigned int glyphCountY,
+				unsigned int firstGlyphAsciiCode,
+				unsigned int glyphWidth,
+				unsigned int glyphHeight,
+				unsigned int glyphMarginLeft,
+				unsigned int glyphMarginRight,
+				unsigned int glyphMarginTop,
+				unsigned int glyphMarginBottom);
+		~GuiMonoText();
+		void SetText(const std::string& text);
+		void SetVirtualConsole(vconsole_t* vc, float lineSpace);
+		virtual void Draw();
+	private:
+		unsigned int glyphCountX;
+		unsigned int glyphCountY;
+		char firstGlyphAsciiCode;
+		float glyphWidthF;
+		float glyphHeightF;
+		float glyphMarginLeftF;
+		float glyphMarginTopF;
+		float fullGlyphWidthF;
+		float fullGlyphHeightF;
+		float texFullGlyphWidth;
+		float texFullGlyphHeight;
+		std::string text;
+		vconsole_t* vc;
+		float lineSpace;
+
+		void DrawText(float xpos, float ypos, const char* str);
+		void DrawVirtualConsole(float xpos, float ypos);
+};
+
 //!Display, manage, and manipulate text in the GUI
 class GuiText : public GuiElement
 {
@@ -675,6 +747,7 @@ class GuiText : public GuiElement
 		//!Sets the FreeTypeGX style attributes
 		//!\param s Style attributes
 		void SetStyle(u16 s);
+		void SetPseudoMonospace(int monoPercentage);
 		//!Sets the text alignment
 		//!\param hor Horizontal alignment (ALIGN_LEFT, ALIGN_RIGHT, ALIGN_CENTRE)
 		//!\param vert Vertical alignment (ALIGN_TOP, ALIGN_BOTTOM, ALIGN_MIDDLE)
@@ -697,6 +770,7 @@ class GuiText : public GuiElement
 		int textScrollDelay; //!< Scrolling speed
 		u16 style; //!< FreeTypeGX style attributes
 		bool wrap; //!< Wrapping toggle
+		int monoPercentage;
 };
 
 //!Display, manage, and manipulate tooltips in the GUI
@@ -816,7 +890,7 @@ class GuiButton : public GuiElement
 };
 
 typedef struct _keytype {
-	unsigned char ch, chShift;
+	char ch, chShift;
 } Key;
 
 //!On-screen keyboard
@@ -833,6 +907,7 @@ class GuiKeyboard : public GuiWindow
 		int caps;
 		GuiText * kbText;
 		GuiImage * keyTextboxImg;
+#ifdef EXTENDED_KEYBOARD
 		GuiText * keyEscText;
 		GuiImage * keyEscImg;
 		GuiImage * keyEscOverImg;
@@ -841,6 +916,7 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keyEnterImg;
 		GuiImage * keyEnterOverImg;
 		GuiButton * keyEnter;
+#endif
 		GuiText * keyCapsText;
 		GuiImage * keyCapsImg;
 		GuiImage * keyCapsOverImg;
@@ -856,10 +932,10 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keySpaceImg;
 		GuiImage * keySpaceOverImg;
 		GuiButton * keySpace;
-		GuiButton * keyBtn[5][12];
-		GuiImage * keyImg[5][12];
-		GuiImage * keyImgOver[5][12];
-		GuiText * keyTxt[5][12];
+		GuiButton * keyBtn[KB_ROWS][KB_COLUMNS];
+		GuiImage * keyImg[KB_ROWS][KB_COLUMNS];
+		GuiImage * keyImgOver[KB_ROWS][KB_COLUMNS];
+		GuiText * keyTxt[KB_ROWS][KB_COLUMNS];
 		GuiImageData * keyTextbox;
 		GuiImageData * key;
 		GuiImageData * keyOver;
@@ -870,8 +946,9 @@ class GuiKeyboard : public GuiWindow
 		GuiSound * keySoundOver;
 		GuiSound * keySoundClick;
 		GuiTrigger * trigA;
-		GuiTrigger * trigB;
-		Key keys[5][12]; // two chars = less space than one pointer
+		GuiTrigger * trig2;
+		Key keys[KB_ROWS][KB_COLUMNS]; // two chars = less space than one pointer
 };
+
 
 #endif
