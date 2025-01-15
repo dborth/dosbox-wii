@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -133,7 +133,7 @@ static Bitu DOS_21Handler(void) {
 			Bit8u c=reg_dl;Bit16u n=1;
 			DOS_WriteFile(STDOUT,&c,&n);
 			//Not in the official specs, but happens nonetheless. (last written character)
-			reg_al = c;// reg_al=(c==9)?0x20:c; //Officially: tab to spaces
+			reg_al=(c==9)?0x20:c; //strangely, tab conversion to spaces is reflected here
 		}
 		break;
 	case 0x03:		/* Read character from STDAUX */
@@ -184,8 +184,10 @@ static Bitu DOS_21Handler(void) {
 		default:
 			{
 				Bit8u c = reg_dl;Bit16u n = 1;
+				dos.direct_output=true;
 				DOS_WriteFile(STDOUT,&c,&n);
-				reg_al = reg_dl;
+				dos.direct_output=false;
+				reg_al=c;
 			}
 			break;
 		};
@@ -211,6 +213,7 @@ static Bitu DOS_21Handler(void) {
 			while ((c=mem_readb(buf++))!='$') {
 				DOS_WriteFile(STDOUT,&c,&n);
 			}
+			reg_al=c;
 		}
 		break;
 	case 0x0a:		/* Buffered Input */
@@ -223,6 +226,10 @@ static Bitu DOS_21Handler(void) {
 			free--;
 			for(;;) {
 				DOS_ReadFile(STDIN,&c,&n);
+				if (n == 0)				// End of file
+					E_Exit("DOS:0x0a:Redirected input reached EOF");
+				if (c == 10)			// Line feed
+					continue;
 				if (c == 8) {			// Backspace
 					if (read) {	//Something to backspace.
 						// STDOUT treats backspace as non-destructive.
@@ -487,10 +494,10 @@ static Bitu DOS_21Handler(void) {
 			Bit8u drive=reg_dl;
 			if (!drive || reg_ah==0x1f) drive = DOS_GetDefaultDrive();
 			else drive--;
-			if (Drives[drive]) {
+			if (drive < DOS_DRIVES && Drives[drive] && !Drives[drive]->isRemovable()) {
 				reg_al = 0x00;
 				SegSet16(ds,dos.tables.dpb);
-				reg_bx = drive;//Faking only the first entry (that is the driveletter)
+				reg_bx = drive*9;
 				LOG(LOG_DOSMISC,LOG_ERROR)("Get drive parameter block.");
 			} else {
 				reg_al=0xff;
@@ -833,6 +840,9 @@ static Bitu DOS_21Handler(void) {
 		reg_bx=dos.psp();
 		break;
 	case 0x52: {				/* Get list of lists */
+		Bit8u count=2; // floppy drives always counted
+		while (count<DOS_DRIVES && Drives[count] && !Drives[count]->isRemovable()) count++;
+		dos_infoblock.SetBlockDevices(count);
 		RealPt addr=dos_infoblock.GetPointer();
 		SegSet16(es,RealSeg(addr));
 		reg_bx=RealOff(addr);
@@ -1096,16 +1106,23 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x69:					/* Get/Set disk serial number */
 		{
+			Bit16u old_cx=reg_cx;
 			switch(reg_al)		{
 			case 0x00:				/* Get */
-				LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Get Disk serial number");
-				CALLBACK_SCF(true);
+				LOG(LOG_DOSMISC,LOG_WARN)("DOS:Get Disk serial number");
+				reg_cl=0x66;// IOCTL function
 				break;
-			case 0x01:
-				LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Set Disk serial number");
+			case 0x01:				/* Set */
+				LOG(LOG_DOSMISC,LOG_WARN)("DOS:Set Disk serial number");
+				reg_cl=0x46;// IOCTL function
+				break;
 			default:
 				E_Exit("DOS:Illegal Get Serial Number call %2X",reg_al);
 			}	
+			reg_ch=0x08;	// IOCTL category: disk drive
+			reg_ax=0x440d;	// Generic block device request
+			DOS_21Handler();
+			reg_cx=old_cx;
 			break;
 		} 
 	case 0x6c:					/* Extended Open/Create */
@@ -1157,26 +1174,32 @@ static Bitu DOS_27Handler(void) {
 }
 
 static Bitu DOS_25Handler(void) {
-	if(Drives[reg_al]==0){
-		reg_ax=0x8002;
+	if (reg_al >= DOS_DRIVES || !Drives[reg_al] || Drives[reg_al]->isRemovable()) {
+		reg_ax = 0x8002;
 		SETFLAGBIT(CF,true);
-	}else{
+	} else {
+		if (reg_cx == 1 && reg_dx == 0) {
+			if (reg_al >= 2) {
+				PhysPt ptr = PhysMake(SegValue(ds),reg_bx);
+				// write some BPB data into buffer for MicroProse installers
+				mem_writew(ptr+0x1c,0x3f); // hidden sectors
+			}
+		} else {
+			LOG(LOG_DOSMISC,LOG_NORMAL)("int 25 called but not as disk detection drive %u",reg_al);
+		}
 		SETFLAGBIT(CF,false);
-		if((reg_cx != 1) ||(reg_dx != 1))
-			LOG(LOG_DOSMISC,LOG_NORMAL)("int 25 called but not as diskdetection drive %X",reg_al);
-
-	   reg_ax=0;
+		reg_ax = 0;
 	}
     return CBRET_NONE;
 }
 static Bitu DOS_26Handler(void) {
 	LOG(LOG_DOSMISC,LOG_NORMAL)("int 26 called: hope for the best!");
-	if(Drives[reg_al]==0){
-		reg_ax=0x8002;
+	if (reg_al >= DOS_DRIVES || !Drives[reg_al] || Drives[reg_al]->isRemovable()) {	
+		reg_ax = 0x8002;
 		SETFLAGBIT(CF,true);
-	}else{
+	} else {
 		SETFLAGBIT(CF,false);
-		reg_ax=0;
+		reg_ax = 0;
 	}
     return CBRET_NONE;
 }
@@ -1198,10 +1221,10 @@ public:
 	// iret
 	// retf  <- int 21 4c jumps here to mimic a retf Cyber
 
-		callback[2].Install(DOS_25Handler,CB_RETF,"DOS Int 25");
+		callback[2].Install(DOS_25Handler,CB_RETF_STI,"DOS Int 25");
 		callback[2].Set_RealVec(0x25);
 
-		callback[3].Install(DOS_26Handler,CB_RETF,"DOS Int 26");
+		callback[3].Install(DOS_26Handler,CB_RETF_STI,"DOS Int 26");
 		callback[3].Set_RealVec(0x26);
 
 		callback[4].Install(DOS_27Handler,CB_IRET,"DOS Int 27");
@@ -1230,6 +1253,8 @@ public:
 	
 		dos.version.major=5;
 		dos.version.minor=0;
+		dos.direct_output=false;
+		dos.internal_output=false;
 	}
 	~DOS(){
 		for (Bit16u i=0;i<DOS_DRIVES;i++) delete Drives[i];

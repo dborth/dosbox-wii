@@ -1,0 +1,33 @@
+
+Most files are equal to the original dosbox svn repository (r4301).
+Some files are modified (or doesn't exist at the original repo).
+
+Modified files compared against the original
+svn repository (revision 4301) are:
+include/paging.h
+include/render.h
+include/setup.h
+src/cpu/core_full/ea_lookup.h
+src/cpu/core_full/string.h
+src/cpu/core_normal/string.h
+src/cpu/cpu.cpp
+src/dos/dos_programs.cpp
+src/dos/drive_cache.cpp
+src/dosbox.cpp
+src/gui/render_scalers.cpp
+src/gui/render_scalers.h
+src/gui/sdl_gui.cpp
+src/gui/sdlmain.cpp
+src/ints/bios.cpp
+src/misc/cross.cpp
+src/shell/shell.cpp
+
+The directory and all files from src/platform/wii
+are not included (doesn't exist) at the original
+dosbox svn repository.
+
+src/platform/wii/config.h is adapted for updated revision.
+
+The necessary updates for src/platform/wii/config.h
+are from src/platform/visualc/config.h.
+

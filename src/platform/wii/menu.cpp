@@ -15,22 +15,30 @@
 #include <wiiuse/wpad.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/param.h>
 
 #include "libwiigui/gui.h"
 #include "wiihardware.h"
+#include "menu.h"
+#include "cpu.h"
+#include "vconsole.h"
+#include "wiiio.h"
 
 #define THREAD_SLEEP 100
 #define APPVERSION 		"1.7"
+
+
+int MENU_CyclesDisplay = 0;
+int MENU_FrameskipDisplay = 0;
+
 
 static GuiImageData * pointer[4];
 static GuiWindow * mainWindow = NULL;
 static GuiButton * logoBtn = NULL;
 
 static lwp_t guithread = LWP_THREAD_NULL;
-static lwp_t creditsthread = LWP_THREAD_NULL;
 static bool guiHalt = true;
 static bool ExitRequested = false;
-static bool creditsOpen = false;
 
 /****************************************************************************
  * UpdateGUI
@@ -62,12 +70,6 @@ static void * UpdateGUI (void *arg)
 		for(i=3; i >= 0; i--)
 			mainWindow->Update(&userInput[i]);
 		
-		if(!creditsOpen && creditsthread != LWP_THREAD_NULL)
-		{
-			LWP_JoinThread(creditsthread, NULL);
-			creditsthread = LWP_THREAD_NULL;
-		}
-
 		if(ExitRequested)
 		{
 			for(i = 0; i <= 255; i += 15)
@@ -121,6 +123,81 @@ HaltGui()
 	// wait for thread to finish
 	LWP_JoinThread(guithread, NULL);
 	guithread = LWP_THREAD_NULL;
+}
+
+static void OnScreenConsole()
+{
+	vconsole_t& vc = *wiiio_get_vconsole();
+	GuiWindow terminal(screenwidth, screenheight);
+
+	GuiImageData backgroundData(bg_console_png);
+	GuiImage backgroundImg(&backgroundData);
+	backgroundImg.SetParent(&terminal);
+	backgroundImg.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	backgroundImg.SetPosition(23, 38);
+	terminal.Append(&backgroundImg);
+
+	GuiImageData fontData(font8x8_basic_png);
+	GuiMonoText terminalOutput(&fontData,
+			16, //glyphCountX
+			6, //glyphCountY
+			32, //firstGlyphAsciiCode
+			8, //glyphWidth
+			8, //glyphHeight
+			1, //glyphMarginLeft
+			1, //glyphMarginRight
+			1, //glyphMarginTop
+			1); //glyphMarginBottom
+	terminalOutput.SetParent(&terminal);
+	terminalOutput.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	terminalOutput.SetPosition(31, 48);
+	terminalOutput.SetVirtualConsole(&vc, 2.0f);
+	terminal.Append(&terminalOutput);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND_PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+	GuiTrigger trigA;
+
+	trigA.SetSimpleTrigger(-1, WPAD_BUTTON_A | WPAD_CLASSIC_BUTTON_A, PAD_BUTTON_A);
+	GuiText okBtnTxt("Close", 22, (GXColor){0, 0, 0, 255});
+	GuiImage okBtnImg(&btnOutline);
+	GuiImage okBtnImgOver(&btnOutlineOver);
+	GuiButton okBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
+
+	okBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	okBtn.SetPosition(80, -35);
+
+	okBtn.SetLabel(&okBtnTxt);
+	okBtn.SetImage(&okBtnImg);
+	okBtn.SetImageOver(&okBtnImgOver);
+	okBtn.SetSoundOver(&btnSoundOver);
+	okBtn.SetTrigger(&trigA);
+	okBtn.SetEffectGrow();
+
+	terminal.Append(&okBtn);
+
+	HaltGui();
+	mainWindow->SetState(STATE_DISABLED);
+	mainWindow->Append(&terminal);
+	mainWindow->ChangeFocus(&terminal);
+	ResumeGui();
+
+	for (;;) {
+		usleep(THREAD_SLEEP);
+
+		if(okBtn.GetState() == STATE_CLICKED) {
+			break;
+			// for testing: comment the break and uncomment this.
+			//okBtn.ResetState();
+			//vconsole_print(&vc, "012345678901234567890123456789");
+		}
+	}
+
+	HaltGui();
+	mainWindow->Remove(&terminal);
+	mainWindow->SetState(STATE_DEFAULT);
+	ResumeGui();
 }
 
 /****************************************************************************
@@ -208,7 +285,7 @@ static void OnScreenKeyboard(char * var, u32 maxlen)
  *
  * THIS MUST NOT BE REMOVED OR DISABLED IN ANY DERIVATIVE WORK
  ***************************************************************************/
-static void * WindowCredits(void *arg)
+static void WindowCredits()
 {
 	bool exit = false;
 	int i = 0;
@@ -287,21 +364,25 @@ static void * WindowCredits(void *arg)
 	
 	for(i=0; i < numEntries; i++)
 		delete txt[i];
-	creditsOpen = false;
-	return NULL;
 }
 
-static void DisplayCredits(void * ptr)
+static void updateCyclesText(GuiText * cycleText)
 {
-	if(logoBtn->GetState() != STATE_CLICKED)
-		return;
+	char tmpCyclesTxt[15];
+	if (CPU_CycleAutoAdjust) {
+		sprintf(tmpCyclesTxt, "%d%%", MENU_CyclesDisplay);
+	}
+	else {
+		sprintf(tmpCyclesTxt, "%d", MENU_CyclesDisplay);
+	}
+	cycleText->SetText(tmpCyclesTxt);
+}
 
-	logoBtn->ResetState();
-	
-	// spawn a new thread to handle the Credits
-	creditsOpen = true;
-	if(creditsthread == LWP_THREAD_NULL)
-		LWP_CreateThread (&creditsthread, WindowCredits, NULL, NULL, 0, 60);
+static void updateFskipText(GuiText * fskipText)
+{
+	char tmpFskipTxt[15];
+	sprintf(tmpFskipTxt, "%d", MENU_FrameskipDisplay);
+	fskipText->SetText(tmpFskipTxt);
 }
 
 /****************************************************************************
@@ -364,7 +445,72 @@ void HomeMenu ()
 	logoBtn->SetSoundOver(&btnSoundOver);
 	logoBtn->SetSoundClick(&btnSoundClick);
 	logoBtn->SetTrigger(&trigA);
-	logoBtn->SetUpdateCallback(DisplayCredits);
+
+	GuiText cycleText(NULL, 20, (GXColor){255, 255, 255, 255});
+	cycleText.SetPosition(-215, -180);
+	cycleText.SetPseudoMonospace(70);
+	updateCyclesText(&cycleText);
+
+	GuiText fskipText(NULL, 20, (GXColor){255, 255, 255, 255});
+	fskipText.SetPosition(-45, -180);
+	fskipText.SetPseudoMonospace(70);
+	updateFskipText(&fskipText);
+
+	GuiText cycleDecBtnTxt("-", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData cycleDec(keyboard_key_png);
+	GuiImage cycleDecImg(&cycleDec);
+	GuiImageData cycleDecOver(keyboard_key_over_png);
+	GuiImage cycleDecOverImg(&cycleDecOver);
+	GuiButton cycleDecBtn(cycleDec.GetWidth(), cycleDec.GetHeight());
+	cycleDecBtn.SetImage(&cycleDecImg);
+	cycleDecBtn.SetImageOver(&cycleDecOverImg);
+	cycleDecBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	cycleDecBtn.SetPosition(-270, -180);
+	cycleDecBtn.SetLabel(&cycleDecBtnTxt);
+	cycleDecBtn.SetTrigger(&trigA);
+	cycleDecBtn.SetEffectGrow();
+
+	GuiText cycleIncBtnTxt("+", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData cycleInc(keyboard_key_png);
+	GuiImage cycleIncImg(&cycleInc);
+	GuiImageData cycleIncOver(keyboard_key_over_png);
+	GuiImage cycleIncOverImg(&cycleIncOver);
+	GuiButton cycleIncBtn(cycleInc.GetWidth(), cycleInc.GetHeight());
+	cycleIncBtn.SetImage(&cycleIncImg);
+	cycleIncBtn.SetImageOver(&cycleIncOverImg);
+	cycleIncBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	cycleIncBtn.SetPosition(-160, -180);
+	cycleIncBtn.SetLabel(&cycleIncBtnTxt);
+	cycleIncBtn.SetTrigger(&trigA);
+	cycleIncBtn.SetEffectGrow();
+
+	GuiText fskipDecBtnTxt("-", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData fskipDec(keyboard_key_png);
+	GuiImage fskipDecImg(&fskipDec);
+	GuiImageData fskipDecOver(keyboard_key_over_png);
+	GuiImage fskipDecOverImg(&fskipDecOver);
+	GuiButton fskipDecBtn(fskipDec.GetWidth(), fskipDec.GetHeight());
+	fskipDecBtn.SetImage(&fskipDecImg);
+	fskipDecBtn.SetImageOver(&fskipDecOverImg);
+	fskipDecBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	fskipDecBtn.SetPosition(-80, -180);
+	fskipDecBtn.SetLabel(&fskipDecBtnTxt);
+	fskipDecBtn.SetTrigger(&trigA);
+	fskipDecBtn.SetEffectGrow();
+
+	GuiText fskipIncBtnTxt("+", 24, (GXColor){0, 0, 0, 255});
+	GuiImageData fskipInc(keyboard_key_png);
+	GuiImage fskipIncImg(&fskipInc);
+	GuiImageData fskipIncOver(keyboard_key_over_png);
+	GuiImage fskipIncOverImg(&fskipIncOver);
+	GuiButton fskipIncBtn(fskipInc.GetWidth(), fskipInc.GetHeight());
+	fskipIncBtn.SetImage(&fskipIncImg);
+	fskipIncBtn.SetImageOver(&fskipIncOverImg);
+	fskipIncBtn.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	fskipIncBtn.SetPosition(0, -180);
+	fskipIncBtn.SetLabel(&fskipIncBtnTxt);
+	fskipIncBtn.SetTrigger(&trigA);
+	fskipIncBtn.SetEffectGrow();
 
 	GuiText exitBtnTxt("Exit", 24, (GXColor){0, 0, 0, 255});
 	GuiImage exitBtnImg(&btnLargeOutline);
@@ -379,6 +525,20 @@ void HomeMenu ()
 	exitBtn.SetSoundClick(&btnSoundClick);
 	exitBtn.SetTrigger(&trigA);
 	exitBtn.SetEffectGrow();
+
+	GuiText logBtnTxt("Logging", 24, (GXColor){0, 0, 0, 255});
+	GuiImage logBtnImg(&btnLargeOutline);
+	GuiImage logBtnImgOver(&btnLargeOutlineOver);
+	GuiButton logBtn(btnLargeOutline.GetWidth(), btnLargeOutline.GetHeight());
+	logBtn.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	logBtn.SetPosition(-125, 240);
+	logBtn.SetLabel(&logBtnTxt);
+	logBtn.SetImage(&logBtnImg);
+	logBtn.SetImageOver(&logBtnImgOver);
+	logBtn.SetSoundOver(&btnSoundOver);
+	logBtn.SetSoundClick(&btnSoundClick);
+	logBtn.SetTrigger(&trigA);
+	logBtn.SetEffectGrow();
 
 	GuiText keyboardBtnTxt("Keyboard", 24, (GXColor){0, 0, 0, 255});
 	GuiImage keyboardBtnImg(&btnLargeOutline);
@@ -463,6 +623,13 @@ void HomeMenu ()
 	w.Append(logoBtn);
 	w.Append(&closeBtn);
 	w.Append(&exitBtn);
+	w.Append(&logBtn);
+	w.Append(&cycleText);
+	w.Append(&fskipText);
+	w.Append(&cycleDecBtn);
+	w.Append(&cycleIncBtn);
+	w.Append(&fskipDecBtn);
+	w.Append(&fskipIncBtn);
 	w.Append(&keyboardBtn);
 	
 	mainWindow->Append(&screenImg);
@@ -546,6 +713,11 @@ void HomeMenu ()
 		{
 			ExitRequested = 1;
 		}
+		else if(logBtn.GetState() == STATE_CLICKED)
+		{
+			logBtn.ResetState();
+			OnScreenConsole();
+		}
 		else if(keyboardBtn.GetState() == STATE_CLICKED)
 		{
 			keyboardBtn.ResetState();
@@ -553,6 +725,35 @@ void HomeMenu ()
 			
 			if(dosboxCommand[0] != 0)
 				break;
+		}
+		else if (cycleDecBtn.GetState() == STATE_CLICKED)
+		{
+			cycleDecBtn.ResetState();
+			MENU_CycleIncreaseOrDecrease(false);
+			updateCyclesText(&cycleText);
+		}
+		else if (cycleIncBtn.GetState() == STATE_CLICKED)
+		{
+			cycleIncBtn.ResetState();
+			MENU_CycleIncreaseOrDecrease(true);
+			updateCyclesText(&cycleText);
+		}
+		else if (fskipDecBtn.GetState() == STATE_CLICKED)
+		{
+			fskipDecBtn.ResetState();
+			MENU_IncreaseOrDecreaseFrameSkip(false);
+			updateFskipText(&fskipText);
+		}
+		else if (fskipIncBtn.GetState() == STATE_CLICKED)
+		{
+			fskipIncBtn.ResetState();
+			MENU_IncreaseOrDecreaseFrameSkip(true);
+			updateFskipText(&fskipText);
+		}
+		else if (logoBtn->GetState() == STATE_CLICKED)
+		{
+			logoBtn->ResetState();
+			WindowCredits();
 		}
 	}
 

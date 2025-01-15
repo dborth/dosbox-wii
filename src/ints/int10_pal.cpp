@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 #include "dosbox.h"
@@ -92,6 +92,7 @@ void INT10_SetOverscanBorderColor(Bit8u val) {
 	case TANDY_ARCH_CASE:
 		IO_Read(VGAREG_TDY_RESET);
 		WriteTandyACTL(0x02,val);
+		IO_Write(VGAREG_TDY_ADDRESS, 0); // enable the screen
 		break;
 	case EGAVGA_ARCH_CASE:
 		ResetACTL();
@@ -293,6 +294,7 @@ void INT10_GetDACPage(Bit8u* mode,Bit8u* page) {
 		*page&=0xc;
 		*page>>=2;
 	}
+	IO_Write(VGAREG_ACTL_ADDRESS,32);		//Enable output and protect palette
 }
 
 void INT10_SetPelMask(Bit8u mask) {
@@ -308,9 +310,37 @@ void INT10_SetBackgroundBorder(Bit8u val) {
 	color_select=(color_select & 0xe0) | (val & 0x1f);
 	real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAL,color_select);
 	
-	if (machine == MCH_CGA || machine == MCH_TANDY)
+	switch (machine) {
+	case MCH_CGA:
+		// only write the color select register
 		IO_Write(0x3d9,color_select);
-	else if (machine == MCH_PCJR) {
+		break;
+	case MCH_TANDY:
+		// TODO handle val == 0x1x, wait for retrace
+		switch(CurMode->mode) {
+		default: // modes 0-5: write to color select and border
+			INT10_SetOverscanBorderColor(val);
+			IO_Write(0x3d9, color_select);
+			break;
+		case 0x06: // 2-color: only write the color select register
+			IO_Write(0x3d9, color_select);
+			break;
+		case 0x07: // Tandy monochrome not implemented
+			break; 
+		case 0x08:
+		case 0x09: // 16-color: write to color select, border and pal. index 0
+			INT10_SetOverscanBorderColor(val);
+			INT10_SetSinglePaletteRegister(0, val);
+			IO_Write(0x3d9, color_select);
+			break;
+		case 0x0a: // 4-color highres:
+			// write zero to color select, write palette to indexes 1-3
+			// TODO palette
+			IO_Write(0x3d9, 0);
+			break;
+		}
+		break;
+	case MCH_PCJR:
 		IO_Read(VGAREG_TDY_RESET); // reset the flipflop
 		if (vga.mode!=M_TANDY_TEXT) {
 			IO_Write(VGAREG_TDY_ADDRESS, 0x10);
@@ -318,8 +348,8 @@ void INT10_SetBackgroundBorder(Bit8u val) {
 		}
 		IO_Write(VGAREG_TDY_ADDRESS, 0x2); // border color
 		IO_Write(VGAREG_PCJR_DATA, color_select&0xf);
-	}
-	else if (IS_EGAVGA_ARCH) {
+		break;
+	case EGAVGA_ARCH_CASE:
 		val = ((val << 1) & 0x10) | (val & 0x7);
 		/* Always set the overscan color */
 		INT10_SetSinglePaletteRegister( 0x11, val );
@@ -333,6 +363,7 @@ void INT10_SetBackgroundBorder(Bit8u val) {
 		INT10_SetSinglePaletteRegister( 2, val );
 		val+=2;
 		INT10_SetSinglePaletteRegister( 3, val );
+		break;
 	}
 }
 
@@ -343,6 +374,7 @@ void INT10_SetColorSelect(Bit8u val) {
 	if (machine == MCH_CGA || machine==MCH_TANDY)
 		IO_Write(0x3d9,temp);
 	else if (machine == MCH_PCJR) {
+		IO_Read(VGAREG_TDY_RESET); // reset the flipflop
 		switch(vga.mode) {
 		case M_TANDY2:
 			IO_Write(VGAREG_TDY_ADDRESS, 0x11);

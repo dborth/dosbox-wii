@@ -87,7 +87,10 @@ typedef struct ftgxDataOffset_ ftgxDataOffset;
 
 #define FTGX_STYLE_UNDERLINE	0x1000
 #define FTGX_STYLE_STRIKE		0x2000
-#define FTGX_STYLE_MASK			0xf000
+#define FTGX_STYLE_MASK			0x7000
+
+#define FTGX_MONOSPACE_FAKE		0x8000
+#define FTGX_MONOSPACE_MASK		0x8000
 
 #define FTGX_COMPATIBILITY_DEFAULT_TEVOP_GX_MODULATE	0X0001
 #define FTGX_COMPATIBILITY_DEFAULT_TEVOP_GX_DECAL		0X0002
@@ -126,6 +129,7 @@ class FreeTypeGX {
 	private:
 		FT_UInt ftPointSize;	/**< Requested size of the rendered font. */
 		bool ftKerningEnabled;	/**< Flag indicating the availability of font kerning data. */
+		uint16_t ftMaxAdvanceX;
 		uint8_t vertexIndex;	/**< Vertex format descriptor index. */
 		uint32_t compatibilityMode;	/**< Compatibility mode for default tev operations and vertex descriptors. */
 		std::map<wchar_t, ftgxCharData> fontData; /**< Map which holds the glyph data structures for the corresponding characters. */
@@ -154,11 +158,11 @@ class FreeTypeGX {
 		void setVertexFormat(uint8_t vertexIndex);
 		void setCompatibilityMode(uint32_t compatibilityMode);
 
-		uint16_t drawText(int16_t x, int16_t y, wchar_t *text, GXColor color = ftgxWhite, uint16_t textStyling = FTGX_NULL);
-		uint16_t drawText(int16_t x, int16_t y, wchar_t const *text, GXColor color = ftgxWhite, uint16_t textStyling = FTGX_NULL);
+		uint16_t drawText(int16_t x, int16_t y, wchar_t *text, GXColor color = ftgxWhite, uint16_t textStyling = FTGX_NULL, int monospacePercentage = 100);
+		uint16_t drawText(int16_t x, int16_t y, wchar_t const *text, GXColor color = ftgxWhite, uint16_t textStyling = FTGX_NULL, int monospacePercentage = 100);
 
-		uint16_t getWidth(wchar_t *text);
-		uint16_t getWidth(wchar_t const *text);
+		uint16_t getWidth(wchar_t *text, uint16_t textStyling = FTGX_NULL, int monospacePercentage = 100);
+		uint16_t getWidth(wchar_t const *text, uint16_t textStyling = FTGX_NULL, int monospacePercentage = 100);
 		uint16_t getHeight(wchar_t *text);
 		uint16_t getHeight(wchar_t const *text);
 		void getOffset(wchar_t *text, ftgxDataOffset* offset);

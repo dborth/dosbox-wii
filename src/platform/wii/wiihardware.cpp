@@ -21,6 +21,7 @@
 #include "input.h"
 #include "filelist.h"
 #include "SDL_events.h"
+#include "wiiio.h"
 
 extern "C" {
 extern void __exception_setreload(int t);
@@ -149,7 +150,11 @@ static void * PressKeys (void *arg)
 static bool gecko = false;
 static mutex_t gecko_mutex = 0;
 
+#ifdef OLD_LIBS
 static ssize_t __out_write(struct _reent *r, int fd, const char *ptr, size_t len)
+#else
+static ssize_t __out_write(struct _reent *r, void* fd, const char *ptr, size_t len)
+#endif
 {
 	u32 level;
 
@@ -201,6 +206,7 @@ void WiiInit()
 	extern const devoptab_t dotab_stdnull;
 	devoptab_list[STD_OUT] = &dotab_stdnull;
 	devoptab_list[STD_ERR] = &dotab_stdnull;
+	wiiio_init();
 	//USBGeckoOutput(); // uncomment to enable USB gecko output
 	__exception_setreload(8);
 	fatInitDefault();

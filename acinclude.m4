@@ -144,7 +144,7 @@ int main (int argc, char *argv[])
           echo "*** If you have an old version installed, it is best to remove it, although"
           echo "*** you may also be able to get things to work by modifying LD_LIBRARY_PATH"],
         [ echo "*** The test program failed to compile or link. See the file config.log for the"
-          echo "*** exact error that occured. This usually means SDL was incorrectly installed"
+          echo "*** exact error that occurred. This usually means SDL was incorrectly installed"
           echo "*** or that you have moved SDL since it was installed. In the latter case, you"
           echo "*** may want to edit the sdl-config script: $SDL_CONFIG" ])
           CFLAGS="$ac_save_CFLAGS"
@@ -305,7 +305,7 @@ AC_SUBST(ALSA_LIBS)
 
 AH_TOP([
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -317,9 +317,9 @@ AH_TOP([
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU Library General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 ])
 
@@ -370,29 +370,41 @@ typedef         double     Real64;
 #if SIZEOF_UNSIGNED_INT == 4
   typedef unsigned int Bit32u;
   typedef   signed int Bit32s;
+#define sBit32t
 #elif SIZEOF_UNSIGNED_LONG == 4
   typedef unsigned long Bit32u;
   typedef   signed long Bit32s;
+#define sBit32t "l"
 #else
 #  error "can't find sizeof(type) of 4 bytes!"
 #endif
+#define sBit32fs(a) sBit32t #a
 
 #if SIZEOF_UNSIGNED_LONG == 8
   typedef unsigned long Bit64u;
   typedef   signed long Bit64s;
+#define sBit64t "l"
 #elif SIZEOF_UNSIGNED_LONG_LONG == 8
   typedef unsigned long long Bit64u;
   typedef   signed long long Bit64s;
+#define sBit64t "ll"
 #else
 #  error "can't find data type of 8 bytes"
 #endif
+#define sBit64fs(a) sBit64t #a
 
 #if SIZEOF_INT_P == 4
-  typedef Bit32u Bitu;
-  typedef Bit32s Bits;
-#else
-  typedef Bit64u Bitu;
-  typedef Bit64s Bits;
+
+typedef Bit32u Bitu;
+typedef Bit32s Bits;
+#define sBitfs sBit32fs
+
+#else //SIZEOF_INT_P 
+
+typedef Bit64u Bitu;
+typedef Bit64s Bits;
+#define sBitfs sBit64fs
+
 #endif
 
 ])

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,11 +11,14 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#ifndef DOSBOX_FPU_H
+#include "fpu.h"
+#endif
 
 
 static void FPU_FINIT(void) {
@@ -41,21 +44,54 @@ static void FPU_FNOP(void){
 	return;
 }
 
-static void FPU_PUSH(double in){
+static void FPU_PREP_PUSH(void){
 	TOP = (TOP - 1) &7;
-	//actually check if empty
+#if DB_FPU_STACK_CHECK_PUSH > DB_FPU_STACK_CHECK_NONE
+	if (GCC_UNLIKELY(fpu.tags[TOP] != TAG_Empty)) {
+#if DB_FPU_STACK_CHECK_PUSH == DB_FPU_STACK_CHECK_EXIT
+		E_Exit("FPU stack overflow");
+#else
+		if (fpu.cw&1) { // Masked ?
+			fpu.sw &= 0x1; //Invalid Operation
+			fpu.sw &= 0x40; //Stack Fault
+			FPU_SET_C1(1); //Register is used.
+			//No need to set 0x80 as the exception is masked.
+			LOG(LOG_FPU,LOG_ERROR)("Masked stack overflow encountered!");
+		} else {
+			E_Exit("FPU stack overflow"); //Exit as this is bad
+		}
+#endif
+	}
+#endif
 	fpu.tags[TOP] = TAG_Valid;
+}
+
+static void FPU_PUSH(double in){
+	FPU_PREP_PUSH();
 	fpu.regs[TOP].d = in;
 //	LOG(LOG_FPU,LOG_ERROR)("Pushed at %d  %g to the stack",newtop,in);
 	return;
 }
 
-static void FPU_PREP_PUSH(void){
-	TOP = (TOP - 1) &7;
-	fpu.tags[TOP] = TAG_Valid;
-}
 
 static void FPU_FPOP(void){
+#if DB_FPU_STACK_CHECK_POP > DB_FPU_STACK_CHECK_NONE
+	if (GCC_UNLIKELY(fpu.tags[TOP] != TAG_Empty)) {
+#if DB_FPU_STACK_CHECK_POP == DB_FPU_STACK_CHECK_EXIT
+		E_Exit("FPU stack underflow");
+#else
+		if (fpu.cw&1) { // Masked ?
+			fpu.sw &= 0x1; //Invalid Operation
+			fpu.sw &= 0x40; //Stack Fault
+			FPU_SET_C1(0); //Register is free.
+			//No need to set 0x80 as the exception is masked.
+			LOG(LOG_FPU,LOG_ERROR)("Masked stack underflow encountered!");
+		} else {
+			LOG_MSG("Unmasked Stack underflow!"); //Also log in release mode
+		}
+#endif
+	}
+#endif
 	fpu.tags[TOP]=TAG_Empty;
 	//maybe set zero in it as well
 	TOP = ((TOP+1)&7);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 
@@ -99,6 +99,8 @@
 extern Bit8u int10_font_08[256 * 8];
 extern Bit8u int10_font_14[256 * 14];
 extern Bit8u int10_font_16[256 * 16];
+extern Bit8u int10_font_14_alternate[20 * 15 + 1];
+extern Bit8u int10_font_16_alternate[19 * 17 + 1];
 
 struct VideoModeBlock {
 	Bit16u	mode;
@@ -131,6 +133,8 @@ typedef struct {
 		RealPt video_dcc_table;
 		RealPt oemstring;
 		RealPt vesa_modes;
+		RealPt wait_retrace;
+		RealPt set_window;
 		RealPt pmode_interface;
 		Bit16u pmode_interface_size;
 		Bit16u pmode_interface_start;
@@ -145,15 +149,16 @@ typedef struct {
 
 extern Int10Data int10;
 
-static Bit8u CURSOR_POS_COL(Bit8u page) {
+static inline Bit8u CURSOR_POS_COL(Bit8u page) {
 	return real_readb(BIOSMEM_SEG,BIOSMEM_CURSOR_POS+page*2);
 }
 
-static Bit8u CURSOR_POS_ROW(Bit8u page) {
+static inline Bit8u CURSOR_POS_ROW(Bit8u page) {
 	return real_readb(BIOSMEM_SEG,BIOSMEM_CURSOR_POS+page*2+1);
 }
 
 bool INT10_SetVideoMode(Bit16u mode);
+void INT10_SetCurMode(void);
 
 void INT10_ScrollWindow(Bit8u rul,Bit8u cul,Bit8u rlr,Bit8u clr,Bit8s nlines,Bit8u attr,Bit8u page);
 
@@ -205,9 +210,9 @@ Bit8u VESA_GetSVGAMode(Bit16u & mode);
 Bit8u VESA_SetCPUWindow(Bit8u window,Bit8u address);
 Bit8u VESA_GetCPUWindow(Bit8u window,Bit16u & address);
 Bit8u VESA_ScanLineLength(Bit8u subcall, Bit16u val, Bit16u & bytes,Bit16u & pixels,Bit16u & lines);
-Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y);
+Bit8u VESA_SetDisplayStart(Bit16u x,Bit16u y,bool wait);
 Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y);
-Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count);
+Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count,bool wait);
 Bit8u VESA_GetPalette(PhysPt data,Bitu index,Bitu count);
 
 /* Sub Groups */

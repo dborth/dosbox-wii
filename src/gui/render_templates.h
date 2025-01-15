@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2019  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -11,9 +11,9 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
 #if DBPP == 8
@@ -382,9 +382,9 @@ static void conc3d(Cache,SBPP,DBPP) (const void * s) {
 	line0[0]=P;				\
 	line0[1]=P;				\
 	line0[2]=P;				\
-	line1[0]=0;				\
-	line1[1]=0;				\
-	line1[2]=0;				\
+	line1[0]=P;				\
+	line1[1]=P;				\
+	line1[2]=P;				\
 	line2[0]=0;				\
 	line2[1]=0;				\
 	line2[2]=0;
