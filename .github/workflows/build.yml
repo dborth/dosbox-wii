@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout sdl-wii repo
-        uses: actions/checkout@master
+      uses: actions/checkout@master
         with:
           repository: dborth/sdl-wii
           path: sdl-wii
