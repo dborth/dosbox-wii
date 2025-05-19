@@ -65,9 +65,9 @@ jobs:
 
     - name: Re-zip artifact
       run: |
-        cd dist
-        rm -r DOSBox-Wii/DOSBox/*
-        zip -r DOSBox-Wii.zip DOSBox-Wii
+        cd dist/DOSBox-Wii
+        rm -r DOSBox/*
+        zip -r DOSBox-Wii.zip *
 
     - name: Update Git Tag
       run: |
