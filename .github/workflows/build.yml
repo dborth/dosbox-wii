@@ -35,8 +35,8 @@ jobs:
       run: |
         mkdir -p dist/DOSBox-Wii/apps/dosbox-wii
         cp hbc/* dist/DOSBox-Wii/apps/dosbox-wii/
-        cp dosbox-wii.dol dist/DOSBox-Wii/apps/dosbox-wii
-        touch dist/DOSBox-Wii/DOSBox
+        cp dosbox-wii.dol dist/DOSBox-Wii/apps/dosbox-wii/boot.dol
+        mkdir -p dist/DOSBox-Wii/DOSBox
       
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
