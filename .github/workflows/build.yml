@@ -33,11 +33,11 @@ jobs:
 
     - name: Copy artifacts
       run: |
-        mkdir -p dist/DOSBox-Wii/apps/dosbox-wii
-        cp hbc/* dist/DOSBox-Wii/apps/dosbox-wii/
-        cp dosbox-wii.dol dist/DOSBox-Wii/apps/dosbox-wii/boot.dol
-        mkdir -p dist/DOSBox-Wii/DOSBox
-        touch dist/DOSBox-Wii/DOSBox/dosboxdir
+        mkdir -p dist/apps/dosbox-wii
+        cp hbc/* dist/apps/dosbox-wii/
+        cp dosbox-wii.dol dist/apps/dosbox-wii/boot.dol
+        mkdir -p dist/DOSBox
+        touch dist/DOSBox/dosboxdir
       
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -66,6 +66,7 @@ jobs:
     - name: Re-zip artifact
       run: |
         cd dist
+        rm -r DOSBox-Wii/DOSBox/*
         zip -r DOSBox-Wii.zip DOSBox-Wii
 
     - name: Update Git Tag
