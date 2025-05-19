@@ -67,7 +67,7 @@ jobs:
       run: |
         cd dist/DOSBox-Wii
         rm -r DOSBox/*
-        zip -r DOSBox-Wii.zip *
+        zip -r ../DOSBox-Wii.zip *
 
     - name: Update Git Tag
       run: |
