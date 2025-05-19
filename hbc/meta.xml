@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>DOSBox Wii</name>
+  <coder>Tantric</coder>
+  <version>1.7</version>
+  <release_date>20120630</release_date>
+  <short_description>DOS Emulator</short_description> 
+  <long_description>Port of DOSBox to the Wii</long_description> 
+</app>

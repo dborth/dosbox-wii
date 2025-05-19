@@ -31,10 +31,6 @@ int access(const char *path, int amode)
 	if (folderExists) return 0;
 	else return ENOENT;
 }
-int rmdir(const char *path)
-{
-	return remove(path);
-}
 int execlp(const char *file, const char *arg, ...)
 {
 	return -1;
