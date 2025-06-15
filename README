@@ -44,7 +44,7 @@ A port of DOSBox to the Wii using SDL Wii.
 
 -=[ Update History ]=-
 
-[current master - 2021]
+[2021]
 * Updated to latest libogc (2.1.0-1) and devkitPPC (r38-1)
 * Convert CRLF line terminators to unix line terminators (like at original SVN repo)
 * Sync to DOSBox SVN r4301 (which is > 0.74-3 (r4250))
