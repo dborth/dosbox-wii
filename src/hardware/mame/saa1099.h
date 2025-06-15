@@ -7,10 +7,6 @@
 #ifndef MAME_SOUND_SAA1099_H
 #define MAME_SOUND_SAA1099_H
 
-#ifdef OLD_LIBS
-#include <string.h>
-#endif
-
 #pragma once
 
 //**************************************************************************

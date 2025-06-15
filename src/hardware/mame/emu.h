@@ -11,10 +11,7 @@
 #include <math.h>
 #include <float.h>
 #include <stdlib.h>
-
-#ifndef OLD_LIBS // for old devkitppc memory.h is not included
 #include <memory.h>
-#endif
 
 #if C_DEBUG
 #include <stdio.h>
