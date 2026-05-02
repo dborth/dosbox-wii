@@ -136,7 +136,7 @@ $(OUTPUT).elf: $(OFILES)
 
 $(OFILES_SOURCES): $(HFILES)
 #---------------------------------------------------------------------------------
-# This rule links in binary data with .ttf, .png, and .mp3 extensions
+# This rule links in binary data with various extensions
 #---------------------------------------------------------------------------------
 %.ttf.o %_ttf.h : %.ttf
 	@echo $(notdir $<)
