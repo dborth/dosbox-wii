@@ -101,7 +101,7 @@ ResumeGui()
 	guiHalt = false;
 
 	if(guithread == LWP_THREAD_NULL)
-		LWP_CreateThread (&guithread, UpdateGUI, NULL, NULL, 0, 66);
+		LWP_CreateThread (&guithread, UpdateGUI, NULL, NULL, 24576, 66);
 }
 
 /****************************************************************************
