@@ -339,20 +339,32 @@ void OgcEmulatorVideo::snapshotFrame()
 		memcpy(screenshotSnapshot, texMem, size);
 		snapWidth = frameWidth;
 		snapHeight = frameHeight;
+		snapX = frameX; snapY = frameY; snapW = frameW; snapH = frameH;
 	}
+}
+
+bool OgcEmulatorVideo::getSnapshotInfo(FrameSnapshotInfo* info) const
+{
+	if (!screenshotSnapshot || !info || snapW <= 0.0f || snapH <= 0.0f)
+		return false;
+
+	info->width = snapWidth;
+	info->height = snapHeight;
+	info->x = snapX; info->y = snapY; info->w = snapW; info->h = snapH;
+	return true;
 }
 
 // Un-tiles the GX_TF_RGB565 buffer snapshotFrame() captured. The width and
 // height must match the frame the snapshot was taken from.
-void OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
+bool OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 {
-	if (!screenshotSnapshot)
-		return;
+	if (!screenshotSnapshot || !dst)
+		return false;
 
 	if (width != snapWidth || height != snapHeight) {
 		free(screenshotSnapshot);
 		screenshotSnapshot = nullptr;
-		return;
+		return false;
 	}
 
 	int paddedWidth = (width + 3) & ~3;
@@ -379,6 +391,7 @@ void OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 
 	free(screenshotSnapshot);
 	screenshotSnapshot = nullptr;
+	return true;
 }
 
 void OgcEmulatorVideo::init(VideoDriver* driver)

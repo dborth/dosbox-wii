@@ -19,6 +19,7 @@
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/VideoDriver.h"
+#include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputDriver.h"
 #include "drivers/InputController.h"
 #include "drivers/ogc/wii/WiiPlatform.h"
@@ -297,6 +298,102 @@ static void updateFskipText(GuiText * fskipText)
 }
 
 /****************************************************************************
+ * Game background
+ *
+ * The last emulated frame, placed where it was on screen, dimmed, behind
+ * the menu. GFX_Suspend() took the snapshot before the display was handed
+ * over; this turns it into a screen-size texture. fillTexture() writes the
+ * result straight into the texture, so no screen-size RGBA buffer is needed,
+ * only the snapshot itself.
+ ***************************************************************************/
+#define BACKGROUND_BRIGHTNESS	0.4f
+
+struct BackgroundSource
+{
+	const uint8_t * rgb;	// packed RGB24
+	int width, height;		// of rgb
+	float x, y, w, h;		// where the frame goes on the canvas
+};
+
+static void BackgroundPixel(int x, int y, PixelColor * out, void * userdata)
+{
+	const BackgroundSource * s = (const BackgroundSource *) userdata;
+	const float fx = (x + 0.5f - s->x) / s->w;
+	const float fy = (y + 0.5f - s->y) / s->h;
+
+	out->a = 255;
+
+	if(fx < 0.0f || fx >= 1.0f || fy < 0.0f || fy >= 1.0f) // bars around the frame
+	{
+		out->r = out->g = out->b = 0;
+		return;
+	}
+
+	// bilinear, as the emulator view does
+	float sx = fx * s->width - 0.5f;
+	float sy = fy * s->height - 0.5f;
+	if(sx < 0.0f) sx = 0.0f;
+	if(sy < 0.0f) sy = 0.0f;
+
+	const int x0 = (int) sx;
+	const int y0 = (int) sy;
+	const int x1 = (x0 + 1 < s->width) ? x0 + 1 : x0;
+	const int y1 = (y0 + 1 < s->height) ? y0 + 1 : y0;
+	const float tx = sx - x0;
+	const float ty = sy - y0;
+
+	const uint8_t * p00 = s->rgb + ((size_t)y0 * s->width + x0) * 3;
+	const uint8_t * p10 = s->rgb + ((size_t)y0 * s->width + x1) * 3;
+	const uint8_t * p01 = s->rgb + ((size_t)y1 * s->width + x0) * 3;
+	const uint8_t * p11 = s->rgb + ((size_t)y1 * s->width + x1) * 3;
+
+	uint8_t rgb[3];
+	for(int i = 0; i < 3; i++)
+	{
+		const float top = p00[i] + (p10[i] - p00[i]) * tx;
+		const float bottom = p01[i] + (p11[i] - p01[i]) * tx;
+		rgb[i] = (uint8_t)((top + (bottom - top) * ty) * BACKGROUND_BRIGHTNESS);
+	}
+
+	out->r = rgb[0];
+	out->g = rgb[1];
+	out->b = rgb[2];
+}
+
+//! Returns a texture the caller destroys with ImageRenderer::destroyTexture(),
+//! or NULL if there was no frame to show.
+static void * CreateGameBackground(int screenwidth, int screenheight)
+{
+	EmulatorVideoDriver * emu = platform->getVideo()->getEmulatorVideo();
+	FrameSnapshotInfo info;
+
+	if(!emu->getSnapshotInfo(&info))
+		return NULL;
+
+	uint8_t * rgb = (uint8_t *) malloc((size_t)info.width * info.height * 3);
+	if(!rgb)
+		return NULL;
+
+	if(!emu->readFrameRGB24(info.width, info.height, rgb))
+	{
+		free(rgb);
+		return NULL;
+	}
+
+	ImageRenderer * images = platform->getVideo()->getImageRenderer();
+	void * texture = images->createTexture(screenwidth, screenheight);
+
+	if(texture)
+	{
+		BackgroundSource src = { rgb, info.width, info.height, info.x, info.y, info.w, info.h };
+		images->fillTexture(texture, screenwidth, screenheight, BackgroundPixel, &src);
+	}
+
+	free(rgb);
+	return texture;
+}
+
+/****************************************************************************
  * HomeMenu
  ***************************************************************************/
 void HomeMenu ()
@@ -307,13 +404,18 @@ void HomeMenu ()
 
 	mainWindow = new GuiWindow(screenwidth, screenheight);
 
-	// TODO(Stage 5): use the last emulated frame as the background (what the
-	// emulators do): WiiMenu() already calls snapshotFrame(); this needs the
-	// frame size to pass to readFrameRGB24(), which the HAL does not expose.
-	// renderMenu() clears the EFB every frame, so there is nothing on screen
-	// to dim: use the template's striped backdrop.
-	GuiImage screenImg(screenwidth, screenheight, (PixelColor){50, 50, 50, 255});
-	screenImg.setStripe(30);
+	// The last emulated frame, if there was one; otherwise a plain backdrop
+	// (renderMenu() clears the EFB every frame, so there is nothing on screen
+	// to show through)
+	void * backgroundTexture = CreateGameBackground(screenwidth, screenheight);
+	GuiImage * screenImg;
+
+	if(backgroundTexture)
+		screenImg = new GuiImage((uint8_t *) backgroundTexture, screenwidth, screenheight);
+	else
+		screenImg = new GuiImage(screenwidth, screenheight, (PixelColor){50, 50, 50, 255});
+
+	screenImg->setStripe(30);
 
 	GuiTrigger trigA;
 	trigA.setPrimaryTrigger();
@@ -523,7 +625,7 @@ void HomeMenu ()
 	w.append(&fskipIncBtn);
 	w.append(&keyboardBtn);
 
-	mainWindow->append(&screenImg);
+	mainWindow->append(screenImg);
 	mainWindow->append(&w);
 
 	enterSound.play();
@@ -646,10 +748,15 @@ void HomeMenu ()
 
 	// elements are stack objects that the window only points at: take them
 	// out before the window (and the stack) goes away
-	mainWindow->remove(&screenImg);
+	mainWindow->remove(screenImg);
 	mainWindow->remove(&w);
 	delete mainWindow;
 	mainWindow = NULL;
+
+	// the image only borrows the texture
+	delete screenImg;
+	if(backgroundTexture)
+		platform->getVideo()->getImageRenderer()->destroyTexture(backgroundTexture);
 	w.removeAll(); // before the heap-allocated battery elements are deleted
 
 	for(i=0; i < 4; i++)

@@ -9,6 +9,17 @@
 #include <stdint.h>
 #include "VideoDriver.h"
 
+//! Describes the frame captured by EmulatorVideoDriver::snapshotFrame()
+struct FrameSnapshotInfo
+{
+	int width;     //!< snapshot width in pixels (pass to readFrameRGB24)
+	int height;    //!< snapshot height in pixels (pass to readFrameRGB24)
+	//! Where the frame was on the UI canvas (the 640x480 design space of the
+	//! menu) when it was captured: aspect, scale and position already applied,
+	//! so a background built from it lines up with what the player was looking at.
+	float x, y, w, h;
+};
+
 class EmulatorVideoDriver
 {
 	public:
@@ -48,10 +59,17 @@ class EmulatorVideoDriver
 		//! invalidated/repurposed in between.
 		virtual void snapshotFrame() = 0;
 
+		//! Describes the frame the last snapshotFrame() captured. Returns false
+		//! if there isn't one (nothing was presented yet, or it was already
+		//! consumed by readFrameRGB24()).
+		virtual bool getSnapshotInfo(FrameSnapshotInfo* info) const { (void)info; return false; }
+
 		//! Converts the width x height frame most recently captured by
 		//! snapshotFrame() into packed RGB24, written to dst
 		//! (width*height*3 bytes, tightly packed, no dst padding).
-		virtual void readFrameRGB24(int width, int height, uint8_t* dst) = 0;
+		//! One-shot: consumes the snapshot. Returns false, leaving dst
+		//! untouched, if there is no snapshot or width/height don't match it.
+		virtual bool readFrameRGB24(int width, int height, uint8_t* dst) = 0;
 
 		//! Sets the initial console dimensions, before the first presentFrame() call
 		virtual void renderInit(int width, int height) { (void)width; (void)height; }
