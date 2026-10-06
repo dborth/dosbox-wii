@@ -3,7 +3,7 @@
  * Daryl Borth 2008-2026
  * OgcEmulatorAudio.h
  *
- * Direct-queued audio driver with dynamic rate control
+ * 32 kHz direct-queued audio driver with dynamic rate control.
  ***************************************************************************/
 #pragma once
 
@@ -17,14 +17,31 @@ void AudioDMACallback();
 class OgcEmulatorAudio : public EmulatorAudioDriver
 {
 	public:
+		//! Output format. The core's mixer must be configured to produce
+		//! exactly this (signed 16-bit, stereo, interleaved L/R, host
+		//! endian) - the hardware plays whatever it is given at this rate.
+		static constexpr int SAMPLE_RATE = 32000;
+
+		//! Stereo frames per queued buffer. 544 frames = exactly 17.0 ms at
+		//! 32 kHz, close to the 16.67 ms of the 48 kHz driver so the queue
+		//! thresholds in the .cpp keep their tuned timing. Must keep
+		//! BYTES_PER_BUFFER a multiple of 32 (AUDIO_InitDMA length unit).
+		static constexpr int FRAMES_PER_BUFFER = 544;
+		static constexpr int BYTES_PER_BUFFER = FRAMES_PER_BUFFER * 4;
+
 		OgcEmulatorAudio();
 		~OgcEmulatorAudio() override;
 
 		void init() override {}
 		void resetAudio() override;
 
-		//! Halts DMA and resyncs dma_started so the pre-roll logic in
-		//! commitWrite() correctly re-arms on the next entry
+		//! Takes over the AI: sets the DSP sample rate to 32 kHz (ASND_Init
+		//! forces 48 kHz), clears the queue and registers the DMA callback.
+		//! DMA itself starts from commitWrite() once pre-roll is queued.
+		void startAudio();
+
+		//! Unregisters the DMA callback and halts DMA. Leaves the ring
+		//! contents as they are; startAudio() clears them on re-entry.
 		void stopAudio();
 
 		int getUnplayed() override;
@@ -38,19 +55,16 @@ class OgcEmulatorAudio : public EmulatorAudioDriver
 		void dmaCallback();
 
 	private:
-		// One DMA frame is 3200 bytes (800 stereo 16-bit frames).
-		static constexpr int DMA_BYTES = 3200;
-
 		// BUFFERCOUNT must be a power of two so the ring index can advance
 		// with a cheap bitwise mask (see nextIndex) instead of an integer modulo.
 		static constexpr int BUFFERCOUNT = 16;
 		static constexpr int MAX_QUEUED_BUFFERS = 12; // Leave a 4-buffer safety zone to prevent input lag
 
 		// Number of stereo frames over which we ramp to/from zero when the
-		// ring runs genuinely dry. Long enough to remove the audible click
-		// of a hard jump to silence, short enough (~2ms) to add no
-		// perceptible latency.
-		static constexpr int FADE_FRAMES = 96;
+		// ring runs genuinely dry. 64 frames = 2 ms at 32 kHz: long enough
+		// to remove the audible click of a hard jump to silence, short
+		// enough to add no perceptible latency.
+		static constexpr int FADE_FRAMES = 64;
 
 		// Discrete state of the dynamic-rate controller (hysteresis pitch
 		// bending). Only touched outside interrupt context (getDynamicRate),
@@ -67,9 +81,8 @@ class OgcEmulatorAudio : public EmulatorAudioDriver
 		void buildFadeOutBuffer();
 		void applyFadeIn(u8* buf);
 
-		u8 soundbuffer[BUFFERCOUNT][DMA_BYTES] __attribute__((aligned(32)));
-		u8 silence[DMA_BYTES] __attribute__((aligned(32)));
-		u8 fadeBuffer[DMA_BYTES] __attribute__((aligned(32)));
+		u8 soundbuffer[BUFFERCOUNT][BYTES_PER_BUFFER] __attribute__((aligned(32)));
+		u8 fadeBuffer[BYTES_PER_BUFFER] __attribute__((aligned(32)));
 
 		// Volatile indices crossing the emulator-thread/ISR boundary (MUST bypass registers)
 		volatile int playab;

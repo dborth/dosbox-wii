@@ -41,12 +41,11 @@ void WiiAudioDriver::init() {
 }
 
 void WiiAudioDriver::startEmulatorAudio() {
-	AUDIO_RegisterDMACallback(AudioDMACallback);
+	emulatorAudio->startAudio();
 }
 
 void WiiAudioDriver::stopEmulatorAudio() {
 	emulatorAudio->stopAudio();
-	AUDIO_RegisterDMACallback(NULL);
 }
 
 void WiiAudioDriver::startMenuAudio() {
