@@ -13,6 +13,7 @@
 #include <sys/iosupport.h>
 
 #include "wiihardware.h"
+#include "menu.h"
 #include "filelist.h"
 #include "SDL_events.h"
 #include "libgui/Gui.h"
@@ -27,8 +28,6 @@
 #include "drivers/ogc/OgcKeyboardDriver.h"
 
 void MAPPER_CheckEvent(SDL_Event * event);
-void HomeMenu();
-void InitGUI();
 
 // Platform composition root: the only place that picks a concrete platform.
 // Wii U will select WutPlatform here (Stage 7).
@@ -221,6 +220,18 @@ bool MenuRequested()
 }
 
 /****************************************************************************
+ * WiiCheckExit
+ *
+ * Polled once per emulation event pass. Without this, the power button
+ * (console or Wiimote) is ignored while a game is running.
+ ***************************************************************************/
+void WiiCheckExit()
+{
+	if(platform->shouldExit())
+		platform->requestExit(EXITACTION_WII_AUTO, false);
+}
+
+/****************************************************************************
  * WiiMenu
  *
  * Emulation -> menu -> emulation handoff, on the HAL.
@@ -232,6 +243,9 @@ void WiiMenu()
 		usleep(100);
 
 	SwitchAudioMode(1);
+
+	// must run before the mode switch, which may tear down what it reads
+	platform->getVideo()->getEmulatorVideo()->snapshotFrame();
 	platform->getVideo()->startMenuVideo();
 
 	HomeMenu();

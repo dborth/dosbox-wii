@@ -17,6 +17,9 @@ void WiiMenu();
 void CreateAppPath(char origpath[]);
 void WiiFinished();
 
+//! Leaves the app if the platform reports a shutdown request. Does not return then.
+void WiiCheckExit();
+
 //! True while a HOME button is held. Also refreshes the platform input state.
 bool MenuRequested();
 

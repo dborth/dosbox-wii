@@ -1575,6 +1575,8 @@ bool GFX_IsFullscreen(void) {
 
 void GFX_Events() {
 #ifdef HW_RVL
+	WiiCheckExit();
+
 	// check for home button (MenuRequested() polls the platform input driver)
 	if(MenuRequested())
 		WiiMenu();

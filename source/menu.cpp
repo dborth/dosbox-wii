@@ -58,10 +58,33 @@ void InitGUI()
 }
 
 /****************************************************************************
+ * ExitApp
+ *
+ * Fades out and leaves the application. Does not return, so nothing above it
+ * on the stack is unwound; that is fine, the platform is shut down.
+ ***************************************************************************/
+static void ExitApp()
+{
+	VideoDriver * video = platform->getVideo();
+
+	for(int a = 0; a <= 255; a += 15)
+	{
+		mainWindow->draw();
+		video->getImageRenderer()->drawRectangle(0, 0, video->getScreenWidth(),
+			video->getScreenHeight(), (PixelColor){0, 0, 0, (uint8_t)a});
+		video->renderMenu();
+	}
+
+	platform->requestExit(EXITACTION_WII_AUTO, false);
+}
+
+/****************************************************************************
  * UpdateGui
  *
  * One GUI frame: input, draw, cursors, present. Called in a loop by
- * whatever is waiting on the menu.
+ * whatever is waiting on the menu. A power button / shutdown request (see
+ * Platform::shouldExit) leaves the app from here, so the nested loops
+ * (keyboard, credits) never need to unwind.
  ***************************************************************************/
 static void UpdateGui()
 {
@@ -86,26 +109,9 @@ static void UpdateGui()
 	}
 
 	platform->getVideo()->renderMenu();
-}
 
-/****************************************************************************
- * ExitApp
- *
- * Fades out and leaves the application. Does not return.
- ***************************************************************************/
-static void ExitApp()
-{
-	VideoDriver * video = platform->getVideo();
-
-	for(int a = 0; a <= 255; a += 15)
-	{
-		mainWindow->draw();
-		video->getImageRenderer()->drawRectangle(0, 0, video->getScreenWidth(),
-			video->getScreenHeight(), (PixelColor){0, 0, 0, (uint8_t)a});
-		video->renderMenu();
-	}
-
-	platform->requestExit(EXITACTION_WII_AUTO, false);
+	if(platform->shouldExit())
+		ExitApp();
 }
 
 /****************************************************************************
@@ -156,8 +162,9 @@ static void OnScreenKeyboard(char * var, uint32_t maxlen)
 	cancelBtn.setTrigger(&trigA);
 	cancelBtn.setEffectGrow();
 
-	kb.append(&okBtn);
-	kb.append(&cancelBtn);
+	// the buttons are destroyed before kb: unregister them on destruction
+	kb.appendWithAutoRemove(&okBtn);
+	kb.appendWithAutoRemove(&cancelBtn);
 
 	mainWindow->setState(STATE::DISABLED);
 	mainWindow->append(&kb);
@@ -198,7 +205,7 @@ static void WindowCredits()
 	GuiImageData creditsBox(credits_box_png);
 	GuiImage creditsBoxImg(&creditsBox);
 	creditsBoxImg.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-	creditsWindow.append(&creditsBoxImg);
+	creditsWindow.appendWithAutoRemove(&creditsBoxImg); // destroyed before the window
 
 	const int numEntries = 11;
 	GuiText * txt[numEntries];
@@ -264,6 +271,10 @@ static void WindowCredits()
 	mainWindow->remove(&creditsWindow);
 	mainWindow->setState(STATE::DEFAULT);
 
+	// the window orphans its children when it is destroyed: it must not be
+	// holding the heap-allocated text objects by then
+	creditsWindow.removeAll();
+
 	for(i=0; i < numEntries; i++)
 		delete txt[i];
 }
@@ -299,9 +310,12 @@ void HomeMenu ()
 	mainWindow = new GuiWindow(screenwidth, screenheight);
 
 	// TODO(Stage 5): use the last emulated frame as the background (what the
-	// emulators do) once EmulatorVideoDriver can report the frame size to
-	// pass to readFrameRGB24(). Until then, dim whatever is on screen.
-	GuiImage screenImg(screenwidth, screenheight, (PixelColor){0, 0, 0, 192});
+	// emulators do): WiiMenu() already calls snapshotFrame(); this needs the
+	// frame size to pass to readFrameRGB24(), which the HAL does not expose.
+	// renderMenu() clears the EFB every frame, so there is nothing on screen
+	// to dim: use the template's striped backdrop.
+	GuiImage screenImg(screenwidth, screenheight, (PixelColor){50, 50, 50, 255});
+	screenImg.setStripe(30);
 
 	GuiTrigger trigA;
 	trigA.setPrimaryTrigger();
@@ -579,7 +593,7 @@ void HomeMenu ()
 			w.setEffect(EFFECT::FADE, -15);
 
 			// step the GUI until the effects have finished
-			for(i=0; i < 30; i++)
+			while(w.getEffect() > 0)
 				UpdateGui();
 			break;
 		}
