@@ -1,0 +1,52 @@
+/****************************************************************************
+ * DOSBox Wii
+ * Daryl Borth 2008-2026
+ * OgcEmulatorVideo.h
+ ***************************************************************************/
+#pragma once
+
+#include <gccore.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "../EmulatorVideoDriver.h"
+
+class OgcVideoDriver;
+
+class OgcEmulatorVideo : public EmulatorVideoDriver
+{
+	public:
+		OgcEmulatorVideo() : videoDriver(nullptr) {}
+		~OgcEmulatorVideo() override { free(screenshotSnapshot); }
+
+		void init(VideoDriver* videoDriver) override;
+		void resetVideo() override;
+		void presentFrame(int width, int height) override;
+		//! Copies the live (4x4-tiled GX_TF_RGB5A3) texturemem contents into
+		//! a driver-owned buffer, since texturemem itself lives in the
+		//! mspace SwitchMemoryModeMenu() is about to tear down.
+		void snapshotFrame() override;
+		//! Un-swizzles the buffer snapshotFrame() captured into packed RGB24
+		void readFrameRGB24(int width, int height, uint8_t* dst) override;
+
+		//! Sets the initial console dimensions, before the first presentFrame() call
+		void renderInit(int width, int height);
+		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
+
+	private:
+		//! One-shot: allocated by snapshotFrame(), consumed and freed by
+		//! the next readFrameRGB24() call.
+		uint8_t* screenshotSnapshot = nullptr;
+
+		void writeFrameToTextureMemory(u8* srcBuffer, void* textureBase, int width, int height);
+		void tileRGBA8ToGxTexture(const uint8_t *rgba, int width, int height, void *dst);
+		void drawInit();
+		void configureTEV();
+		void drawSquare();
+		void drawCursor();
+		void recalculateScaling();
+		OgcVideoDriver* videoDriver;
+
+		// The game quad's rect on the UI canvas (top-left x/y, size w/h),
+		// recomputed by recalculateScaling(); used to map the pointer
+		float frameX = 0, frameY = 0, frameW = 0, frameH = 0;
+};
