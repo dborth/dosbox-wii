@@ -9,8 +9,6 @@
  * UpdateGui().
  ***************************************************************************/
 
-#include <gccore.h>
-#include <ogcsys.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

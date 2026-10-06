@@ -3,21 +3,13 @@
  * Daryl Borth 2026
  * KeyboardDriver.h
  *
- * Physical (USB) keyboard input. STUB INTERFACE: no driver backs this yet,
- * see OgcKeyboardDriver.cpp. Not part of Platform (yet); the app owns the
- * instance (wiihardware.cpp) until the shape is proven, then it can move
- * into Platform::getKeyboard() and upstream into libgui.
- *
- * Why separate from InputDriver: InputDriver turns pads/pointers into the
- * logical GUI buttons (InputPadData). A keyboard is an event source with
- * scancodes, key repeat and modifiers, and DOSBox needs the individual
- * keys, not a logical-button mapping.
+ * Physical (USB) keyboard input
  *
  * ---------------------------------------------------------------------
  * HAL BUILD-OUT PLAN
  *
  * Events: KeyEvent carries a USB HID usage code (page 0x07), not an
- * SDLK_*/DOSBox code. HID usages are what libwiikeyboard reports as
+ * SDLK_/DOSBox code. HID usages are what libwiikeyboard reports as
  * keycodes and what Wii U's WUT keyboard API reports, so every backend
  * produces the same codes. DOSBox translates HID -> its own key table
  * (the SDLK_* enum we are keeping) in one place in the mapper layer.

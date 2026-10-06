@@ -3,11 +3,9 @@
  * Tantric 2009-2010
  ***************************************************************************/
 
-#include <gccore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ogcsys.h>
 #include <malloc.h>
 #include <unistd.h>
 #include <sys/iosupport.h>
@@ -15,7 +13,6 @@
 #include "wiihardware.h"
 #include "menu.h"
 #include "filelist.h"
-#include "SDL_events.h"
 #include "libgui/Gui.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
