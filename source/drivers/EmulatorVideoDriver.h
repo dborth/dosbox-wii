@@ -16,7 +16,20 @@ class EmulatorVideoDriver
 
 		virtual void init(VideoDriver* videoDriver) = 0;
 		virtual void resetVideo() = 0;
-		virtual void presentFrame(int width, int height) = 0;
+
+		//! Draws and presents one emulator frame.
+		//! \param pixels   RGB565 (big-endian, native) row-major frame, 32-byte aligned
+		//! \param width    frame width in pixels
+		//! \param height   frame height in pixels
+		//! \param pitch    bytes between the start of consecutive rows
+		virtual void presentFrame(const uint16_t* pixels, int width, int height, int pitch) = 0;
+
+		//! Pixel aspect of the frame (DOSBox's GFX_SetSize scalex/scaley), used
+		//! to size the quad on screen. 1.0/1.0 is square pixels.
+		virtual void setPixelAspect(float scaleX, float scaleY) { (void)scaleX; (void)scaleY; }
+
+		//! Bilinear (true) or nearest-neighbour (false) magnification
+		virtual void setSmoothing(bool smooth) { (void)smooth; }
 
 		//! Copies whatever this driver needs out of its live frame source,
 		//! into storage it owns itself, so a later readFrameRGB24() call
@@ -30,7 +43,7 @@ class EmulatorVideoDriver
 		virtual void readFrameRGB24(int width, int height, uint8_t* dst) = 0;
 
 		//! Sets the initial console dimensions, before the first presentFrame() call
-		virtual void renderInit(int width, int height) = 0;
+		virtual void renderInit(int width, int height) { (void)width; (void)height; }
 
 		//! Maps a UI-canvas pointer position (IR pointer / touch, in the same canvas
 		//! coordinates as InputPadData::cursor_x/y) to a normalized position (0..1 on

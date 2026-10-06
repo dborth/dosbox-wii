@@ -1,65 +1,73 @@
+/****************************************************************************
+ * libgui
+ * Daryl Borth 2009-2026
+ * GuiTrigger.h
+ *
+ * Menu input trigger management.
+ * Acts as a generic UI condition matcher for GuiElements
+ ***************************************************************************/
 #pragma once
 
+#include <cstdint>
 
-//!Menu input trigger management. Determine if action is neccessary based on input data by comparing controller input data to a specific trigger element.
-class GuiTrigger
-{
-	public:
-		//!Constructor
-		GuiTrigger();
-		//!Destructor
-		~GuiTrigger();
-		//!Sets a simple trigger. Requires: element is selected, and trigger button is pressed
-		//!\param ch Controller channel number
-		//!\param wiibtns Wii controller trigger button(s) - classic controller buttons are considered separately
-		//!\param gcbtns GameCube controller trigger button(s)
-		void SetSimpleTrigger(s32 ch, u32 wiibtns, u16 gcbtns);
-		//!Sets a held trigger. Requires: element is selected, and trigger button is pressed
-		//!\param ch Controller channel number
-		//!\param wiibtns Wii controller trigger button(s) - classic controller buttons are considered separately
-		//!\param gcbtns GameCube controller trigger button(s)
-		void SetHeldTrigger(s32 ch, u32 wiibtns, u16 gcbtns);
-		//!Sets a button-only trigger. Requires: Trigger button is pressed
-		//!\param ch Controller channel number
-		//!\param wiibtns Wii controller trigger button(s) - classic controller buttons are considered separately
-		//!\param gcbtns GameCube controller trigger button(s)
-		void SetButtonOnlyTrigger(s32 ch, u32 wiibtns, u16 gcbtns);
-		//!Sets a button-only trigger. Requires: trigger button is pressed and parent window of element is in focus
-		//!\param ch Controller channel number
-		//!\param wiibtns Wii controller trigger button(s) - classic controller buttons are considered separately
-		//!\param gcbtns GameCube controller trigger button(s)
-		void SetButtonOnlyInFocusTrigger(s32 ch, u32 wiibtns, u16 gcbtns);
-		//!Get X or Y value from Wii Joystick (classic, nunchuk) input
-		//!\param stick Controller stick (left = 0, right = 1)
-		//!\param axis Controller stick axis (x-axis = 0, y-axis = 1)
-		//!\return Stick value
-		s8 WPAD_Stick(u8 stick, int axis);
-		//!Get X value from Wii Joystick (classic, nunchuk) input
-		//!\param stick Controller stick (left = 0, right = 1)
-		//!\return Stick value
-		s8 WPAD_StickX(u8 stick);
-		//!Get Y value from Wii Joystick (classic, nunchuk) input
-		//!\param stick Controller stick (left = 0, right = 1)
-		//!\return Stick value
-		s8 WPAD_StickY(u8 stick);
-		//!Move menu selection left (via pad/joystick). Allows scroll delay and button overriding
-		//!\return true if selection should be moved left, false otherwise
-		bool Left();
-		//!Move menu selection right (via pad/joystick). Allows scroll delay and button overriding
-		//!\return true if selection should be moved right, false otherwise
-		bool Right();
-		//!Move menu selection up (via pad/joystick). Allows scroll delay and button overriding
-		//!\return true if selection should be moved up, false otherwise
-		bool Up();
-		//!Move menu selection down (via pad/joystick). Allows scroll delay and button overriding
-		//!\return true if selection should be moved down, false otherwise
-		bool Down();
-
-		WPADData wpaddata; //!< Wii controller trigger data
-		PADData pad; //!< GameCube controller trigger data
-		WPADData * wpad; //!< Wii controller trigger
-		s32 chan; //!< Trigger controller channel (0-3, -1 for all)
-		u8 type; //!< trigger type (TRIGGER_SIMPLE,	TRIGGER_HELD, TRIGGER_BUTTON_ONLY, TRIGGER_BUTTON_ONLY_IN_FOCUS)
+enum class TRIGGER_TYPE {
+	SIMPLE,
+	HELD,
+	BUTTON_ONLY,
+	BUTTON_ONLY_IN_FOCUS
 };
 
-extern GuiTrigger userInput[4];
+enum class TRIGGER_ACTION {
+	NONE,      // Explicit button mask provided
+	PRIMARY,   // Semantic Accept: A (Vertical) or 2 (Sideways)
+	SECONDARY  // Semantic Cancel: B (Vertical) or 1 (Sideways)
+};
+
+class GuiTrigger {
+public:
+	GuiTrigger();
+	~GuiTrigger() = default;
+
+	//! Semantic Triggers
+	// Automatically resolves to A/2 or B/1 based on controller orientation
+	void setPrimaryTrigger(int ch = -1);
+	void setSecondaryTrigger(int ch = -1);
+
+	//! Sets a simple trigger. Requires: element is selected, and trigger button is pressed
+	//!\param ch Controller channel number (-1 for any channel)
+	//!\param buttonMask Logical GuiButton bitmask
+	void setSimpleTrigger(int ch, uint32_t buttonMask);
+
+	//! Sets a held trigger. Requires: element is selected, and trigger button is held
+	//!\param ch Controller channel number (-1 for any channel)
+	//!\param buttonMask Logical GuiButton bitmask
+	void setHeldTrigger(int ch, uint32_t buttonMask);
+
+	//! Sets a button-only trigger. Requires: Trigger button is pressed
+	//!\param ch Controller channel number (-1 for any channel)
+	//!\param buttonMask Logical GuiButton bitmask
+	void setButtonOnlyTrigger(int ch, uint32_t buttonMask);
+
+	//! Sets a button-only trigger. Requires: trigger button is pressed and parent window is in focus
+	//!\param ch Controller channel number (-1 for any channel)
+	//!\param buttonMask Logical GuiButton bitmask
+	void setButtonOnlyInFocusTrigger(int ch, uint32_t buttonMask);
+
+	//! Evaluation methods
+	bool isClicked(const InputController* controller) const;
+	bool isHeld(const InputController* controller) const;
+	bool isReleased(const InputController* controller) const;
+
+	//! Accessors
+	TRIGGER_TYPE getType() const { return type; }
+	int getChannel() const { return chan; }
+
+private:
+	TRIGGER_TYPE type;
+	TRIGGER_ACTION action;
+	int chan;
+	uint32_t conditionMask;
+
+	//! Dynamically calculates the required bitmask based on orientation
+	uint32_t resolveMask(const InputController* controller) const;
+};

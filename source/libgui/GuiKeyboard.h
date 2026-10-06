@@ -1,23 +1,15 @@
+/****************************************************************************
+ * libgui
+ *
+ * Daryl Borth 2009-2026
+ * GuiKeyboard.h
+ ***************************************************************************/
 #pragma once
 
-#include "GuiWindow.h"
-#include "GuiButton.h"
-#include "GuiImage.h"
-#include "GuiImageData.h"
-#include "GuiText.h"
-#include "GuiSound.h"
-#include "GuiTrigger.h"
+constexpr int KB_ROWS = 4;
+constexpr int KB_COLUMNS = 11;
 
-// define this marco to enable/add ESC, ENTER, F1, F2, etc. buttons
-#define EXTENDED_KEYBOARD
-
-#ifdef EXTENDED_KEYBOARD
-#define KB_ROWS 5
-#define KB_COLUMNS 12
-#else
-#define KB_ROWS 4
-#define KB_COLUMNS 11
-#endif
+#define MAX_KEYBOARD_DISPLAY	32
 
 typedef struct _keytype {
 	char ch, chShift;
@@ -27,26 +19,16 @@ typedef struct _keytype {
 class GuiKeyboard : public GuiWindow
 {
 	public:
-		GuiKeyboard(char * t, u32 m);
+		GuiKeyboard(char * t, uint32_t m);
 		~GuiKeyboard();
-		void Update(GuiTrigger * t);
+		void update(InputController * c);
 		char kbtextstr[256];
 	protected:
-		u32 kbtextmaxlen;
+		uint32_t kbtextmaxlen;
 		int shift;
 		int caps;
 		GuiText * kbText;
 		GuiImage * keyTextboxImg;
-#ifdef EXTENDED_KEYBOARD
-		GuiText * keyEscText;
-		GuiImage * keyEscImg;
-		GuiImage * keyEscOverImg;
-		GuiButton * keyEsc;
-		GuiText * keyEnterText;
-		GuiImage * keyEnterImg;
-		GuiImage * keyEnterOverImg;
-		GuiButton * keyEnter;
-#endif
 		GuiText * keyCapsText;
 		GuiImage * keyCapsImg;
 		GuiImage * keyCapsOverImg;
@@ -76,6 +58,5 @@ class GuiKeyboard : public GuiWindow
 		GuiSound * keySoundOver;
 		GuiSound * keySoundClick;
 		GuiTrigger * trigA;
-		GuiTrigger * trig2;
 		Key keys[KB_ROWS][KB_COLUMNS]; // two chars = less space than one pointer
 };

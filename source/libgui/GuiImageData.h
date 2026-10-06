@@ -1,29 +1,113 @@
+/****************************************************************************
+ * libgui
+ * Daryl Borth 2009-2026
+ * GuiImageData.h
+ ***************************************************************************/
 #pragma once
 
+#include <memory>
+#include <cstdlib>
 
-//!Converts image data into GX-useable RGBA8. Currently designed for use only with PNG files
+#include "../drivers/Mutex.h"
+
+//!Decodes compressed image data (PNG) into a platform-native texture created
+//!from it. Currently designed for use only with PNG files.
 class GuiImageData
 {
 	public:
 		//!Constructor
-		//!Converts the image data to RGBA8 - expects PNG format
-		//!\param i Image data
+		GuiImageData();
+		//!Constructor
+		//!Converts the PNG format image data to a platform-native texture,
+		//!allocated and owned by this object.
+		//!\param i Source image data (PNG)
 		//!\param w Max image width (0 = not set)
 		//!\param h Max image height (0 = not set)
-		GuiImageData(const u8 * i, int w=0, int h=0);
+		GuiImageData(const uint8_t * i, int w=0, int h=0);
+		//!Constructor
+		//!Converts the PNG format image data to a platform-native texture,
+		//!decoded directly into a caller-supplied buffer.
+		//!\param i Source image data (PNG)
+		//!\param dst Destination texture buffer, owned by the caller
+		//!\param maxw Max image width (0 = not set)
+		//!\param maxh Max image height (0 = not set)
+		GuiImageData(const uint8_t * i, uint8_t * dst, int maxw=0, int maxh=0);
+		//!Constructor
+		//!Populates an image directly with an already-created platform-native
+		//!texture
+		//!\param t Platform-native texture
+		//!\param w Image width
+		//!\param h Image height
+		//!\param takeOwnership If true (default), this object will destroy
+		//!\c t when it is destroyed or replaced.
+		GuiImageData(void * t, int w, int h, bool takeOwnership = true);
 		//!Destructor
 		~GuiImageData();
-		//!Gets a pointer to the image data
-		//!\return pointer to image data
-		u8 * GetImage();
+		//!Decodes new PNG data into this object's own texture, reusing the
+		//!existing allocation whenever the platform's ImageRenderer says it can
+		//!hold the new image instead of freeing and reallocating.
+		//!\param pngData Source image data (PNG)
+		//!\param maxw Max image width (0 = not set)
+		//!\param maxh Max image height (0 = not set)
+		//!\return true on success
+		bool reload(const uint8_t * pngData, int maxw = 0, int maxh = 0);
+		//!Gets the attached platform-native texture
+		//!\return opaque texture handle
+		void * getTexture() { return texture; }
 		//!Gets the image width
 		//!\return image width
-		int GetWidth();
+		int getWidth() { return width; }
 		//!Gets the image height
 		//!\return image height
-		int GetHeight();
+		int getHeight() { return height; }
+		//!Sets the scratch buffer that every decode (the PNG-decoding
+		//!constructors, and reload()) will stage its raw, uncompressed pixel
+		//!rows into while it runs.
+		//!\param buffer Scratch buffer, owned and sized by the caller
+		//!\param size Size of buffer, in bytes
+		static void setDecodeScratch(void * buffer, unsigned int size);
+		static Mutex & scratchLock();
+
+		//!CPU-only decode result from decodeToRgba(): raw RGBA8 pixel data
+		//!that has NOT been uploaded to a platform texture yet.
+		struct DecodedImage
+		{
+			std::unique_ptr<uint8_t, decltype(&free)> rgba{nullptr, free}; //!< row-major RGBA8, or null if decode failed
+			int width = 0;
+			int height = 0;
+			//!False when maxw/maxh constrained this decode to a caller-specified pixel box
+			bool assetScaled = true;
+			bool valid() const { return rgba != nullptr; }
+		};
+		//!Decodes a PNG buffer into plain RGBA8 pixels, resizing to fit
+		//!maxw/maxh the same way the decoding constructors/reload() do.
+		//!\param pngData Source image data (PNG)
+		//!\param maxw Max image width (0 = not set)
+		//!\param maxh Max image height (0 = not set)
+		//!\return a DecodedImage; check valid() before use
+		static DecodedImage decodeToRgba(const uint8_t * pngData, int maxw = 0, int maxh = 0);
+		//!Uploads a DecodedImage produced by decodeToRgba() into this
+		//!object's own texture, reusing the existing allocation whenever
+		//!ImageRenderer::canReuseTexture() allows (same policy as reload()). Must be
+		//!called on the main/GPU thread.
+		//!\param decoded Result of a prior decodeToRgba() call
+		//!\return true on success
+		bool uploadDecoded(DecodedImage && decoded);
+		//!Releases any owned texture and resets this object to the same
+		//!(empty) state as a default-constructed GuiImageData. Useful for
+		//!explicitly freeing GPU memory (eg. an evicted cache entry)
+		//!before the object itself is destroyed.
+		void clear();
 	protected:
-		u8 * data; //!< Image data
+		void * texture; //!< Attached platform-native texture
 		int height; //!< Height of image
 		int width; //!< Width of image
+	private:
+		bool ownsTexture; //!< Whether this object may destroy/replace texture
+		int capWidth; //!< Width texture was allocated to hold, if ownsTexture (0 otherwise)
+		int capHeight; //!< Height texture was allocated to hold, if ownsTexture (0 otherwise)
+		bool cachedView = false; //!< texture is a shared GuiImageDataCache texture we merely borrow; never written to or freed
+		//!Decodes a PNG buffer, reusing the existing owned texture if it's
+		//!already large enough, otherwise (re)allocating one.
+		bool decodeImage(const uint8_t * pngData, int * width, int * height, int maxw, int maxh);
 };

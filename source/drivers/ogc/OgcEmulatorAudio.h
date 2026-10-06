@@ -31,7 +31,7 @@ class OgcEmulatorAudio : public EmulatorAudioDriver
 
 		double getDynamicRate() override;
 		bool canWrite() override;
-		u16* getWriteBuffer() override;
+		uint16_t* getWriteBuffer() override;
 		void commitWrite() override;
 
 		// Called only via the AudioDMACallback trampoline above.

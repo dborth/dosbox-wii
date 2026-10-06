@@ -1,145 +1,81 @@
-/*!\mainpage libwiigui Documentation
+/*!
+ * \file Gui.h
+ * \brief Umbrella header for the platform-agnostic libgui core.
  *
- * \section Introduction
- * libwiigui is a GUI library for the Wii, created to help structure the
- * design of a complicated GUI interface, and to enable an author to create
- * a sophisticated, feature-rich GUI. It was originally conceived and written
- * after I started to design a GUI for Snes9x GX, and found libwiisprite and
- * GRRLIB inadequate for the purpose. It uses GX for drawing, and makes use
- * of PNGU for displaying images and FreeTypeGX for text. It was designed to
- * be flexible and is easy to modify - don't be afraid to change the way it
- * works or expand it to suit your GUI's purposes! If you do, and you think
- * your changes might benefit others, please share them so they might be
- * added to the project!
+ * libgui - a GUI library for GameCube, Wii, and Wii U homebrew.
+ * https://github.com/dborth/libgui
  *
- * \section Quickstart
- * Start from the supplied template example. For more advanced uses, see the
- * source code for Snes9x GX, FCE Ultra GX, and Visual Boy Advance GX.
-
- * \section Contact
- * If you have any suggestions for the library or documentation, or want to
- * contribute, please visit the libwiigui website:
- * http://code.google.com/p/libwiigui/
-
- * \section Credits
- * This library was wholly designed and written by Tantric. Thanks to the
- * authors of PNGU and FreeTypeGX, of which this library makes use. Thanks
- * also to the authors of GRRLIB and libwiisprite for laying the foundations.
+ * Include this one header to get every core UI class (GuiElement, GuiWindow,
+ * GuiButton, GuiImage, GuiText, GuiSound, GuiFileBrowser, GuiKeyboard,
+ * GuiOptionBrowser, GuiSaveBrowser, ...), the alignment/state/scroll enums,
+ * and the platform driver interfaces they are built on.
  *
-*/
+ * Everything reachable from this header is platform-agnostic. All hardware
+ * access goes through the abstract driver interfaces in source/drivers/
+ * (Platform, VideoDriver, AudioDriver, InputDriver, FileSystemDriver,
+ * ThreadDriver). Application code should only ever need to include
+ * this header plus whichever concrete Platform header it instantiates.
+ *
+ * See README.md, CHANGELOG.md, and the API documentation in the repository
+ * for more information.
+ */
 
-#ifndef LIBWIIGUI_H
-#define LIBWIIGUI_H
+#pragma once
 
-#include <gccore.h>
-#include <malloc.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <exception>
-#include <wchar.h>
-#include <math.h>
-#include <asndlib.h>
-#include <wiiuse/wpad.h>
+#include <cwchar>
+#include <cmath>
 
-#include "pngu.h"
-#include "FreeTypeGX.h"
-#include "wiivideo.h"
-#include "filelist.h"
-#include "input.h"
-#include "oggplayer.h"
+#include "../filelist.h"
+#include "../drivers/Platform.h"
+#include "../drivers/InputData.h"
+#include "../drivers/InputController.h"
 
-extern FreeTypeGX *fontSystem[];
-
-#define SCROLL_DELAY_INITIAL	200000
-#define SCROLL_DELAY_LOOP		30000
-#define SCROLL_DELAY_DECREASE	300
-#define FILE_PAGESIZE 			8
-#define PAGESIZE 				8
-#define MAX_OPTIONS 			150
-#define MAX_KEYBOARD_DISPLAY	32
-
-typedef void (*UpdateCallback)(void * e);
-
-enum
-{
-	ALIGN_LEFT,
-	ALIGN_RIGHT,
-	ALIGN_CENTRE,
-	ALIGN_TOP,
-	ALIGN_BOTTOM,
-	ALIGN_MIDDLE
+//!Vertical alignment of a GuiElement relative to its parent.
+//!\ingroup grp_core
+enum class ALIGN_V {
+	TOP,
+	BOTTOM,
+	MIDDLE
 };
 
-enum
-{
-	STATE_DEFAULT,
-	STATE_SELECTED,
-	STATE_CLICKED,
-	STATE_HELD,
-	STATE_DISABLED
+//!Horizontal alignment of a GuiElement relative to its parent.
+//!\ingroup grp_core
+enum class ALIGN_H {
+	LEFT,
+	RIGHT,
+	CENTRE
 };
 
-enum
-{
-	SOUND_PCM,
-	SOUND_OGG
+//!Interaction state of a GuiElement (default, selected, clicked, held, disabled).
+//!\ingroup grp_core
+enum class STATE {
+	DEFAULT,
+	SELECTED,
+	CLICKED,
+	HELD,
+	DISABLED
 };
 
-enum
-{
-	IMAGE_TEXTURE,
-	IMAGE_COLOR,
-	IMAGE_DATA
+//!Scrolling mode of a GuiText (none or horizontal).
+//!\ingroup grp_core
+enum class SCROLL {
+	NONE,
+	HORIZONTAL
 };
-
-enum
-{
-	TRIGGER_SIMPLE,
-	TRIGGER_HELD,
-	TRIGGER_BUTTON_ONLY,
-	TRIGGER_BUTTON_ONLY_IN_FOCUS
-};
-
-enum
-{
-	SCROLL_NONE,
-	SCROLL_HORIZONTAL
-};
-
-typedef struct _paddata {
-	u16 btns_d;
-	u16 btns_u;
-	u16 btns_h;
-	s8 stickX;
-	s8 stickY;
-	s8 substickX;
-	s8 substickY;
-	u8 triggerL;
-	u8 triggerR;
-} PADData;
-
-#define EFFECT_SLIDE_TOP			1
-#define EFFECT_SLIDE_BOTTOM			2
-#define EFFECT_SLIDE_RIGHT			4
-#define EFFECT_SLIDE_LEFT			8
-#define EFFECT_SLIDE_IN				16
-#define EFFECT_SLIDE_OUT			32
-#define EFFECT_FADE					64
-#define EFFECT_SCALE				128
-#define EFFECT_COLOR_TRANSITION		256
 
 #include "GuiTrigger.h"
-#include "GuiSound.h"
 #include "GuiElement.h"
 #include "GuiWindow.h"
-#include "GuiImageData.h"
-#include "GuiImage.h"
-#include "GuiMonoText.h"
+#include "GuiTextRenderer.h"
+#include "GuiTextTranslator.h"
 #include "GuiText.h"
-#include "GuiTooltip.h"
+#include "GuiSound.h"
+#include "GuiImageData.h"
+#include "GuiImageDataCache.h"
+#include "GuiImage.h"
 #include "GuiButton.h"
 #include "GuiKeyboard.h"
-
-#endif

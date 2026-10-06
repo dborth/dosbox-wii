@@ -1,11 +1,7 @@
 /****************************************************************************
- * libwiigui
- *
- * Tantric 2009-2010
- *
- * gui_window.cpp
- *
- * GUI class definitions
+ * libgui
+ * Daryl Borth 2009-2026
+ * GuiWindow.cpp
  ***************************************************************************/
 
 #include "Gui.h"
@@ -26,167 +22,167 @@ GuiWindow::GuiWindow(int w, int h)
 
 GuiWindow::~GuiWindow()
 {
+	// Orphan all children if the window is destroyed first to prevent dangling pointer
+	for (GuiElement* e : _elements) {
+		e->setParent(nullptr);
+	}
 }
 
-void GuiWindow::Append(GuiElement* e)
+void GuiWindow::append(GuiElement* e)
 {
-	if (e == NULL)
+	if (e == nullptr)
 		return;
 
-	Remove(e);
+	remove(e);
 	_elements.push_back(e);
-	e->SetParent(this);
+	e->setParent(this);
 }
 
-void GuiWindow::Insert(GuiElement* e, u32 index)
+void GuiWindow::appendWithAutoRemove(GuiElement* e)
 {
-	if (e == NULL || index > (_elements.size() - 1))
+    if (e == nullptr) return;
+    append(e);
+    e->setRemoveOnDestroy(true);
+}
+
+void GuiWindow::insert(GuiElement* e, uint32_t index)
+{
+	if (e == nullptr || index > (_elements.size() - 1))
 		return;
 
-	Remove(e);
+	remove(e);
 	_elements.insert(_elements.begin()+index, e);
-	e->SetParent(this);
+	e->setParent(this);
 }
 
-void GuiWindow::Remove(GuiElement* e)
+void GuiWindow::remove(GuiElement* e)
 {
-	if (e == NULL)
+	if (e == nullptr)
 		return;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
 		if(e == _elements.at(i))
 		{
+			e->setParent(nullptr);
 			_elements.erase(_elements.begin()+i);
 			break;
 		}
 	}
 }
 
-void GuiWindow::RemoveAll()
+void GuiWindow::removeAll()
 {
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
+	{
+		_elements.at(i)->setParent(nullptr);
+	}
 	_elements.clear();
 }
 
-bool GuiWindow::Find(GuiElement* e)
+bool GuiWindow::find(GuiElement* e)
 {
-	if (e == NULL)
+	if (e == nullptr)
 		return false;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 		if(e == _elements.at(i))
 			return true;
 	return false;
 }
 
-GuiElement* GuiWindow::GetGuiElementAt(u32 index) const
+GuiElement* GuiWindow::getGuiElementAt(uint32_t index) const
 {
 	if (index >= _elements.size())
-		return NULL;
+		return nullptr;
 	return _elements.at(index);
 }
 
-u32 GuiWindow::GetSize()
+uint32_t GuiWindow::getSize()
 {
 	return _elements.size();
 }
 
-void GuiWindow::Draw()
+void GuiWindow::draw()
 {
-	if(_elements.size() == 0 || !this->IsVisible())
+	if(_elements.size() == 0 || !this->isVisible())
 		return;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try	{ _elements.at(i)->Draw(); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->draw();
 	}
 
-	this->UpdateEffects();
+	this->updateEffects();
 
-	if(parentElement && state == STATE_DISABLED)
-		Menu_DrawRectangle(0,0,screenwidth,screenheight,(GXColor){0xbe, 0xca, 0xd5, 0x70},1);
+	if(parentElement && state == STATE::DISABLED)
+		platform->getVideo()->getImageRenderer()->drawRectangle(0,0,platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight(), (PixelColor){0xbe, 0xca, 0xd5, 0x70});
 }
 
-void GuiWindow::DrawTooltip()
+void GuiWindow::resetState()
 {
-	if(_elements.size() == 0 || !this->IsVisible())
-		return;
+	if(state != STATE::DISABLED)
+		state = STATE::DEFAULT;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; i++)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try	{ _elements.at(i)->DrawTooltip(); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->resetState();
 	}
 }
 
-void GuiWindow::ResetState()
-{
-	if(state != STATE_DISABLED)
-		state = STATE_DEFAULT;
-
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
-	{
-		try { _elements.at(i)->ResetState(); }
-		catch (const std::exception& e) { }
-	}
-}
-
-void GuiWindow::SetState(int s)
+void GuiWindow::setState(STATE s, int c)
 {
 	state = s;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try { _elements.at(i)->SetState(s); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->setState(s, c);
 	}
 }
 
-void GuiWindow::SetVisible(bool v)
+void GuiWindow::setVisible(bool v)
 {
 	visible = v;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try { _elements.at(i)->SetVisible(v); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->setVisible(v);
 	}
 }
 
-void GuiWindow::SetFocus(int f)
+void GuiWindow::setFocus(int f)
 {
 	focus = f;
 
 	if(f == 1)
-		this->MoveSelectionVert(1);
+		this->moveSelectionVert(1);
 	else
-		this->ResetState();
+		this->resetState();
 }
 
-void GuiWindow::ChangeFocus(GuiElement* e)
+void GuiWindow::changeFocus(GuiElement* e)
 {
 	if(parentElement)
 		return; // this is only intended for the main window
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
 		if(e == _elements.at(i))
-			_elements.at(i)->SetFocus(1);
-		else if(_elements.at(i)->IsFocused() == 1)
-			_elements.at(i)->SetFocus(0);
+			_elements.at(i)->setFocus(1);
+		else if(_elements.at(i)->isFocused() == 1)
+			_elements.at(i)->setFocus(0);
 	}
 }
 
-void GuiWindow::ToggleFocus(GuiTrigger * t)
+void GuiWindow::toggleFocus(InputController * controller)
 {
 	if(parentElement)
 		return; // this is only intended for the main window
@@ -200,15 +196,11 @@ void GuiWindow::ToggleFocus(GuiTrigger * t)
 	// look for currently in focus element
 	for (i = 0; i < elemSize; ++i)
 	{
-		try
+		if(_elements.at(i)->isFocused() == 1)
 		{
-			if(_elements.at(i)->IsFocused() == 1)
-			{
-				found = i;
-				break;
-			}
+			found = i;
+			break;
 		}
-		catch (const std::exception& e) { }
 	}
 
 	// element with focus not found, try to give focus
@@ -216,111 +208,91 @@ void GuiWindow::ToggleFocus(GuiTrigger * t)
 	{
 		for (i = 0; i < elemSize; ++i)
 		{
-			try
+			if(_elements.at(i)->isFocused() == 0 && _elements.at(i)->getState() != STATE::DISABLED) // focus is possible (but not set)
 			{
-				if(_elements.at(i)->IsFocused() == 0 && _elements.at(i)->GetState() != STATE_DISABLED) // focus is possible (but not set)
-				{
-					_elements.at(i)->SetFocus(1); // give this element focus
-					break;
-				}
+				_elements.at(i)->setFocus(1); // give this element focus
+				break;
 			}
-			catch (const std::exception& e) { }
 		}
 	}
+
 	// change focus
-	else if(t->wpad->btns_d & (WPAD_BUTTON_1 | WPAD_BUTTON_B | WPAD_CLASSIC_BUTTON_B)
-		|| t->pad.btns_d & PAD_BUTTON_B)
+	else if(controller->isSecondaryPressed())
 	{
 		for (i = found; i < elemSize; ++i)
 		{
-			try
+			if(_elements.at(i)->isFocused() == 0 && _elements.at(i)->getState() != STATE::DISABLED) // focus is possible (but not set)
 			{
-				if(_elements.at(i)->IsFocused() == 0 && _elements.at(i)->GetState() != STATE_DISABLED) // focus is possible (but not set)
-				{
-					newfocus = i;
-					_elements.at(i)->SetFocus(1); // give this element focus
-					_elements.at(found)->SetFocus(0); // disable focus on other element
-					break;
-				}
+				newfocus = i;
+				_elements.at(i)->setFocus(1); // give this element focus
+				_elements.at(found)->setFocus(0); // disable focus on other element
+				break;
 			}
-			catch (const std::exception& e) { }
 		}
 
 		if(newfocus == -1)
 		{
 			for (i = 0; i < found; ++i)
 			{
-				try
+				if(_elements.at(i)->isFocused() == 0 && _elements.at(i)->getState() != STATE::DISABLED) // focus is possible (but not set)
 				{
-					if(_elements.at(i)->IsFocused() == 0 && _elements.at(i)->GetState() != STATE_DISABLED) // focus is possible (but not set)
-					{
-						_elements.at(i)->SetFocus(1); // give this element focus
-						_elements.at(found)->SetFocus(0); // disable focus on other element
-						break;
-					}
+					_elements.at(i)->setFocus(1); // give this element focus
+					_elements.at(found)->setFocus(0); // disable focus on other element
+					break;
 				}
-				catch (const std::exception& e) { }
 			}
 		}
 	}
 }
 
-int GuiWindow::GetSelected()
+int GuiWindow::getSelected()
 {
 	// find selected element
 	int found = -1;
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try
+		if(_elements.at(i)->getState() == STATE::SELECTED)
 		{
-			if(_elements.at(i)->GetState() == STATE_SELECTED)
-			{
-				found = int(i);
-				break;
-			}
+			found = int(i);
+			break;
 		}
-		catch (const std::exception& e) { }
 	}
 	return found;
 }
 
 // set element to left/right as selected
 // there's probably a more clever way to do this, but this way works
-void GuiWindow::MoveSelectionHor(int dir)
+void GuiWindow::moveSelectionHor(int dir)
 {
 	int found = -1;
-	u16 left = 0;
-	u16 top = 0;
-	u32 i;
-	u32 elemSize = _elements.size();
+	uint16_t left = 0;
+	uint16_t top = 0;
+	uint32_t i;
+	uint32_t elemSize = _elements.size();
 
-	int selected = this->GetSelected();
+	int selected = this->getSelected();
 
 	if(selected >= 0)
 	{
-		left = _elements.at(selected)->GetLeft();
-		top = _elements.at(selected)->GetTop();
+		left = _elements.at(selected)->getLeft();
+		top = _elements.at(selected)->getTop();
 	}
 
 	
 	// look for a button on the same row, to the left/right
 	for (i = 0; i < elemSize; ++i)
 	{
-		try
+		if(_elements.at(i)->isSelectable())
 		{
-			if(_elements.at(i)->IsSelectable())
+			if(_elements.at(i)->getLeft()*dir > left*dir && _elements.at(i)->getTop() == top)
 			{
-				if(_elements.at(i)->GetLeft()*dir > left*dir && _elements.at(i)->GetTop() == top)
-				{
-					if(found == -1)
-						found = int(i);
-					else if(_elements.at(i)->GetLeft()*dir < _elements.at(found)->GetLeft()*dir)
-						found = int(i); // this is a better match
-				}
+				if(found == -1)
+					found = int(i);
+				else if(_elements.at(i)->getLeft()*dir < _elements.at(found)->getLeft()*dir)
+					found = int(i); // this is a better match
 			}
 		}
-		catch (const std::exception& e) { }
 	}
 	if(found >= 0)
 		goto matchfound;
@@ -328,73 +300,65 @@ void GuiWindow::MoveSelectionHor(int dir)
 	// match still not found, let's try the first button in the next row
 	for (i = 0; i < elemSize; ++i)
 	{
-		try
+		if(_elements.at(i)->isSelectable())
 		{
-			if(_elements.at(i)->IsSelectable())
+			if(_elements.at(i)->getTop()*dir > top*dir)
 			{
-				if(_elements.at(i)->GetTop()*dir > top*dir)
-				{
-					if(found == -1)
-						found = i;
-					else if(_elements.at(i)->GetTop()*dir < _elements.at(found)->GetTop()*dir)
-						found = i; // this is a better match
-					else if(_elements.at(i)->GetTop()*dir == _elements.at(found)->GetTop()*dir
-						&&
-						_elements.at(i)->GetLeft()*dir < _elements.at(found)->GetLeft()*dir)
-						found = i; // this is a better match
-				}
+				if(found == -1)
+					found = i;
+				else if(_elements.at(i)->getTop()*dir < _elements.at(found)->getTop()*dir)
+					found = i; // this is a better match
+				else if(_elements.at(i)->getTop()*dir == _elements.at(found)->getTop()*dir
+					&&
+					_elements.at(i)->getLeft()*dir < _elements.at(found)->getLeft()*dir)
+					found = i; // this is a better match
 			}
 		}
-		catch (const std::exception& e) { }
 	}
 
 	// match found
 	matchfound:
 	if(found >= 0)
 	{
-		_elements.at(found)->SetState(STATE_SELECTED);
+		_elements.at(found)->setState(STATE::SELECTED);
 		if(selected >= 0)
-			_elements.at(selected)->ResetState();
+			_elements.at(selected)->resetState();
 	}
 }
 
-void GuiWindow::MoveSelectionVert(int dir)
+void GuiWindow::moveSelectionVert(int dir)
 {
 	int found = -1;
-	u16 left = 0;
-	u16 top = 0;
+	uint16_t left = 0;
+	uint16_t top = 0;
 
-	int selected = this->GetSelected();
+	int selected = this->getSelected();
 
 	if(selected >= 0)
 	{
-		left = _elements.at(selected)->GetLeft();
-		top = _elements.at(selected)->GetTop();
+		left = _elements.at(selected)->getLeft();
+		top = _elements.at(selected)->getTop();
 	}
 
 	// look for a button above/below, with the least horizontal difference
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try
+		if(_elements.at(i)->isSelectable())
 		{
-			if(_elements.at(i)->IsSelectable())
+			if(_elements.at(i)->getTop()*dir > top*dir)
 			{
-				if(_elements.at(i)->GetTop()*dir > top*dir)
-				{
-					if(found == -1)
-						found = i;
-					else if(_elements.at(i)->GetTop()*dir < _elements.at(found)->GetTop()*dir)
-						found = i; // this is a better match
-					else if(_elements.at(i)->GetTop()*dir == _elements.at(found)->GetTop()*dir
-							&&
-							abs(_elements.at(i)->GetLeft() - left) <
-							abs(_elements.at(found)->GetLeft() - left))
-						found = i;
-				}
+				if(found == -1)
+					found = i;
+				else if(_elements.at(i)->getTop()*dir < _elements.at(found)->getTop()*dir)
+					found = i; // this is a better match
+				else if(_elements.at(i)->getTop()*dir == _elements.at(found)->getTop()*dir
+						&&
+						abs(_elements.at(i)->getLeft() - left) <
+						abs(_elements.at(found)->getLeft() - left))
+					found = i;
 			}
 		}
-		catch (const std::exception& e) { }
 	}
 	if(found >= 0)
 		goto matchfound;
@@ -403,47 +367,45 @@ void GuiWindow::MoveSelectionVert(int dir)
 	matchfound:
 	if(found >= 0)
 	{
-		_elements.at(found)->SetState(STATE_SELECTED);
+		_elements.at(found)->setState(STATE::SELECTED);
 		if(selected >= 0)
-			_elements.at(selected)->ResetState();
+			_elements.at(selected)->resetState();
 	}
 }
 
-void GuiWindow::ResetText()
+void GuiWindow::resetText()
 {
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; i++)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; i++)
 	{
-		try { _elements.at(i)->ResetText(); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->resetText();
 	}
 }
 
-void GuiWindow::Update(GuiTrigger * t)
+void GuiWindow::update(InputController * controller)
 {
-	if(_elements.size() == 0 || (state == STATE_DISABLED && parentElement))
+	if(_elements.size() == 0 || (state == STATE::DISABLED && parentElement))
 		return;
 
-	u32 elemSize = _elements.size();
-	for (u32 i = 0; i < elemSize; ++i)
+	uint32_t elemSize = _elements.size();
+	for (uint32_t i = 0; i < elemSize; ++i)
 	{
-		try	{ _elements.at(i)->Update(t); }
-		catch (const std::exception& e) { }
+		_elements.at(i)->update(controller);
 	}
 
-	this->ToggleFocus(t);
+	this->toggleFocus(controller);
 
 	if(focus) // only send actions to this window if it's in focus
 	{
 		// pad/joystick navigation
-		if(t->Right())
-			this->MoveSelectionHor(1);
-		else if(t->Left())
-			this->MoveSelectionHor(-1);
-		else if(t->Down())
-			this->MoveSelectionVert(1);
-		else if(t->Up())
-			this->MoveSelectionVert(-1);
+		if(controller->right())
+			this->moveSelectionHor(1);
+		else if(controller->left())
+			this->moveSelectionHor(-1);
+		else if(controller->down())
+			this->moveSelectionVert(1);
+		else if(controller->up())
+			this->moveSelectionVert(-1);
 	}
 
 	if(updateCB)

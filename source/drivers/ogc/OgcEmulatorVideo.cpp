@@ -5,61 +5,46 @@
  ***************************************************************************/
 #include <gccore.h>
 #include <ogcsys.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <ogc/timesupp.h>
-#include <ogc/machine/processor.h>
 
 #include "OgcEmulatorVideo.h"
 #include "OgcVideoDriver.h"
 
-static GXTexObj texobj;
-static GXTexObj cursorObj;
-static Mtx view;
-static int vwidth, vheight;
-static int updateScaling;
+// The emulator view uses the same 640x480 design space as the menu
+#define CANVAS_W 640
+#define CANVAS_H 480
 
-/* New texture based scaler */
-typedef struct tagcamera
-  {
-    guVector pos;
-    guVector up;
-    guVector view;
-  }
-camera;
+static GXTexObj texobj;
+static Mtx view;
 
 /*** Square Matrix
-     This structure controls the size of the image on the screen.
+     Controls the size of the image on the screen. Rewritten by
+     recalculateScaling() whenever the frame size or aspect changes.
 ***/
-static s16 square[] ATTRIBUTE_ALIGN(32) = {
-	/*
-	* X,   Y,  Z
-	* Values set are for roughly 4:3 aspect
-	*/
-	-200,  200, 0,	// 0
-	 200,  200, 0,	// 1
-	 200, -200, 0,	// 2
-	-200, -200, 0	// 3
-    };
-
-// 96x96 static quad for the cursor (Centered at 0,0)
-static s16 cursor_square[] ATTRIBUTE_ALIGN(32) = {
-	-48,  48, 0,	// 0: Top Left
-	 48,  48, 0,	// 1: Top Right
-	 48, -48, 0,	// 2: Bottom Right
-	-48, -48, 0 	// 3: Bottom Left
+static s16 square[12] ATTRIBUTE_ALIGN(32) = {
+	-320,  240, 0,	// 0
+	 320,  240, 0,	// 1
+	 320, -240, 0,	// 2
+	-320, -240, 0	// 3
 };
 
-static camera cam = { {0.0F, 0.0F, 0.0F},
+struct Camera { guVector pos; guVector up; guVector view; };
+static Camera cam = { {0.0F, 0.0F, 0.0F},
                       {0.0F, 0.5F, 0.0F},
-                      {0.0F, 0.0F, -0.5F}
-                    };
+                      {0.0F, 0.0F, -0.5F} };
+
+OgcEmulatorVideo::~OgcEmulatorVideo()
+{
+	free(screenshotSnapshot);
+	free(texMem);
+}
 
 /****************************************************************************
- * Scaler Support Functions
- ****************************************************************************/
+ * GX setup
+ ***************************************************************************/
 void OgcEmulatorVideo::configureTEV()
 {
 	GX_SetNumTexGens (1);
@@ -100,19 +85,10 @@ static inline void draw_vert(u8 pos, f32 s, f32 t)
 
 void OgcEmulatorVideo::drawSquare()
 {
-	Mtx m;			// model matrix.
-	Mtx mv;			// modelview matrix.
+	Mtx m;		// model matrix.
+	Mtx mv;		// modelview matrix.
 
-	if (TiltScreen)
-	{
-		guMtxRotDeg(m, 'z', -TiltAngle);
-		guMtxScaleApply(m, m, 0.8, 0.8, 1);
-	}
-	else
-	{
-		guMtxIdentity(m);
-	}
-
+	guMtxIdentity(m);
 	guMtxTransApply(m, m, 0, 0, -100);
 	guMtxConcat(view, m, mv);
 
@@ -125,74 +101,16 @@ void OgcEmulatorVideo::drawSquare()
 	GX_End();
 }
 
-void OgcEmulatorVideo::drawCursor()
-{
-	// --- 1. ISOLATE AND BIND THE CURSOR ARRAY ---
-	// We reuse GX_VTXFMT0 to avoid crashing the menu, but we swap the positional array.
-	// Flush the static array to main memory to guarantee the GPU reads it correctly.
-	DCFlushRange(cursor_square, 32);
-	GX_SetArray(GX_VA_POS, cursor_square, 3 * sizeof(s16));
-
-	// --- 2. DISABLE TEX1 ---
-	GX_SetVtxDesc(GX_VA_TEX1, GX_NONE);
-
-	// --- 3. CONFIGURE TEV FOR UI ---
-	GX_SetNumTexGens(1);
-	GX_SetNumTevStages(1);
-	GX_SetNumChans(0);
-
-	GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
-	GX_SetTevOp(GX_TEVSTAGE0, GX_REPLACE);
-	GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
-
-	// --- 4. CONFIGURE ALPHA BLENDING ---
-	GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-	GX_LoadTexObj(&cursorObj, GX_TEXMAP0);
-
-	// --- 5. MATH & POSITIONING ---
-	// Map the 0-640 / 0-480 IR coordinates into the -320 to 320 ortho space
-	f32 cX = (f32)CursorX - 320.0f;
-	f32 cY = 240.0f - (f32)CursorY;
-
-	Mtx m, mv;
-	guMtxIdentity(m);
-	// Z MUST BE -100.0f
-	guMtxTransApply(m, m, cX, cY, -100.0f);
-	guMtxConcat(view, m, mv);
-	GX_LoadPosMtxImm(mv, GX_PNMTX0);
-
-	// --- 6. DRAW THE CURSOR ---
-	// Using the exact same draw_vert logic the game loop uses
-	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-		draw_vert(0, 0.0f, 0.0f);
-		draw_vert(1, 1.0f, 0.0f);
-		draw_vert(2, 1.0f, 1.0f);
-		draw_vert(3, 0.0f, 1.0f);
-	GX_End();
-
-	// --- 7. CRITICAL STATE RESTORATION ---
-	// Restore array pointer to the game's dynamic scaling square
-	GX_SetArray(GX_VA_POS, square, 3 * sizeof(s16));
-
-	// Rebind the game texture to MAP0
-	GX_LoadTexObj(&texobj, GX_TEXMAP0);
-
-	// Restore Blending
-	GX_SetBlendMode(GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-
-	// Restore TEV pipeline exactly how the next frame's draw_square expects it
-	configureTEV();
-}
-
 /****************************************************************************
  * resetVideo
  *
  * Reset the video/rendering mode for the emulator rendering
-****************************************************************************/
+ ****************************************************************************/
 void OgcEmulatorVideo::resetVideo()
 {
 	Mtx44 p;
 	GXRModeObj * rmode = videoDriver->findVideoMode();
+	u8 vfilter[7] = {0, 0, 21, 22, 21, 0, 0};
 
 	videoDriver->setupVideoMode(rmode); // reconfigure VI
 
@@ -205,7 +123,6 @@ void OgcEmulatorVideo::resetVideo()
 	GX_SetDispCopyYScale (GX_GetYScaleFactor (rmode->efbHeight, rmode->xfbHeight));
 	GX_SetDispCopyDst (rmode->fbWidth, rmode->xfbHeight);
 
-	u8* vfilter = {0,0,21,22,21,0,0};
 	GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_FALSE, vfilter);
 
 	GX_SetFieldMode (rmode->field_rendering, ((rmode->viHeight / rmode->efbHeight == 2) ? GX_ENABLE : GX_DISABLE));
@@ -222,24 +139,52 @@ void OgcEmulatorVideo::resetVideo()
 	GX_SetColorUpdate (GX_TRUE);
 	GX_SetBlendMode (GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 
-	guOrtho(p, 480/2, -(480/2), -(640/2), 640/2, 100, 1000);	// matrix, t, b, l, r, n, f
+	guOrtho(p, CANVAS_H/2, -(CANVAS_H/2), -(CANVAS_W/2), CANVAS_W/2, 100, 1000);	// matrix, t, b, l, r, n, f
 	GX_LoadProjectionMtx (p, GX_ORTHOGRAPHIC);
 
 	drawInit();
-	// set aspect ratio
-	updateScaling = 1;
+
+	// force the texture object and quad to be rebuilt on the next frame
+	frameWidth = 0;
+	frameHeight = 0;
+	updateScaling = true;
+	filterDirty = true;
 }
 
 /****************************************************************************
  * recalculateScaling
  *
- * Recomputes the on-screen quad and gameScreenPng scale/offset whenever the
- * console resolution changes.
+ * Fits the frame, with its pixel aspect applied, inside the 640x480 canvas
  ***************************************************************************/
 void OgcEmulatorVideo::recalculateScaling()
 {
-	// TODO
-	updateScaling = 0;
+	if (frameWidth <= 0 || frameHeight <= 0)
+		return;
+
+	float displayW = frameWidth * pixelAspectX;
+	float displayH = frameHeight * pixelAspectY;
+
+	float scale = (float)CANVAS_W / displayW;
+	float scaleV = (float)CANVAS_H / displayH;
+	if (scaleV < scale)
+		scale = scaleV;
+
+	frameW = displayW * scale;
+	frameH = displayH * scale;
+	frameX = (CANVAS_W - frameW) / 2.0f;
+	frameY = (CANVAS_H - frameH) / 2.0f;
+
+	s16 halfW = (s16)(frameW / 2.0f + 0.5f);
+	s16 halfH = (s16)(frameH / 2.0f + 0.5f);
+
+	square[0] = -halfW; square[1]  =  halfH;
+	square[3] =  halfW; square[4]  =  halfH;
+	square[6] =  halfW; square[7]  = -halfH;
+	square[9] = -halfW; square[10] = -halfH;
+	DCFlushRange(square, sizeof(square));
+	GX_InvVtxCache();
+
+	updateScaling = false;
 }
 
 bool OgcEmulatorVideo::mapPointerToUnit(float canvasX, float canvasY, bool, float* u, float* v)
@@ -254,83 +199,165 @@ bool OgcEmulatorVideo::mapPointerToUnit(float canvasX, float canvasY, bool, floa
 	return true;
 }
 
-// Converts flat, row-major RGBA8 pixels into GX's native 4x4-tiled
-// GX_TF_RGB5A3 layout, opaque/RGB555-mode (bit15 set), writing directly into
-// a caller-supplied destination (the live GX texture memory).
-
-void OgcEmulatorVideo::tileRGBA8ToGxTexture(const uint8_t *rgba, int width, int height, void *dst)
+void OgcEmulatorVideo::setPixelAspect(float scaleX, float scaleY)
 {
+	if (scaleX <= 0.0f) scaleX = 1.0f;
+	if (scaleY <= 0.0f) scaleY = 1.0f;
+	if (scaleX == pixelAspectX && scaleY == pixelAspectY)
+		return;
+	pixelAspectX = scaleX;
+	pixelAspectY = scaleY;
+	updateScaling = true;
+}
+
+void OgcEmulatorVideo::setSmoothing(bool smooth)
+{
+	if (smoothing != smooth) {
+		smoothing = smooth;
+		filterDirty = true;
+	}
+}
+
+void OgcEmulatorVideo::renderInit(int width, int height)
+{
+	frameWidth = width;
+	frameHeight = height;
+	updateScaling = true;
+}
+
+/****************************************************************************
+ * Texture memory
+ ***************************************************************************/
+bool OgcEmulatorVideo::ensureTexture(int width, int height)
+{
+	if (width <= 0 || height <= 0 || width > MAX_TEX_DIM || height > MAX_TEX_DIM)
+		return false;
+
 	int padWidth = (width + 3) & ~3;
 	int padHeight = (height + 3) & ~3;
+	size_t needed = (size_t)padWidth * padHeight * 2;
 
-	uint16_t *tiled = (uint16_t *) dst;
+	if (needed > texCapacity) {
+		free(texMem);
+		texMem = memalign(32, needed);
+		texCapacity = texMem ? needed : 0;
+		if (!texMem)
+			return false;
+	}
+	return true;
+}
 
-	for (int y = 0; y < padHeight; y++) {
-		int tile_y = y / 4;
-		int in_tile_y = y % 4;
-		for (int x = 0; x < padWidth; x++) {
-			int tile_x = x / 4;
-			int in_tile_x = x % 4;
-			int idx = (tile_y * (padWidth / 4) + tile_x) * 16 + (in_tile_y * 4 + in_tile_x);
+// Converts a row-major RGB565 frame into GX's native 4x4-tiled
+// GX_TF_RGB565 layout (32 bytes per tile). Partial tiles on the right and
+// bottom edge are zero padded.
+void OgcEmulatorVideo::tileRGB565(const uint8_t* src, int pitch, int width, int height, uint8_t* dst)
+{
+	const int tilesX = (width + 3) >> 2;
+	const int tilesY = (height + 3) >> 2;
+	const int fullX = width >> 2;
+	const int fullY = height >> 2;
 
-			uint16_t color = 0x8000; // RGB555 mode, opaque
-			if (x < width && y < height) {
-				const uint8_t *px = rgba + (y * width + x) * 4;
-				uint8_t r5 = px[0] >> 3;
-				uint8_t g5 = px[1] >> 3;
-				uint8_t b5 = px[2] >> 3;
-				color |= (r5 << 10) | (g5 << 5) | b5;
+	uint32_t* out = (uint32_t*) dst;
+
+	for (int ty = 0; ty < tilesY; ty++) {
+		const uint8_t* row0 = src + (size_t)(ty * 4) * pitch;
+
+		if (ty < fullY) {
+			const uint8_t* row1 = row0 + pitch;
+			const uint8_t* row2 = row1 + pitch;
+			const uint8_t* row3 = row2 + pitch;
+
+			for (int tx = 0; tx < fullX; tx++) {
+				const uint32_t* a = (const uint32_t*)(row0 + tx * 8);
+				const uint32_t* b = (const uint32_t*)(row1 + tx * 8);
+				const uint32_t* c = (const uint32_t*)(row2 + tx * 8);
+				const uint32_t* d = (const uint32_t*)(row3 + tx * 8);
+				out[0] = a[0]; out[1] = a[1];
+				out[2] = b[0]; out[3] = b[1];
+				out[4] = c[0]; out[5] = c[1];
+				out[6] = d[0]; out[7] = d[1];
+				out += 8;
 			}
-			tiled[idx] = color;
+			if (fullX < tilesX) { // partial tile at the right edge
+				int validPx = width - fullX * 4;
+				for (int r = 0; r < 4; r++) {
+					uint16_t* o = (uint16_t*) out;
+					const uint16_t* in = (const uint16_t*)(row0 + (size_t)r * pitch + fullX * 8);
+					for (int x = 0; x < 4; x++)
+						o[r * 4 + x] = (x < validPx) ? in[x] : 0;
+				}
+				out += 8;
+			}
+		}
+		else { // partial row of tiles at the bottom edge
+			int validRows = height - ty * 4;
+			for (int tx = 0; tx < tilesX; tx++) {
+				uint16_t* o = (uint16_t*) out;
+				for (int r = 0; r < 4; r++) {
+					const uint16_t* in = (const uint16_t*)(row0 + (size_t)r * pitch + tx * 8);
+					for (int x = 0; x < 4; x++) {
+						int px = tx * 4 + x;
+						o[r * 4 + x] = (r < validRows && px < width) ? in[x] : 0;
+					}
+				}
+				out += 8;
+			}
 		}
 	}
 }
 
+/****************************************************************************
+ * Screenshot support
+ ***************************************************************************/
 void OgcEmulatorVideo::snapshotFrame()
 {
-	if(screenshotSnapshot)
-	{
-		free(screenshotSnapshot);
-		screenshotSnapshot = nullptr;
-	}
+	free(screenshotSnapshot);
+	screenshotSnapshot = nullptr;
 
-	if(!texturemem)
+	if (!texMem || frameWidth <= 0 || frameHeight <= 0)
 		return;
 
-	screenshotSnapshot = (uint8_t *)malloc(TEXTUREMEM_SIZE);
-	if(screenshotSnapshot)
-		memcpy(screenshotSnapshot, texturemem, TEXTUREMEM_SIZE);
+	size_t size = (size_t)((frameWidth + 3) & ~3) * ((frameHeight + 3) & ~3) * 2;
+	screenshotSnapshot = (uint8_t *) malloc(size);
+	if (screenshotSnapshot) {
+		memcpy(screenshotSnapshot, texMem, size);
+		snapWidth = frameWidth;
+		snapHeight = frameHeight;
+	}
 }
 
-// Un-swizzles the 4x4-tiled GX_TF_RGB5A3 buffer snapshotFrame() captured
+// Un-tiles the GX_TF_RGB565 buffer snapshotFrame() captured. The width and
+// height must match the frame the snapshot was taken from.
 void OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 {
-	if(!screenshotSnapshot)
+	if (!screenshotSnapshot)
 		return;
 
-	int padded_width = (width + 3) & ~3;
+	if (width != snapWidth || height != snapHeight) {
+		free(screenshotSnapshot);
+		screenshotSnapshot = nullptr;
+		return;
+	}
 
-	const uint16_t * tex16 = (const uint16_t *) screenshotSnapshot;
+	int paddedWidth = (width + 3) & ~3;
+	const uint16_t* tex16 = (const uint16_t*) screenshotSnapshot;
 
-	for(int y = 0; y < height; y++) {
-		int tile_y = y / 4;
-		int in_tile_y = y % 4;
-		for(int x = 0; x < width; x++) {
-			int tile_x = x / 4;
-			int in_tile_x = x % 4;
+	for (int y = 0; y < height; y++) {
+		int tileY = y >> 2;
+		int inTileY = y & 3;
+		for (int x = 0; x < width; x++) {
+			int tileX = x >> 2;
+			int inTileX = x & 3;
+			uint16_t c = tex16[(tileY * (paddedWidth >> 2) + tileX) * 16 + (inTileY * 4 + inTileX)];
 
-			int tex_pixel_idx = (tile_y * (padded_width / 4) + tile_x) * 16 + (in_tile_y * 4 + in_tile_x);
-			uint16_t color = tex16[tex_pixel_idx];
+			uint8_t r = (c >> 11) & 0x1F;
+			uint8_t g = (c >> 5) & 0x3F;
+			uint8_t b = c & 0x1F;
 
-			// RGB555 format
-			u8 r = (color >> 10) & 0x1F;
-			u8 g = (color >> 5) & 0x1F;
-			u8 b = color & 0x1F;
-
-			int out_idx = (y * width + x) * 3;
-			dst[out_idx]     = (r << 3) | (r >> 2);
-			dst[out_idx + 1] = (g << 3) | (g >> 2);
-			dst[out_idx + 2] = (b << 3) | (b >> 2);
+			uint8_t* o = dst + (y * width + x) * 3;
+			o[0] = (r << 3) | (r >> 2);
+			o[1] = (g << 2) | (g >> 4);
+			o[2] = (b << 3) | (b >> 2);
 		}
 	}
 
@@ -338,178 +365,48 @@ void OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 	screenshotSnapshot = nullptr;
 }
 
-static void MakeTexture(const void *src, void *dst, s32 width, s32 height, s32 pitch, s32 dst_gap_bytes)
-{
-    u32 src_row_stride = pitch * 4;
-    u32 r_src_row, row_ptr, mask;
-    u32 tmpA, tmpB, tmpC, tmpD;
-
-    __asm__ __volatile__ (
-        "lis    %[mask], 0x8000\n"
-        "ori    %[mask], %[mask], 0x8000\n"
-
-        "srwi   %[width], %[width], 2\n"       // num_tiles_x = width / 4
-        "srwi   %[height], %[height], 2\n"     // num_tiles_y = height / 4
-
-    "2: mtctr   %[width]\n"                    // Set inner loop counter (X)
-        "mr     %[r_src_row], %[src]\n"        // Save the start of the current source 4-row block
-
-    "1: dcbz    0, %[dst]\n"                   // ZERO L1 CACHE: Dest is perfectly 32-byte aligned
-        "mr     %[row_ptr], %[src]\n"
-
-        // Load Row 0
-        "lwz    %[tmpA], 0(%[row_ptr])\n"
-        "lwz    %[tmpB], 4(%[row_ptr])\n"
-        "add    %[row_ptr], %[row_ptr], %[pitch]\n"
-
-        // Load Row 1, Store Row 0
-        // Interleaving hides the 3-cycle load latency
-        "lwz    %[tmpC], 0(%[row_ptr])\n"
-        "or     %[tmpA], %[tmpA], %[mask]\n"
-        "stw    %[tmpA], 0(%[dst])\n"
-
-        "lwz    %[tmpD], 4(%[row_ptr])\n"
-        "or     %[tmpB], %[tmpB], %[mask]\n"
-        "stw    %[tmpB], 4(%[dst])\n"
-        "add    %[row_ptr], %[row_ptr], %[pitch]\n"
-
-        // Load Row 2, Store Row 1
-        "lwz    %[tmpA], 0(%[row_ptr])\n"      // Recycle tmpA and tmpB
-        "or     %[tmpC], %[tmpC], %[mask]\n"
-        "stw    %[tmpC], 8(%[dst])\n"
-
-        "lwz    %[tmpB], 4(%[row_ptr])\n"
-        "or     %[tmpD], %[tmpD], %[mask]\n"
-        "stw    %[tmpD], 12(%[dst])\n"
-        "add    %[row_ptr], %[row_ptr], %[pitch]\n"
-
-        // Load Row 3, Store Row 2
-        "lwz    %[tmpC], 0(%[row_ptr])\n"
-        "or     %[tmpA], %[tmpA], %[mask]\n"
-        "stw    %[tmpA], 16(%[dst])\n"
-
-        "lwz    %[tmpD], 4(%[row_ptr])\n"
-        "or     %[tmpB], %[tmpB], %[mask]\n"
-        "stw    %[tmpB], 20(%[dst])\n"
-
-        // Store Row 3
-        "or     %[tmpC], %[tmpC], %[mask]\n"
-        "stw    %[tmpC], 24(%[dst])\n"
-
-        "or     %[tmpD], %[tmpD], %[mask]\n"
-        "stw    %[tmpD], 28(%[dst])\n"
-
-        // Advance pointers for the next tile in the row
-        "addi   %[src], %[src], 8\n"           // Advance src X by 4 pixels (8 bytes)
-        "addi   %[dst], %[dst], 32\n"          // Advance dst by 1 full tile (32 bytes)
-        "bdnz   1b\n"                          // Decrement CTR, loop inner if > 0
-
-        // Advance pointers to the next row of tiles
-        "add    %[src], %[r_src_row], %[src_row_stride]\n" // Jump down 4 source rows
-        "add    %[dst], %[dst], %[dst_gap_bytes]\n"        // Skip right/left borders in dest
-
-        "subic. %[height], %[height], 1\n"     // Decrement height counter (Y)
-        "bne    2b\n"                          // Loop outer if > 0
-
-        : [r_src_row] "=&b" (r_src_row),
-          [row_ptr] "=&b" (row_ptr),
-          [mask] "=&r" (mask),
-          [tmpA] "=&r" (tmpA),
-          [tmpB] "=&r" (tmpB),
-          [tmpC] "=&r" (tmpC),
-          [tmpD] "=&r" (tmpD),
-          [src] "+b" (src),
-          [dst] "+b" (dst),
-          [width] "+r" (width),
-          [height] "+r" (height)
-        : [pitch] "r" (pitch),
-          [src_row_stride] "r" (src_row_stride),
-          [dst_gap_bytes] "r" (dst_gap_bytes)
-        : "memory", "cc"
-    );
-}
-
-/****************************************************************************
- * writeFrameToTextureMemory
- ****************************************************************************/
-void OgcEmulatorVideo::writeFrameToTextureMemory(u8* srcBuffer, void* textureBase, int width, int height)
-{
-	long long int* dst_ptr = processFrameAndGetDest(textureBase, (const uint16_t*)srcBuffer, width, height);
-
-	int targetWidth  = gameBorder.hasBorder() ? gameBorder.getWidth()  : width;
-	int targetHeight = gameBorder.hasBorder() ? gameBorder.getHeight() : height;
-
-	int pitch = width * 2 + 4;
-	int dst_gap_bytes = ((targetWidth - width) / 4) * 32;
-
-	MakeTexture(srcBuffer, dst_ptr, width, height, pitch, dst_gap_bytes);
-
-	// High-efficiency targeted data cache flushing
-	if (targetWidth > width && !updateScaling) {
-		// Normal Frame: Flush ONLY the game screen cache lines
-		u8* flush_ptr = (u8*)dst_ptr;
-		u32 row_bytes = width * 8; // bytes per tile row for game screen
-		u32 stride_bytes = targetWidth * 8; // full texture pitch stride bytes
-		int tile_rows = height / 4;
-		for (int i = 0; i < tile_rows; i++) {
-			DCStoreRange(flush_ptr, row_bytes);
-			flush_ptr += stride_bytes;
-		}
-	} else {
-		// Flush everything if borderless, OR if the border was just copied this frame
-		DCStoreRange(textureBase, targetWidth * targetHeight * 2);
-	}
-}
-
 void OgcEmulatorVideo::init(VideoDriver* driver)
 {
 	videoDriver = static_cast<OgcVideoDriver*>(driver);
 }
 
-void OgcEmulatorVideo::renderInit(int width, int height)
-{
-	// Setup for first call to scaler
-	vwidth = width;
-	vheight = height;
-}
-
 /****************************************************************************
  * presentFrame
  *
- * Pass in the console's width/height to update as a tiled RGB555 texture
- * (2 bytes per pixel). Reads directly from the emulator core's shared
- * display buffer ('pix'), matching what GX_Render used to receive as its
- * explicit buffer argument.
+ * Uploads the RGB565 frame as a tiled texture and draws it as a quad.
  ****************************************************************************/
-void OgcEmulatorVideo::presentFrame(int targetWidth, int targetHeight)
+void OgcEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int height, int pitch)
 {
-	u8* buffer = pix;
+	if (!pixels || !ensureTexture(width, height))
+		return;
 
-	if (vwidth != targetWidth || vheight != targetHeight) {
-		vwidth = targetWidth;
-		vheight = targetHeight;
-		updateScaling = 1;
+	if (width != frameWidth || height != frameHeight) {
+		frameWidth = width;
+		frameHeight = height;
+		updateScaling = true;
+		filterDirty = true;
 	}
 
 	// Wait for the VI to finish displaying the previously submitted frame,
 	// and for the GPU to finish rendering it, before touching texture memory.
 	videoDriver->waitForBufferReady();
 
-	if (updateScaling) {
+	if (updateScaling)
 		recalculateScaling();
 
-		GX_InitTexObj(&texobj, texturemem, vwidth * fscale, vheight * fscale, GX_TF_RGB5A3, GX_CLAMP, GX_CLAMP, GX_FALSE);
-		GX_InitTexObjFilterMode(&texobj,GX_NEAR,GX_NEAR);
+	if (filterDirty) {
+		GX_InitTexObj(&texobj, texMem, frameWidth, frameHeight, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
+		GX_InitTexObjFilterMode(&texobj, smoothing ? GX_LINEAR : GX_NEAR, smoothing ? GX_LINEAR : GX_NEAR);
 		GX_LoadTexObj(&texobj, GX_TEXMAP0);
-		GX_InitTexObj(&cursorObj, pointer[0]->getTexture(), 96, 96, GX_TF_RGBA8,GX_CLAMP, GX_CLAMP,GX_FALSE);
+		filterDirty = false;
 	}
 
-	writeFrameToTextureMemory(buffer, texturemem, consoleWidth, consoleHeight);
+	tileRGB565((const uint8_t*) pixels, pitch, frameWidth, frameHeight, (uint8_t*) texMem);
+	DCFlushRange(texMem, (size_t)((frameWidth + 3) & ~3) * ((frameHeight + 3) & ~3) * 2);
 
 	GX_InvalidateTexAll();
 
 	drawSquare(); // render textured quad
-	drawCursor(); // render cursor
 
 	videoDriver->presentBuffer();
 }

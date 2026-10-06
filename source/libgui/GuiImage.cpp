@@ -1,255 +1,190 @@
 /****************************************************************************
- * libwiigui
- *
- * Tantric 2009-2010
- *
- * gui_image.cpp
- *
- * GUI class definitions
+ * libgui
+ * Daryl Borth 2009-2026
+ * GuiImage.cpp
  ***************************************************************************/
 
 #include "Gui.h"
-/**
- * Constructor for the GuiImage class.
- */
+
 GuiImage::GuiImage()
 {
-	image = NULL;
+	texture = nullptr;
+	ownsTexture = false;
 	width = 0;
 	height = 0;
 	imageangle = 0;
 	tile = -1;
 	stripe = 0;
-	imgType = IMAGE_DATA;
+	imgType = IMAGE::TEXTURE;
 }
 
 GuiImage::GuiImage(GuiImageData * img)
 {
-	image = NULL;
+	texture = nullptr;
 	width = 0;
 	height = 0;
+
 	if(img)
 	{
-		image = img->GetImage();
-		width = img->GetWidth();
-		height = img->GetHeight();
+		texture = img->getTexture();
+		width = img->getWidth();
+		height = img->getHeight();
 	}
+
+	ownsTexture = false;
 	imageangle = 0;
 	tile = -1;
 	stripe = 0;
-	imgType = IMAGE_DATA;
+	imgType = IMAGE::TEXTURE;
 }
 
-GuiImage::GuiImage(u8 * img, int w, int h)
+GuiImage::GuiImage(uint8_t * tex, int w, int h)
 {
-	image = img;
+	texture = tex;
+	ownsTexture = false;
 	width = w;
 	height = h;
 	imageangle = 0;
 	tile = -1;
 	stripe = 0;
-	imgType = IMAGE_TEXTURE;
+	imgType = IMAGE::TEXTURE;
 }
 
-GuiImage::GuiImage(int w, int h, GXColor c)
+GuiImage::GuiImage(int w, int h, PixelColor c)
 {
-	image = (u8 *)memalign (32, w * h << 2);
+	texture = nullptr;
+	ownsTexture = true;
 	width = w;
 	height = h;
 	imageangle = 0;
 	tile = -1;
 	stripe = 0;
-	imgType = IMAGE_COLOR;
-
-	if(!image)
-		return;
-
-	int x, y;
-
-	for(y=0; y < h; ++y)
-	{
-		for(x=0; x < w; ++x)
-		{
-			this->SetPixel(x, y, c);
-		}
-	}
-	int len = w * h << 2;
-	if(len%32) len += (32-len%32);
-	DCFlushRange(image, len);
+	imgType = IMAGE::COLOR;
+	baseColor = c;
 }
 
-/**
- * Destructor for the GuiImage class.
- */
 GuiImage::~GuiImage()
 {
-	if(imgType == IMAGE_COLOR && image)
-		free(image);
+	if(ownsTexture && texture)
+	{
+		platform->getVideo()->getImageRenderer()->destroyTexture(texture);
+		texture = nullptr;
+	}
 }
 
-u8 * GuiImage::GetImage()
+void GuiImage::setImage(GuiImageData * img)
 {
-	return image;
-}
+	if(ownsTexture && texture)
+	{
+		platform->getVideo()->getImageRenderer()->destroyTexture(texture);
+		texture = nullptr;
+	}
 
-void GuiImage::SetImage(GuiImageData * img)
-{
-	image = NULL;
+	texture = nullptr;
+	ownsTexture = false;
 	width = 0;
 	height = 0;
 	if(img)
 	{
-		image = img->GetImage();
-		width = img->GetWidth();
-		height = img->GetHeight();
+		texture = img->getTexture();
+		width = img->getWidth();
+		height = img->getHeight();
 	}
-	imgType = IMAGE_DATA;
+	imgType = IMAGE::TEXTURE;
 }
 
-void GuiImage::SetImage(u8 * img, int w, int h)
+void GuiImage::setImage(uint8_t * img, int w, int h)
 {
-	image = img;
+	if(ownsTexture && texture)
+	{
+		platform->getVideo()->getImageRenderer()->destroyTexture(texture);
+		texture = nullptr;
+	}
+
+	if(img) {
+		texture = platform->getVideo()->getImageRenderer()->createTexture(w, h);
+		platform->getVideo()->getImageRenderer()->loadTextureData(texture, img, w, h);
+		ownsTexture = true;
+		width = w;
+		height = h;
+	}
+	else {
+		texture = nullptr;
+		ownsTexture = false;
+		width = 0;
+		height = 0;
+	}
+
+	imgType = IMAGE::TEXTURE;
+}
+
+void GuiImage::setTexture(uint8_t * tex, int w, int h)
+{
+	if(ownsTexture && texture)
+	{
+		platform->getVideo()->getImageRenderer()->destroyTexture(texture);
+		texture = nullptr;
+	}
+
+	texture = tex;
+	ownsTexture = false;
 	width = w;
 	height = h;
-	imgType = IMAGE_TEXTURE;
+	imgType = IMAGE::TEXTURE;
 }
 
-void GuiImage::SetAngle(float a)
+void GuiImage::setAngle(float a)
 {
 	imageangle = a;
 }
 
-void GuiImage::SetTile(int t)
+void GuiImage::setTile(int t)
 {
 	tile = t;
 }
 
-GXColor GuiImage::GetPixel(int x, int y)
-{
-	if(!image || this->GetWidth() <= 0 || x < 0 || y < 0)
-		return (GXColor){0, 0, 0, 0};
-
-	u32 offset = (((y >> 2)<<4)*this->GetWidth()) + ((x >> 2)<<6) + (((y%4 << 2) + x%4 ) << 1);
-	GXColor color;
-	color.a = *(image+offset);
-	color.r = *(image+offset+1);
-	color.g = *(image+offset+32);
-	color.b = *(image+offset+33);
-	return color;
-}
-
-void GuiImage::SetPixel(int x, int y, GXColor color)
-{
-	if(!image || this->GetWidth() <= 0 || x < 0 || y < 0)
-		return;
-
-	u32 offset = (((y >> 2)<<4)*this->GetWidth()) + ((x >> 2)<<6) + (((y%4 << 2) + x%4 ) << 1);
-	*(image+offset) = color.a;
-	*(image+offset+1) = color.r;
-	*(image+offset+32) = color.g;
-	*(image+offset+33) = color.b;
-}
-
-void GuiImage::SetStripe(int s)
+void GuiImage::setStripe(int s)
 {
 	stripe = s;
 }
 
-void GuiImage::ColorStripe(int shift)
+void GuiImage::draw()
 {
-	GXColor color;
-	int x, y=0;
-	int alt = 0;
-	
-	int thisHeight =  this->GetHeight();
-	int thisWidth =  this->GetWidth();
+	if(!this->isVisible() || tile == 0)
+		return;
 
-	for(; y < thisHeight; ++y)
+	float currScaleX = this->getScaleX();
+	float currScaleY = this->getScaleY();
+	int currLeft = this->getLeft();
+	int thisTop = this->getTop();
+	int alpha = this->getAlpha();
+
+	if(imgType == IMAGE::COLOR)
 	{
-		if(y % 3 == 0)
-			alt ^= 1;
-
-		if(alt)
+		PixelColor c = baseColor;
+		c.a = alpha;
+		platform->getVideo()->getImageRenderer()->drawRectangle(currLeft, thisTop, width, height, c);
+	}
+	else if(texture)
+	{
+		if(tile > 0)
 		{
-			for(x=0; x < thisWidth; ++x)
-			{
-				color = GetPixel(x, y);
-
-				if(color.r < 255-shift)
-					color.r += shift;
-				else
-					color.r = 255;
-				if(color.g < 255-shift)
-					color.g += shift;
-				else
-					color.g = 255;
-				if(color.b < 255-shift)
-					color.b += shift;
-				else
-					color.b = 255;
-
-				color.a = 255;
-				SetPixel(x, y, color);
-			}
+			for(int i=0; i<tile; ++i)
+				platform->getVideo()->getImageRenderer()->drawTexture(texture, currLeft+width*i, thisTop, width, height, imageangle, currScaleX, currScaleY, alpha);
 		}
 		else
 		{
-			for(x=0; x < thisWidth; ++x)
-			{
-				color = GetPixel(x, y);
-
-				if(color.r > shift)
-					color.r -= shift;
-				else
-					color.r = 0;
-				if(color.g > shift)
-					color.g -= shift;
-				else
-					color.g = 0;
-				if(color.b > shift)
-					color.b -= shift;
-				else
-					color.b = 0;
-
-				color.a = 255;
-				SetPixel(x, y, color);
-			}
+			platform->getVideo()->getImageRenderer()->drawTexture(texture, currLeft, thisTop, width, height, imageangle, currScaleX, currScaleY, alpha);
 		}
-	}
-}
-
-/**
- * Draw the button on screen
- */
-void GuiImage::Draw()
-{
-	if(!image || !this->IsVisible() || tile == 0)
-		return;
-
-	float currScaleX = this->GetScaleX();
-	float currScaleY = this->GetScaleY();
-	int currLeft = this->GetLeft();
-	int thisTop = this->GetTop();
-
-	if(tile > 0)
-	{
-		int alpha = this->GetAlpha();
-		for(int i=0; i<tile; ++i)
-		{
-			Menu_DrawImg(currLeft+width*i, thisTop, width, height, image, imageangle, currScaleX, currScaleY, alpha);
-		}
-	}
-	else
-	{
-		Menu_DrawImg(currLeft, thisTop, width, height, image, imageangle, currScaleX, currScaleY, this->GetAlpha());
 	}
 
 	if(stripe > 0)
 	{
-		int thisHeight = this->GetHeight();
-		int thisWidth = this->GetWidth();
+		int thisHeight = this->getHeight();
+		int thisWidth = this->getWidth();
 		for(int y=0; y < thisHeight; y+=6)
-			Menu_DrawRectangle(currLeft,thisTop+y,thisWidth,3,(GXColor){0, 0, 0, stripe},1);
+			platform->getVideo()->getImageRenderer()->drawRectangle(currLeft, thisTop+y, thisWidth, 3, (PixelColor){0, 0, 0, (uint8_t)stripe});
 	}
-	this->UpdateEffects();
+
+	this->updateEffects();
 }

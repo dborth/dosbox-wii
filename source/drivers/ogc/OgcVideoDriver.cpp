@@ -404,7 +404,7 @@ void* OgcImageRenderer::createTexture(int width, int height)
 	int padHeight = height + (4 - height % 4) % 4;
 	int len = (padWidth * padHeight) * 4;
 	if (len % 32) len += (32 - len % 32);
-	return memspace_malloc(len);
+	return memalign(32, len);
 }
 
 // GX RGBA8 textures are stored as 4x4 tiles, each tile split into a 32-byte
@@ -476,7 +476,7 @@ void OgcImageRenderer::fillTexture(void* texture, int width, int height, ImageRe
 void OgcImageRenderer::destroyTexture(void * texture)
 {
 	if(texture)
-		memspace_free(texture);
+		free(texture);
 }
 
 void OgcImageRenderer::drawTexture(void * texture, float xpos, float ypos, uint16_t width, uint16_t height, float degrees, float scaleX, float scaleY, uint8_t alpha)

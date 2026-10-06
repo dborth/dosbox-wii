@@ -6,6 +6,8 @@
  ***************************************************************************/
 #pragma once
 
+#include <stdint.h>
+
 class EmulatorAudioDriver
 {
 	public:
@@ -29,7 +31,7 @@ class EmulatorAudioDriver
 		virtual bool canWrite() = 0;
 
 		//! The next ring slot the core should mix samples into.
-		virtual u16* getWriteBuffer() = 0;
+		virtual uint16_t* getWriteBuffer() = 0;
 
 		//! Publishes the buffer returned by getWriteBuffer() for playback.
 		virtual void commitWrite() = 0;

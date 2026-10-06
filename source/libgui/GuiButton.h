@@ -1,10 +1,11 @@
+/****************************************************************************
+ * libgui
+ * Daryl Borth 2009-2026
+ * GuiButton.h
+ ***************************************************************************/
 #pragma once
 
-#include "GuiElement.h"
-#include "GuiImage.h"
-#include "GuiText.h"
-#include "GuiSound.h"
-#include "GuiTooltip.h"
+#define MAX_BTN_LABELS	3
 
 //!Display, manage, and manipulate buttons in the GUI. Buttons can have images, icons, text, and sound set (all of which are optional)
 class GuiButton : public GuiElement
@@ -18,80 +19,74 @@ class GuiButton : public GuiElement
 		~GuiButton();
 		//!Sets the button's image
 		//!\param i Pointer to GuiImage object
-		void SetImage(GuiImage* i);
+		void setImage(GuiImage* i);
 		//!Sets the button's image on over
 		//!\param i Pointer to GuiImage object
-		void SetImageOver(GuiImage* i);
+		void setImageOver(GuiImage* i);
 		//!Sets the button's image on hold
 		//!\param i Pointer to GuiImage object
-		void SetImageHold(GuiImage* i);
+		void setImageHold(GuiImage* i);
 		//!Sets the button's image on click
 		//!\param i Pointer to GuiImage object
-		void SetImageClick(GuiImage* i);
+		void setImageClick(GuiImage* i);
 		//!Sets the button's icon
 		//!\param i Pointer to GuiImage object
-		void SetIcon(GuiImage* i);
+		void setIcon(GuiImage* i);
 		//!Sets the button's icon on over
 		//!\param i Pointer to GuiImage object
-		void SetIconOver(GuiImage* i);
+		void setIconOver(GuiImage* i);
 		//!Sets the button's icon on hold
 		//!\param i Pointer to GuiImage object
-		void SetIconHold(GuiImage* i);
+		void setIconHold(GuiImage* i);
 		//!Sets the button's icon on click
 		//!\param i Pointer to GuiImage object
-		void SetIconClick(GuiImage* i);
+		void setIconClick(GuiImage* i);
 		//!Sets the button's label
 		//!\param t Pointer to GuiText object
 		//!\param n Index of label to set (optional, default is 0)
-		void SetLabel(GuiText* t, int n = 0);
+		void setLabel(GuiText* t, int n = 0);
 		//!Sets the button's label on over (eg: different colored text)
 		//!\param t Pointer to GuiText object
 		//!\param n Index of label to set (optional, default is 0)
-		void SetLabelOver(GuiText* t, int n = 0);
+		void setLabelOver(GuiText* t, int n = 0);
 		//!Sets the button's label on hold
 		//!\param t Pointer to GuiText object
 		//!\param n Index of label to set (optional, default is 0)
-		void SetLabelHold(GuiText* t, int n = 0);
+		void setLabelHold(GuiText* t, int n = 0);
 		//!Sets the button's label on click
 		//!\param t Pointer to GuiText object
 		//!\param n Index of label to set (optional, default is 0)
-		void SetLabelClick(GuiText* t, int n = 0);
+		void setLabelClick(GuiText* t, int n = 0);
 		//!Sets the sound to play on over
 		//!\param s Pointer to GuiSound object
-		void SetSoundOver(GuiSound * s);
+		void setSoundOver(GuiSound * s);
 		//!Sets the sound to play on hold
 		//!\param s Pointer to GuiSound object
-		void SetSoundHold(GuiSound * s);
+		void setSoundHold(GuiSound * s);
 		//!Sets the sound to play on click
 		//!\param s Pointer to GuiSound object
-		void SetSoundClick(GuiSound * s);
-		//!Sets the tooltip for the button
-		//!\param t Tooltip
-		void SetTooltip(GuiTooltip * t);
+		void setSoundClick(GuiSound * s);
 		//!Constantly called to draw the GuiButton
-		void Draw();
-		//!Constantly called to draw the GuiButton's tooltip
-		void DrawTooltip();
+		void draw() override;
 		//!Resets the text for all contained elements
-		void ResetText();
+		void resetText();
 		//!Constantly called to allow the GuiButton to respond to updated input data
-		//!\param t Pointer to a GuiTrigger, containing the current input data from PAD/WPAD
-		void Update(GuiTrigger * t);
+		//!\param c Pointer to a InputController, containing the current input data
+		void update(InputController * c);
 	protected:
 		GuiImage * image; //!< Button image (default)
-		GuiImage * imageOver; //!< Button image for STATE_SELECTED
-		GuiImage * imageHold; //!< Button image for STATE_HELD
-		GuiImage * imageClick; //!< Button image for STATE_CLICKED
+		GuiImage * imageOver; //!< Button image for STATE::SELECTED
+		GuiImage * imageHold; //!< Button image for STATE::HELD
+		GuiImage * imageClick; //!< Button image for STATE::CLICKED
 		GuiImage * icon; //!< Button icon (drawn after button image)
-		GuiImage * iconOver; //!< Button icon for STATE_SELECTED
-		GuiImage * iconHold; //!< Button icon for STATE_HELD
-		GuiImage * iconClick; //!< Button icon for STATE_CLICKED
-		GuiText * label[3]; //!< Label(s) to display (default)
-		GuiText * labelOver[3]; //!< Label(s) to display for STATE_SELECTED
-		GuiText * labelHold[3]; //!< Label(s) to display for STATE_HELD
-		GuiText * labelClick[3]; //!< Label(s) to display for STATE_CLICKED
-		GuiSound * soundOver; //!< Sound to play for STATE_SELECTED
-		GuiSound * soundHold; //!< Sound to play for STATE_HELD
-		GuiSound * soundClick; //!< Sound to play for STATE_CLICKED
-		GuiTooltip * tooltip; //!< Tooltip to display on over
+		GuiImage * iconOver; //!< Button icon for STATE::SELECTED
+		GuiImage * iconHold; //!< Button icon for STATE::HELD
+		GuiImage * iconClick; //!< Button icon for STATE::CLICKED
+		GuiText * label[MAX_BTN_LABELS]; //!< Label(s) to display (default)
+		GuiText * labelOver[MAX_BTN_LABELS]; //!< Label(s) to display for STATE::SELECTED
+		GuiText * labelHold[MAX_BTN_LABELS]; //!< Label(s) to display for STATE::HELD
+		GuiText * labelClick[MAX_BTN_LABELS]; //!< Label(s) to display for STATE::CLICKED
+		GuiSound * soundOver; //!< Sound to play for STATE::SELECTED
+		GuiSound * soundHold; //!< Sound to play for STATE::HELD
+		GuiSound * soundClick; //!< Sound to play for STATE::CLICKED
 };

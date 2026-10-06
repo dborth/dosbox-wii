@@ -13,8 +13,6 @@
 
 #include "OgcEmulatorAudio.h"
 
-extern bool turboMode;
-
 /** Dynamic Rate Control (Hysteresis Pitch Bending) **/
 #define UNPLAYED_HIGH_WATER 8       // Above this we are building latency, slow down
 #define UNPLAYED_HIGH_RELEASE 6     // Stay slow until the queue drains back to here
@@ -116,7 +114,6 @@ void OgcEmulatorAudio::dmaCallback()
 	if (unplayed == 0) {
 
 		if (!wasStarved) {
-			PROFILER_LOG_AUDIO_STARVATION();
 			buildFadeOutBuffer();
 			wasStarved = true;
 		}
@@ -178,12 +175,6 @@ void OgcEmulatorAudio::stopAudio()
  ***************************************************************************/
 bool OgcEmulatorAudio::canWrite()
 {
-    if (appRequest == AppRequest::MENU)
-    {
-        stopAudio();
-        return false;
-    }
-
     // Pure capacity query, no side effects: is there room in the ring for
     // one more buffer right now?
     return getUnplayed() < MAX_QUEUED_BUFFERS;
@@ -191,14 +182,6 @@ bool OgcEmulatorAudio::canWrite()
 
 double OgcEmulatorAudio::getDynamicRate()
 {
-	// Fast-forward: don't pitch-bend. Turbo audio isn't expected to sound
-	// "correct" -- Sound.cpp's own turbo-aware policy in flush_samples()
-	// handles keeping the backlog bounded instead.
-	if (turboMode) {
-		rateState = RATE_STATE_NEUTRAL;
-		return RATE_NEUTRAL;
-	}
-
 	int unplayed = getUnplayedInternal();
 
 	// Process Hysteresis Release
@@ -217,8 +200,6 @@ double OgcEmulatorAudio::getDynamicRate()
 		rateState = RATE_STATE_FILLING;
 	}
 
-	PROFILER_LOG_DRC(unplayed, rateState);
-
 	// Return the float multiplier
 	// Draining means we need FEWER samples generated per frame.
 	// Filling means we need MORE samples generated per frame.
@@ -235,10 +216,10 @@ double OgcEmulatorAudio::getDynamicRate()
 	return RATE_NEUTRAL;
 }
 
-u16* OgcEmulatorAudio::getWriteBuffer()
+uint16_t* OgcEmulatorAudio::getWriteBuffer()
 {
 	// Pass the actual DMA-aligned ring buffer address
-	return (u16*)soundbuffer[nextab];
+	return (uint16_t*)soundbuffer[nextab];
 }
 
 void OgcEmulatorAudio::commitWrite()
