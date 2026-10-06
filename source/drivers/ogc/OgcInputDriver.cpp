@@ -239,6 +239,8 @@ void OgcInputDriver::update() {
 			padData.hw_stickY[INPUT_HW_GAMECUBE] = clampf((float)PAD_StickY(i) / 128.0f, -1.0f, 1.0f);
 			padData.hw_substickX[INPUT_HW_GAMECUBE] = clampf((float)PAD_SubStickX(i) / 128.0f, -1.0f, 1.0f);
 			padData.hw_substickY[INPUT_HW_GAMECUBE] = clampf((float)PAD_SubStickY(i) / 128.0f, -1.0f, 1.0f);
+			padData.hw_triggerL[INPUT_HW_GAMECUBE] = clampf((float)PAD_TriggerL(i) / 255.0f, 0.0f, 1.0f);
+			padData.hw_triggerR[INPUT_HW_GAMECUBE] = clampf((float)PAD_TriggerR(i) / 255.0f, 0.0f, 1.0f);
 		}
 
 		#ifdef HW_RVL
@@ -311,6 +313,8 @@ void OgcInputDriver::update() {
 				padData.hw_stickY[hw] = NormalizeWPADAnalog(ljs->pos.y, ljs->min.y, ljs->max.y, ljs->center.y);
 				padData.hw_substickX[hw] = NormalizeWPADAnalog(rjs->pos.x, rjs->min.x, rjs->max.x, rjs->center.x);
 				padData.hw_substickY[hw] = NormalizeWPADAnalog(rjs->pos.y, rjs->min.y, rjs->max.y, rjs->center.y);
+				padData.hw_triggerL[hw] = clampf(wpad->exp.classic.l_shoulder, 0.0f, 1.0f);
+				padData.hw_triggerR[hw] = clampf(wpad->exp.classic.r_shoulder, 0.0f, 1.0f);
 				controller[i]->setSideways(false);
 			}
 			else {

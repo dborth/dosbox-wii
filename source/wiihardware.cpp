@@ -23,7 +23,10 @@
 #include "drivers/ogc/wii/WiiPlatform.h"
 #include "drivers/KeyboardDriver.h"
 #include "drivers/ogc/OgcKeyboardDriver.h"
+#include "drivers/MouseDriver.h"
+#include "drivers/ogc/OgcMouseDriver.h"
 #include "dosbox/gui/gfx_hal.h"
+#include "dosbox/include/input_hal.h"
 
 void MAPPER_CheckEvent(SDL_Event * event);
 
@@ -32,9 +35,11 @@ void MAPPER_CheckEvent(SDL_Event * event);
 static WiiPlatform platformInstance;
 Platform* platform = &platformInstance;
 
-// USB keyboard has no HAL driver yet; see drivers/KeyboardDriver.h
+// USB keyboard and mouse (the Wiimote IR pointer is part of the pad state)
 static OgcKeyboardDriver keyboardInstance;
 KeyboardDriver* keyboard = &keyboardInstance;
+static OgcMouseDriver mouseInstance;
+MouseDriver* usbMouse = &mouseInstance;
 
 char appDrive[MAX_APP_DRIVE_LEN];
 char appPath[MAX_APP_PATH_LEN];
@@ -162,6 +167,7 @@ void WiiInit()
 	platform->init(platformConfig);
 
 	keyboard->init();
+	usbMouse->init();
 
 	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size,
 		platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
@@ -202,13 +208,11 @@ void CreateAppPath(char origpath[])
 /****************************************************************************
  * MenuRequested
  *
- * Polled once per emulation event pass (GFX_Events). Updates the platform
- * input state, so nothing else needs to scan pads while SDL is gone.
+ * Polled once per emulation event pass (GFX_Events), after InputHal_Update()
+ * has scanned the platform input.
  ***************************************************************************/
 bool MenuRequested()
 {
-	platform->getInput()->update();
-
 	for(int i = 0; i < 4; i++)
 	{
 		if(controller[i]->getPadData().buttons_h & INPUT_BTN_HOME)

@@ -20,7 +20,7 @@ void WiiFinished();
 //! Leaves the app if the platform reports a shutdown request. Does not return then.
 void WiiCheckExit();
 
-//! True while a HOME button is held. Also refreshes the platform input state.
+//! True while a HOME button is held. Reads the state InputHal_Update() scanned.
 bool MenuRequested();
 
 extern char appDrive[MAX_APP_DRIVE_LEN];

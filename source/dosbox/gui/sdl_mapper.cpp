@@ -27,6 +27,7 @@
 
 
 #include "SDL.h"
+#include "input_hal.h"
 #include "SDL_thread.h"
 
 #include "dosbox.h"

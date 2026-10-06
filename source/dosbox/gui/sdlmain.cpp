@@ -38,6 +38,7 @@
 
 #include "cross.h"
 #include "SDL.h"
+#include "input_hal.h"
 
 #include "dosbox.h"
 #include "video.h"
@@ -515,10 +516,13 @@ void GFX_LosingFocus(void) {
 #endif
 
 void GFX_Events() {
+	// Scan the pads, keyboard and mice; posts the events polled below
+	InputHal_Update();
+
 #ifdef HW_RVL
 	WiiCheckExit();
 
-	// check for home button (MenuRequested() polls the platform input driver)
+	// check for home button
 	if(MenuRequested())
 		WiiMenu();
 #endif
@@ -1032,11 +1036,8 @@ int main(int argc, char* argv[]) {
 		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
 	sdl.inited = true;
 
-#ifndef DISABLE_JOYSTICK
-	//Initialise Joystick separately. This way we can warn when it fails instead
-	//of exiting the application
-	if( SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0 ) LOG_MSG("Failed to init joystick support");
-#endif
+	// Keyboard, mouse and joysticks come from the HAL
+	InputHal_Init();
 
 	sdl.laltstate = SDL_KEYUP;
 	sdl.raltstate = SDL_KEYUP;
