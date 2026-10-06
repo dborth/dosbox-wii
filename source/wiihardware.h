@@ -5,15 +5,20 @@
 
 #ifndef WIIHARDWARE_H
 #define WIIHARDWARE_H
-#include <wiiuse/wpad.h>
 
 #define MAX_APP_DRIVE_LEN		16
 #define MAX_APP_PATH_LEN		128
+
+// NOTE: this header is included by DOSBox core files, so it must not pull
+// in drivers/ or libgui/ headers (their LOG() macro collides with DOSBox's).
 
 void WiiInit();
 void WiiMenu();
 void CreateAppPath(char origpath[]);
 void WiiFinished();
+
+//! True while a HOME button is held. Also refreshes the platform input state.
+bool MenuRequested();
 
 extern char appDrive[MAX_APP_DRIVE_LEN];
 extern char appPath[MAX_APP_PATH_LEN];

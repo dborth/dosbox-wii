@@ -20,12 +20,13 @@ export	FREETYPE_LIBS	:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config -
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
 SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
+				source/drivers/ogc/wii \
 				source/dosbox source/dosbox/cpu source/dosbox/debug \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
 				source/dosbox/hardware source/dosbox/hardware/mame \
 				source/dosbox/hardware/serialport source/dosbox/ints \
 				source/dosbox/libs source/dosbox/misc source/dosbox/shell
-DATA		:=	data/images data/fonts data/sounds
+DATA		:=	data/images data/fonts data/sounds data/lang
 INCLUDES 	:=  source source/dosbox source/dosbox/include
 
 #---------------------------------------------------------------------------------
@@ -33,15 +34,16 @@ INCLUDES 	:=  source source/dosbox source/dosbox/include
 #---------------------------------------------------------------------------------
 
 CFLAGS		=	-g -O3 -Wall $(MACHDEP) $(INCLUDE) $(FREETYPE_CFLAGS) \
-				-Wno-strict-aliasing -DWORDS_BIGENDIAN
+				-Wno-strict-aliasing -DWORDS_BIGENDIAN \
+				-DLOGGER_NO_LOG_ALIAS
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
-			-lpng -lvorbisidec -logg -lbz2 -lz $(FREETYPE_LIBS)
+LIBS	:=	-ldi -liso9660 -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
+			-lpng -lvorbisidec -logg -lsmb2 -lbz2 -lz $(FREETYPE_LIBS)
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional

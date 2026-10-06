@@ -8,31 +8,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ogcsys.h>
-#include <sys/dir.h>
-#include <sys/stat.h>
-#include <zlib.h>
 #include <malloc.h>
-#include <fat.h>
-#include <asndlib.h>
+#include <unistd.h>
 #include <sys/iosupport.h>
 
 #include "wiihardware.h"
-#include "FreeTypeGX.h"
-#include "input.h"
 #include "filelist.h"
 #include "SDL_events.h"
-#include "wiiio.h"
+#include "libgui/Gui.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
-
-extern "C" {
-extern void __exception_setreload(int t);
-extern void WII_VideoStart();
-extern void WII_VideoStop();
-}
+#include "drivers/VideoDriver.h"
+#include "drivers/EmulatorVideoDriver.h"
+#include "drivers/InputDriver.h"
+#include "drivers/InputController.h"
+#include "drivers/ogc/wii/WiiPlatform.h"
+#include "drivers/KeyboardDriver.h"
+#include "drivers/ogc/OgcKeyboardDriver.h"
 
 void MAPPER_CheckEvent(SDL_Event * event);
 void HomeMenu();
+void InitGUI();
+
+// Platform composition root: the only place that picks a concrete platform.
+// Wii U will select WutPlatform here (Stage 7).
+static WiiPlatform platformInstance;
+Platform* platform = &platformInstance;
+
+// USB keyboard has no HAL driver yet; see drivers/KeyboardDriver.h
+static OgcKeyboardDriver keyboardInstance;
+KeyboardDriver* keyboard = &keyboardInstance;
 
 char appDrive[MAX_APP_DRIVE_LEN];
 char appPath[MAX_APP_PATH_LEN];
@@ -142,71 +147,33 @@ static void * PressKeys (void *arg)
 }
 
 /****************************************************************************
- * USB Gecko Debugging
+ * WiiInit
+ *
+ * Brings up the platform (thread, video, audio, input, filesystem, logger
+ * drivers) and the GUI text system.
  ***************************************************************************/
-
-static bool gecko = false;
-static mutex_t gecko_mutex = 0;
-
-static ssize_t __out_write(struct _reent *r, void* fd, const char *ptr, size_t len)
-{
-	u32 level;
-
-	if (!ptr || len <= 0 || !gecko)
-		return -1;
-
-	LWP_MutexLock(gecko_mutex);
-	level = IRQ_Disable();
-	usb_sendbuffer(1, ptr, len);
-	IRQ_Restore(level);
-	LWP_MutexUnlock(gecko_mutex);
-	return len;
-}
-
-const devoptab_t gecko_out = {
-	"stdout",	// device name
-	0,			// size of file structure
-	NULL,		// device open
-	NULL,		// device close
-	__out_write,// device write
-	NULL,		// device read
-	NULL,		// device seek
-	NULL,		// device fstat
-	NULL,		// device stat
-	NULL,		// device link
-	NULL,		// device unlink
-	NULL,		// device chdir
-	NULL,		// device rename
-	NULL,		// device mkdir
-	0,			// dirStateSize
-	NULL,		// device diropen_r
-	NULL,		// device dirreset_r
-	NULL,		// device dirnext_r
-	NULL,		// device dirclose_r
-	NULL		// device statvfs_r
-};
-
-void USBGeckoOutput()
-{
-	LWP_MutexInit(&gecko_mutex, false);
-	gecko = usb_isgeckoalive(1);
-	
-	devoptab_list[STD_OUT] = &gecko_out;
-	devoptab_list[STD_ERR] = &gecko_out;
-}
-
 void WiiInit()
 {
+	// stdout/stderr go nowhere; diagnostics use the platform Logger
 	extern const devoptab_t dotab_stdnull;
 	devoptab_list[STD_OUT] = &dotab_stdnull;
 	devoptab_list[STD_ERR] = &dotab_stdnull;
-	wiiio_init();
-	//USBGeckoOutput(); // uncomment to enable USB gecko output
-	__exception_setreload(8);
-	fatInitDefault();
-	ASND_Init();
-	SetupPads();
-	InitFreeType((u8*)font_ttf, font_ttf_size);
+
+	PlatformConfig platformConfig;
+	platformConfig.canvasWidth = 640;
+	platformConfig.canvasHeight = 480;
+	platform->init(platformConfig);
+
+	keyboard->init();
+
+	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size,
+		platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
+	textTranslator = new GuiTextTranslator();
+	textTranslator->loadLanguage(en_lang, en_lang_size);
+
+	platform->getVideo()->startMenuVideo();
+	InitGUI();
+
 	LWP_CreateThread (&keythread, PressKeys, NULL, NULL, 0, 65);
 	appPath[0] = 0;
 }
@@ -235,20 +202,43 @@ void CreateAppPath(char origpath[])
 	free(path);
 }
 
+/****************************************************************************
+ * MenuRequested
+ *
+ * Polled once per emulation event pass (GFX_Events). Updates the platform
+ * input state, so nothing else needs to scan pads while SDL is gone.
+ ***************************************************************************/
+bool MenuRequested()
+{
+	platform->getInput()->update();
+
+	for(int i = 0; i < 4; i++)
+	{
+		if(controller[i]->getPadData().buttons_h & INPUT_BTN_HOME)
+			return true;
+	}
+	return false;
+}
+
+/****************************************************************************
+ * WiiMenu
+ *
+ * Emulation -> menu -> emulation handoff, on the HAL.
+ ***************************************************************************/
 void WiiMenu()
 {
 	// wait for thread to finish
 	while(!LWP_ThreadIsSuspended(keythread))
 		usleep(100);
-	
-	WII_VideoStop();
+
 	SwitchAudioMode(1);
+	platform->getVideo()->startMenuVideo();
 
 	HomeMenu();
-	
-	WII_VideoStart();
+
 	SwitchAudioMode(0);
-	
+	platform->getVideo()->getEmulatorVideo()->resetVideo();
+
 	if(dosboxCommand[0] != 0)
 		LWP_ResumeThread(keythread);
 }

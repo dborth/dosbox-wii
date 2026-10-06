@@ -32,9 +32,6 @@
 #include "regs.h"
 #include "debug.h"
 #include "debug_inc.h"
-#ifdef HW_RVL
-#include <stdio_wrapper.h>
-#endif
 
 struct _LogGroup {
 	char const* front;

@@ -12,6 +12,7 @@
 #define _FILELIST_H_
 
 #include "font_ttf.h"
+#include "en_lang.h"
 
 #include "enter_ogg.h"
 #include "exit_ogg.h"
@@ -38,8 +39,6 @@
 #include "battery_bar_png.h"
 
 #include "credits_box_png.h"
-#include "bg_console_png.h"
-#include "font8x8_basic_png.h"
 
 #include "keyboard_textbox_png.h"
 #include "keyboard_key_png.h"

@@ -291,4 +291,7 @@ void Log_Printf(int level, const char * fmt, ...);
 #endif
 
 //! Back-compat alias for the common case - equivalent to LOG_INFO.
+//! Apps with their own LOG (DOSBox's is a struct) define LOGGER_NO_LOG_ALIAS.
+#ifndef LOGGER_NO_LOG_ALIAS
 #define LOG(fmt, ...) LOG_INFO(fmt, ##__VA_ARGS__)
+#endif

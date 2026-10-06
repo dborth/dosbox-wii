@@ -34,7 +34,6 @@
 #ifdef HW_RVL
 #include <wiihardware.h>
 #include <menu.h>
-#include <wiiio.h>
 #endif
 
 #include "cross.h"
@@ -56,10 +55,7 @@
 #include "control.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
-#ifdef HW_RVL
-#include <stdio_wrapper.h>
-#endif
-
+#include "drivers/Logger.h"
 #define MAPPERFILE "mapper-" VERSION ".map"
 //#define DISABLE_JOYSTICK
 
@@ -1579,17 +1575,9 @@ bool GFX_IsFullscreen(void) {
 
 void GFX_Events() {
 #ifdef HW_RVL
-	// No WPAD_ScanPads() and no PAD_ScanPads() is needed here.
-	// This is done by SDL_JoystickUpdate();
-
-	// check for home button
-	u32 btns;
-	for(int i=0; i<4; i++)
-	{
-		btns = WPAD_ButtonsHeld(i);
-		if((btns & WPAD_BUTTON_HOME) || (btns & WPAD_CLASSIC_BUTTON_HOME))
-			WiiMenu ();
-	}
+	// check for home button (MenuRequested() polls the platform input driver)
+	if(MenuRequested())
+		WiiMenu();
 #endif
 
 	//Don't poll too often. This can be heavy on the OS, especially Macs.
@@ -1768,14 +1756,13 @@ static BOOL WINAPI ConsoleEventHandler(DWORD event) {
 static bool no_stdout = false;
 void GFX_ShowMsg(char const* format,...) {
 #ifdef HW_RVL
-	if (no_stdout) {
-		return;
-	}
+	// Routed to the platform Logger (a no-op unless built with LOGGING_ENABLED)
+	char buf[512];
 	va_list msg;
 	va_start(msg,format);
-	wiiio_vprintf(format, msg);
+	vsnprintf(buf,sizeof(buf),format,msg);
 	va_end(msg);
-	wiiio_print("\n");
+	Log_Printf(LOG_LEVEL_INFO, "%s", buf);
 #else
 	char buf[512];
 
@@ -2060,18 +2047,6 @@ int main(int argc, char* argv[]) {
 	try {
 #ifdef HW_RVL
 		WiiInit();
-		if (argc > 0) {
-			wiiio_print("args:");
-			for (int i = 0; i < argc; ++i) {
-				if (argv[i] != NULL) {
-					wiiio_printf(" %s", argv[i]);
-				}
-				else {
-					wiiio_print(" (null)");
-				}
-			}
-			wiiio_print("\n\n");
-		}
 		if(argc > 0 && argv[0] != NULL)
 			CreateAppPath(argv[0]);
 #endif
