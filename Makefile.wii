@@ -19,7 +19,7 @@ export	FREETYPE_LIBS	:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config -
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	source source/libgui \
+SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
 				source/dosbox source/dosbox/cpu source/dosbox/debug \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
 				source/dosbox/hardware source/dosbox/hardware/mame \
@@ -40,15 +40,8 @@ LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
+LIBS	:=	-lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
 			-lpng -lvorbisidec -logg -lbz2 -lz $(FREETYPE_LIBS)
-
-#---------------------------------------------------------------------------------
-# list of directories containing libraries, this must be the top level containing
-# include and lib
-#---------------------------------------------------------------------------------
-# libogc2's PORTLIBS does not include portlibs/wii, where sdl-wii installs
-LIBDIRS	:= $(PORTLIBS) $(PORTLIBS_PATH)/wii
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -95,8 +88,7 @@ export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 #---------------------------------------------------------------------------------
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC) -I$(PORTLIBS_PATH)/wii/include/SDL
+					-I$(CURDIR)/$(BUILD)
 
 #---------------------------------------------------------------------------------
 # build a list of library paths

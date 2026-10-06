@@ -12,19 +12,6 @@ jobs:
     container: ghcr.io/extremscorner/libogc2:latest
 
     steps:
-    - name: Checkout sdl-wii repo
-      uses: actions/checkout@master
-      with:
-        repository: dborth/sdl-wii
-        path: sdl-wii
-    
-    - name: Compile and install SDL
-      run: |
-        cd sdl-wii
-        make -f Makefile
-        make -f Makefile install
-        cd ..
-    
     - name: Checkout dosbox-wii repo
       uses: actions/checkout@v4
       with:
