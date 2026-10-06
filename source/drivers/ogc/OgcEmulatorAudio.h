@@ -51,6 +51,9 @@ class OgcEmulatorAudio : public EmulatorAudioDriver
 		uint16_t* getWriteBuffer() override;
 		void commitWrite() override;
 
+		int getSampleRate() override { return SAMPLE_RATE; }
+		int getFramesPerBuffer() override { return FRAMES_PER_BUFFER; }
+
 		// Called only via the AudioDMACallback trampoline above.
 		void dmaCallback();
 

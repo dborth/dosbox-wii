@@ -22,11 +22,11 @@
 #include "filelist.h"
 #include "SDL_events.h"
 #include "wiiio.h"
+#include "drivers/Platform.h"
+#include "drivers/AudioDriver.h"
 
 extern "C" {
 extern void __exception_setreload(int t);
-extern void WII_AudioStart();
-extern void WII_AudioStop();
 extern void WII_VideoStart();
 extern void WII_VideoStop();
 }
@@ -49,15 +49,13 @@ static void SwitchAudioMode(int mode)
 {
 	if(mode == 0) // emulator
 	{
-		ASND_Pause(1);
-		AUDIO_StopDMA();
-		WII_AudioStart();
+		platform->getAudio()->stopMenuAudio();
+		platform->getAudio()->startEmulatorAudio();
 	}
 	else // menu
 	{
-		WII_AudioStop();
-		ASND_Init();
-		ASND_Pause(0);
+		platform->getAudio()->stopEmulatorAudio();
+		platform->getAudio()->startMenuAudio();
 	}
 }
 

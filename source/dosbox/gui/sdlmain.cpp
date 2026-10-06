@@ -54,6 +54,8 @@
 #include "cpu.h"
 #include "cross.h"
 #include "control.h"
+#include "drivers/Platform.h"
+#include "drivers/AudioDriver.h"
 #ifdef HW_RVL
 #include <stdio_wrapper.h>
 #endif
@@ -1943,7 +1945,7 @@ void restart_program(std::vector<std::string> & parameters) {
 	// last one is NULL
 	for(Bitu i = 0; i < parameters.size(); i++) newargs[i] = (char*)parameters[i].c_str();
 	newargs[parameters.size()] = NULL;
-	SDL_CloseAudio();
+	platform->getAudio()->stopEmulatorAudio();
 	SDL_Delay(50);
 	SDL_Quit();
 #if C_DEBUG

@@ -540,7 +540,7 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Enable silent mode, sound is still emulated though.");
 
 #ifdef HW_RVL
-	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,22050);
+	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,32000); // fixed by the Wii audio driver, see MIXER_Init
 #else
 	Pint = secprop->Add_int("rate",Property::Changeable::OnlyAtStart,44100);
 #endif

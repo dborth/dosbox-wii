@@ -18,8 +18,9 @@
 
 
 /*
-	Remove the sdl code from here and have it handeld in the sdlmain.
-	That should call the mixer start from there or something.
+	Output goes to the platform's EmulatorAudioDriver (push model): the mixer
+	hands finished buffers to the driver from the emulation thread, there is
+	no audio callback thread any more. See MIXER_Pull / MIXER_Pump below.
 */
 
 #include <string.h>
@@ -35,7 +36,6 @@
 #include <mmsystem.h>
 #endif
 
-#include "SDL.h"
 #include "mem.h"
 #include "pic.h"
 #include "dosbox.h"
@@ -48,6 +48,9 @@
 #include "hardware.h"
 #include "programs.h"
 #include "midi.h"
+#include "drivers/Platform.h"
+#include "drivers/AudioDriver.h"
+#include "drivers/EmulatorAudioDriver.h"
 
 #define MIXER_SSIZE 4
 
@@ -86,6 +89,10 @@ static struct {
 	bool nosound;
 	Bit32u freq;
 	Bit32u blocksize;
+	//Platform sink for finished buffers, NULL in nosound mode
+	EmulatorAudioDriver * audio;
+	//Receives a buffer when the driver ring is full, so the work buffer can't overrun
+	Bit16s * dropbuf;
 } mixer;
 
 Bit8u MixTemp[MIXER_BUFSIZE];
@@ -148,9 +155,7 @@ void MixerChannel::Enable(bool _yesno) {
 	enabled=_yesno;
 	if (enabled) {
 		freq_counter = 0;
-		SDL_LockAudio();
 		if (done<mixer.done) done=mixer.done;
-		SDL_UnlockAudio();
 	}
 }
 
@@ -382,14 +387,10 @@ void MixerChannel::AddSamples_s32_nonnative(Bitu len,const Bit32s * data) {
 }
 
 void MixerChannel::FillUp(void) {
-	SDL_LockAudio();
-	if (!enabled || done<mixer.done) {
-		SDL_UnlockAudio();
+	if (!enabled || done<mixer.done)
 		return;
-	}
 	float index=PIC_TickIndex();
 	Mix((Bitu)(index*mixer.needed));
-	SDL_UnlockAudio();
 }
 
 extern bool ticksLocked;
@@ -438,13 +439,14 @@ static void MIXER_MixData(Bitu needed) {
 	mixer.done = needed;
 }
 
+static void MIXER_Pump(void);
+
 static void MIXER_Mix(void) {
-	SDL_LockAudio();
 	MIXER_MixData(mixer.needed);
 	mixer.tick_counter += mixer.tick_add;
 	mixer.needed+=(mixer.tick_counter >> TICK_SHIFT);
 	mixer.tick_counter &= TICK_MASK;
-	SDL_UnlockAudio();
+	MIXER_Pump();
 }
 
 static void MIXER_Mix_NoSound(void) {
@@ -467,27 +469,33 @@ static void MIXER_Mix_NoSound(void) {
 	mixer.done=0;
 }
 
-static void SDLCALL MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
-	Bitu need=(Bitu)len/MIXER_SSIZE;
-	Bit16s * output=(Bit16s *)stream;
+/* Take one driver buffer (need frames) out of the work buffer.
+ * This is the old SDL audio callback body. SDL called it at the hardware's
+ * pace; now MIXER_Pump decides when to call it.
+ * rate is the driver's dynamic rate multiplier: the buffer is built from
+ * need*rate source frames resampled to need output frames, so a rate above 1
+ * drains the work buffer faster and makes the driver ring grow more slowly.
+ * Returns false if nothing was written to output. */
+static bool MIXER_Pull(Bit16s * output, Bitu need, double rate) {
+	Bitu src=(Bitu)(need*rate);	//Source frames consumed for 'need' output frames
 	Bitu reduce;
 	Bitu pos;
-	//Local resampling counter to manipulate the data when sending it off to the callback
+	//Local resampling counter to manipulate the data when sending it off to the driver
 	Bitu index, index_add;
 	Bits sample;
 	/* Enough room in the buffer ? */
-	if (mixer.done < need) {
-//		LOG_MSG("Full underrun need %d, have %d, min %d", need, mixer.done, mixer.min_needed);
-		if((need - mixer.done) > (need >>7) ) //Max 1 procent stretch.
-			return;
+	if (mixer.done < src) {
+//		LOG_MSG("Full underrun need %d, have %d, min %d", src, mixer.done, mixer.min_needed);
+		if((src - mixer.done) > (src >>7) ) //Max 1 procent stretch.
+			return false;
 		reduce = mixer.done;
 		index_add = (reduce << TICK_SHIFT) / need;
 		mixer.tick_add = calc_tickadd(mixer.freq+mixer.min_needed);
 	} else if (mixer.done < mixer.max_needed) {
-		Bitu left = mixer.done - need;
+		Bitu left = mixer.done - src;
 		if (left < mixer.min_needed) {
 			if( !Mixer_irq_important() ) {
-				Bitu needed = mixer.needed - need;
+				Bitu needed = mixer.needed - src;
 				Bitu diff = (mixer.min_needed>needed?mixer.min_needed:needed) - left;
 				mixer.tick_add = calc_tickadd(mixer.freq+(diff*3));
 				left = 0; //No stretching as we compensate with the tick_add value
@@ -496,11 +504,11 @@ static void SDLCALL MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
 				left = 1 + (2*left) / mixer.min_needed; //left=1,2,3
 			}
 //			LOG_MSG("needed underrun need %d, have %d, min %d, left %d", need, mixer.done, mixer.min_needed, left);
-			reduce = need - left;
+			reduce = src - left;
 			index_add = (reduce << TICK_SHIFT) / need;
 		} else {
-			reduce = need;
-			index_add = (1 << TICK_SHIFT);
+			reduce = src;
+			index_add = (reduce << TICK_SHIFT) / need;
 //			LOG_MSG("regular run need %d, have %d, min %d, left %d", need, mixer.done, mixer.min_needed, left);
 
 			/* Mixer tick value being updated:
@@ -572,9 +580,41 @@ static void SDLCALL MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
 			pos++;
 		}
 	}
+	return true;
+}
+
+/* Hand finished buffers to the platform audio driver.
+ * Runs on the emulation thread at the end of every mixer tick; it replaces
+ * the SDL audio thread, so all mixer state is now single-threaded and the
+ * SDL_LockAudio/SDL_UnlockAudio pairs are gone. The driver's DMA interrupt
+ * only touches the driver's own ring indices. */
+static void MIXER_Pump(void) {
+	EmulatorAudioDriver * audio=mixer.audio;
+	if (!audio) return;
+	const Bitu need=mixer.blocksize;	//Frames per driver buffer
+	for (;;) {
+		double rate=audio->getDynamicRate();
+		Bitu src=(Bitu)(need*rate);
+		/* Keep the prebuffer behind the read position, as the SDL callback aimed to */
+		if (mixer.done < src + mixer.min_needed) break;
+		if (audio->canWrite()) {
+			if (!MIXER_Pull((Bit16s *)audio->getWriteBuffer(),need,rate)) break;
+			audio->commitWrite();
+		} else if (mixer.done > mixer.max_needed) {
+			/* Driver ring is full (emulation running ahead of real time):
+			 * drop a buffer so the work buffer can't overrun */
+			if (!MIXER_Pull(mixer.dropbuf,need,rate)) break;
+		} else break;
+	}
 }
 
 static void MIXER_Stop(Section* sec) {
+	if (mixer.audio) {
+		mixer.audio=0;
+		platform->getAudio()->stopEmulatorAudio();
+	}
+	delete [] mixer.dropbuf;
+	mixer.dropbuf=0;
 }
 
 class MIXER : public Program {
@@ -679,35 +719,39 @@ void MIXER_Init(Section* sec) {
 	mixer.mastervol[0]=1.0f;
 	mixer.mastervol[1]=1.0f;
 
-	/* Start the Mixer using SDL Sound at 22 khz */
-	SDL_AudioSpec spec;
-	SDL_AudioSpec obtained;
-
-	spec.freq=mixer.freq;
-	spec.format=AUDIO_S16SYS;
-	spec.channels=2;
-	spec.callback=MIXER_CallBack;
-	spec.userdata=NULL;
-	spec.samples=(Uint16)mixer.blocksize;
+	/* The mixer feeds the platform's EmulatorAudioDriver. The hardware plays
+	 * whatever it is given at its fixed rate, so the driver's rate and buffer
+	 * size override the config values (same role as "got different values"). */
+	mixer.audio=0;
+	mixer.dropbuf=0;
+	EmulatorAudioDriver * audio=0;
+	if (!mixer.nosound && platform && platform->getAudio())
+		audio=platform->getAudio()->getEmulatorAudio();
 
 	mixer.tick_counter=0;
 	if (mixer.nosound) {
 		LOG_MSG("MIXER: No Sound Mode Selected.");
 		mixer.tick_add=calc_tickadd(mixer.freq);
 		TIMER_AddTickHandler(MIXER_Mix_NoSound);
-	} else if (SDL_OpenAudio(&spec, &obtained) <0 ) {
+	} else if (!audio) {
 		mixer.nosound = true;
-		LOG_MSG("MIXER: Can't open audio: %s , running in nosound mode.",SDL_GetError());
+		LOG_MSG("MIXER: No emulator audio driver, running in nosound mode.");
 		mixer.tick_add=calc_tickadd(mixer.freq);
 		TIMER_AddTickHandler(MIXER_Mix_NoSound);
 	} else {
-		if((mixer.freq != obtained.freq) || (mixer.blocksize != obtained.samples))
-			LOG_MSG("MIXER: Got different values from SDL: freq %d, blocksize %d",obtained.freq,obtained.samples);
-		mixer.freq=obtained.freq;
-		mixer.blocksize=obtained.samples;
+		const Bit32u freq=(Bit32u)audio->getSampleRate();
+		const Bit32u blocksize=(Bit32u)audio->getFramesPerBuffer();
+		if((mixer.freq != freq) || (mixer.blocksize != blocksize))
+			LOG_MSG("MIXER: Audio driver is fixed at freq %d, blocksize %d",freq,blocksize);
+		mixer.freq=freq;
+		mixer.blocksize=blocksize;
 		mixer.tick_add=calc_tickadd(mixer.freq);
+		mixer.dropbuf=new Bit16s[2*mixer.blocksize];
+		mixer.audio=audio;
 		TIMER_AddTickHandler(MIXER_Mix);
-		SDL_PauseAudio(0);
+		/* Take the audio interface over from the menu (replaces SDL_PauseAudio(0)) */
+		platform->getAudio()->stopMenuAudio();
+		platform->getAudio()->startEmulatorAudio();
 	}
 	mixer.min_needed=section->Get_int("prebuffer");
 	if (mixer.min_needed>100) mixer.min_needed=100;

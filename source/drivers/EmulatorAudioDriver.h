@@ -35,4 +35,10 @@ class EmulatorAudioDriver
 
 		//! Publishes the buffer returned by getWriteBuffer() for playback.
 		virtual void commitWrite() = 0;
+
+		//! Fixed output rate in Hz. The core's mixer must produce exactly this.
+		virtual int getSampleRate() = 0;
+
+		//! Stereo frames in each buffer returned by getWriteBuffer().
+		virtual int getFramesPerBuffer() = 0;
 };
