@@ -25,7 +25,7 @@
 // 3: complex scalers on
 #define RENDER_USE_ADVANCED_SCALERS 2
 
-#include "../src/gui/render_scalers.h"
+#include "../gui/render_scalers.h"
 
 #define RENDER_SKIP_CACHE	16
 //Enable this for scalers to support 0 input for empty lines

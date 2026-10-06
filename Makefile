@@ -19,13 +19,14 @@ export	FREETYPE_LIBS	:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config -
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	src src/cpu src/debug src/dos src/fpu src/gui \
-				src/hardware src/hardware/mame \
-				src/hardware/serialport src/ints src/libs \
-				src/misc src/platform/wii src/platform/wii/fonts \
-				src/platform/wii/images src/platform/wii/libgui \
-				src/platform/wii/sounds src/shell
-INCLUDES 	:=  include src/platform/wii
+SOURCES		:=	source source/libgui \
+				source/dosbox source/dosbox/cpu source/dosbox/debug \
+				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
+				source/dosbox/hardware source/dosbox/hardware/mame \
+				source/dosbox/hardware/serialport source/dosbox/ints \
+				source/dosbox/libs source/dosbox/misc source/dosbox/shell
+DATA		:=	data/images data/fonts data/sounds
+INCLUDES 	:=  source source/dosbox source/dosbox/include
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -69,7 +70,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
-BINFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.ttf) \
+BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.ttf) \
 					$(wildcard $(dir)/*.lang) $(wildcard $(dir)/*.png) \
 					$(wildcard $(dir)/*.ogg) $(wildcard $(dir)/*.pcm)))
 
