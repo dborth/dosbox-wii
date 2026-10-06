@@ -135,6 +135,11 @@ void OgcEmulatorVideo::resetVideo()
 	GX_SetCullMode (GX_CULL_NONE);
 	GX_SetDispCopyGamma (GX_GM_1_0);
 
+	// The bars around the frame are whatever the copy clears to, and the menu
+	// may have changed that (VideoDriver::clearScreen)
+	GXColor background = {0, 0, 0, 255};
+	GX_SetCopyClear (background, GX_MAX_Z24);
+
 	GX_SetZMode (GX_TRUE, GX_LEQUAL, GX_TRUE);
 	GX_SetColorUpdate (GX_TRUE);
 	GX_SetBlendMode (GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
@@ -149,6 +154,17 @@ void OgcEmulatorVideo::resetVideo()
 	frameHeight = 0;
 	updateScaling = true;
 	filterDirty = true;
+}
+
+/****************************************************************************
+ * stopVideo
+ *
+ * presentFrame() only queues the copy to the XFB, which happens at the next
+ * retrace. Drain that before the menu reconfigures GX and does its own copy.
+ ***************************************************************************/
+void OgcEmulatorVideo::stopVideo()
+{
+	videoDriver->waitForIdle();
 }
 
 /****************************************************************************

@@ -37,6 +37,10 @@ class OgcVideoDriver : public VideoDriver
 		GXRModeObj* getVideoMode() const { return videoMode; };
 		GXRModeObj* findVideoMode();
 		void setupVideoMode(GXRModeObj* mode);
+		//! Waits for the last presented frame to be copied out and displayed, and for
+		//! the GPU to finish with it. Leaves the buffer order alone.
+		void waitForIdle();
+		//! waitForIdle(), then moves on to the other buffer for the next frame.
 		void waitForBufferReady();
 		void presentBuffer();
 

@@ -22,6 +22,8 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 
 		void init(VideoDriver* videoDriver) override;
 		void resetVideo() override;
+		void stopVideo() override;
+		int getMaxFrameDimension() const override { return MAX_TEX_DIM; }
 		void presentFrame(const uint16_t* pixels, int width, int height, int pitch) override;
 		void setPixelAspect(float scaleX, float scaleY) override;
 		void setSmoothing(bool smooth) override;

@@ -265,7 +265,7 @@ void OgcVideoDriver::startMenuVideo()
 	GX_SetAlphaUpdate(GX_TRUE);
 }
 
-void OgcVideoDriver::waitForBufferReady()
+void OgcVideoDriver::waitForIdle()
 {
 	u32 level;
 
@@ -280,7 +280,11 @@ void OgcVideoDriver::waitForBufferReady()
 	// Guarantee the GPU has fully finished rendering the PREVIOUS frame
 	// before we begin swizzling new data into texture memory.
 	GX_DrawDone();
+}
 
+void OgcVideoDriver::waitForBufferReady()
+{
+	waitForIdle();
 	whichfb ^= 1;
 }
 

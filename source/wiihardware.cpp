@@ -26,6 +26,7 @@
 #include "drivers/ogc/wii/WiiPlatform.h"
 #include "drivers/KeyboardDriver.h"
 #include "drivers/ogc/OgcKeyboardDriver.h"
+#include "dosbox/gui/gfx_hal.h"
 
 void MAPPER_CheckEvent(SDL_Event * event);
 
@@ -244,20 +245,28 @@ void WiiMenu()
 
 	SwitchAudioMode(1);
 
-	// must run before the mode switch, which may tear down what it reads
-	platform->getVideo()->getEmulatorVideo()->snapshotFrame();
+	// Waits for the last frame to reach the screen, and keeps a copy of it
+	// for the menu background. Must come before the mode switch below.
+	GFX_Suspend();
 	platform->getVideo()->startMenuVideo();
 
 	HomeMenu();
 
 	SwitchAudioMode(0);
-	platform->getVideo()->getEmulatorVideo()->resetVideo();
+	GFX_Resume();	// also repaints: DOSBox won't present again until something changes
 
 	if(dosboxCommand[0] != 0)
 		LWP_ResumeThread(keythread);
 }
 
+/****************************************************************************
+ * WiiFinished
+ *
+ * End of main(). Emulator video was already released by GUI_ShutDown().
+ * Shuts every driver down and leaves the app (power off, or back to the
+ * loader). Does not return.
+ ***************************************************************************/
 void WiiFinished()
 {
-
+	platform->requestExit(EXITACTION_WII_AUTO, false);
 }

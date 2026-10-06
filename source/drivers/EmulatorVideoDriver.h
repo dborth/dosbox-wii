@@ -15,7 +15,18 @@ class EmulatorVideoDriver
 		virtual ~EmulatorVideoDriver() = default;
 
 		virtual void init(VideoDriver* videoDriver) = 0;
+		//! Takes the display for the emulator. Also used to take it back from the menu.
 		virtual void resetVideo() = 0;
+
+		//! The emulator gives up the display (eg. for the menu). Waits until the
+		//! last frame handed to presentFrame() has actually been displayed, so
+		//! nothing of it is still in flight when something else starts drawing.
+		//! Safe at any time, including before the first frame. Pairs with
+		//! resetVideo().
+		virtual void stopVideo() {}
+
+		//! Largest frame width or height, in pixels, that presentFrame() accepts.
+		virtual int getMaxFrameDimension() const { return 1024; }
 
 		//! Draws and presents one emulator frame.
 		//! \param pixels   RGB565 (big-endian, native) row-major frame, 32-byte aligned
