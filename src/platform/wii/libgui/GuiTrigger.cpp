@@ -8,7 +8,7 @@
  * GUI class definitions
  ***************************************************************************/
 
-#include "gui.h"
+#include "Gui.h"
 #include <ogc/lwp_watchdog.h>
 #include <gctypes.h>
 

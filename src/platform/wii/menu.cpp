@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <sys/param.h>
 
-#include "libwiigui/gui.h"
+#include "libgui/Gui.h"
 #include "wiihardware.h"
 #include "menu.h"
 #include "cpu.h"

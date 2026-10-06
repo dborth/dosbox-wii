@@ -3,7 +3,7 @@
 // public domain. no warranty implied; use at your own risk.
 // also licensed under the zlib license.
 
-#include "gui.h"
+#include "Gui.h"
 #include "../vconsole.h"
 
 GuiMonoText::GuiMonoText(GuiImageData * img,

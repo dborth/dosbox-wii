@@ -18,7 +18,7 @@
 #include <wiiuse/wpad.h>
 
 #include "input.h"
-#include "libwiigui/gui.h"
+#include "libgui/Gui.h"
 
 int rumbleRequest[4] = {0,0,0,0};
 GuiTrigger userInput[4];

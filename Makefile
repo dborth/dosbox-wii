@@ -23,7 +23,7 @@ SOURCES		:=	src src/cpu src/debug src/dos src/fpu src/gui \
 				src/hardware src/hardware/mame \
 				src/hardware/serialport src/ints src/libs \
 				src/misc src/platform/wii src/platform/wii/fonts \
-				src/platform/wii/images src/platform/wii/libwiigui \
+				src/platform/wii/images src/platform/wii/libgui \
 				src/platform/wii/sounds src/shell
 INCLUDES 	:=  include src/platform/wii
 

@@ -8,7 +8,7 @@
  * GUI class definitions
  ***************************************************************************/
 
-#include "gui.h"
+#include "Gui.h"
 #ifdef EXTENDED_KEYBOARD
 #include <string>
 #endif
