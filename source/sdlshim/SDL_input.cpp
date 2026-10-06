@@ -1,8 +1,8 @@
 /****************************************************************************
  * DOSBox Wii
- * input_hal.cpp
+ * SDL_input.cpp
  *
- * DOSBox's input layer on the platform HAL. See input_hal.h.
+ * DOSBox's input layer on the platform HAL. See SDL_input.h.
  *
  * Responsibilities:
  *  - turn HAL pad state into the eight SDL-style joysticks the mapper expects
@@ -17,7 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "input_hal.h"
+#include "SDL_input.h"
 
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"

@@ -25,9 +25,10 @@ SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
 				source/dosbox/hardware source/dosbox/hardware/mame \
 				source/dosbox/hardware/serialport source/dosbox/ints \
-				source/dosbox/libs source/dosbox/misc source/dosbox/shell
+				source/dosbox/libs source/dosbox/misc source/dosbox/shell \
+				source/sdlshim
 DATA		:=	data/images data/fonts data/sounds data/lang
-INCLUDES 	:=  source source/dosbox source/dosbox/include
+INCLUDES 	:=  source source/dosbox source/dosbox/include source/sdlshim
 
 #---------------------------------------------------------------------------------
 # options for code generation

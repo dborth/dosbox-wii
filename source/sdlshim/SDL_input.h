@@ -1,6 +1,6 @@
 /****************************************************************************
  * DOSBox Wii
- * input_hal.h
+ * SDL_input.h
  *
  * DOSBox's input layer, implemented on the platform HAL (InputDriver,
  * KeyboardDriver, MouseDriver). Replaces the SDL 1.2 events, keyboard,
@@ -16,8 +16,8 @@
  * Deliberately includes only <stdint.h>: it is used by DOSBox core files
  * and platform files whose headers collide (see gfx_hal.h).
  ***************************************************************************/
-#ifndef DOSBOX_INPUT_HAL_H
-#define DOSBOX_INPUT_HAL_H
+#ifndef SDL_INPUT_H
+#define SDL_INPUT_H
 
 #include <stdint.h>
 

@@ -23,7 +23,7 @@
 /* Key table used by the DOSBox input layer. This is SDL 1.2's SDLKey /
  * SDLMod enumeration, kept as DOSBox's own key table (the mapper's saved
  * key bindings and bios_keyboard's translation are written in terms of it).
- * The SDL library itself is no longer linked. See input_hal.h. */
+ * The SDL library itself is no longer linked. See SDL_input.h. */
 #ifndef DOSBOX_INPUT_KEYS_H
 #define DOSBOX_INPUT_KEYS_H
 

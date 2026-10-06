@@ -38,7 +38,6 @@
 
 #include "cross.h"
 #include "SDL.h"
-#include "input_hal.h"
 
 #include "dosbox.h"
 #include "video.h"

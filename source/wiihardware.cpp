@@ -26,7 +26,7 @@
 #include "drivers/MouseDriver.h"
 #include "drivers/ogc/OgcMouseDriver.h"
 #include "dosbox/gui/gfx_hal.h"
-#include "dosbox/include/input_hal.h"
+#include "sdlshim/SDL_input.h"
 
 void MAPPER_CheckEvent(SDL_Event * event);
 
