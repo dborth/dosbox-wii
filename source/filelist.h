@@ -39,6 +39,15 @@
 
 #include "credits_box_png.h"
 
+#include "bg_options_png.h"
+#include "bg_options_entry_png.h"
+
+#include "scrollbar_png.h"
+#include "scrollbar_arrowup_png.h"
+#include "scrollbar_arrowup_over_png.h"
+#include "scrollbar_arrowdown_png.h"
+#include "scrollbar_arrowdown_over_png.h"
+
 #include "keyboard_textbox_png.h"
 #include "keyboard_key_png.h"
 #include "keyboard_key_over_png.h"

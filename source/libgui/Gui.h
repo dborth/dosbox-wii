@@ -79,3 +79,4 @@ enum class SCROLL {
 #include "GuiImage.h"
 #include "GuiButton.h"
 #include "GuiKeyboard.h"
+#include "GuiOptionBrowser.h"
