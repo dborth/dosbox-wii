@@ -37,9 +37,14 @@
 #include "videosupport.h"
 #include "input.h"
 
-// Platform composition root: the only place that picks a concrete platform.
-// Wii U will select WutPlatform here (Stage 7).
+#ifdef HW_RVL
+#include "drivers/ogc/wii/WiiPlatform.h"
 static WiiPlatform platformInstance;
+#elif __WIIU__
+#include "drivers/wut/WutPlatform.h"
+static WutPlatform platformInstance;
+#endif
+
 Platform* platform = &platformInstance;
 
 // USB keyboard and mouse (the Wiimote IR pointer is part of the pad state)

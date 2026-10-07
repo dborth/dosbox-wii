@@ -35,9 +35,8 @@
 #include "dosboxsupport.h"
 #include "preferences.h"
 #include "input.h"
+#include "fileop.h"
 #include "menu.h"
-
-int MountDOSBoxDir(char DriveLetter, const char *path);
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 	static Bit32s internal_cycles = 0;
