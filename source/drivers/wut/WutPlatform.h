@@ -1,0 +1,59 @@
+/****************************************************************************
+ * Platform Abstraction Layer (WUT driver)
+ * Daryl Borth 2026
+ * WutPlatform.h
+ ***************************************************************************/
+#pragma once
+
+#include <whb/proc.h>
+#include "../Platform.h"
+#include "WutAudioDriver.h"
+#include "WutVideoDriver.h"
+#include "WutInputDriver.h"
+#include "WutFileSystemDriver.h"
+#include "WutThreadDriver.h"
+#include "WutLoggerOSReport.h"
+#include "WutLoggerUdp.h"
+#include "WutLoggerUsbSerial.h"
+#include "../LoggerFile.h"
+
+class WutPlatform : public Platform
+{
+	public:
+		WutPlatform() {}
+
+		void init(const PlatformConfig& config) override;
+
+		SystemEvent getSystemEvent() override;
+		Status getStatus() const override { return status; }
+		void triggerExit() override { status = Status::Exiting; }
+		void setSaveHandler(SaveHandler handler) override { saveHandler = handler; }
+
+		const char* getConsoleDetails() override;
+		const char* getMemoryFreeInfo() override;
+
+		void requestExit(int exitAction, bool autoloadedGame) override;
+
+		AudioDriver* getAudio() override { return audioDriver; }
+		VideoDriver* getVideo() override { return videoDriver; }
+		InputDriver* getInput() override { return inputDriver; }
+		FileSystemDriver* getFileSystem() override { return fileSystemDriver; }
+		ThreadDriver* getThread() override { return threadDriver; }
+		Logger* getLogger() override { return logger; }
+
+	protected:
+		void shutdown() override;
+
+	private:
+		static uint32_t procSaveCallback(void * context);
+
+		SaveHandler saveHandler = nullptr;
+		Status status = Status::Running;
+		bool procExited = false;
+		WutAudioDriver* audioDriver = nullptr;
+		WutVideoDriver* videoDriver = nullptr;
+		WutInputDriver* inputDriver = nullptr;
+		WutFileSystemDriver* fileSystemDriver = nullptr;
+		WutThreadDriver* threadDriver = nullptr;
+		Logger* logger = nullptr;
+};

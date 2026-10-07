@@ -1,0 +1,183 @@
+/****************************************************************************
+ * Platform Abstraction Layer (WUT driver)
+ * Daryl Borth 2026
+ * WutVideoDriver.h
+ ***************************************************************************/
+#pragma once
+
+#include <vector>
+#include <coreinit/time.h>
+#include <gx2/sampler.h>
+#include <gx2/texture.h>
+#include "../VideoDriver.h"
+
+//!The two physical render targets every Wii U frame is submitted to.
+//!Their pixel dimensions are not fixed: the TV follows the console's output
+//!setting (480p/720p/1080p), the GamePad is always 854x480. See
+//!WutVideoDriver::getTargetWidth()/getTargetHeight().
+enum class OutputTarget
+{
+	TV = 0,
+	DRC = 1
+};
+
+static const int OUTPUT_TARGET_COUNT = 2;
+
+class WutEmulatorVideo;
+
+//!One recorded UI draw (image, glyph quad or flat rectangle). The renderers
+//!record these instead of drawing immediately, and WutVideoDriver replays the
+//!whole list once for the TV and once for the GamePad (see flushDrawQueue()).
+struct WutDrawCmd
+{
+	enum class Kind : uint8_t
+	{
+		Texture,        //!<textured quad through Texture2DShader, shader-side angle/offset/scale
+		TextureRotated, //!<textured quad whose corners were pre-rotated into a Texture2DShader rotated slot
+		Color           //!<flat-color quad through ColorShader
+	};
+
+	Kind kind;
+	uint32_t slot;                //!<TextureRotated only: slot from Texture2DShader::uploadRotatedQuad()
+	const GX2Texture * texture;   //!<Texture/TextureRotated only
+	const GX2Sampler * sampler;   //!<Texture/TextureRotated only
+	float angle;                  //!<Texture only, radians
+	float offset[3];              //!<NDC position (unused by TextureRotated)
+	float scale[3];               //!<NDC half-extents (unused by TextureRotated)
+	float colorIntensity[4];
+};
+
+//!Wii U VideoDriver: GX2 + libwhb's WHBGfx* helpers. Every frame's draws
+//!are submitted twice - once for the TV, once for the GamePad - so the same
+//!UI always reaches both screens; there's no separate dual-display mode.
+//!UI draws are recorded into a list and replayed per target (one context
+//!switch each) rather than switching targets around every single draw.
+class WutVideoDriver : public VideoDriver
+{
+	public:
+		WutVideoDriver();
+		~WutVideoDriver() override;
+
+		void init(int width, int height) override;
+		void shutdown() override;
+		void renderMenu() override;
+		void startMenuVideo() override;
+		void clearScreen(const PixelColor& color) override;
+
+		int getScreenWidth() const override { return screenWidth; }
+		int getScreenHeight() const override { return screenHeight; }
+		uint32_t getFrameTimer() override;
+
+		int getRefreshRate() const override;
+		float getDeltaTime() const override;
+		float getUIScale() const override { return uiScale; }
+
+		//!Physical pixel size of a render target (the TV follows the console's
+		//!output setting, the GamePad is always 854x480). Unrelated to the
+		//!design canvas returned by getScreenWidth()/getScreenHeight(), which
+		//!is stretched onto each target independently per axis.
+		int getTargetWidth(OutputTarget target) const { return targetWidth[(int)target]; }
+		int getTargetHeight(OutputTarget target) const { return targetHeight[(int)target]; }
+
+		ImageRenderer* getImageRenderer() override { return imageRenderer; }
+		GlyphRenderer* getGlyphRenderer() override { return glyphRenderer; }
+		EmulatorVideoDriver* getEmulatorVideo() override;
+
+		//!False once the OS has taken away the foreground (HOME menu overlay,
+		//!forced exit, etc.) - GX2 is off-limits at that point, so every
+		//!draw/render entry point below checks this first and no-ops rather
+		//!than issuing a GX2 call into a context we no longer own.
+		bool isForeground() const;
+
+		// Copies the drawn TV/DRC contents to their scan buffers and submits
+		// the flip. Always pipelined: submits and returns without waiting for
+		// the GPU to finish (that wait is prepareFrame()'s job, below). The
+		// one wait done here is for the *previous* submit's flip, since the
+		// copy above can't safely land on a scan buffer the display hasn't
+		// finished swapping away from yet.
+		void presentBuffer();
+
+		//!Records a UI draw for the next flushDrawQueue(). Called by the
+		//!renderers below; must be called from the thread that draws.
+		void queueDraw(const WutDrawCmd& cmd);
+
+		//!Replays every recorded UI draw into the TV context, then the same
+		//!list into the GamePad context, and empties the list. Does nothing
+		//!when the list is empty. presentBuffer() calls this; direct GX2
+		//!drawing that must land on top of (or under) queued UI draws, and
+		//!anything that frees a texture a queued draw may reference, must
+		//!call it first to keep ordering. Leaves the GamePad context bound.
+		void flushDrawQueue();
+
+		//!Waits until the GPU has retired the last submitted frame. Nothing
+		//!happens if no frame is in flight or the foreground is gone. Anything
+		//!about to write to (or free) memory a submitted frame may still be
+		//!sampling must call this first. prepareFrame() does.
+		void waitForIdle();
+
+		// Binds the TV context state and resets the per-frame render state
+		// (viewport/scissor/blend/depth/cull) that WHBGfxInit() doesn't set
+		// on its own, and rewinds the shared shader slot counters (see
+		// ColorShader::resetFrame() / Texture2DShader::resetFrame()).
+		void prepareFrame();
+	private:
+		static const size_t cuMaxQueuedDraws = 4096;
+		std::vector<WutDrawCmd> drawQueue;
+		void replayDrawQueue() const; // draws drawQueue into whichever context is currently bound
+
+		bool gpuFramesInFlight = false;   // a pipelined frame was submitted and not yet retired/drained
+		OSTime lastSubmitTimeStamp = 0;   // GX2 timestamp of that submit
+
+		// Queries GX2's current TV scan mode/aspect ratio and derives the
+		// physical TV and DRC target dims
+		void computeUIScale();
+
+		int screenWidth;
+		int screenHeight;
+		float uiScale = 1.0f;
+		int targetWidth[OUTPUT_TARGET_COUNT] = { 0, 0 };
+		int targetHeight[OUTPUT_TARGET_COUNT] = { 0, 0 };
+		PixelColor clearColor;
+
+		ImageRenderer * imageRenderer;
+		GlyphRenderer * glyphRenderer;
+		WutEmulatorVideo* emulatorVideo = nullptr;
+};
+
+//!GX2-backed ImageRenderer for GuiImage/GuiImageData, using Texture2DShader.
+class WutImageRenderer : public ImageRenderer
+{
+	public:
+		WutImageRenderer(WutVideoDriver * driver);
+
+		void * createTexture(int width, int height) override;
+		void loadTextureData(void * texture, const uint8_t * rgba, int width, int height) override;
+		void fillTexture(void * texture, int width, int height, PixelSourceFn source, void * userdata) override;
+		bool canReuseTexture(int allocWidth, int allocHeight, int width, int height) const override;
+		void destroyTexture(void * texture) override;
+		void drawTexture(void * texture, float xpos, float ypos, uint16_t width, uint16_t height, float degrees, float scaleX, float scaleY, uint8_t alpha) override;
+		void drawRectangle(float x, float y, float width, float height, PixelColor color) override;
+
+	private:
+		WutVideoDriver * driver;
+		GX2Sampler sampler;
+};
+
+//!GX2-backed GlyphRenderer for GuiTextRenderer, using Texture2DShader for
+//!glyph quads and ColorShader for solid "feature" rectangles.
+class WutGlyphRenderer : public GlyphRenderer
+{
+	public:
+		WutGlyphRenderer(WutVideoDriver * driver);
+
+		void* createTexture(uint16_t width, uint16_t height) override;
+		void loadTextureData(void* texture, FT_Bitmap* bitmap) override;
+		void destroyTexture(void* texture) override;
+
+		void drawQuad(void* texture, int16_t screenX, int16_t screenY, uint16_t width, uint16_t height, const PixelColor& color) override;
+		void drawFeature(int16_t screenX, int16_t screenY, uint16_t width, uint16_t height, const PixelColor& color) override;
+
+	private:
+		WutVideoDriver * driver;
+		GX2Sampler sampler;
+};
