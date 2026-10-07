@@ -18,12 +18,16 @@ class WutEmulatorAudio : public EmulatorAudioDriver
 	public:
 		//! Output format. The core's mixer must be configured to produce
 		//! exactly this (signed 16-bit, stereo, interleaved L/R, host
-		//! endian). AX mixes at 48 kHz and the voices bypass its SRC.
-		static constexpr int SAMPLE_RATE = 48000;
+		//! endian). Same rate as the Wii driver, so the mixer and the OPL/GUS/
+		//! PC speaker/Tandy rates behave identically on both. AX still mixes at
+		//! 48 kHz: each voice upsamples this to 48 kHz with AX's linear SRC, at
+		//! ratio SAMPLE_RATE / AXGetInputSamplesPerSec() (see configureVoice).
+		static constexpr int SAMPLE_RATE = 32000;
 
-		//! Stereo frames per buffer returned by getWriteBuffer(). 800 frames
-		//! is exactly 16.67 ms at 48 kHz, one 60 Hz video frame.
-		static constexpr int FRAMES_PER_BUFFER = 800;
+		//! Stereo frames per buffer returned by getWriteBuffer(). 544 frames is
+		//! 17.0 ms at 32 kHz, matching OgcEmulatorAudio, so the queue
+		//! thresholds below keep their tuned timing.
+		static constexpr int FRAMES_PER_BUFFER = 544;
 
 		WutEmulatorAudio();
 		~WutEmulatorAudio() override;
@@ -61,7 +65,7 @@ class WutEmulatorAudio : public EmulatorAudioDriver
 		static constexpr int COMMIT_FRAMES = FRAMES_PER_BUFFER;
 
 		// Ring capacity / thresholds, in frames
-		static constexpr int RING_FRAMES        = 16 * COMMIT_FRAMES; // 12800 (~267ms)
+		static constexpr int RING_FRAMES        = 16 * COMMIT_FRAMES; // 8704 (~272ms)
 		static constexpr int MAX_QUEUED_FRAMES  = 12 * COMMIT_FRAMES; // 4-buffer safety zone
 		static constexpr int HIGH_WATER_FRAMES  = 8  * COMMIT_FRAMES;
 		static constexpr int HIGH_RELEASE_FRAMES= 6  * COMMIT_FRAMES;
@@ -97,7 +101,12 @@ class WutEmulatorAudio : public EmulatorAudioDriver
 
 		int getUnplayedBuffers() const { return (int)(queuedFrames / COMMIT_FRAMES); }
 
-		// Stop-on-underrun margin, in frames
+		// Source frames the voices consume per AX frame callback: one tick's
+		// output samples (AXGetInputSamplesPerFrame) scaled by the SRC ratio.
+		// 96 for 144 output samples at 32 kHz -> 48 kHz.
+		uint32_t srcFramesPerTick = 0;
+
+		// Stop-on-underrun margin, in source frames
 		uint32_t minFrames = 0;
 
 		AXVoice* voiceL = nullptr;

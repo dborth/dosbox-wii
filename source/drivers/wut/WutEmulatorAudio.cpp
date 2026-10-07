@@ -27,7 +27,7 @@ WutEmulatorAudio::~WutEmulatorAudio()
  * configureVoice
  *
  * Sets everything about a voice that never changes again after init():
- * format, hard L/R pan via device mix, SRC bypass, static full volume.
+ * format, hard L/R pan via device mix, SRC ratio, static full volume.
  ***************************************************************************/
 void WutEmulatorAudio::configureVoice(AXVoice* v, int16_t* ringBuf, bool isLeft)
 {
@@ -45,11 +45,17 @@ void WutEmulatorAudio::configureVoice(AXVoice* v, int16_t* ringBuf, bool isLeft)
 	AXSetVoiceDeviceMix(v, AX_DEVICE_TYPE_TV, 0, tvMix);
 	AXSetVoiceDeviceMix(v, AX_DEVICE_TYPE_DRC, 0, drcMix);
 
+	// The voices play SAMPLE_RATE data into AX's fixed-rate mix, so AX's SRC
+	// does the rate conversion: ratio = source rate / AX rate, 16.16, rounded
+	// to nearest (the rounding error is a few ppm, which the dynamic rate
+	// control absorbs). Same scheme WutAudioDriver uses for its OGG stream.
+	// Bypass the SRC only if the rates happen to be equal.
+	const uint32_t axRate = AXGetInputSamplesPerSec();
 	AXVoiceSrc src;
 	memset(&src, 0, sizeof(src));
-	src.ratio = 0x00010000; // 1.0 in 16.16 -- see rationale above.
+	src.ratio = (uint32_t)((((uint64_t)SAMPLE_RATE << 16) + axRate / 2) / axRate);
 	AXSetVoiceSrc(v, &src);
-	AXSetVoiceSrcType(v, AX_VOICE_SRC_TYPE_NONE);
+	AXSetVoiceSrcType(v, (src.ratio == 0x00010000) ? AX_VOICE_SRC_TYPE_NONE : AX_VOICE_SRC_TYPE_LINEAR);
 
 	AXVoiceOffsets offs;
 	memset(&offs, 0, sizeof(offs));
@@ -80,7 +86,9 @@ void WutEmulatorAudio::init()
 	configureVoice(voiceL, ringL, true);
 	configureVoice(voiceR, ringR, false);
 
-	minFrames = AXGetInputSamplesPerFrame() * 3;
+	const uint32_t axRate = AXGetInputSamplesPerSec();
+	srcFramesPerTick = (uint32_t)(((uint64_t)AXGetInputSamplesPerFrame() * SAMPLE_RATE + axRate / 2) / axRate);
+	minFrames = srcFramesPerTick * 3;
 
 	resetAudio();
 }
@@ -234,7 +242,8 @@ void WutEmulatorAudio::frameTick()
 	if (!voiceRunning)
 		return;
 
-	uint32_t frame = AXGetInputSamplesPerFrame();
+	// The voices read srcFramesPerTick source frames from the ring per tick
+	uint32_t frame = srcFramesPerTick;
 
 	// Check and subtract as one atomic step
 	uint32_t queued = __atomic_load_n(&queuedFrames, __ATOMIC_RELAXED);

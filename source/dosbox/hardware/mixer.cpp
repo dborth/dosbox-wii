@@ -553,13 +553,23 @@ static bool MIXER_Pull(Bit16s * output, Bitu need, double rate) {
 	mixer.pos = (mixer.pos + reduce) & MIXER_BUFMASK;
 	index = 0;
 	if(need != reduce) {
+		/* Stretch/squeeze 'reduce' work frames into 'need' output frames with linear
+		 * interpolation (this used to be nearest-neighbour, which repeated or dropped a
+		 * frame every ~1/(rate-1) samples). Both taps are clipped to 16 bit first so the
+		 * 14 bit weights can't overflow a 32 bit Bits. The tap at i+1 never goes past
+		 * pos+reduce, because (need-1)*index_add>>TICK_SHIFT < reduce. */
 		while (need--) {
 			Bitu i = (pos + (index >> TICK_SHIFT )) & MIXER_BUFMASK;
+			Bitu j = (i + 1) & MIXER_BUFMASK;
+			Bits frac = index & TICK_MASK;
 			index += index_add;
-			sample=mixer.work[i][0]>>MIXER_VOLSHIFT;
-			*output++=MIXER_CLIP(sample);
-			sample=mixer.work[i][1]>>MIXER_VOLSHIFT;
-			*output++=MIXER_CLIP(sample);
+			Bits a, b;
+			a=MIXER_CLIP(mixer.work[i][0]>>MIXER_VOLSHIFT);
+			b=MIXER_CLIP(mixer.work[j][0]>>MIXER_VOLSHIFT);
+			*output++=(Bit16s)(a + (((b - a) * frac) >> TICK_SHIFT));
+			a=MIXER_CLIP(mixer.work[i][1]>>MIXER_VOLSHIFT);
+			b=MIXER_CLIP(mixer.work[j][1]>>MIXER_VOLSHIFT);
+			*output++=(Bit16s)(a + (((b - a) * frac) >> TICK_SHIFT));
 		}
 		/* Clean the used buffer */
 		while (reduce--) {
