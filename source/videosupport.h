@@ -1,16 +1,17 @@
 /****************************************************************************
  * DOSBox Wii
- * gfx_hal.h
+ * Daryl Borth 2009-2026
+ * videosupport.h
  *
  * The DOSBox GFX_* video backend, implemented on the platform HAL
  * (EmulatorVideoDriver). Replaces the SDL video code that used to live in
  * sdlmain.cpp.
  *
  * Deliberately includes nothing: this header is used by both DOSBox core
- * files and platform files, whose headers collide (see wiihardware.h).
+ * files and platform files, whose headers collide (see fileop.h).
  ***************************************************************************/
-#ifndef DOSBOX_GFX_HAL_H
-#define DOSBOX_GFX_HAL_H
+#ifndef DOSBOX_VIDEOSUPPORT_H
+#define DOSBOX_VIDEOSUPPORT_H
 
 /* Entry/exit of emulator video as a whole. DOSBox's own GFX_Start() and
  * GFX_Stop() (video.h) only gate drawing and are unrelated to these. */
@@ -19,7 +20,7 @@
 void GFX_HalInit(void);
 
 //! Releases emulator video. Called once, from GUI_ShutDown(). The platform
-//! itself is shut down afterwards, by WiiFinished().
+//! itself is shut down afterwards, by ExitApp().
 void GFX_HalShutdown(void);
 
 /* Handoff to and from the menu, while the emulator keeps running. */

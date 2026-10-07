@@ -25,9 +25,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#ifdef HW_RVL
-#include "wiihardware.h"
-#endif
+#include "fileop.h"
 
 #ifdef WIN32
 #ifndef _WIN32_IE
@@ -61,51 +59,17 @@ static void W32_ConfDir(std::string& in,bool create) {
 #endif
 
 void Cross::GetPlatformConfigDir(std::string& in) {
-#ifdef WIN32
-	W32_ConfDir(in,false);
-	in += "\\DOSBox";
-#elif defined(MACOSX)
-	in = "~/Library/Preferences";
-	ResolveHomedir(in);
-#elif defined(HW_RVL)
 	in = std::string(appDrive) + "/" DOSBOX_DIR_NAME;
-#else
-	in = "~/.dosbox";
-	ResolveHomedir(in);
-#endif
 	in += CROSS_FILESPLIT;
 }
 
 void Cross::GetPlatformConfigName(std::string& in) {
-#ifdef WIN32
-#define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
-#elif defined(MACOSX)
-#define DEFAULT_CONFIG_FILE "DOSBox " VERSION " Preferences"
-#elif defined(HW_RVL)
-#define DEFAULT_CONFIG_FILE "dosbox.conf"
-#else /*linux freebsd*/
-#define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
-#endif
-	in = DEFAULT_CONFIG_FILE;
+	in = "dosbox.conf";
 }
 
 void Cross::CreatePlatformConfigDir(std::string& in) {
-#ifdef WIN32
-	W32_ConfDir(in,true);
-	in += "\\DOSBox";
-	mkdir(in.c_str());
-#elif defined(MACOSX)
-	in = "~/Library/Preferences";
-	ResolveHomedir(in);
-	//Don't create it. Assume it exists
-#elif defined(HW_RVL)
 	in = std::string(appDrive) + "/" DOSBOX_DIR_NAME;
 	CreateDir(in);
-#else
-	in = "~/.dosbox";
-	ResolveHomedir(in);
-	mkdir(in.c_str(),0700);
-#endif
 	in += CROSS_FILESPLIT;
 }
 
@@ -136,19 +100,10 @@ void Cross::CreateDir(std::string const& in) {
 
 bool Cross::IsPathAbsolute(std::string const& in) {
 	// Absolute paths
-#if defined (WIN32) || defined(OS2)
-	// drive letter
-	if (in.size() > 2 && in[1] == ':' ) return true;
-	// UNC path
-	else if (in.size() > 2 && in[0]=='\\' && in[1]=='\\') return true;
-#elif defined (HW_RVL)
 	// Any devoptab prefix: sd:, usb:, usb2:, usb3:, dvd:, smb: ...
 	size_t prefix = 0;
 	while (prefix < in.size() && isalnum((unsigned char)in[prefix])) prefix++;
 	if (prefix > 1 && prefix < in.size() && in[prefix] == ':') return true;
-#else
-	if (in.size() > 1 && in[0] == '/' ) return true;
-#endif
 	return false;
 }
 

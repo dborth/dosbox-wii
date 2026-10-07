@@ -1,7 +1,6 @@
 /****************************************************************************
  * DOSBox Wii Home Menu
- * Tantric 2009-2010
- *
+ * Daryl Borth 2009-2026
  * filelist.h
  *
  * Contains a list of all of the files stored in the images/, fonts/, and

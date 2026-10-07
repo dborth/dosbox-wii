@@ -38,10 +38,8 @@
 #include "mapper.h"
 #include "setup.h"
 #include "pic.h"
-#include "gfx_hal.h"
-#ifdef HW_RVL
-#include <wiihardware.h>
-#endif
+#include "videosupport.h"
+#include "input.h"
 
 enum {
 	CLR_BLACK=0,
@@ -2284,9 +2282,7 @@ void MAPPER_RunInternal() {
 	while (!mapper.exit) {
 		// Nothing else pumps input while the mapper is up
 		InputHal_Update();
-#ifdef HW_RVL
-		WiiCheckExit();
-#endif
+		CheckExit();
 		if (mapper.redraw) {
 			mapper.redraw=false;
 			DrawButtons();

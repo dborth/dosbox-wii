@@ -6,7 +6,7 @@
  * KeyboardDriver, MouseDriver). Replaces the SDL 1.2 events, keyboard,
  * mouse and joystick the core used to get from the SDL Wii port.
  *
- * The core's input code (sdl_mapper.cpp, sdlmain.cpp) is written in terms
+ * The core's input code (sdl_mapper.cpp, input.cpp) is written in terms
  * of SDL 1.2's event structures and function names, and the mapper's
  * saved bindings in terms of its key and joystick numbering. Those names
  * and numbers are kept, so that code and users' mapper files stay as they
@@ -14,7 +14,7 @@
  * linked or included.
  *
  * Deliberately includes only <stdint.h>: it is used by DOSBox core files
- * and platform files whose headers collide (see gfx_hal.h).
+ * and platform files whose headers collide (see videosupport.h).
  ***************************************************************************/
 #ifndef SDL_INPUT_H
 #define SDL_INPUT_H
@@ -170,7 +170,7 @@ int SDL_JoystickEventState(int state);
 /* ---- HAL entry points ------------------------------------------------ */
 
 //! Sets up the input layer. The platform and keyboard/mouse drivers must
-//! already be initialised (WiiInit()).
+//! already be initialised (InitApp() in main.cpp).
 void InputHal_Init(void);
 
 //! Scans the HAL pads, keyboard and mice and posts the resulting events.

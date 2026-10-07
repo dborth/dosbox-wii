@@ -1,7 +1,6 @@
 /****************************************************************************
  * DOSBox Wii Home Menu
- * Tantric 2009-2010
- *
+ * Daryl Borth 2009-2026
  * menu.cpp
  *
  * Menu flow routines - handles all menu logic. Runs on libgui and the
@@ -24,7 +23,7 @@
 #include "drivers/InputController.h"
 #include "drivers/ogc/wii/WiiPlatform.h"
 #include "filelist.h"
-#include "wiihardware.h"
+#include "input.h"
 #include "menu.h"
 
 // Declared here rather than including cpu.h, to keep DOSBox headers out of
@@ -740,7 +739,7 @@ void HomeMenu ()
 	}
 
 	// wait for keys to be depressed
-	while(MenuRequested())
+	while(isMenuRequested())
 		usleep(10000);
 
 	exitSound.stop();

@@ -1,7 +1,6 @@
 /****************************************************************************
  * DOSBox Wii
- * gfx_hal.cpp
- *
+ * Daryl Borth 2009-2026
  * The DOSBox GFX_* video backend, on the platform HAL.
  *
  * DOSBox renders into a plain RGB565 frame buffer that this file owns, and
@@ -26,7 +25,7 @@
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
-#include "gfx_hal.h"
+#include "videosupport.h"
 
 static struct {
 	bool active;			// GFX_Start()/GFX_Stop(): DOSBox may draw

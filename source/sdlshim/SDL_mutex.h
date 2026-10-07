@@ -7,7 +7,7 @@
  * One difference from SDL: SDL's mutexes are recursive, the HAL's are not.
  * The only user in the core, the CD image player (cdrom_image.cpp), never
  * locks one it already holds. SDL_cond is declared only because
- * SDL_Block (sdlmain.cpp) has a pointer to one; there is no condition
+ * SDL_Block (input.cpp) has a pointer to one; there is no condition
  * variable or semaphore API, and the core calls none.
  *
  * Deliberately includes nothing: it is used by DOSBox core files and
