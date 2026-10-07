@@ -311,54 +311,12 @@ const char* WiiPlatform::getMemoryFreeInfo() {
 /****************************************************************************
  * Exit
  ***************************************************************************/
-void WiiPlatform::requestExit(int exitAction, bool autoloadedGame)
+void WiiPlatform::requestExit()
 {
 	this->shutdown();
 
-	if(hardwarePowerOffRequested) {
+	if(hardwarePowerOffRequested)
 		SYS_ResetSystem(SYS_POWEROFF_STANDBY, 0, FALSE);
-	}
-	else if(autoloadedGame) {
-		if( !!*(u32*)0x80001800 )
-		{
-			// Were we launched via HBC? (or via WiiFlow's stub replacement)
-			exit(1);
-		}
-		else
-		{
-			// Wii channel support
-			SYS_ResetSystem(SYS_RETURNTOMENU, 0, FALSE);
-		}
-	}
-	else {
-		if(exitAction == EXITACTION_WII_AUTO) // Auto
-		{
-			char * sig = (char *)0x80001804;
-			if(
-				sig[0] == 'S' &&
-				sig[1] == 'T' &&
-				sig[2] == 'U' &&
-				sig[3] == 'B' &&
-				sig[4] == 'H' &&
-				sig[5] == 'A' &&
-				sig[6] == 'X' &&
-				sig[7] == 'X')
-				exitAction = EXITACTION_WII_RETURN_TO_LOADER; // Exit to HBC
-			else
-				exitAction = EXITACTION_WII_RETURN_TO_MENU; // HBC not found
-		}
-
-		if(exitAction == EXITACTION_WII_RETURN_TO_MENU) // Exit to Menu
-		{
-			SYS_ResetSystem(SYS_RETURNTOMENU, 0, FALSE);
-		}
-		else if(exitAction == EXITACTION_WII_POWER_OFF) // Shutdown Wii
-		{
-			SYS_ResetSystem(SYS_POWEROFF_STANDBY, 0, FALSE);
-		}
-		else // Exit to Loader
-		{
-			exit(0);
-		}
-	}
+	else
+		exit(0);
 }

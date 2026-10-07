@@ -29,21 +29,22 @@
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputDriver.h"
-#include "drivers/ogc/wii/WiiPlatform.h"
 #include "drivers/KeyboardDriver.h"
-#include "drivers/ogc/OgcKeyboardDriver.h"
 #include "drivers/MouseDriver.h"
-#include "drivers/ogc/OgcMouseDriver.h"
 #include "videosupport.h"
 #include "input.h"
 
 #ifdef HW_RVL
 #include "drivers/ogc/wii/WiiPlatform.h"
+#include "drivers/ogc/OgcKeyboardDriver.h"
+#include "drivers/ogc/OgcMouseDriver.h"
 static WiiPlatform platformInstance;
 static OgcKeyboardDriver keyboardInstance;
 static OgcMouseDriver mouseInstance;
 #elif __WIIU__
 #include "drivers/wut/WutPlatform.h"
+#include "drivers/wut/WutKeyboardDriver.h"
+#include "drivers/wut/WutMouseDriver.h"
 static WutPlatform platformInstance;
 static WutKeyboardDriver keyboardInstance;
 static WutMouseDriver mouseInstance;
@@ -147,7 +148,7 @@ void EnterMenu()
  ***************************************************************************/
 void ExitApp()
 {
-	platform->requestExit(EXITACTION_WII_AUTO, false);
+	platform->requestExit();
 }
 
 /****************************************************************************

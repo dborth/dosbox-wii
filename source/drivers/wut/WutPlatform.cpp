@@ -210,7 +210,7 @@ const char* WutPlatform::getMemoryFreeInfo() {
 // menu), or the user explicitly exited from within the app - in which
 // case we're still in the foreground and need to tell Cafe OS we're
 // ready to shut down.
-void WutPlatform::requestExit(int, bool)
+void WutPlatform::requestExit()
 {
 	// If the exit was user-initiated, Cafe OS has not been notified yet.
 	// SYSLaunchMenu() tells Cafe OS to switch back to the system menu or loader.

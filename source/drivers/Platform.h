@@ -79,7 +79,7 @@ class Platform
 		//!return to loader/menu, power off, or just exit(), depending on
 		//!how getSystemEvent() last reported and how the platform was
 		//!reached. It does not return.
-		virtual void requestExit(int exitAction, bool autoloadedGame) = 0;
+		virtual void requestExit() = 0;
 
 		virtual AudioDriver* getAudio() = 0;
 		virtual VideoDriver* getVideo() = 0;

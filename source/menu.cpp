@@ -21,7 +21,6 @@
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputDriver.h"
 #include "drivers/InputController.h"
-#include "drivers/ogc/wii/WiiPlatform.h"
 #include "filelist.h"
 #include "input.h"
 #include "menu.h"
@@ -30,7 +29,7 @@
 // this libgui/HAL file.
 extern bool CPU_CycleAutoAdjust;
 
-#define APPVERSION		"1.7"
+#define APPVERSION		"2.0"
 
 int MENU_CyclesDisplay = 0;
 int MENU_FrameskipDisplay = 0;
@@ -73,7 +72,7 @@ static void ExitApp()
 		video->renderMenu();
 	}
 
-	platform->requestExit(EXITACTION_WII_AUTO, false);
+	platform->requestExit();
 }
 
 /****************************************************************************

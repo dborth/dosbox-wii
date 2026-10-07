@@ -52,7 +52,7 @@ class WiiPlatform : public Platform
 		const char* getConsoleDetails() override;
 		const char* getMemoryFreeInfo() override;
 
-		void requestExit(int exitAction, bool autoloadedGame) override;
+		void requestExit() override;
 		
 		bool isWiiU();
 		ConsoleType getConsoleType();
