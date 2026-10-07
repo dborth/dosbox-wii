@@ -3,3 +3,4 @@ executables
 .project
 .settings/
 .cproject
+build_wiiu

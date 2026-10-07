@@ -1,27 +1,31 @@
+
 #---------------------------------------------------------------------------------
 # Clear the implicit built in rules
 #---------------------------------------------------------------------------------
 .SUFFIXES:
 #---------------------------------------------------------------------------------
-ifeq ($(strip $(DEVKITPPC)),)
-$(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>devkitPro")
 endif
 
-include $(DEVKITPRO)/libogc2/wii_rules
+include $(DEVKITPRO)/wut/share/wut_rules
 export	FREETYPE_CFLAGS		:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config --cflags freetype2`
 export	FREETYPE_LIBS		:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config --libs freetype2`
 
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
+# TARGETDIR is the directory where final binaries (.elf, .rpx, .wuhb) are placed
 # BUILD is the directory where object files & intermediate files will be placed
 # SOURCES is a list of directories containing source code
 # INCLUDES is a list of directories containing extra header files
+# META is the directory with the optional .wuhb icon and splash images
 #---------------------------------------------------------------------------------
-TARGET		:=	dosbox-wii
+TARGET		:=	dosbox-wiiu
 TARGETDIR	:=	executables
-BUILD		:=	build_wii
-SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
-				source/drivers/ogc/wii \
+BUILD		:=	build_wiiu
+META		:=	meta
+SOURCES		:=	source source/libgui source/drivers source/drivers/wut \
+				source/drivers/wut/shaders \
 				source/dosbox source/dosbox/cpu \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
 				source/dosbox/hardware source/dosbox/hardware/mame \
@@ -37,23 +41,28 @@ INCLUDES 	:=  source source/dosbox source/dosbox/include source/sdlshim
 
 LOGGING_ENABLED	?=	0
 
+# DOSBOX_WII selects the console flavour of the core (device-prefixed paths,
+# messages), shared by Wii and Wii U despite the name. HW_RVL is deliberately
+# not defined: it means Wii hardware (libogc).
 CFLAGS		=	-g -O3 -Wall $(MACHDEP) $(INCLUDE) $(FREETYPE_CFLAGS) \
 				-Wno-strict-aliasing -DWORDS_BIGENDIAN \
-				-DDOSBOX_WII -DLOGGER_NO_LOG_ALIAS -DLOGGING_ENABLED=$(LOGGING_ENABLED)
+				-D__WIIU__ -D__WUT__ -DDOSBOX_WII \
+				-DLOGGER_NO_LOG_ALIAS -DLOGGING_ENABLED=$(LOGGING_ENABLED) \
+				-ffunction-sections -fdata-sections
 CXXFLAGS	=	$(CFLAGS)
-LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
+LDFLAGS		=	-g $(MACHDEP) $(RPXSPECS) -Wl,-Map,$(notdir $@).map -Wl,--gc-sections
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-ldi -liso9660 -lfat -lwiiuse -lbte -lasnd -logc -lwiikeyboard \
-			-lpng -lvorbisidec -logg -lsmb2 -lbz2 -lz $(FREETYPE_LIBS)
+LIBS	:=	-lsmb2 -liconv -lwut -lmocha -ldvm \
+			-lpng -lvorbisidec -logg -lz $(FREETYPE_LIBS)
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:= $(PORTLIBS)
+LIBDIRS	:= $(PORTLIBS) $(WUT_ROOT) $(WUT_ROOT)/usr
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -67,6 +76,11 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
+
+# Icon and splash images are optional: only passed to wuhbtool if present
+export WUHB_ASSETS	:=	$(if $(wildcard $(CURDIR)/$(META)/icon.png),--icon=$(CURDIR)/$(META)/icon.png) \
+					$(if $(wildcard $(CURDIR)/$(META)/tv_splash.png),--tv-image=$(CURDIR)/$(META)/tv_splash.png) \
+					$(if $(wildcard $(CURDIR)/$(META)/drc_splash.png),--drc-image=$(CURDIR)/$(META)/drc_splash.png)
 
 #---------------------------------------------------------------------------------
 # automatically build a list of object files for our project
@@ -99,36 +113,25 @@ export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 #---------------------------------------------------------------------------------
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC)
+					-I$(CURDIR)/$(BUILD)
 
 #---------------------------------------------------------------------------------
 # build a list of library paths
 #---------------------------------------------------------------------------------
-export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
-					-L$(LIBOGC_LIB)
+export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-export OUTPUT	:=	$(CURDIR)/$(TARGETDIR)/$(TARGET)
 .PHONY: $(BUILD) clean
 
 #---------------------------------------------------------------------------------
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@[ -d $(TARGETDIR) ] || mkdir -p $(TARGETDIR)
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.wii
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.wiiu
 
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol
-
-#---------------------------------------------------------------------------------
-run:
-	wiiload $(OUTPUT).dol
-
-#---------------------------------------------------------------------------------
-reload:
-	wiiload -r $(OUTPUT).dol
+	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).rpx $(OUTPUT).wuhb
 
 #---------------------------------------------------------------------------------
 else
@@ -138,7 +141,15 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #---------------------------------------------------------------------------------
 # main targets
 #---------------------------------------------------------------------------------
-$(OUTPUT).dol: $(OUTPUT).elf
+$(OUTPUT).wuhb: $(OUTPUT).rpx
+	@echo packaging $@ ...
+	@$(DEVKITPRO)/tools/bin/wuhbtool $< $@ \
+		--name="DOSBox Wii U" \
+		--short-name="DOSBox" \
+		--author="dborth" \
+		$(WUHB_ASSETS)
+
+$(OUTPUT).rpx: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
 
 $(OFILES_SOURCES): $(HFILES)

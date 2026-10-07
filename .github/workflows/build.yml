@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: ["Wii"]
+        image: ["Wii", "WiiU"]
     container: ghcr.io/extremscorner/libogc2:latest
 
     steps:
@@ -16,6 +16,10 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Install Wii U dependencies
+      if: ${{ matrix.image == 'WiiU' }}
+      run: dkp-pacman -Syu --noconfirm wiiu-dev
 
     - name: Build and install libmocha
       if: ${{ matrix.image == 'WiiU' }}
@@ -46,7 +50,13 @@ jobs:
       run: |
         make -f Makefile.wii -j3
 
-    - name: Copy artifacts
+    - name: Build Wii U
+      if: ${{ matrix.image == 'WiiU' }}
+      run: |
+        make -f Makefile.wiiu -j3
+
+    - name: Copy artifacts (Wii)
+      if: ${{ matrix.image == 'Wii' }}
       run: |
         mkdir -p dist/apps/dosbox-wii
         cp hbc/* dist/apps/dosbox-wii/
@@ -54,12 +64,28 @@ jobs:
         mkdir -p dist/DOSBox
         touch dist/DOSBox/dosboxdir
       
-    - name: Upload artifacts
+    - name: Upload artifacts (Wii)
+      if: ${{ matrix.image == 'Wii' }}
       uses: actions/upload-artifact@v4
       with:
         name: DOSBox-Wii
         path: |
           dist/
+
+    - name: Copy artifacts (Wii U)
+      if: ${{ matrix.image == 'WiiU' }}
+      run: |
+        mkdir -p dist/wiiu/apps/dosbox-wiiu
+        cp executables/dosbox-wiiu.wuhb dist/wiiu/apps/dosbox-wiiu/
+        cp executables/dosbox-wiiu.rpx dist/wiiu/apps/dosbox-wiiu/
+
+    - name: Upload artifacts (Wii U)
+      if: ${{ matrix.image == 'WiiU' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: DOSBox-WiiU
+        path: |
+          dist/wiiu/
 
   release:
     name: Release
@@ -83,6 +109,8 @@ jobs:
         cd dist/DOSBox-Wii
         rm -r DOSBox/*
         zip -r ../DOSBox-Wii.zip *
+        cd ../DOSBox-WiiU
+        zip -r ../DOSBox-WiiU.zip *
 
     - name: Update Git Tag
       run: |
