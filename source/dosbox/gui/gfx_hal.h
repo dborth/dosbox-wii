@@ -33,6 +33,11 @@ void GFX_Suspend(void);
 //! DOSBox only presents a frame when something on screen changed.
 void GFX_Resume(void);
 
+//! Shows a finished RGB565 picture that is not emulator output (the mapper
+//! screen), square pixels, in place of the emulator frame. pixels must be 32
+//! byte aligned. GFX_ResetScreen() brings the emulator picture back.
+void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pitch);
+
 //! The Wii has no windowed mode, so this is always true.
 bool GFX_IsFullscreen(void);
 

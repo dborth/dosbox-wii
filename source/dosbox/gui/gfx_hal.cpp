@@ -104,6 +104,15 @@ void GFX_Resume(void) {
 		PresentFrame();
 }
 
+void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pitch) {
+	if (gfx.updating)
+		GFX_EndUpdate(0);
+
+	EmulatorVideoDriver * video = EmulatorVideo();
+	video->setPixelAspect(1.0f, 1.0f);
+	video->presentFrame((const uint16_t *)pixels, width, height, pitch);
+}
+
 bool GFX_IsFullscreen(void) {
 	return true;
 }

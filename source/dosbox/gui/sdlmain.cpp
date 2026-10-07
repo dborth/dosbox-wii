@@ -180,7 +180,6 @@ bool startup_state_numlock=false;
 bool startup_state_capslock=false;
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
-	char title[200] = { 0 };
 	static Bit32s internal_cycles = 0;
 	static int internal_frameskip = 0;
 	if (cycles != -1)
@@ -197,17 +196,6 @@ void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 		MENU_FrameskipDisplay = frameskip;
 #endif
 	}
-
-#ifndef HW_RVL // set title only if it is NOT the wii. For wii it makes no sense
-	if(CPU_CycleAutoAdjust) {
-		sprintf(title,"DOSBox %s, CPU speed: max %3d%% cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
-	} else {
-		sprintf(title,"DOSBox %s, CPU speed: %8d cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
-	}
-
-	if (paused) strcat(title," PAUSED");
-	SDL_WM_SetCaption(title,VERSION);
-#endif
 }
 
 static void KillSwitch(bool pressed) {
@@ -789,9 +777,6 @@ void Config_Add_SDL() {
 
 	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,MAPPERFILE);
 	Pstring->Set_help("File used to load/save the key/event mappings from. Resetmapper only works with the default value.");
-
-	Pbool = sdl_sec->Add_bool("usescancodes",Property::Changeable::Always,true);
-	Pbool->Set_help("Avoid usage of symkeys, might not work on all operating systems.");
 }
 
 static void show_warning(char const * const message) {
@@ -834,7 +819,6 @@ void restart_program(std::vector<std::string> & parameters) {
 	newargs[parameters.size()] = NULL;
 	platform->getAudio()->stopEmulatorAudio();
 	SDL_Delay(50);
-	SDL_Quit();
 #if C_DEBUG
 	// shutdown curses
 	DEBUG_ShutDown(NULL);
@@ -1020,19 +1004,6 @@ int main(int argc, char* argv[]) {
 	LOG_MSG("Copyright 2002-2019 DOSBox Team, published under GNU GPL.");
 	LOG_MSG("---");
 
-	/* Init SDL */
-#if SDL_VERSION_ATLEAST(1, 2, 14)
-	/* Or debian/ubuntu with older libsdl version as they have done this themselves, but then differently.
-	 * with this variable they will work correctly. I've only tested the 1.2.14 behaviour against the windows version
-	 * of libsdl
-	 */
-	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1"));
-#endif
-	// Don't init timers, GetTicks seems to work fine and they can use a fair amount of power (Macs again) 
-	// Please report problems with audio and other things.
-	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO | /*SDL_INIT_TIMER |*/ SDL_INIT_CDROM
-		|SDL_INIT_NOPARACHUTE
-		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
 	sdl.inited = true;
 
 	// Keyboard, mouse and joysticks come from the HAL
@@ -1183,6 +1154,5 @@ int main(int argc, char* argv[]) {
 #ifdef HW_RVL
 	WiiFinished();
 #endif
-	SDL_Quit();//Let's hope sdl will quit as well when it catches an exception
 	return 0;
 }

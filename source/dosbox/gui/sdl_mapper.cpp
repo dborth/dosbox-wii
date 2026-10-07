@@ -24,6 +24,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
+#include <malloc.h>
 
 
 #include "SDL.h"
@@ -37,6 +38,10 @@
 #include "mapper.h"
 #include "setup.h"
 #include "pic.h"
+#include "gfx_hal.h"
+#ifdef HW_RVL
+#include <wiihardware.h>
+#endif
 
 enum {
 	CLR_BLACK=0,
@@ -299,174 +304,16 @@ protected:
 };
 
 
-#define MAX_SDLKEYS 323
-
-static bool usescancodes;
-static Bit8u scancode_map[MAX_SDLKEYS];
-
-#define Z SDLK_UNKNOWN
-
-#if defined (MACOSX)
-static SDLKey sdlkey_map[]={
-	/* Main block printables */
-	/*00-05*/ SDLK_a, SDLK_s, SDLK_d, SDLK_f, SDLK_h, SDLK_g,
-	/*06-0B*/ SDLK_z, SDLK_x, SDLK_c, SDLK_v, SDLK_WORLD_0, SDLK_b,
-	/*0C-11*/ SDLK_q, SDLK_w, SDLK_e, SDLK_r, SDLK_y, SDLK_t, 
-	/*12-17*/ SDLK_1, SDLK_2, SDLK_3, SDLK_4, SDLK_6, SDLK_5, 
-	/*18-1D*/ SDLK_EQUALS, SDLK_9, SDLK_7, SDLK_MINUS, SDLK_8, SDLK_0, 
-	/*1E-21*/ SDLK_RIGHTBRACKET, SDLK_o, SDLK_u, SDLK_LEFTBRACKET, 
-	/*22-23*/ SDLK_i, SDLK_p,
-	/*24-29*/ SDLK_RETURN, SDLK_l, SDLK_j, SDLK_QUOTE, SDLK_k, SDLK_SEMICOLON, 
-	/*2A-29*/ SDLK_BACKSLASH, SDLK_COMMA, SDLK_SLASH, SDLK_n, SDLK_m, 
-	/*2F-2F*/ SDLK_PERIOD,
-
-	/* Spaces, controls, modifiers (dosbox uses LMETA only for
-	 * hotkeys, it's not really mapped to an emulated key) */
-	/*30-33*/ SDLK_TAB, SDLK_SPACE, SDLK_BACKQUOTE, SDLK_BACKSPACE,
-	/*34-37*/ Z, SDLK_ESCAPE, Z, SDLK_LMETA,
-	/*38-3B*/ SDLK_LSHIFT, SDLK_CAPSLOCK, SDLK_LALT, SDLK_LCTRL,
-
-	/*3C-40*/ Z, Z, Z, Z, Z,
-
-	/* Keypad (KP_EQUALS not supported, NUMLOCK used on what is CLEAR
-	 * in Mac OS X) */
-	/*41-46*/ SDLK_KP_PERIOD, Z, SDLK_KP_MULTIPLY, Z, SDLK_KP_PLUS, Z,
-	/*47-4A*/ SDLK_NUMLOCK /*==SDLK_CLEAR*/, Z, Z, Z,
-	/*4B-4D*/ SDLK_KP_DIVIDE, SDLK_KP_ENTER, Z,
-	/*4E-51*/ SDLK_KP_MINUS, Z, Z, SDLK_KP_EQUALS,
-	/*52-57*/ SDLK_KP0, SDLK_KP1, SDLK_KP2, SDLK_KP3, SDLK_KP4, SDLK_KP5, 
-	/*58-5C*/ SDLK_KP6, SDLK_KP7, Z, SDLK_KP8, SDLK_KP9, 
-
-	/*5D-5F*/ Z, Z, Z,
-	
-	/* Function keys and cursor blocks (F13 not supported, F14 =>
-	 * PRINT[SCREEN], F15 => SCROLLOCK, F16 => PAUSE, HELP => INSERT) */
-	/*60-64*/ SDLK_F5, SDLK_F6, SDLK_F7, SDLK_F3, SDLK_F8,
-	/*65-6A*/ SDLK_F9, Z, SDLK_F11, Z, SDLK_F13, SDLK_PAUSE /*==SDLK_F16*/,
-	/*6B-70*/ SDLK_PRINT /*==SDLK_F14*/, Z, SDLK_F10, Z, SDLK_F12, Z,
-	/*71-72*/ SDLK_SCROLLOCK /*==SDLK_F15*/, SDLK_INSERT /*==SDLK_HELP*/, 
-	/*73-77*/ SDLK_HOME, SDLK_PAGEUP, SDLK_DELETE, SDLK_F4, SDLK_END,
-	/*78-7C*/ SDLK_F2, SDLK_PAGEDOWN, SDLK_F1, SDLK_LEFT, SDLK_RIGHT,
-	/*7D-7E*/ SDLK_DOWN, SDLK_UP,
-
-	/*7F-7F*/ Z,
-
-	/* 4 extra keys that don't really exist, but are needed for
-	 * round-trip mapping (dosbox uses RMETA only for hotkeys, it's
-	 * not really mapped to an emulated key) */
-	SDLK_RMETA, SDLK_RSHIFT, SDLK_RALT, SDLK_RCTRL
-};
-#define MAX_SCANCODES (0x80+4)
-/* Make sure that the table above has the expected size.  This
-   expression will raise a compiler error if the condition is false.  */
-typedef char assert_right_size [MAX_SCANCODES == (sizeof(sdlkey_map)/sizeof(sdlkey_map[0]))	? 1 : -1];
-
-#else // !MACOSX
-
-#define MAX_SCANCODES 0xdf
-static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
-	SDLK_1,SDLK_2,SDLK_3,SDLK_4,SDLK_5,SDLK_6,SDLK_7,SDLK_8,SDLK_9,SDLK_0,
-	/* 0x0c: */
-	SDLK_MINUS,SDLK_EQUALS,SDLK_BACKSPACE,SDLK_TAB,
-	SDLK_q,SDLK_w,SDLK_e,SDLK_r,SDLK_t,SDLK_y,SDLK_u,SDLK_i,SDLK_o,SDLK_p,
-	SDLK_LEFTBRACKET,SDLK_RIGHTBRACKET,SDLK_RETURN,SDLK_LCTRL,
-	SDLK_a,SDLK_s,SDLK_d,SDLK_f,SDLK_g,SDLK_h,SDLK_j,SDLK_k,SDLK_l,
-	SDLK_SEMICOLON,SDLK_QUOTE,SDLK_BACKQUOTE,SDLK_LSHIFT,SDLK_BACKSLASH,
-	SDLK_z,SDLK_x,SDLK_c,SDLK_v,SDLK_b,SDLK_n,SDLK_m,
-	/* 0x33: */
-	SDLK_COMMA,SDLK_PERIOD,SDLK_SLASH,SDLK_RSHIFT,SDLK_KP_MULTIPLY,
-	SDLK_LALT,SDLK_SPACE,SDLK_CAPSLOCK,
-	SDLK_F1,SDLK_F2,SDLK_F3,SDLK_F4,SDLK_F5,SDLK_F6,SDLK_F7,SDLK_F8,SDLK_F9,SDLK_F10,
-	/* 0x45: */
-	SDLK_NUMLOCK,SDLK_SCROLLOCK,
-	SDLK_KP7,SDLK_KP8,SDLK_KP9,SDLK_KP_MINUS,SDLK_KP4,SDLK_KP5,SDLK_KP6,SDLK_KP_PLUS,
-	SDLK_KP1,SDLK_KP2,SDLK_KP3,SDLK_KP0,SDLK_KP_PERIOD,
-	SDLK_UNKNOWN,SDLK_UNKNOWN,
-	SDLK_LESS,SDLK_F11,SDLK_F12, Z, Z, Z, Z, Z, Z, Z,
-	/* 0x60: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0x70: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0x80: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0x90: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0xA0: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0xB0: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0xC0: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0xD0: */
-	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z,
-	/* 0xE0: */
-	//Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
-	/* 0xF0: */
-//	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z
-
-};
-#endif
-
-#undef Z
-
-
+/* Keys are always handled by symbol (SDLK_*), which is also what the mapper
+ * file stores, so existing mapper files are unaffected. The old scancode
+ * tables were for the SDL port's keyboard scancodes, which the HAL input
+ * layer does not produce. */
 SDLKey MapSDLCode(Bitu skey) {
-//	LOG_MSG("MapSDLCode %d %X",skey,skey);
-	if (usescancodes) {
-		if (skey<MAX_SCANCODES) return sdlkey_map[skey];
-		else return SDLK_UNKNOWN;
-	} else return (SDLKey)skey;
+	return (SDLKey)skey;
 }
 
 Bitu GetKeyCode(SDL_keysym keysym) {
-//	LOG_MSG("GetKeyCode %X %X %X",keysym.scancode,keysym.sym,keysym.mod);
-	if (usescancodes) {
-		Bitu key=(Bitu)keysym.scancode;
-		if (key==0
-#if defined (MACOSX)
-		    /* On Mac on US keyboards, scancode 0 is actually the 'a'
-		     * key.  For good measure exclude all printables from this
-		     * condition. */
-		    && (keysym.sym < SDLK_SPACE || keysym.sym > SDLK_WORLD_95)
-#endif
-			) {
-			/* try to retrieve key from symbolic key as scancode is zero */
-			if (keysym.sym<MAX_SDLKEYS) key=scancode_map[(Bitu)keysym.sym];
-		} 
-#if !defined (WIN32) && !defined (MACOSX) && !defined(OS2)
-		/* Linux adds 8 to all scancodes */
-		else key-=8;
-#endif
-#if defined (WIN32)
-		switch (key) {
-			case 0x1c:	// ENTER
-			case 0x1d:	// CONTROL
-			case 0x35:	// SLASH
-			case 0x37:	// PRINTSCREEN
-			case 0x38:	// ALT
-			case 0x45:	// PAUSE
-			case 0x47:	// HOME
-			case 0x48:	// cursor UP
-			case 0x49:	// PAGE UP
-			case 0x4b:	// cursor LEFT
-			case 0x4d:	// cursor RIGHT
-			case 0x4f:	// END
-			case 0x50:	// cursor DOWN
-			case 0x51:	// PAGE DOWN
-			case 0x52:	// INSERT
-			case 0x53:	// DELETE
-				if (GFX_SDLUsingWinDIB()) key=scancode_map[(Bitu)keysym.sym];
-				break;
-		}
-#endif
-		return key;
-	} else {
-#if defined (WIN32)
-		/* special handling of 102-key under windows */
-		if ((keysym.sym==SDLK_BACKSLASH) && (keysym.scancode==0x56)) return (Bitu)SDLK_LESS;
-#endif
-		return (Bitu)keysym.sym;
-	}
+	return (Bitu)keysym.sym;
 }
 
 
@@ -501,10 +348,6 @@ public:
 		if (strncasecmp(buf,configname,strlen(configname))) return 0;
 		StripWord(buf);char * num=StripWord(buf);
 		Bitu code=ConvDecWord(num);
-		if (usescancodes) {
-			if (code<MAX_SDLKEYS) code=scancode_map[code];
-			else code=0;
-		}
 		CBind * bind=CreateKeyBind((SDLKey)code);
 		return bind;
 	}
@@ -522,7 +365,7 @@ public:
 		return 0;
 	}
 	CBind * CreateKeyBind(SDLKey _key) {
-		if (!usescancodes) assert((Bitu)_key<keys);
+		assert((Bitu)_key<keys);
 		return new CKeyBind(&lists[(Bitu)_key],_key);
 	}
 private:
@@ -1239,9 +1082,17 @@ protected:
 	Bit16u button_state;
 };
 
+/* The mapper draws into a 640x480 8-bit indexed buffer with the palette
+ * below. DrawButtons() converts it to RGB565 and hands it to the video HAL. */
+#define MAPPER_W 640
+#define MAPPER_H 480
+struct MapperSurface {
+	Bit8u * pixels;
+	Bitu pitch;
+};
+
 static struct CMapper {
-	SDL_Surface * surface;
-	SDL_Surface * draw_surface;
+	MapperSurface * surface;
 	bool exit;
 	CEvent * aevent;				//Active Event
 	CBind * abind;					//Active Bind
@@ -1689,14 +1540,70 @@ static void SetActiveEvent(CEvent * event) {
 	}
 }
 
+static Bit16u map_pal565[6];		//palette as RGB565
+static Bit16u * map_rgb;			//converted frame, 32 byte aligned
+static int map_cursor_x=-1,map_cursor_y=-1;	//where the cursor was last drawn
+
+#define CURSOR_W 11
+#define CURSOR_H 16
+static const char * const cursor_img[CURSOR_H]={
+	"X          ",
+	"XX         ",
+	"X.X        ",
+	"X..X       ",
+	"X...X      ",
+	"X....X     ",
+	"X.....X    ",
+	"X......X   ",
+	"X.......X  ",
+	"X........X ",
+	"X.....XXXXX",
+	"X..X..X    ",
+	"X.X X..X   ",
+	"XX  X..X   ",
+	"X    X..X  ",
+	"     XXXX  "
+};
+
+/* Shows the converted frame with the pointer drawn on top. The pointer is
+ * only drawn into the output, so the frame stays clean. */
+static void PresentMapper(void) {
+	int mx,my;
+	SDL_GetMouseState(&mx,&my);
+	Bit16u saved[CURSOR_H][CURSOR_W];
+	for (int y=0;y<CURSOR_H;y++) {
+		if (my+y>=MAPPER_H) break;
+		for (int x=0;x<CURSOR_W;x++) {
+			if (mx+x>=MAPPER_W) break;
+			Bit16u * dst=&map_rgb[(my+y)*MAPPER_W+mx+x];
+			saved[y][x]=*dst;
+			char c=cursor_img[y][x];
+			if (c=='X') *dst=map_pal565[CLR_BLACK];
+			else if (c=='.') *dst=map_pal565[CLR_WHITE];
+		}
+	}
+	GFX_ShowScreen(map_rgb,MAPPER_W,MAPPER_H,MAPPER_W*2);
+	for (int y=0;y<CURSOR_H;y++) {
+		if (my+y>=MAPPER_H) break;
+		for (int x=0;x<CURSOR_W;x++) {
+			if (mx+x>=MAPPER_W) break;
+			if (cursor_img[y][x]!=' ') map_rgb[(my+y)*MAPPER_W+mx+x]=saved[y][x];
+		}
+	}
+	map_cursor_x=mx;map_cursor_y=my;
+}
+
 static void DrawButtons(void) {
-	SDL_FillRect(mapper.surface,0,CLR_BLACK);
-	SDL_LockSurface(mapper.surface);
+	memset(mapper.surface->pixels,CLR_BLACK,mapper.surface->pitch*MAPPER_H);
 	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
 		(*but_it)->Draw();
 	}
-	SDL_UnlockSurface(mapper.surface);
-	SDL_Flip(mapper.surface);
+	for (int y=0;y<MAPPER_H;y++) {
+		const Bit8u * src=mapper.surface->pixels+y*mapper.surface->pitch;
+		Bit16u * dst=&map_rgb[y*MAPPER_W];
+		for (int x=0;x<MAPPER_W;x++) dst[x]=map_pal565[src[x]];
+	}
+	PresentMapper();
 }
 
 static CKeyEvent * AddKeyButtonEvent(Bitu x,Bitu y,Bitu dx,Bitu dy,char const * const title,char const * const entry,KBD_KEYS key) {
@@ -2003,13 +1910,13 @@ static void CreateLayout(void) {
 	bind_but.bind_title->Change("Bind Title");
 }
 
-static SDL_Color map_pal[6]={
-	{0x00,0x00,0x00,0x00},			//0=black
-	{0x7f,0x7f,0x7f,0x00},			//1=grey
-	{0xff,0xff,0xff,0x00},			//2=white
-	{0xff,0x00,0x00,0x00},			//3=red
-	{0x10,0x30,0xff,0x00},			//4=blue
-	{0x00,0xff,0x20,0x00}			//5=green
+static const Bit8u map_pal[6][3]={
+	{0x00,0x00,0x00},			//0=black
+	{0x7f,0x7f,0x7f},			//1=grey
+	{0xff,0xff,0xff},			//2=white
+	{0xff,0x00,0x00},			//3=red
+	{0x10,0x30,0xff},			//4=blue
+	{0x00,0xff,0x20}			//5=green
 };
 
 static void CreateStringBind(char * line) {
@@ -2345,8 +2252,6 @@ void MAPPER_Run(bool pressed) {
 	PIC_AddEvent(MAPPER_RunEvent,0);	//In case mapper deletes the key object that ran it
 }
 
-SDL_Surface* SDL_SetVideoMode_Wrap(int width,int height,int bpp,Bit32u flags);
-
 void MAPPER_RunInternal() {
 	int cursor = SDL_ShowCursor(SDL_QUERY);
 	SDL_ShowCursor(SDL_ENABLE);
@@ -2358,11 +2263,13 @@ void MAPPER_RunInternal() {
 
 	/* Be sure that there is no update in progress */
 	GFX_EndUpdate( 0 );
-	mapper.surface=SDL_SetVideoMode_Wrap(640,480,8,0);
-	if (mapper.surface == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
-
-	/* Set some palette entries */
-	SDL_SetPalette(mapper.surface, SDL_LOGPAL|SDL_PHYSPAL, map_pal, 0, 6);
+	static MapperSurface surface;
+	surface.pitch=MAPPER_W;
+	surface.pixels=new Bit8u[MAPPER_W*MAPPER_H];
+	mapper.surface=&surface;
+	map_rgb=(Bit16u *)memalign(32,MAPPER_W*MAPPER_H*2);
+	if (!surface.pixels || !map_rgb) E_Exit("Out of memory for the mapper screen");
+	for (int i=0;i<6;i++) map_pal565[i]=(Bit16u)GFX_GetRGB(map_pal[i][0],map_pal[i][1],map_pal[i][2]);
 	if (last_clicked) {
 		last_clicked->BindColor();
 		last_clicked=NULL;
@@ -2375,16 +2282,30 @@ void MAPPER_RunInternal() {
 	SDL_JoystickEventState(SDL_ENABLE);
 #endif
 	while (!mapper.exit) {
+		// Nothing else pumps input while the mapper is up
+		InputHal_Update();
+#ifdef HW_RVL
+		WiiCheckExit();
+#endif
 		if (mapper.redraw) {
-			mapper.redraw=false;		
+			mapper.redraw=false;
 			DrawButtons();
 		}
 		BIND_MappingEvents();
+		int mx,my;
+		SDL_GetMouseState(&mx,&my);
+		if (mx!=map_cursor_x || my!=map_cursor_y) PresentMapper();
 		SDL_Delay(1);
 	}
 #if defined (REDUCE_JOYSTICK_POLLING)
 	SDL_JoystickEventState(SDL_DISABLE);
 #endif
+	delete [] surface.pixels;
+	surface.pixels=NULL;
+	mapper.surface=NULL;
+	free(map_rgb);
+	map_rgb=NULL;
+	map_cursor_x=map_cursor_y=-1;
 	if(mousetoggle) GFX_CaptureMouse();
 	SDL_ShowCursor(cursor);
 	GFX_ResetScreen();
@@ -2400,159 +2321,22 @@ void MAPPER_Init(void) {
 	}
 	if (SDL_GetModState()&KMOD_CAPS) {
 		for (CBindList_it bit=caps_lock_event->bindlist.begin();bit!=caps_lock_event->bindlist.end();bit++) {
-#if SDL_VERSION_ATLEAST(1, 2, 14)
 			(*bit)->ActivateBind(32767,true,false);
 			(*bit)->DeActivateBind(false);
-#else
-			(*bit)->ActivateBind(32767,true,true); //Skip the action itself as bios_keyboard.cpp handles the startup state.
-#endif
 		}
 	}
 	if (SDL_GetModState()&KMOD_NUM) {
 		for (CBindList_it bit=num_lock_event->bindlist.begin();bit!=num_lock_event->bindlist.end();bit++) {
-#if SDL_VERSION_ATLEAST(1, 2, 14)
 			(*bit)->ActivateBind(32767,true,false);
 			(*bit)->DeActivateBind(false);
-#else
-			(*bit)->ActivateBind(32767,true,true);
-#endif
 		}
 	}
 }
-//Somehow including them at the top conflicts with something in setup.h
-#ifdef C_X11_XKB
-#include "SDL_syswm.h"
-#include <X11/XKBlib.h>
-#endif
 void MAPPER_StartUp(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	mapper.sticks.num=0;
 	mapper.sticks.num_groups=0;
 	memset(&virtual_joysticks,0,sizeof(virtual_joysticks));
-
-	usescancodes = false;
-
-	if (section->Get_bool("usescancodes")) {
-		usescancodes=true;
-
-		/* Note: table has to be tested/updated for various OSs */
-#if defined (MACOSX)
-		/* nothing */
-#elif defined(OS2)
-		sdlkey_map[0x61]=SDLK_UP;
-		sdlkey_map[0x66]=SDLK_DOWN;
-		sdlkey_map[0x63]=SDLK_LEFT;
-		sdlkey_map[0x64]=SDLK_RIGHT;
-		sdlkey_map[0x60]=SDLK_HOME;
-		sdlkey_map[0x65]=SDLK_END;
-		sdlkey_map[0x62]=SDLK_PAGEUP;
-		sdlkey_map[0x67]=SDLK_PAGEDOWN;
-		sdlkey_map[0x68]=SDLK_INSERT;
-		sdlkey_map[0x69]=SDLK_DELETE;
-		sdlkey_map[0x5C]=SDLK_KP_DIVIDE;
-		sdlkey_map[0x5A]=SDLK_KP_ENTER;
-		sdlkey_map[0x5B]=SDLK_RCTRL;
-		sdlkey_map[0x5F]=SDLK_PAUSE;
-//		sdlkey_map[0x00]=SDLK_PRINT;
-		sdlkey_map[0x5E]=SDLK_RALT;
-		sdlkey_map[0x40]=SDLK_KP5;
-		sdlkey_map[0x41]=SDLK_KP6;
-#elif !defined (WIN32) /* => Linux & BSDs */
-		bool evdev_input = false;
-#ifdef SDL_VIDEO_DRIVER_X11
-//SDL needs to be compiled to use it, else the next makes no sense.
-#ifdef C_X11_XKB
-		SDL_SysWMinfo info;
-		SDL_VERSION(&info.version);
-		if (SDL_GetWMInfo(&info)) {
-			XkbDescPtr desc = NULL;
-			if((desc = XkbGetMap(info.info.x11.display,XkbAllComponentsMask,XkbUseCoreKbd))) {
-				if(XkbGetNames(info.info.x11.display,XkbAllNamesMask,desc) == 0) {
-					const char* keycodes = XGetAtomName(info.info.x11.display, desc->names->keycodes);
-//					const char* geom = XGetAtomName(info.info.x11.display, desc->names->geometry);
-					if(keycodes) {
-						LOG(LOG_MISC,LOG_NORMAL)("keyboard type %s",keycodes);
-						if (strncmp(keycodes,"evdev",5) == 0) evdev_input = true;
-					}
-					XkbFreeNames(desc,XkbAllNamesMask,True);
-				}
-			XkbFreeClientMap(desc,0,True);
-			}
-		}
-#endif
-#endif
-		if (evdev_input) {
-			sdlkey_map[0x67]=SDLK_UP;
-			sdlkey_map[0x6c]=SDLK_DOWN;
-			sdlkey_map[0x69]=SDLK_LEFT;
-			sdlkey_map[0x6a]=SDLK_RIGHT;
-			sdlkey_map[0x66]=SDLK_HOME;
-			sdlkey_map[0x6b]=SDLK_END;
-			sdlkey_map[0x68]=SDLK_PAGEUP;
-			sdlkey_map[0x6d]=SDLK_PAGEDOWN;
-			sdlkey_map[0x6e]=SDLK_INSERT;
-			sdlkey_map[0x6f]=SDLK_DELETE;
-			sdlkey_map[0x62]=SDLK_KP_DIVIDE;
-			sdlkey_map[0x60]=SDLK_KP_ENTER;
-			sdlkey_map[0x61]=SDLK_RCTRL;
-			sdlkey_map[0x77]=SDLK_PAUSE;
-			sdlkey_map[0x63]=SDLK_PRINT;
-			sdlkey_map[0x64]=SDLK_RALT;
-
-			//Win-keys
-			sdlkey_map[0x7d]=SDLK_LSUPER;
-			sdlkey_map[0x7e]=SDLK_RSUPER;
-			sdlkey_map[0x7f]=SDLK_MENU;
-		} else {
-			sdlkey_map[0x5a]=SDLK_UP;
-			sdlkey_map[0x60]=SDLK_DOWN;
-			sdlkey_map[0x5c]=SDLK_LEFT;
-			sdlkey_map[0x5e]=SDLK_RIGHT;
-			sdlkey_map[0x59]=SDLK_HOME;
-			sdlkey_map[0x5f]=SDLK_END;
-			sdlkey_map[0x5b]=SDLK_PAGEUP;
-			sdlkey_map[0x61]=SDLK_PAGEDOWN;
-			sdlkey_map[0x62]=SDLK_INSERT;
-			sdlkey_map[0x63]=SDLK_DELETE;
-			sdlkey_map[0x68]=SDLK_KP_DIVIDE;
-			sdlkey_map[0x64]=SDLK_KP_ENTER;
-			sdlkey_map[0x65]=SDLK_RCTRL;
-			sdlkey_map[0x66]=SDLK_PAUSE;
-			sdlkey_map[0x67]=SDLK_PRINT;
-			sdlkey_map[0x69]=SDLK_RALT;
-		}
-#else
-		sdlkey_map[0xc8]=SDLK_UP;
-		sdlkey_map[0xd0]=SDLK_DOWN;
-		sdlkey_map[0xcb]=SDLK_LEFT;
-		sdlkey_map[0xcd]=SDLK_RIGHT;
-		sdlkey_map[0xc7]=SDLK_HOME;
-		sdlkey_map[0xcf]=SDLK_END;
-		sdlkey_map[0xc9]=SDLK_PAGEUP;
-		sdlkey_map[0xd1]=SDLK_PAGEDOWN;
-		sdlkey_map[0xd2]=SDLK_INSERT;
-		sdlkey_map[0xd3]=SDLK_DELETE;
-		sdlkey_map[0xb5]=SDLK_KP_DIVIDE;
-		sdlkey_map[0x9c]=SDLK_KP_ENTER;
-		sdlkey_map[0x9d]=SDLK_RCTRL;
-		sdlkey_map[0xc5]=SDLK_PAUSE;
-		sdlkey_map[0xb7]=SDLK_PRINT;
-		sdlkey_map[0xb8]=SDLK_RALT;
-
-		//Win-keys
-		sdlkey_map[0xdb]=SDLK_LMETA;
-		sdlkey_map[0xdc]=SDLK_RMETA;
-		sdlkey_map[0xdd]=SDLK_MENU;
-
-#endif
-
-		Bitu i;
-		for (i=0; i<MAX_SDLKEYS; i++) scancode_map[i]=0;
-		for (i=0; i<MAX_SCANCODES; i++) {
-			SDLKey key=sdlkey_map[i];
-			if (key<MAX_SDLKEYS) scancode_map[key]=(Bit8u)i;
-		}
-	}
 
 	Prop_path* pp = section->Get_path("mapperfile");
 	mapper.filename = pp->realpath;
