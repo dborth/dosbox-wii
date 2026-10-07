@@ -22,11 +22,8 @@
 #include <stddef.h>
 #include "dosbox.h"
 #include "cpu.h"
-#ifdef HW_RVL
 #include "string.h"
-#else
 #include "memory.h"
-#endif
 #include "debug.h"
 #include "mapper.h"
 #include "setup.h"
@@ -2438,7 +2435,6 @@ void CPU_Init(Section* sec) {
 //initialize static members
 bool CPU::inited=false;
 
-#ifdef HW_RVL
 void MENU_CycleIncreaseOrDecrease(bool increase)
 {
 	if (increase)
@@ -2450,4 +2446,3 @@ void MENU_CycleIncreaseOrDecrease(bool increase)
 		CPU_CycleDecrease(true);
 	}
 }
-#endif

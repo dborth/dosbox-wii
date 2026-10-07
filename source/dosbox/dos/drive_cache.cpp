@@ -192,7 +192,7 @@ char* DOS_Drive_Cache::GetExpandName(const char* path) {
 #else
 		if((len > 1) && (work[len-1] == CROSS_FILESPLIT )) {
 #endif       
-#ifndef HW_RVL
+#ifndef DOSBOX_WII
 			work[len-1] = 0; // Remove trailing slashes except when in root
 #endif
 		}

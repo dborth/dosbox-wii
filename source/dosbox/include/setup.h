@@ -25,10 +25,6 @@
 #pragma warning ( disable : 4290 )
 #endif
 
-#ifdef HW_RVL
-#include <stdio.h>
-#endif
-
 #ifndef CH_LIST
 #define CH_LIST
 #include <list>
