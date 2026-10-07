@@ -52,11 +52,16 @@
 static SDL_Event eventQueue[EVENT_QUEUE_SIZE];
 static int eventHead = 0;
 static int eventCount = 0;
-static Mutex queueMutex;
+
+static Mutex & QueueMutex()
+{
+	static Mutex mutex;
+	return mutex;
+}
 
 int SDL_PushEvent(SDL_Event * event)
 {
-	MutexLock lock(queueMutex);
+	MutexLock lock(QueueMutex());
 	if (eventCount >= EVENT_QUEUE_SIZE)
 		return -1;
 	eventQueue[(eventHead + eventCount) % EVENT_QUEUE_SIZE] = *event;
@@ -66,7 +71,7 @@ int SDL_PushEvent(SDL_Event * event)
 
 int SDL_PollEvent(SDL_Event * event)
 {
-	MutexLock lock(queueMutex);
+	MutexLock lock(QueueMutex());
 	if (eventCount == 0)
 		return 0;
 	if (event)
