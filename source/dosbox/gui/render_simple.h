@@ -16,24 +16,13 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#if defined (SCALERLINEAR)
-static void conc4d(SCALERNAME,SBPP,DBPP,L)(const void *s) {
-#else
+/* Line handler for one scaler block (SCALERNAME), source depth (SBPP) and
+ * destination depth (DBPP). Compares the source line with the cached copy
+ * and converts and writes only what changed. Unchanged runs are skipped.
+ *
+ * Each source pixel is written through SCALERFUNC (SCALERWIDTH x SCALERHEIGHT
+ * output pixels). */
 static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
-#endif
-#ifdef RENDER_NULL_INPUT
-	if (!s) {
-		render.scale.cacheRead += render.scale.cachePitch;
-#if defined(SCALERLINEAR) 
-		Bitu skipLines = SCALERHEIGHT;
-#else
-		Bitu skipLines = Scaler_Aspect[ render.scale.outLine++ ];
-#endif
-		ScalerAddLines( 0, skipLines );
-		return;
-	}
-#endif
 	/* Clear the complete line marker */
 	Bitu hadChange = 0;
 	const SRCTYPE *src = (SRCTYPE*)s;
@@ -60,21 +49,9 @@ static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
 			line0+=(sizeof(Bitu)/sizeof(SRCTYPE))*SCALERWIDTH;
 #endif
 		} else {
-#if defined(SCALERLINEAR)
-#if (SCALERHEIGHT > 1) 
-			PTYPE *line1 = WC[0];
-#endif
-#if (SCALERHEIGHT > 2) 
-			PTYPE *line2 = WC[1];
-#endif
-#else
 #if (SCALERHEIGHT > 1) 
 		PTYPE *line1 = (PTYPE *)(((Bit8u*)line0)+ render.scale.outPitch);
 #endif
-#if (SCALERHEIGHT > 2) 
-		PTYPE *line2 = (PTYPE *)(((Bit8u*)line0)+ render.scale.outPitch * 2);
-#endif
-#endif //defined(SCALERLINEAR)
 			hadChange = 1;
 			for (Bitu i = x > 32 ? 32 : x;i>0;i--,x--) {
 				const SRCTYPE S = *src;
@@ -86,36 +63,14 @@ static void conc4d(SCALERNAME,SBPP,DBPP,R)(const void *s) {
 #if (SCALERHEIGHT > 1) 
 				line1 += SCALERWIDTH;
 #endif
-#if (SCALERHEIGHT > 2) 
-				line2 += SCALERWIDTH;
-#endif
 			}
-#if defined(SCALERLINEAR)
-#if (SCALERHEIGHT > 1)
-			Bitu copyLen = (Bitu)((Bit8u*)line1 - (Bit8u*)WC[0]);
-			BituMove(((Bit8u*)line0)-copyLen+render.scale.outPitch  ,WC[0], copyLen );
-#endif
-#if (SCALERHEIGHT > 2) 
-			BituMove(((Bit8u*)line0)-copyLen+render.scale.outPitch*2,WC[1], copyLen );
-#endif
-#endif //defined(SCALERLINEAR)
 		}
 	}
-#if defined(SCALERLINEAR) 
-	Bitu scaleLines = SCALERHEIGHT;
-#else
 	Bitu scaleLines = Scaler_Aspect[ render.scale.outLine++ ];
 	if ( scaleLines - SCALERHEIGHT && hadChange ) {
 		BituMove( render.scale.outWrite + render.scale.outPitch * SCALERHEIGHT,
 			render.scale.outWrite + render.scale.outPitch * (SCALERHEIGHT-1),
 			render.src.width * SCALERWIDTH * PSIZE);
 	}
-#endif
 	ScalerAddLines( hadChange, scaleLines );
 }
-
-#if !defined(SCALERLINEAR) 
-#define SCALERLINEAR 1
-#include "render_simple.h"
-#undef SCALERLINEAR
-#endif

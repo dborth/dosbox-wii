@@ -268,7 +268,6 @@ static void RENDER_Reset( void ) {
 	
 	Bitu gfx_flags, xscale, yscale;
 	ScalerSimpleBlock_t		*simpleBlock = &ScaleNormal1x;
-	ScalerComplexBlock_t	*complexBlock = 0;
 	if (render.aspect) {
 		if (render.src.ratio>1.0) {
 			gfx_scalew = 1;
@@ -281,99 +280,15 @@ static void RENDER_Reset( void ) {
 		gfx_scalew = 1;
 		gfx_scaleh = 1;
 	}
-	if ((dblh && dblw) || (render.scale.forced && !dblh && !dblw)) {
-		/* Initialize always working defaults */
-		if (render.scale.size == 2)
-			simpleBlock = &ScaleNormal2x;
-		else if (render.scale.size == 3)
-			simpleBlock = &ScaleNormal3x;
-		else
-			simpleBlock = &ScaleNormal1x;
-		/* Maybe override them */
-#if RENDER_USE_ADVANCED_SCALERS>0
-		switch (render.scale.op) {
-#if RENDER_USE_ADVANCED_SCALERS>2
-		case scalerOpAdvInterp:
-			if (render.scale.size == 2)
-				complexBlock = &ScaleAdvInterp2x;
-			else if (render.scale.size == 3)
-				complexBlock = &ScaleAdvInterp3x;
-			break;
-		case scalerOpAdvMame:
-			if (render.scale.size == 2)
-				complexBlock = &ScaleAdvMame2x;
-			else if (render.scale.size == 3)
-				complexBlock = &ScaleAdvMame3x;
-			break;
-		case scalerOpHQ:
-			if (render.scale.size == 2)
-				complexBlock = &ScaleHQ2x;
-			else if (render.scale.size == 3)
-				complexBlock = &ScaleHQ3x;
-			break;
-		case scalerOpSuperSaI:
-			if (render.scale.size == 2)
-				complexBlock = &ScaleSuper2xSaI;
-			break;
-		case scalerOpSuperEagle:
-			if (render.scale.size == 2)
-				complexBlock = &ScaleSuperEagle;
-			break;
-		case scalerOpSaI:
-			if (render.scale.size == 2)
-				complexBlock = &Scale2xSaI;
-			break;
-#endif
-		case scalerOpTV:
-			if (render.scale.size == 2)
-				simpleBlock = &ScaleTV2x;
-			else if (render.scale.size == 3)
-				simpleBlock = &ScaleTV3x;
-			break;
-		case scalerOpRGB:
-			if (render.scale.size == 2)
-				simpleBlock = &ScaleRGB2x;
-			else if (render.scale.size == 3)
-				simpleBlock = &ScaleRGB3x;
-			break;
-		case scalerOpScan:
-			if (render.scale.size == 2)
-				simpleBlock = &ScaleScan2x;
-			else if (render.scale.size == 3)
-				simpleBlock = &ScaleScan3x;
-			break;
-		default:
-			break;
-		}
-#endif
-	} else if (dblw) {
+	/* No enlarging or filtering here: the display scales the frame. Modes
+	 * that are only wide or only tall on a real monitor are still doubled. */
+	if (dblw && !dblh)
 		simpleBlock = &ScaleNormalDw;
-	} else if (dblh) {
+	else if (dblh && !dblw)
 		simpleBlock = &ScaleNormalDh;
-	} else  {
-forcenormal:
-		complexBlock = 0;
-		simpleBlock = &ScaleNormal1x;
-	}
-	if (complexBlock) {
-#if RENDER_USE_ADVANCED_SCALERS>1
-		if ((width >= SCALER_COMPLEXWIDTH - 16) || height >= SCALER_COMPLEXHEIGHT - 16) {
-			LOG_MSG("Scaler can't handle this resolution, going back to normal");
-			goto forcenormal;
-		}
-#else
-		goto forcenormal;
-#endif
-		gfx_flags = complexBlock->gfxFlags;
-		xscale = complexBlock->xscale;	
-		yscale = complexBlock->yscale;
-//		LOG_MSG("Scaler:%s",complexBlock->name);
-	} else {
-		gfx_flags = simpleBlock->gfxFlags;
-		xscale = simpleBlock->xscale;	
-		yscale = simpleBlock->yscale;
-//		LOG_MSG("Scaler:%s",simpleBlock->name);
-	}
+	gfx_flags = simpleBlock->gfxFlags;
+	xscale = simpleBlock->xscale;
+	yscale = simpleBlock->yscale;
 	switch (render.src.bpp) {
 	case 8:
 			render.src.start = ( render.src.width * 1) / sizeof(Bitu);
@@ -399,14 +314,10 @@ forcenormal:
 			break;
 	}
 	gfx_flags=GFX_GetBestMode(gfx_flags);
-	if (!gfx_flags) {
-		if (!complexBlock && simpleBlock == &ScaleNormal1x) 
-			E_Exit("Failed to create a rendering output");
-		else 
-			goto forcenormal;
-	}
+	if (!gfx_flags)
+		E_Exit("Failed to create a rendering output");
 	width *= xscale;
-	Bitu skip = complexBlock ? 1 : 0;
+	Bitu skip = 0;
 	if (gfx_flags & GFX_SCALING) {
 		height = MakeAspectTable(skip, render.src.height, yscale, yscale );
 	} else {
@@ -430,30 +341,7 @@ forcenormal:
 		render.scale.outMode = scalerMode32;
 	else 
 		E_Exit("Failed to create a rendering output");
-	ScalerLineBlock_t *lineBlock;
-	if (gfx_flags & GFX_HARDWARE) {
-#if RENDER_USE_ADVANCED_SCALERS>1
-		if (complexBlock) {
-			lineBlock = &ScalerCache;
-			render.scale.complexHandler = complexBlock->Linear[ render.scale.outMode ];
-		} else
-#endif
-		{
-			render.scale.complexHandler = 0;
-			lineBlock = &simpleBlock->Linear;
-		}
-	} else {
-#if RENDER_USE_ADVANCED_SCALERS>1
-		if (complexBlock) {
-			lineBlock = &ScalerCache;
-			render.scale.complexHandler = complexBlock->Random[ render.scale.outMode ];
-		} else
-#endif
-		{
-			render.scale.complexHandler = 0;
-			lineBlock = &simpleBlock->Random;
-		}
-	}
+	ScalerLineBlock_t *lineBlock = &simpleBlock->Handlers;
 	switch (render.src.bpp) {
 	case 8:
 		render.scale.lineHandler = (*lineBlock)[0][render.scale.outMode];
@@ -482,8 +370,6 @@ forcenormal:
 	default:
 		E_Exit("RENDER:Wrong source bpp %d", render.src.bpp );
 	}
-	render.scale.blocks = render.src.width / SCALER_BLOCKSIZE;
-	render.scale.lastBlock = render.src.width % SCALER_BLOCKSIZE;
 	render.scale.inHeight = render.src.height;
 	/* Reset the palette change detection to it's initial value */
 	render.pal.first= 0;
@@ -550,18 +436,6 @@ static void DecreaseFrameSkip(bool pressed) {
 	LOG_MSG("Frame Skip at %d",render.frameskip.max);
 	GFX_SetTitle(-1,render.frameskip.max,false);
 }
-/* Disabled as I don't want to waste a keybind for that. Might be used in the future (Qbix)
-static void ChangeScaler(bool pressed) {
-	if (!pressed)
-		return;
-	render.scale.op = (scalerOperation)((int)render.scale.op+1);
-	if((render.scale.op) >= scalerLast || render.scale.size == 1) {
-		render.scale.op = (scalerOperation)0;
-		if(++render.scale.size > 3)
-			render.scale.size = 1;
-	}
-	RENDER_CallBack( GFX_CallBackReset );
-} */
 
 void RENDER_Init(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
@@ -569,58 +443,15 @@ void RENDER_Init(Section * sec) {
 	//For restarting the renderer.
 	static bool running = false;
 	bool aspect = render.aspect;
-	Bitu scalersize = render.scale.size;
-	bool scalerforced = render.scale.forced;
-	scalerOperation_t scaleOp = render.scale.op;
 
 	render.pal.first=256;
 	render.pal.last=0;
 	render.aspect=section->Get_bool("aspect");
 	render.frameskip.max=section->Get_int("frameskip");
 	render.frameskip.count=0;
-	std::string cline;
-	std::string scaler;
-	//Check for commandline paramters and parse them through the configclass so they get checked against allowed values
-	if (control->cmdline->FindString("-scaler",cline,true)) {
-		section->HandleInputline(std::string("scaler=") + cline);
-	} else if (control->cmdline->FindString("-forcescaler",cline,true)) {
-		section->HandleInputline(std::string("scaler=") + cline + " forced");
-	}
-	   
-	Prop_multival* prop = section->Get_multival("scaler");
-	scaler = prop->GetSection()->Get_string("type");
-	std::string f = prop->GetSection()->Get_string("force");
-	render.scale.forced = false;
-	if(f == "forced") render.scale.forced = true;
-   
-	if (scaler == "none") { render.scale.op = scalerOpNormal;render.scale.size = 1; }
-	else if (scaler == "normal2x") { render.scale.op = scalerOpNormal;render.scale.size = 2; }
-	else if (scaler == "normal3x") { render.scale.op = scalerOpNormal;render.scale.size = 3; }
-#if RENDER_USE_ADVANCED_SCALERS>2
-	else if (scaler == "advmame2x") { render.scale.op = scalerOpAdvMame;render.scale.size = 2; }
-	else if (scaler == "advmame3x") { render.scale.op = scalerOpAdvMame;render.scale.size = 3; }
-	else if (scaler == "advinterp2x") { render.scale.op = scalerOpAdvInterp;render.scale.size = 2; }
-	else if (scaler == "advinterp3x") { render.scale.op = scalerOpAdvInterp;render.scale.size = 3; }
-	else if (scaler == "hq2x") { render.scale.op = scalerOpHQ;render.scale.size = 2; }
-	else if (scaler == "hq3x") { render.scale.op = scalerOpHQ;render.scale.size = 3; }
-	else if (scaler == "2xsai") { render.scale.op = scalerOpSaI;render.scale.size = 2; }
-	else if (scaler == "super2xsai") { render.scale.op = scalerOpSuperSaI;render.scale.size = 2; }
-	else if (scaler == "supereagle") { render.scale.op = scalerOpSuperEagle;render.scale.size = 2; }
-#endif
-#if RENDER_USE_ADVANCED_SCALERS>0
-	else if (scaler == "tv2x") { render.scale.op = scalerOpTV;render.scale.size = 2; }
-	else if (scaler == "tv3x") { render.scale.op = scalerOpTV;render.scale.size = 3; }
-	else if (scaler == "rgb2x"){ render.scale.op = scalerOpRGB;render.scale.size = 2; }
-	else if (scaler == "rgb3x"){ render.scale.op = scalerOpRGB;render.scale.size = 3; }
-	else if (scaler == "scan2x"){ render.scale.op = scalerOpScan;render.scale.size = 2; }
-	else if (scaler == "scan3x"){ render.scale.op = scalerOpScan;render.scale.size = 3; }
-#endif
-
 	//If something changed that needs a ReInit
 	// Only ReInit when there is a src.bpp (fixes crashes on startup and directly changing the scaler without a screen specified yet)
-	if(running && render.src.bpp && ((render.aspect != aspect) || (render.scale.op != scaleOp) || 
-				  (render.scale.size != scalersize) || (render.scale.forced != scalerforced) ||
-				   render.scale.forced))
+	if(running && render.src.bpp && (render.aspect != aspect))
 		RENDER_CallBack( GFX_CallBackReset );
 
 	if(!running) render.updating=true;

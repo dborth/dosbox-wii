@@ -146,18 +146,8 @@ static struct {
 #define POWERPC		0x06
 #define ARMV8LE		0x07
 
-#if C_TARGETCPU == X86_64
-#include "core_dynrec/risc_x64.h"
-#elif C_TARGETCPU == X86
-#include "core_dynrec/risc_x86.h"
-#elif C_TARGETCPU == MIPSEL
-#include "core_dynrec/risc_mipsel32.h"
-#elif (C_TARGETCPU == ARMV4LE) || (C_TARGETCPU == ARMV7LE)
-#include "core_dynrec/risc_armv4le.h"
-#elif C_TARGETCPU == POWERPC
+#if C_TARGETCPU == POWERPC
 #include "core_dynrec/risc_ppc.h"
-#elif C_TARGETCPU == ARMV8LE
-#include "core_dynrec/risc_armv8le.h"
 #endif
 
 #if !defined(WORDS_BIGENDIAN)

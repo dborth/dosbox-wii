@@ -50,7 +50,7 @@ jobs:
       run: |
         mkdir -p dist/apps/dosbox-wii
         cp hbc/* dist/apps/dosbox-wii/
-        cp dosbox-wii.dol dist/apps/dosbox-wii/boot.dol
+        cp executables/dosbox-wii.dol dist/apps/dosbox-wii/boot.dol
         mkdir -p dist/DOSBox
         touch dist/DOSBox/dosboxdir
       

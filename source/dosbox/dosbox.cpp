@@ -389,7 +389,6 @@ void DOSBOX_Init(void) {
 	Prop_hex* Phex;
 	Prop_string* Pstring;
 	Prop_bool* Pbool;
-	Prop_multival* Pmulti;
 	Prop_multival_remain* Pmulti_remain;
 
 	SDLNetInited = false;
@@ -450,28 +449,6 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("aspect",Property::Changeable::Always,false);
 	Pbool->Set_help("Do aspect correction, if your output method doesn't support scaling this can slow things down!");
 
-	Pmulti = secprop->Add_multi("scaler",Property::Changeable::Always," ");
-	Pmulti->SetValue("normal2x");
-	Pmulti->Set_help("Scaler used to enlarge/enhance low resolution modes. If 'forced' is appended,\n"
-	                 "then the scaler will be used even if the result might not be desired.\n"
-					 "To fit a scaler in the resolution used at full screen may require a border or side bars,\n"
-					 "to fill the screen entirely, depending on your hardware, a different scaler/fullresolution might work.");
-	Pstring = Pmulti->GetSection()->Add_string("type",Property::Changeable::Always,"normal2x");
-
-	const char *scalers[] = {
-		"none", "normal2x", "normal3x",
-#if RENDER_USE_ADVANCED_SCALERS>2
-		"advmame2x", "advmame3x", "advinterp2x", "advinterp3x", "hq2x", "hq3x", "2xsai", "super2xsai", "supereagle",
-#endif
-#if RENDER_USE_ADVANCED_SCALERS>0
-		"tv2x", "tv3x", "rgb2x", "rgb3x", "scan2x", "scan3x",
-#endif
-		0 };
-	Pstring->Set_values(scalers);
-
-	const char* force[] = { "", "forced", 0 };
-	Pstring = Pmulti->GetSection()->Add_string("force",Property::Changeable::Always,"");
-	Pstring->Set_values(force);
 
 	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
 	const char* cores[] = { "auto",
