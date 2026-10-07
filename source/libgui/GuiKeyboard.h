@@ -41,6 +41,10 @@ class GuiKeyboard : public GuiWindow
 		GuiImage * keyBackImg;
 		GuiImage * keyBackOverImg;
 		GuiButton * keyBack;
+		GuiText * keyEnterText;
+		GuiImage * keyEnterImg;
+		GuiImage * keyEnterOverImg;
+		GuiButton * keyEnter;
 		GuiImage * keySpaceImg;
 		GuiImage * keySpaceOverImg;
 		GuiButton * keySpace;

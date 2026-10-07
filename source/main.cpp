@@ -40,17 +40,19 @@
 #ifdef HW_RVL
 #include "drivers/ogc/wii/WiiPlatform.h"
 static WiiPlatform platformInstance;
+static OgcKeyboardDriver keyboardInstance;
+static OgcMouseDriver mouseInstance;
 #elif __WIIU__
 #include "drivers/wut/WutPlatform.h"
 static WutPlatform platformInstance;
+static WutKeyboardDriver keyboardInstance;
+static WutMouseDriver mouseInstance;
 #endif
 
 Platform* platform = &platformInstance;
 
-// USB keyboard and mouse (the Wiimote IR pointer is part of the pad state)
-static OgcKeyboardDriver keyboardInstance;
+// USB keyboard and mouse
 KeyboardDriver* keyboard = &keyboardInstance;
-static OgcMouseDriver mouseInstance;
 MouseDriver* usbMouse = &mouseInstance;
 
 /****************************************************************************
@@ -117,8 +119,8 @@ static void InitApp()
  ***************************************************************************/
 void EnterMenu()
 {
-	// Typing is cut short rather than waited for: it needs the emulator to
-	// keep polling, which it won't while the menu is up.
+	// Typing is cut short rather than resumed: it is driven by the emulator
+	// polling, which it won't be while the menu is up.
 	AbortKeys();
 
 	SwitchAudioMode(1);

@@ -129,6 +129,22 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 	keyBack->setEffectGrow();
 	this->append(keyBack);
 
+	// Enter appends a newline to the text. It is not drawn (no glyph), but it
+	// is typed as a Return by whatever consumes the string.
+	keyEnterImg = new GuiImage(keyMedium);
+	keyEnterOverImg = new GuiImage(keyMediumOver);
+	keyEnterText = new GuiText("Enter", KB_FONTSIZE, (PixelColor){0, 0, 0, 0xff});
+	keyEnter = new GuiButton(keyMedium->getWidth(), keyMedium->getHeight());
+	keyEnter->setImage(keyEnterImg);
+	keyEnter->setImageOver(keyEnterOverImg);
+	keyEnter->setLabel(keyEnterText);
+	keyEnter->setSoundOver(keySoundOver);
+	keyEnter->setSoundClick(keySoundClick);
+	keyEnter->setTrigger(trigA);
+	keyEnter->setPosition(10*42+40, 4*42+80); // under Back, beside the space bar
+	keyEnter->setEffectGrow();
+	this->append(keyEnter);
+
 	keyCapsImg = new GuiImage(keyMedium);
 	keyCapsOverImg = new GuiImage(keyMediumOver);
 	keyCapsText = new GuiText("Caps", KB_FONTSIZE, (PixelColor){0, 0, 0, 0xff});
@@ -216,6 +232,10 @@ GuiKeyboard::~GuiKeyboard()
 	delete keyBackImg;
 	delete keyBackOverImg;
 	delete keyBack;
+	delete keyEnterText;
+	delete keyEnterImg;
+	delete keyEnterOverImg;
+	delete keyEnter;
 	delete keySpaceImg;
 	delete keySpaceOverImg;
 	delete keySpace;
@@ -276,6 +296,17 @@ void GuiKeyboard::update(InputController * c)
 			kbText->setText(GetDisplayText(kbtextstr));
 		}
 		keyBack->setState(STATE::SELECTED, c->getChannel());
+	}
+	else if(keyEnter->getState() == STATE::CLICKED)
+	{
+		size_t len = strlen(kbtextstr);
+		if(len < kbtextmaxlen-1)
+		{
+			kbtextstr[len] = '\n';
+			kbtextstr[len+1] = '\0';
+			kbText->setText(GetDisplayText(kbtextstr));
+		}
+		keyEnter->setState(STATE::SELECTED, c->getChannel());
 	}
 	else if(keyShift->getState() == STATE::CLICKED)
 	{

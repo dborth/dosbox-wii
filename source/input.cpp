@@ -25,9 +25,6 @@
 #include "cpu.h"
 #include "SDL.h"
 #include "drivers/Platform.h"
-#include "drivers/Thread.h"
-#include "drivers/Mutex.h"
-#include "drivers/Cond.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
 #include "input.h"
@@ -389,6 +386,9 @@ void GFX_Events() {
 			MAPPER_CheckEvent(&event);
 		}
 	}
+
+	// Typed after the queue is drained, so the character is taken next pass
+	PumpKeys();
 }
 
 
@@ -434,111 +434,92 @@ void CheckExit()
 /****************************************************************************
  * Key injection (on-screen keyboard -> DOS)
  *
- * A worker thread types a command by posting key events to the SDL event
- * queue. They are consumed by GFX_Events() on the emulation thread, so the
- * mapper is only ever touched from one thread. The thread posts one
- * character at a time and waits for the queue to drain, so it never gets
- * ahead of the emulator.
+ * The command typed on the on-screen keyboard is typed into DOS by posting
+ * key events to the SDL event queue, one character every few emulated
+ * milliseconds. It is driven from GFX_Events() (PumpKeys), on the emulation
+ * thread, so it only ever runs while the emulator is polling and the
+ * mapper is only ever touched from one thread. There is no typing thread to
+ * be starved, woken late or raced.
+ *
+ * A '\n' in the command is typed as Return.
  ***************************************************************************/
-// Allocated once and never deleted: ~Thread() joins, and this thread is
-// parked on keyCond at exit.
-static Thread * keyThread = NULL;
-static Mutex * keyMutex = NULL;
-static Cond * keyCond = NULL;
-static char keyPending[sizeof(dosboxCommand)];
-static bool keyHasPending = false;	// guarded by keyMutex
-static bool keyTyping = false;		// pending or being typed. guarded by keyMutex
-static volatile bool keyAbort = false;
+#define KEY_PACE_TICKS 5 // GFX_Events() calls (about 1 ms of DOS time each) per character
 
-static void WakeKeyThread(void)
-{
-	keyMutex->lock();
-	keyCond->signal();
-	keyMutex->unlock();
-}
+static char keyBuffer[sizeof(dosboxCommand)];
+static size_t keyPos = 0;
+static bool keyActive = false;
+static int keyWait = 0;
 
-static bool PostKey(int type, int sym)
+static void PostKey(int type, int sym)
 {
 	SDL_Event event;
 	memset(&event, 0, sizeof(event));
 	event.type = type;
 	event.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
 	event.key.keysym.sym = (SDLKey)sym;
-
-	while(SDL_PushEvent(&event) != 0)
-	{
-		if(keyAbort || keyThread->stopRequested())
-			return false;
-		platform->getThread()->sleepMilliseconds(1);
-	}
-	return true;
+	SDL_PushEvent(&event);
 }
 
-static void TypeCommand(const char * command)
+static void TypeChar(unsigned char c)
 {
-	for(size_t i=0; command[i] != 0 && !keyAbort && !keyThread->stopRequested(); i++)
+	int sym = c;
+	bool shift = false;
+
+	if(c == '\n' || c == '\r')
 	{
-		unsigned char c = (unsigned char)command[i];
-		int sym = c;
-		bool shift = false;
-
-		if(c >= 65 && c <= 90)
-		{
-			sym = c + 32;
-			shift = true;
-		}
-		else if(c > 0 && c < 130 && shiftkey[c] > 0)
-		{
-			sym = shiftkey[c];
-			shift = true;
-		}
-
-		// hack to allow mappings of SDL keys > 127
-		if(sym >= 14 && sym <= 25)
-			sym += 268; // F1-F12 (282-293)
-
-		// One character is posted whole, so a shift is never left held
-		if(shift)
-			PostKey(SDL_KEYDOWN, SDLK_LSHIFT);
-		PostKey(SDL_KEYDOWN, sym);
-		PostKey(SDL_KEYUP, sym);
-		if(shift)
-			PostKey(SDL_KEYUP, SDLK_LSHIFT);
-
-		// Wait for the emulator to take them. Bounded: it may not be polling.
-		for(int waited = 0; waited < 500 && InputHal_PendingEvents() > 0
-			&& !keyAbort && !keyThread->stopRequested(); waited++)
-			platform->getThread()->sleepMilliseconds(1);
+		sym = SDLK_RETURN;
 	}
+	else if(c >= 65 && c <= 90)
+	{
+		sym = c + 32;
+		shift = true;
+	}
+	else if(c > 0 && c < 130 && shiftkey[c] > 0)
+	{
+		sym = shiftkey[c];
+		shift = true;
+	}
+
+	// hack to allow mappings of SDL keys > 127
+	if(sym >= 14 && sym <= 25)
+		sym += 268; // F1-F12 (282-293)
+
+	// One character is posted whole, so a shift is never left held
+	if(shift)
+		PostKey(SDL_KEYDOWN, SDLK_LSHIFT);
+	PostKey(SDL_KEYDOWN, sym);
+	PostKey(SDL_KEYUP, sym);
+	if(shift)
+		PostKey(SDL_KEYUP, SDLK_LSHIFT);
 }
 
-static void * PressKeys(void *arg)
+//! Types the next character of the pending command. Called from GFX_Events().
+void PumpKeys()
 {
-	char command[sizeof(keyPending)];
+	if(!keyActive)
+		return;
 
-	while(true)
+	if(keyWait > 0)
 	{
-		keyMutex->lock();
-		while(!keyHasPending && !keyThread->stopRequested())
-			keyCond->wait(*keyMutex);
-
-		if(keyThread->stopRequested())
-		{
-			keyMutex->unlock();
-			break;
-		}
-
-		memcpy(command, keyPending, sizeof(command));
-		keyHasPending = false;
-		keyMutex->unlock();
-
-		TypeCommand(command);
-
-		keyMutex->lock();
-		keyTyping = false;
-		keyMutex->unlock();
+		keyWait--;
+		return;
 	}
-	return NULL;
+
+	// A character is up to four events, posted all or nothing. Never post
+	// into a backlog (the queue is 256 deep): wait for the emulator to drain it.
+	if(InputHal_PendingEvents() > 128)
+		return;
+
+	unsigned char c = (unsigned char)keyBuffer[keyPos];
+	if(c == 0)
+	{
+		keyActive = false;
+		return;
+	}
+
+	TypeChar(c);
+	keyPos++;
+	keyWait = KEY_PACE_TICKS;
 }
 
 void InitKeyInjection()
@@ -561,44 +542,24 @@ void InitKeyInjection()
 	shiftkey[94] = 54;
 	shiftkey[95] = 45;
 	shiftkey[126] = 96;
-
-	keyMutex = new Mutex();
-	keyCond = new Cond();
-	keyThread = new Thread();
-	keyThread->start(PressKeys, NULL, 16384, ThreadPriority::Normal, WakeKeyThread);
 }
 
-//! Hands the command the on-screen keyboard left in dosboxCommand to the key thread.
+//! Takes the command the on-screen keyboard left in dosboxCommand and starts typing it.
 void QueueKeys()
 {
 	if(dosboxCommand[0] == 0)
 		return;
 
-	keyMutex->lock();
-	memcpy(keyPending, dosboxCommand, sizeof(keyPending));
-	keyPending[sizeof(keyPending) - 1] = 0;
-	keyHasPending = true;
-	keyTyping = true;
-	keyCond->signal();
-	keyMutex->unlock();
+	snprintf(keyBuffer, sizeof(keyBuffer), "%s", dosboxCommand);
+	keyPos = 0;
+	keyWait = 0;
+	keyActive = true;
 
 	dosboxCommand[0] = 0;
 }
 
-//! Cuts any typing short and waits for the key thread to go idle.
+//! Cuts any typing short. Characters already posted are whole, so nothing is left held.
 void AbortKeys()
 {
-	keyAbort = true;
-	while(true)
-	{
-		keyMutex->lock();
-		keyHasPending = false;
-		bool typing = keyTyping;
-		keyMutex->unlock();
-
-		if(!typing)
-			break;
-		platform->getThread()->sleepMilliseconds(1);
-	}
-	keyAbort = false;
+	keyActive = false;
 }

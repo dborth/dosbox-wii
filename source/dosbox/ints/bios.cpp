@@ -39,9 +39,7 @@
 #include <sys/timeb.h>
 #endif
 
-#ifdef HW_RVL
-#include <ogc/lwp_watchdog.h>
-#endif
+#include "drivers/Time.h"
 
 /* if mem_systems 0 then size_extended is reported as the real size else 
  * zero is reported. ems and xms can increase or decrease the other_memsystems
@@ -497,13 +495,15 @@ static Bitu INT11_Handler(void) {
 #endif
 
 static void BIOS_HostTimeSync() {
-#ifdef HW_RVL
+#ifdef DOSBOX_WII
 	time_t rawtime;
 	time(&rawtime);
 	
 	struct tm *loctime;
 	loctime = localtime (&rawtime);
-	int millitm = ticks_to_millisecs(gettime()) & 999;
+	// sub-second part of the monotonic clock, in ms. 64-bit all the way: the
+	// 32-bit diffMillisecs() would wrap on the absolute tick count.
+	int millitm = (int)((SystemTime::ticksToMicrosecs(SystemTime::now()) / 1000) % 1000);
 
 	dos.date.day=(Bit8u)loctime->tm_mday;
 	dos.date.month=(Bit8u)loctime->tm_mon+1;

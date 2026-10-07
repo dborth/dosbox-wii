@@ -462,7 +462,7 @@ void RENDER_Init(Section * sec) {
 	GFX_SetTitle(-1,render.frameskip.max,false);
 }
 
-#ifdef HW_RVL
+#ifdef DOSBOX_WII
 void MENU_IncreaseOrDecreaseFrameSkip(bool increase)
 {
 	if (increase)

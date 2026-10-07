@@ -31,13 +31,17 @@ void CheckExit();
 //! The command the on-screen keyboard left, for QueueKeys() to take.
 extern char dosboxCommand[1024];
 
-//! Starts the typing thread. Once, at startup.
+//! Builds the shifted-key table. Once, at startup.
 void InitKeyInjection();
 
-//! Hands the command in dosboxCommand to the typing thread, and clears it.
+//! Starts typing the command in dosboxCommand, and clears it. '\n' types Return.
 void QueueKeys();
 
-//! Cuts any typing short and waits for the typing thread to go idle.
+//! Types the next character of the command, if one is pending. Called once
+//! per GFX_Events(), on the emulation thread.
+void PumpKeys();
+
+//! Cuts any typing short.
 void AbortKeys();
 
 #endif

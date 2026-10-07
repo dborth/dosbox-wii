@@ -29,7 +29,7 @@
 
 // disable this to reduce the size of the TLB
 // NOTE: does not work with the dynamic core (dynrec is fine)
-#ifndef HW_RVL
+#ifndef DOSBOX_WII
 #define USE_FULL_TLB
 #endif
 
