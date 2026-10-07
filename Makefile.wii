@@ -34,9 +34,11 @@ INCLUDES 	:=  source source/dosbox source/dosbox/include source/sdlshim
 # options for code generation
 #---------------------------------------------------------------------------------
 
+LOGGING_ENABLED	?=	0
+
 CFLAGS		=	-g -O3 -Wall $(MACHDEP) $(INCLUDE) $(FREETYPE_CFLAGS) \
 				-Wno-strict-aliasing -DWORDS_BIGENDIAN \
-				-DLOGGER_NO_LOG_ALIAS
+				-DLOGGER_NO_LOG_ALIAS -DLOGGING_ENABLED=$(LOGGING_ENABLED)
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS		=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 

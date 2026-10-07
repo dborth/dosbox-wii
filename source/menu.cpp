@@ -206,13 +206,13 @@ static void WindowCredits()
 	creditsBoxImg.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	creditsWindow.appendWithAutoRemove(&creditsBoxImg); // destroyed before the window
 
-	const int numEntries = 11;
+	const int numEntries = 10;
 	GuiText * txt[numEntries];
 
 	txt[i] = new GuiText("Credits", 30, (PixelColor){0, 0, 0, 255});
 	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0,y); i++; y+=32;
 
-	txt[i] = new GuiText("Official Site: http://code.google.com/p/dosbox-wii/", 20, (PixelColor){0, 0, 0, 255});
+	txt[i] = new GuiText("Official Site: https://github.com/dborth/dosbox-wii/", 20, (PixelColor){0, 0, 0, 255});
 	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0,y); i++; y+=40;
 
 	// presets apply to every GuiText constructed after this call
@@ -234,8 +234,7 @@ static void WindowCredits()
 	txt[i] = new GuiText("shagkur & wintermute (libogc / devkitPPC)");
 	txt[i]->setPosition(0,y); i++; y+=22;
 
-	txt[i] = new GuiText("Carl Kenner & Armin Tamzarian");
-	txt[i]->setPosition(0,y); i++; y+=60;
+	y+=60;
 
 	GuiText::setPresets(18, (PixelColor){0, 0, 0, 255}, 0,
 		GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);

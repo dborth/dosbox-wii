@@ -154,6 +154,8 @@ static void * PressKeys (void *arg)
  * Brings up the platform (thread, video, audio, input, filesystem, logger
  * drivers) and the GUI text system.
  ***************************************************************************/
+#define IMAGE_DECODE_SCRATCH_SIZE ((640 * 480 * 4) + (480 * sizeof(void *)))
+
 void WiiInit()
 {
 	// stdout/stderr go nowhere; diagnostics use the platform Logger
@@ -165,6 +167,8 @@ void WiiInit()
 	platformConfig.canvasWidth = 640;
 	platformConfig.canvasHeight = 480;
 	platform->init(platformConfig);
+
+	GuiImageData::setDecodeScratch(malloc(IMAGE_DECODE_SCRATCH_SIZE), IMAGE_DECODE_SCRATCH_SIZE);
 
 	keyboard->init();
 	usbMouse->init();
