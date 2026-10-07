@@ -25,6 +25,7 @@
 #include "drivers/InputController.h"
 #include "drivers/KeyboardDriver.h"
 #include "drivers/MouseDriver.h"
+#include "drivers/Logger.h"
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
 
@@ -62,8 +63,13 @@ static Mutex & QueueMutex()
 int SDL_PushEvent(SDL_Event * event)
 {
 	MutexLock lock(QueueMutex());
-	if (eventCount >= EVENT_QUEUE_SIZE)
+	if (eventCount >= EVENT_QUEUE_SIZE) {
+		// A dropped key-up leaves the key stuck down in the guest
+		static unsigned dropped = 0;
+		if ((dropped++ % 100) == 0)
+			LOG_WARN("Input event queue full, %u events dropped", dropped);
 		return -1;
+	}
 	eventQueue[(eventHead + eventCount) % EVENT_QUEUE_SIZE] = *event;
 	eventCount++;
 	return 0;
@@ -79,6 +85,12 @@ int SDL_PollEvent(SDL_Event * event)
 	eventHead = (eventHead + 1) % EVENT_QUEUE_SIZE;
 	eventCount--;
 	return 1;
+}
+
+int InputHal_PendingEvents(void)
+{
+	MutexLock lock(QueueMutex());
+	return eventCount;
 }
 
 int SDL_WaitEvent(SDL_Event * event)

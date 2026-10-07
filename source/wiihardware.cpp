@@ -9,12 +9,14 @@
 #include <malloc.h>
 #include <unistd.h>
 #include <sys/iosupport.h>
+#include <sys/stat.h>
 
 #include "wiihardware.h"
 #include "menu.h"
 #include "filelist.h"
 #include "libgui/Gui.h"
 #include "drivers/Platform.h"
+#include "drivers/Thread.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
@@ -44,7 +46,6 @@ MouseDriver* usbMouse = &mouseInstance;
 char appDrive[MAX_APP_DRIVE_LEN];
 char appPath[MAX_APP_PATH_LEN];
 char dosboxCommand[1024] = { 0 };
-static lwp_t keythread = LWP_THREAD_NULL;
 static char shiftkey[130];
 
 /****************************************************************************
@@ -66,12 +67,118 @@ static void SwitchAudioMode(int mode)
 	}
 }
 
-static void * PressKeys (void *arg)
+/****************************************************************************
+ * Key injection (on-screen keyboard -> DOS)
+ *
+ * A worker thread types a command by posting key events to the SDL event
+ * queue. They are consumed by GFX_Events() on the emulation thread, so the
+ * mapper is only ever touched from one thread. The thread posts one
+ * character at a time and waits for the queue to drain, so it never gets
+ * ahead of the emulator.
+ ***************************************************************************/
+// Allocated once and never deleted: ~Thread() joins, and this thread is
+// parked on keyCond at exit.
+static Thread * keyThread = NULL;
+static Mutex * keyMutex = NULL;
+static Cond * keyCond = NULL;
+static char keyPending[sizeof(dosboxCommand)];
+static bool keyHasPending = false;	// guarded by keyMutex
+static bool keyTyping = false;		// pending or being typed. guarded by keyMutex
+static volatile bool keyAbort = false;
+
+static void WakeKeyThread(void)
+{
+	keyMutex->lock();
+	keyCond->signal();
+	keyMutex->unlock();
+}
+
+static bool PostKey(int type, int sym)
 {
 	SDL_Event event;
-	int shift;
-	u16 i;
-	
+	memset(&event, 0, sizeof(event));
+	event.type = type;
+	event.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
+	event.key.keysym.sym = (SDLKey)sym;
+
+	while(SDL_PushEvent(&event) != 0)
+	{
+		if(keyAbort || keyThread->stopRequested())
+			return false;
+		platform->getThread()->sleepMilliseconds(1);
+	}
+	return true;
+}
+
+static void TypeCommand(const char * command)
+{
+	for(size_t i=0; command[i] != 0 && !keyAbort && !keyThread->stopRequested(); i++)
+	{
+		unsigned char c = (unsigned char)command[i];
+		int sym = c;
+		bool shift = false;
+
+		if(c >= 65 && c <= 90)
+		{
+			sym = c + 32;
+			shift = true;
+		}
+		else if(c > 0 && c < 130 && shiftkey[c] > 0)
+		{
+			sym = shiftkey[c];
+			shift = true;
+		}
+
+		// hack to allow mappings of SDL keys > 127
+		if(sym >= 14 && sym <= 25)
+			sym += 268; // F1-F12 (282-293)
+
+		// One character is posted whole, so a shift is never left held
+		if(shift)
+			PostKey(SDL_KEYDOWN, SDLK_LSHIFT);
+		PostKey(SDL_KEYDOWN, sym);
+		PostKey(SDL_KEYUP, sym);
+		if(shift)
+			PostKey(SDL_KEYUP, SDLK_LSHIFT);
+
+		// Wait for the emulator to take them. Bounded: it may not be polling.
+		for(int waited = 0; waited < 500 && InputHal_PendingEvents() > 0
+			&& !keyAbort && !keyThread->stopRequested(); waited++)
+			platform->getThread()->sleepMilliseconds(1);
+	}
+}
+
+static void * PressKeys(void *arg)
+{
+	char command[sizeof(keyPending)];
+
+	while(true)
+	{
+		keyMutex->lock();
+		while(!keyHasPending && !keyThread->stopRequested())
+			keyCond->wait(*keyMutex);
+
+		if(keyThread->stopRequested())
+		{
+			keyMutex->unlock();
+			break;
+		}
+
+		memcpy(command, keyPending, sizeof(command));
+		keyHasPending = false;
+		keyMutex->unlock();
+
+		TypeCommand(command);
+
+		keyMutex->lock();
+		keyTyping = false;
+		keyMutex->unlock();
+	}
+	return NULL;
+}
+
+static void InitKeyInjection()
+{
 	memset(shiftkey, 0, sizeof(shiftkey));
 	shiftkey[33] = 49;
 	shiftkey[34] = 39;
@@ -91,61 +198,45 @@ static void * PressKeys (void *arg)
 	shiftkey[95] = 45;
 	shiftkey[126] = 96;
 
-	while(1)
+	keyMutex = new Mutex();
+	keyCond = new Cond();
+	keyThread = new Thread();
+	keyThread->start(PressKeys, NULL, 16384, ThreadPriority::Normal, WakeKeyThread);
+}
+
+//! Hands the command the on-screen keyboard left in dosboxCommand to the key thread.
+static void QueueKeys()
+{
+	if(dosboxCommand[0] == 0)
+		return;
+
+	keyMutex->lock();
+	memcpy(keyPending, dosboxCommand, sizeof(keyPending));
+	keyPending[sizeof(keyPending) - 1] = 0;
+	keyHasPending = true;
+	keyTyping = true;
+	keyCond->signal();
+	keyMutex->unlock();
+
+	dosboxCommand[0] = 0;
+}
+
+//! Cuts any typing short and waits for the key thread to go idle.
+static void AbortKeys()
+{
+	keyAbort = true;
+	while(true)
 	{
-		LWP_SuspendThread(keythread);
-		usleep(1200);
+		keyMutex->lock();
+		keyHasPending = false;
+		bool typing = keyTyping;
+		keyMutex->unlock();
 
-		for(i=0; i<strlen(dosboxCommand); i++)
-		{
-			shift=0;
-
-			if((dosboxCommand[i] >= 65 && dosboxCommand[i] <= 90))
-			{
-				dosboxCommand[i] += 32;
-				shift = 1;
-			}
-			else if(dosboxCommand[i] > 0 && dosboxCommand[i] < 130 && 
-					shiftkey[(int)dosboxCommand[i]] > 0)
-			{
-				dosboxCommand[i] = shiftkey[(int)dosboxCommand[i]];
-				shift = 1;
-			}
-
-			if(shift)
-			{
-				event.type = SDL_KEYDOWN;
-				event.key.keysym.sym = SDLK_LSHIFT;
-				MAPPER_CheckEvent(&event);
-				usleep(600);
-			}
-			
-			// hack to allow mappings of SDL keys > 127
-			int keyoffset = 0;
-			if(dosboxCommand[i] >= 14 && dosboxCommand[i] <= 25)
-				keyoffset = 268; // F1-F12 (282-293)
-
-			event.type = SDL_KEYDOWN;
-			event.key.keysym.sym = (SDLKey)((int)dosboxCommand[i]+keyoffset);
-			MAPPER_CheckEvent(&event);
-			usleep(600);
-
-			event.type = SDL_KEYUP;
-			event.key.keysym.sym = (SDLKey)((int)dosboxCommand[i]+keyoffset);
-			MAPPER_CheckEvent(&event);
-			usleep(600);
-
-			if(shift)
-			{
-				event.type = SDL_KEYUP;
-				event.key.keysym.sym = SDLK_LSHIFT;
-				MAPPER_CheckEvent(&event);
-				usleep(600);
-			}
-		}
-		dosboxCommand[0] = 0;
+		if(!typing)
+			break;
+		platform->getThread()->sleepMilliseconds(1);
 	}
-	return NULL;
+	keyAbort = false;
 }
 
 /****************************************************************************
@@ -168,6 +259,8 @@ void WiiInit()
 	platformConfig.canvasHeight = 480;
 	platform->init(platformConfig);
 
+	FindAppDrive();
+
 	GuiImageData::setDecodeScratch(malloc(IMAGE_DECODE_SCRATCH_SIZE), IMAGE_DECODE_SCRATCH_SIZE);
 
 	keyboard->init();
@@ -181,8 +274,57 @@ void WiiInit()
 	platform->getVideo()->startMenuVideo();
 	InitGUI();
 
-	LWP_CreateThread (&keythread, PressKeys, NULL, NULL, 0, 65);
+	InitKeyInjection();
 	appPath[0] = 0;
+}
+
+/****************************************************************************
+ * FindAppDrive
+ *
+ * Storage is found by looking, not by where the app was launched from.
+ ***************************************************************************/
+void FindAppDrive()
+{
+	static const int devices[] = { DEVICE_SD, DEVICE_USB, DEVICE_USB2, DEVICE_USB3 };
+	const int count = sizeof(devices) / sizeof(devices[0]);
+	FileSystemDriver * fs = platform->getFileSystem();
+
+	appDrive[0] = 0;
+
+	// Pass 0 wants a folder that already exists; pass 1 creates one
+	for(int pass = 0; pass < 2; pass++)
+	{
+		for(int i = 0; i < count; i++)
+		{
+			const char * mount = fs->getMountPath(devices[i]); // eg. "sd:/"
+			if(!mount || mount[0] == 0)
+				continue;
+
+			char dir[MAX_APP_DRIVE_LEN + 16];
+			snprintf(dir, sizeof(dir), "%s%s", mount, DOSBOX_DIR_NAME);
+
+			struct stat st;
+			bool usable = (stat(dir, &st) == 0 && S_ISDIR(st.st_mode));
+
+			if(!usable && pass == 1)
+			{
+				mkdir(dir, 0777);
+				usable = (stat(dir, &st) == 0 && S_ISDIR(st.st_mode));
+			}
+
+			if(!usable)
+				continue;
+
+			// appDrive is the device without the trailing slash: "sd:"
+			snprintf(appDrive, MAX_APP_DRIVE_LEN, "%s", mount);
+			size_t len = strlen(appDrive);
+			if(len > 0 && appDrive[len - 1] == '/')
+				appDrive[len - 1] = 0;
+			return;
+		}
+	}
+
+	LOG_ERROR("No storage device with a %s folder, and none could create one", DOSBOX_DIR_NAME);
 }
 
 void CreateAppPath(char origpath[])
@@ -198,13 +340,6 @@ void CreateAppPath(char origpath[])
 
 	strncpy(appPath, path, MAX_APP_PATH_LEN);
 	appPath[MAX_APP_PATH_LEN - 1] = 0;
-
-	loc = strchr(path,'/');
-	if (loc != NULL)
-		*loc = 0; // strip path
-
-	strncpy(appDrive, path, MAX_APP_DRIVE_LEN);
-	appDrive[MAX_APP_DRIVE_LEN - 1] = 0;
 
 	free(path);
 }
@@ -244,9 +379,9 @@ void WiiCheckExit()
  ***************************************************************************/
 void WiiMenu()
 {
-	// wait for thread to finish
-	while(!LWP_ThreadIsSuspended(keythread))
-		usleep(100);
+	// Typing is cut short rather than waited for: it needs the emulator to
+	// keep polling, which it won't while the menu is up.
+	AbortKeys();
 
 	SwitchAudioMode(1);
 
@@ -260,8 +395,7 @@ void WiiMenu()
 	SwitchAudioMode(0);
 	GFX_Resume();	// also repaints: DOSBox won't present again until something changes
 
-	if(dosboxCommand[0] != 0)
-		LWP_ResumeThread(keythread);
+	QueueKeys();
 }
 
 /****************************************************************************

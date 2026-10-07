@@ -179,4 +179,7 @@ void InputHal_Init(void);
 //! place that calls InputDriver::update() during emulation.
 void InputHal_Update(void);
 
+//! Number of events posted but not yet polled. Safe from any thread.
+int InputHal_PendingEvents(void);
+
 #endif

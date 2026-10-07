@@ -23,6 +23,7 @@
 #include <string>
 #include <limits.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #ifdef HW_RVL
 #include "wiihardware.h"
@@ -67,7 +68,7 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 	in = "~/Library/Preferences";
 	ResolveHomedir(in);
 #elif defined(HW_RVL)
-	in = std::string(appDrive) + "/DOSBox";
+	in = std::string(appDrive) + "/" DOSBOX_DIR_NAME;
 #else
 	in = "~/.dosbox";
 	ResolveHomedir(in);
@@ -98,7 +99,7 @@ void Cross::CreatePlatformConfigDir(std::string& in) {
 	ResolveHomedir(in);
 	//Don't create it. Assume it exists
 #elif defined(HW_RVL)
-	in = std::string(appDrive) + "/DOSBox";
+	in = std::string(appDrive) + "/" DOSBOX_DIR_NAME;
 	CreateDir(in);
 #else
 	in = "~/.dosbox";
@@ -141,17 +142,10 @@ bool Cross::IsPathAbsolute(std::string const& in) {
 	// UNC path
 	else if (in.size() > 2 && in[0]=='\\' && in[1]=='\\') return true;
 #elif defined (HW_RVL)
-	if (in.size() > 3 && 
-		in[0] == 's' &&
-		in[1] == 'd' && 
-		in[2] == ':')
-		return true;
-	else if (in.size() > 5 && 
-		in[0] == 'u' &&
-		in[1] == 's' && 
-		in[2] == 'b' &&
-		in[4] == ':' )
-		return true;
+	// Any devoptab prefix: sd:, usb:, usb2:, usb3:, dvd:, smb: ...
+	size_t prefix = 0;
+	while (prefix < in.size() && isalnum((unsigned char)in[prefix])) prefix++;
+	if (prefix > 1 && prefix < in.size() && in[prefix] == ':') return true;
 #else
 	if (in.size() > 1 && in[0] == '/' ) return true;
 #endif
