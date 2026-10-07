@@ -51,15 +51,20 @@
 #include "inout.h"
 #include "lazyflags.h"
 #include "pic.h"
+#include "drivers/Codegen.h"
 
 #define CACHE_MAXSIZE	(4096*2)
-#define CACHE_TOTAL		(1024*1024*8)
+#define CACHE_TOTAL_MAX	(1024*1024*8)
+#define CACHE_TOTAL_MIN	(1024*1024*1)
 #define CACHE_PAGES		(512)
 #define CACHE_BLOCKS	(128*1024)
 #define CACHE_ALIGN		(16)
 #define DYN_HASH_SHIFT	(4)
 #define DYN_PAGE_HASH	(4096>>DYN_HASH_SHIFT)
 #define DYN_LINKS		(16)
+
+// size of the code cache in use, set by cache_init() to what the platform could provide
+static Bitu cache_total=CACHE_TOTAL_MAX;
 
 
 //#define DYN_LOG 1 //Turn Logging on.
@@ -332,9 +337,11 @@ Bits CPU_Core_Dynrec_Trap_Run(void) {
 void CPU_Core_Dynrec_Init(void) {
 }
 
-void CPU_Core_Dynrec_Cache_Init(bool enable_cache) {
+// returns false if the cache was requested but is not available,
+// the caller then has to use another core
+bool CPU_Core_Dynrec_Cache_Init(bool enable_cache) {
 	// Initialize code cache and dynamic blocks
-	cache_init(enable_cache);
+	return cache_init(enable_cache);
 }
 
 void CPU_Core_Dynrec_Cache_Close(void) {

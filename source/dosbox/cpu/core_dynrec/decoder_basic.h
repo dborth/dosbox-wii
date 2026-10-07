@@ -677,6 +677,7 @@ static void dyn_closeblock(void) {
 	cache_block_before_close();
 	cache_closeblock();
 	cache_block_closing(decode.block->cache.start,decode.block->cache.size);
+	Codegen::endWrite();
 }
 
 

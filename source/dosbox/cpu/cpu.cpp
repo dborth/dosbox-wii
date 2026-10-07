@@ -82,7 +82,7 @@ void CPU_Core_Dyn_X86_Cache_Close(void);
 void CPU_Core_Dyn_X86_SetFPUMode(bool dh_fpu);
 #elif (C_DYNREC)
 void CPU_Core_Dynrec_Init(void);
-void CPU_Core_Dynrec_Cache_Init(bool enable_cache);
+bool CPU_Core_Dynrec_Cache_Init(bool enable_cache);
 void CPU_Core_Dynrec_Cache_Close(void);
 #endif
 
@@ -1586,8 +1586,9 @@ void CPU_SET_CRX(Bitu cr,Bitu value) {
 				}
 #elif (C_DYNREC)
 				if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CORE) {
-					CPU_Core_Dynrec_Cache_Init(true);
-					cpudecoder=&CPU_Core_Dynrec_Run;
+					// without a code cache the current (normal) core stays in use
+					if (CPU_Core_Dynrec_Cache_Init(true))
+						cpudecoder=&CPU_Core_Dynrec_Run;
 				}
 #endif
 				CPU_AutoDetermineMode<<=CPU_AUTODETERMINE_SHIFT;
@@ -2359,7 +2360,11 @@ public:
 #if (C_DYNAMIC_X86)
 		CPU_Core_Dyn_X86_Cache_Init((core == "dynamic") || (core == "dynamic_nodhfpu"));
 #elif (C_DYNREC)
-		CPU_Core_Dynrec_Cache_Init( core == "dynamic" );
+		if (!CPU_Core_Dynrec_Cache_Init( core == "dynamic" )) {
+			// no code cache available, fall back to the normal core
+			cpudecoder=&CPU_Core_Normal_Run;
+			CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
+		}
 #endif
 
 		CPU_ArchitectureType = CPU_ARCHTYPE_MIXED;

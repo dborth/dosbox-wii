@@ -37,7 +37,8 @@
 #define DRC_USE_REGS_ADDR
 #define DRC_USE_SEGS_ADDR
 
-#if defined(_CALL_SYSV)
+// WUT neither defines _SDA_BASE_ (wut.ld folds .sdata into .data) nor sets up r13 (crt0_rpx.s)
+#if defined(_CALL_SYSV) && !defined(__WIIU__)
 // disable if your toolchain doesn't provide a _SDA_BASE_ symbol (r13 constant value)
 #define USE_SDA_BASE
 #endif
@@ -595,20 +596,10 @@ static void gen_fill_branch_long(Bit32u data) {
 	return gen_fill_branch((DRC_PTR_SIZE_IM)data);
 }
 
+// the range is flushed/invalidated when the write window closes, see drivers/Codegen.h
 static void cache_block_closing(Bit8u* block_start,Bitu block_size)
 {
-#if defined(__GNUC__)
-	Bit8u* start = (Bit8u*)((Bit32u)block_start & -32);
-
-	while (start < block_start + block_size)
-	{
-		asm volatile("dcbst %y0\n\t icbi %y0" :: "Z"(*start));
-		start += 32;
-	}
-	asm volatile("sync\n\t isync");
-#else
-	#error "Don't know how to flush/invalidate CacheBlock with this compiler"
-#endif
+	Codegen::markDirty(block_start, block_size);
 }
 
 static void cache_block_before_close(void) {}

@@ -6,6 +6,7 @@
  * JIT support functions
  ***************************************************************************/
 #include "WutCodegen.h"
+#include "../Codegen.h"
 
 #include <coreinit/codegen.h>
 #include <coreinit/cache.h>
@@ -89,3 +90,24 @@ void WutCodegenEndWrite() {
 	dirtyLo = nullptr;
 	dirtyHi = nullptr;
 }
+
+// Codegen interface (drivers/Codegen.h) on top of the functions above
+
+uint8_t * Codegen::acquire(size_t preferred, size_t minimum, size_t & got) {
+	void *   addr = nullptr;
+	uint32_t size = 0;
+	OSGetCodegenVirtAddrRange(&addr, &size);
+
+	// no slot (codegen not enabled for the title), or not enough of one
+	if (addr == nullptr || size < minimum) {
+		got = 0;
+		return nullptr;
+	}
+
+	got = (size < preferred) ? size : preferred;
+	return (uint8_t *)WutCodegenAcquire(got);
+}
+
+void Codegen::beginWrite() { WutCodegenBeginWrite(); }
+void Codegen::markDirty(const void * p, size_t n) { WutCodegenMarkDirty(p, n); }
+void Codegen::endWrite() { WutCodegenEndWrite(); }

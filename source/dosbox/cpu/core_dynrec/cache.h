@@ -460,6 +460,8 @@ void CacheBlockDynRec::Clear(void) {
 
 
 static CacheBlockDynRec * cache_openblock(void) {
+	// open the write window, closed by dyn_closeblock()
+	Codegen::beginWrite();
 	CacheBlockDynRec * block=cache.block.active;
 	// check for enough space in this block
 	Bitu size=block->cache.size;
@@ -518,7 +520,7 @@ static void cache_closeblock(void) {
 		}
 	}
 	// advance the active block pointer
-	if (!block->cache.next || (block->cache.next->cache.start>(cache_code_start_ptr + CACHE_TOTAL - CACHE_MAXSIZE))) {
+	if (!block->cache.next || (block->cache.next->cache.start>(cache_code_start_ptr + cache_total - CACHE_MAXSIZE))) {
 //		LOG_MSG("Cache full restarting");
 		cache.block.active=cache.block.first;
 	} else {
@@ -565,13 +567,15 @@ static void cache_block_closing(Bit8u* block_start,Bitu block_size);
 #endif
 
 static bool cache_initialized = false;
+static bool cache_unavailable = false;
 
-static void cache_init(bool enable) {
+// returns false if the cache was requested but could not be set up
+static bool cache_init(bool enable) {
 	Bits i;
 	if (enable) {
 		// see if cache is already initialized
-		if (cache_initialized) return;
-		cache_initialized = true;
+		if (cache_initialized) return true;
+		if (cache_unavailable) return false;
 		if (cache_blocks == NULL) {
 			// allocate the cache blocks memory
 			cache_blocks=(CacheBlockDynRec*)malloc(CACHE_BLOCKS*sizeof(CacheBlockDynRec));
@@ -586,16 +590,18 @@ static void cache_init(bool enable) {
 			}
 		}
 		if (cache_code_start_ptr==NULL) {
-			// allocate the code cache memory
-#if defined (WIN32)
-			cache_code_start_ptr=(Bit8u*)VirtualAlloc(0,CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP,
-				MEM_COMMIT,PAGE_EXECUTE_READWRITE);
-			if (!cache_code_start_ptr)
-				cache_code_start_ptr=(Bit8u*)malloc(CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP);
-#else
-			cache_code_start_ptr=(Bit8u*)malloc(CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP);
-#endif
-			if(!cache_code_start_ptr) E_Exit("Allocating dynamic cache failed");
+			// allocate the code cache memory (see drivers/Codegen.h), the platform
+			// may give us less than we'd like
+			const Bitu overhead=CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP;
+			size_t got=0;
+			cache_code_start_ptr=(Bit8u*)Codegen::acquire(CACHE_TOTAL_MAX+overhead,CACHE_TOTAL_MIN+overhead,got);
+			if(!cache_code_start_ptr) {
+				cache_unavailable=true;
+				LOG_MSG("Dynamic core: no code cache available, using the normal core");
+				return false;
+			}
+			cache_total=(got-overhead) & ~(Bitu)(PAGESIZE_TEMP-1);
+			if (cache_total<CACHE_TOTAL_MAX) LOG_MSG("Dynamic core: code cache reduced to %d KB",(int)(cache_total/1024));
 
 			// align the cache at a page boundary
 			cache_code=(Bit8u*)(((Bitu)cache_code_start_ptr + PAGESIZE_TEMP-1) & ~(PAGESIZE_TEMP-1));//Bitu is same size as a pointer.
@@ -603,18 +609,16 @@ static void cache_init(bool enable) {
 			cache_code_link_blocks=cache_code;
 			cache_code=cache_code+PAGESIZE_TEMP;
 
-#if (C_HAVE_MPROTECT)
-			if(mprotect(cache_code_link_blocks,CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP,PROT_WRITE|PROT_READ|PROT_EXEC))
-				LOG_MSG("Setting execute permission on the code cache has failed");
-#endif
 			CacheBlockDynRec * block=cache_getblock();
 			cache.block.first=block;
 			cache.block.active=block;
 			block->cache.start=&cache_code[0];
-			block->cache.size=CACHE_TOTAL;
+			block->cache.size=cache_total;
 			block->cache.next=0;						// last block in the list
 		}
+		cache_initialized = true;
 		// setup the default blocks for block linkage returns
+		Codegen::beginWrite();
 		cache.pos=&cache_code_link_blocks[0];
 		core_dynrec.runcode=(BlockReturn (*)(Bit8u*))cache.pos;
 		// can use op to PAGESIZE_TEMP-64 bytes
@@ -637,6 +641,7 @@ static void cache_init(bool enable) {
 		dyn_return(BR_Link2,false);
 		cache_block_before_close();
 		cache_block_closing(link_blocks[1].cache.start, cache.pos-link_blocks[1].cache.start);
+		Codegen::endWrite();
 
 		cache.free_pages=0;
 		cache.last_page=0;
@@ -648,6 +653,7 @@ static void cache_init(bool enable) {
 			cache.free_pages=newpage;
 		}
 	}
+	return true;
 }
 
 static void cache_close(void) {
