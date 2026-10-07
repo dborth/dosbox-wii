@@ -11,12 +11,33 @@
 
 static char tmptxt[MAX_KEYBOARD_DISPLAY+1];
 
+// What the text box shows. A newline (the Enter key) has no glyph, so it is
+// shown as <ENTER>; and when the text is too long to fit, the end of it is
+// shown, so the last key pressed is always visible.
 static const char * GetDisplayText(const char * t)
 {
 	if(!t)
 		return nullptr;
 
-	strncpy(tmptxt, t, MAX_KEYBOARD_DISPLAY);
+	static char expanded[256 * 7 + 1];
+	size_t n = 0;
+
+	for(; *t && n + 7 < sizeof(expanded); t++)
+	{
+		if(*t == '\n')
+		{
+			memcpy(&expanded[n], "<ENTER>", 7);
+			n += 7;
+		}
+		else
+		{
+			expanded[n++] = *t;
+		}
+	}
+	expanded[n] = '\0';
+
+	size_t start = (n > MAX_KEYBOARD_DISPLAY) ? n - MAX_KEYBOARD_DISPLAY : 0;
+	strncpy(tmptxt, &expanded[start], MAX_KEYBOARD_DISPLAY);
 	tmptxt[MAX_KEYBOARD_DISPLAY] = '\0';
 	return &tmptxt[0];
 }
@@ -283,7 +304,7 @@ void GuiKeyboard::update(InputController * c)
 		{
 			kbtextstr[len] = ' ';
 			kbtextstr[len+1] = '\0';
-			kbText->setText(kbtextstr);
+			kbText->setText(GetDisplayText(kbtextstr));
 		}
 		keySpace->setState(STATE::SELECTED, c->getChannel());
 	}
