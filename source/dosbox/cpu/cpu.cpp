@@ -2357,9 +2357,18 @@ public:
 #if (C_DYNAMIC_X86)
 		CPU_Core_Dyn_X86_Cache_Init((core == "dynamic") || (core == "dynamic_nodhfpu"));
 #elif (C_DYNREC)
-		if (!CPU_Core_Dynrec_Cache_Init( core == "dynamic" )) {
+		// The code cache is allocated here, at startup, for "auto" as well:
+		// it is tens of MB that must come out of MEM2 before anything else
+		// has used it up, and failing later mid-game would be silent.
+		if (!CPU_Core_Dynrec_Cache_Init( core == "dynamic" || core == "auto" )) {
 			// no code cache available, fall back to the normal core
 			cpudecoder=&CPU_Core_Normal_Run;
+			CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
+		} else if (core == "auto") {
+			// Unlike the x86 dynamic core, dynrec runs real mode code, so use
+			// it from the start instead of waiting for the guest to set CR0.PE
+			// (most DOS games never do, and would stay on the normal core).
+			cpudecoder=&CPU_Core_Dynrec_Run;
 			CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
 		}
 #endif
