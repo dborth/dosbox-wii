@@ -33,6 +33,9 @@ class OgcVideoDriver : public VideoDriver
 
 		GXRModeObj* getVideoMode() const { return videoMode; };
 		GXRModeObj* findVideoMode();
+		//! The console is set to 16:9, so a 640-wide frame buffer is stretched
+		//! sideways on the screen. Known once findVideoMode() has run (init() does).
+		bool isWidescreen() const { return widescreen; }
 		void setupVideoMode(GXRModeObj* mode);
 		//! Waits for the last presented frame to be copied out and displayed, and for
 		//! the GPU to finish with it. Leaves the buffer order alone.
@@ -46,6 +49,7 @@ class OgcVideoDriver : public VideoDriver
 		int screenHeight = 0;
 		GXRModeObj *videoMode = nullptr; // Current video mode
 		bool vmode_60hz = true;
+		bool widescreen = false;
 
 		ImageRenderer* imageRenderer = nullptr;
 		GlyphRenderer* glyphRenderer = nullptr;

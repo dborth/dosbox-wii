@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include "VideoDriver.h"
+#include "EmulatorVideoSettings.h"
 
 //! Describes the frame captured by EmulatorVideoDriver::snapshotFrame()
 struct FrameSnapshotInfo
@@ -50,8 +51,44 @@ class EmulatorVideoDriver
 		//! to size the quad on screen. 1.0/1.0 is square pixels.
 		virtual void setPixelAspect(float scaleX, float scaleY) { (void)scaleX; (void)scaleY; }
 
-		//! Bilinear (true) or nearest-neighbour (false) magnification
-		virtual void setSmoothing(bool smooth) { (void)smooth; }
+		//! The user's display options (fit, aspect, filter, scanlines, zoom, shift,
+		//! 16:9). Safe to call at any time, from the menu too: the driver only
+		//! records them and applies them on the next presentFrame(). Values are
+		//! clamped. Everything not in here (pixel aspect, frame size) is
+		//! emulator state, not a user option.
+		void setSettings(const EmulatorVideoSettings& newSettings)
+		{
+			EmulatorVideoSettings next = newSettings;
+			next.clamp();
+			if (next == settings)
+				return;
+			settings = next;
+			settingsChanged();
+		}
+		const EmulatorVideoSettings& getSettings() const { return settings; }
+
+		//! What this driver can do, for hiding or disabling menu rows
+		virtual EmulatorVideoCapabilities getCapabilities() const { return EmulatorVideoCapabilities(); }
+
+		//! Where the picture is (or, before the next frame, will be) on the UI
+		//! canvas with the current settings and frame size, for previewing a
+		//! change over the menu background without presenting a frame. Same
+		//! coordinate space as FrameSnapshotInfo::x/y/w/h. False until a frame size
+		//! is known.
+		virtual bool getCanvasRect(float* x, float* y, float* w, float* h) { (void)x; (void)y; (void)w; (void)h; return false; }
+
+		//! Convenience for callers that only know the old on/off option. Off is
+		//! Nearest; on is Bilinear unless a smoothing filter (Sharp) is already
+		//! chosen, which it leaves alone.
+		void setSmoothing(bool smooth)
+		{
+			EmulatorVideoSettings next = settings;
+			if (!smooth)
+				next.filter = VideoFilter::Nearest;
+			else if (next.filter == VideoFilter::Nearest)
+				next.filter = VideoFilter::Bilinear;
+			setSettings(next);
+		}
 
 		//! Copies whatever this driver needs out of its live frame source,
 		//! into storage it owns itself, so a later readFrameRGB24() call
@@ -86,4 +123,11 @@ class EmulatorVideoDriver
 			(void)canvasX; (void)canvasY; (void)onGamePad; (void)u; (void)v;
 			return false;
 		}
+
+	protected:
+		//! Called when setSettings() changed something. Mark state dirty; do not
+		//! touch the GPU here, the menu may own it.
+		virtual void settingsChanged() {}
+
+		EmulatorVideoSettings settings;
 };

@@ -26,7 +26,8 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		int getMaxFrameDimension() const override { return MAX_TEX_DIM; }
 		void presentFrame(const uint16_t* pixels, int width, int height, int pitch) override;
 		void setPixelAspect(float scaleX, float scaleY) override;
-		void setSmoothing(bool smooth) override;
+		EmulatorVideoCapabilities getCapabilities() const override;
+		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
 
 		//! Copies the live (4x4-tiled GX_TF_RGB565) texture into a
 		//! driver-owned buffer so it survives until readFrameRGB24()
@@ -38,14 +39,26 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		void renderInit(int width, int height) override;
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
 
+	protected:
+		void settingsChanged() override;
+
 	private:
 		//! GX can address at most 1024x1024 per texture
 		static constexpr int MAX_TEX_DIM = 1024;
 
-		void drawInit();
-		void configureTEV();
-		void drawSquare();
+		void drawInit(bool scanlines);
+		void configureTEV(bool scanlines);
+		void drawSquare(u8 first, bool scanlines);
+		void loadScanlineTexture();
+		void setCanvasProjection();
 		void recalculateScaling();
+		void ensureRect();
+		bool scanlinesSupported() const;
+		bool scanlinesActive() const;
+		bool widescreenCompensation() const;
+		int choosePrescale();
+		bool ensurePrescaleBuffer(int width, int height);
+		void renderPrescale();
 		bool ensureTexture(int width, int height);
 		void tileRGB565(const uint8_t* src, int pitch, int width, int height, uint8_t* dst);
 
@@ -64,9 +77,20 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 
 		float pixelAspectX = 1.0f;
 		float pixelAspectY = 1.0f;
-		bool smoothing = true;
+		//! rectDirty: the canvas rect needs recomputing (no GX). updateScaling: the
+		//! vertex array needs rewriting. filterDirty: texture objects need
+		//! rebuilding. drawDirty: vertex description / TEV need setting up again.
+		bool rectDirty = true;
 		bool updateScaling = true;
 		bool filterDirty = true;
+		bool drawDirty = true;
+		bool scanlinesApplied = false;
+
+		// Sharp filter: the whole-number enlargement of the frame (0 = none), and
+		// the buffer the first pass copies it into
+		int prescaleN = 0;
+		void* prescaleMem = nullptr;
+		size_t prescaleCapacity = 0;
 
 		// One-shot: allocated by snapshotFrame(), freed by readFrameRGB24()
 		uint8_t* screenshotSnapshot = nullptr;

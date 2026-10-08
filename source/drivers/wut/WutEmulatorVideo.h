@@ -26,7 +26,8 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		void stopVideo() override;
 		void presentFrame(const uint16_t* pixels, int width, int height, int pitch) override;
 		void setPixelAspect(float scaleX, float scaleY) override;
-		void setSmoothing(bool smooth) override;
+		EmulatorVideoCapabilities getCapabilities() const override;
+		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
 
 		//! Copies the live RGBA8 texture into a driver-owned buffer so it
 		//! survives until readFrameRGB24()
@@ -36,6 +37,9 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		bool readFrameRGB24(int width, int height, uint8_t* dst) override;
 
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
+
+	protected:
+		void settingsChanged() override;
 
 	private:
 		void rebuildTexture(int width, int height);
@@ -58,7 +62,6 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 
 		float pixelAspectX = 1.0f;
 		float pixelAspectY = 1.0f;
-		bool smoothing = true;
 		bool samplerDirty = true;
 		bool placementDirty = true;
 

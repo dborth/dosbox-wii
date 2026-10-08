@@ -6,29 +6,44 @@
 #include <gccore.h>
 #include <ogcsys.h>
 #include <malloc.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "OgcEmulatorVideo.h"
 #include "OgcVideoDriver.h"
+#include "../EmulatorVideoLayout.h"
 
 // The emulator view uses the same 640x480 design space as the menu
 #define CANVAS_W 640
 #define CANVAS_H 480
 
-static GXTexObj texobj;
+// The scanline texture: 8x4 I8, one bright and one dark EFB row, twice
+#define SCANLINE_TEX_W 8
+#define SCANLINE_TEX_H 4
+
+static GXTexObj texobj;     // the emulator frame
+static GXTexObj texobjPre;  // the prescaled frame (sharp filter)
+static GXTexObj scanlineTexObj;
 static Mtx view;
+static u8 scanlineTexData[SCANLINE_TEX_W * SCANLINE_TEX_H] ATTRIBUTE_ALIGN(32);
 
 /*** Square Matrix
-     Controls the size of the image on the screen. Rewritten by
-     recalculateScaling() whenever the frame size or aspect changes.
+     Vertices 0-3 are the picture on the canvas (centred origin, y up),
+     rewritten by recalculateScaling() whenever the frame size or settings
+     change. Vertices 4-7 are the prescale pass's quad, which covers its own
+     viewport from the top-left (pixel units).
 ***/
-static s16 square[12] ATTRIBUTE_ALIGN(32) = {
+static s16 square[24] ATTRIBUTE_ALIGN(32) = {
 	-320,  240, 0,	// 0
 	 320,  240, 0,	// 1
 	 320, -240, 0,	// 2
-	-320, -240, 0	// 3
+	-320, -240, 0,	// 3
+	   0,    0, 0,	// 4
+	   0,    0, 0,	// 5
+	   0,    0, 0,	// 6
+	   0,    0, 0	// 7
 };
 
 struct Camera { guVector pos; guVector up; guVector view; };
@@ -36,28 +51,107 @@ static Camera cam = { {0.0F, 0.0F, 0.0F},
                       {0.0F, 0.5F, 0.0F},
                       {0.0F, 0.0F, -0.5F} };
 
+static inline s16 toS16(float v)
+{
+	if (v > 32767.0f) return 32767;
+	if (v < -32768.0f) return -32768;
+	return (s16) v;
+}
+
 OgcEmulatorVideo::~OgcEmulatorVideo()
 {
 	free(screenshotSnapshot);
 	free(texMem);
+	free(prescaleMem);
+}
+
+/****************************************************************************
+ * Settings
+ ***************************************************************************/
+void OgcEmulatorVideo::settingsChanged()
+{
+	rectDirty = true;
+	updateScaling = true;
+	filterDirty = true;
+	drawDirty = true;
+}
+
+EmulatorVideoCapabilities OgcEmulatorVideo::getCapabilities() const
+{
+	EmulatorVideoCapabilities caps;
+	caps.scanlines = scanlinesSupported();
+	caps.sharpFilter = true;
+	caps.widescreenSetting = true;
+	return caps;
+}
+
+//! Scanlines are drawn one EFB row at a time, so they only make sense on a
+//! 480+ line mode (not the 240p modes)
+bool OgcEmulatorVideo::scanlinesSupported() const
+{
+	GXRModeObj* mode = videoDriver ? videoDriver->getVideoMode() : nullptr;
+	return mode && mode->efbHeight > 300;
+}
+
+bool OgcEmulatorVideo::scanlinesActive() const
+{
+	return settings.scanlines > 0.0f && scanlinesSupported();
+}
+
+//! A 16:9 console stretches the 640-wide frame buffer sideways
+bool OgcEmulatorVideo::widescreenCompensation() const
+{
+	switch (settings.widescreen)
+	{
+		case VideoWidescreen::Display16x9: return true;
+		case VideoWidescreen::Display4x3: return false;
+		default: return videoDriver && videoDriver->isWidescreen();
+	}
 }
 
 /****************************************************************************
  * GX setup
  ***************************************************************************/
-void OgcEmulatorVideo::configureTEV()
+void OgcEmulatorVideo::configureTEV(bool scanlines)
 {
-	GX_SetNumTexGens (1);
-	GX_SetNumTevStages (1);
-	GX_SetNumChans (0);
+	if (!scanlines)
+	{
+		GX_SetNumTexGens (1);
+		GX_SetNumTevStages (1);
+		GX_SetNumChans (0);
 
-	GX_SetTexCoordGen (GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
+		GX_SetTexCoordGen (GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
 
-	GX_SetTevOp (GX_TEVSTAGE0, GX_REPLACE);
-	GX_SetTevOrder (GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
+		GX_SetTevOp (GX_TEVSTAGE0, GX_REPLACE);
+		GX_SetTevOrder (GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
+		return;
+	}
+
+	// Two textures, two stages: the frame, then multiplied by the scanline texture
+	GX_SetNumTexGens(2);
+	GX_SetNumTevStages(2);
+	GX_SetNumChans(0);
+
+	GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
+	GX_SetTexCoordGen(GX_TEXCOORD1, GX_TG_MTX2x4, GX_TG_TEX1, GX_IDENTITY);
+
+	GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
+	GX_SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC);
+	GX_SetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+	GX_SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_TEXA);
+	GX_SetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+
+	GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD1, GX_TEXMAP1, GX_COLORNULL);
+	// d + ((1 - c) * a + c * b) with a = 0, b = previous, c = scanline texel, d = 0
+	GX_SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_CPREV, GX_CC_TEXC, GX_CC_ZERO);
+	GX_SetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+	GX_SetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_TEXA, GX_CA_ZERO);
+	GX_SetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
 }
 
-void OgcEmulatorVideo::drawInit()
+//! Vertex description, TEV and matrices for drawing the quad, with or
+//! without the scanline stage
+void OgcEmulatorVideo::drawInit(bool scanlines)
 {
 	GX_ClearVtxDesc ();
 	GX_SetVtxDesc (GX_VA_POS, GX_INDEX8);
@@ -66,7 +160,13 @@ void OgcEmulatorVideo::drawInit()
 	GX_SetVtxAttrFmt (GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_S16, 0);
 	GX_SetVtxAttrFmt (GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
 
-	configureTEV();
+	if (scanlines)
+	{
+		GX_SetVtxAttrFmt (GX_VTXFMT0, GX_VA_TEX1, GX_TEX_ST, GX_F32, 0);
+		GX_SetVtxDesc (GX_VA_TEX1, GX_DIRECT);
+	}
+
+	configureTEV(scanlines);
 
 	GX_SetArray (GX_VA_POS, square, 3 * sizeof (s16));
 
@@ -83,7 +183,9 @@ static inline void draw_vert(u8 pos, f32 s, f32 t)
 	GX_TexCoord2f32(s, t);
 }
 
-void OgcEmulatorVideo::drawSquare()
+//! Draws the four vertices starting at `first`. With scanlines the quad also
+//! carries the scanline texture's coordinates, tiled 1 texel per EFB pixel.
+void OgcEmulatorVideo::drawSquare(u8 first, bool scanlines)
 {
 	Mtx m;		// model matrix.
 	Mtx mv;		// modelview matrix.
@@ -94,11 +196,66 @@ void OgcEmulatorVideo::drawSquare()
 
 	GX_LoadPosMtxImm(mv, GX_PNMTX0);
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
-	draw_vert(0, 0.0, 0.0);
-	draw_vert(1, 1.0, 0.0);
-	draw_vert(2, 1.0, 1.0);
-	draw_vert(3, 0.0, 1.0);
+
+	if (scanlines)
+	{
+		GXRModeObj* mode = videoDriver->getVideoMode();
+
+		// Picture size in EFB pixels (the canvas is stretched onto the EFB)
+		const f32 efbW = frameW * ((f32) mode->fbWidth / CANVAS_W);
+		const f32 efbH = frameH * ((f32) mode->efbHeight / CANVAS_H);
+		const f32 uRepeat = efbW / SCANLINE_TEX_W;
+		const f32 vRepeat = efbH / SCANLINE_TEX_H;
+
+		// Half a texel in, so the sampler hits texel centres and no moire
+		// comes from rounding at the edges
+		const f32 uOff = 0.5f / SCANLINE_TEX_W;
+		const f32 vOff = 0.5f / SCANLINE_TEX_H;
+
+		draw_vert(first + 0, 0.0f, 0.0f); GX_TexCoord2f32(uOff, vOff);
+		draw_vert(first + 1, 1.0f, 0.0f); GX_TexCoord2f32(uRepeat + uOff, vOff);
+		draw_vert(first + 2, 1.0f, 1.0f); GX_TexCoord2f32(uRepeat + uOff, vRepeat + vOff);
+		draw_vert(first + 3, 0.0f, 1.0f); GX_TexCoord2f32(uOff, vRepeat + vOff);
+	}
+	else
+	{
+		draw_vert(first + 0, 0.0f, 0.0f);
+		draw_vert(first + 1, 1.0f, 0.0f);
+		draw_vert(first + 2, 1.0f, 1.0f);
+		draw_vert(first + 3, 0.0f, 1.0f);
+	}
 	GX_End();
+}
+
+//! Loads the scanline texture into TEXMAP1. Rows alternate full brightness
+//! and (1 - strength) of it. Nearest sampling: linear would blur the lines
+//! into an even grey.
+void OgcEmulatorVideo::loadScanlineTexture()
+{
+	const u8 dark = (u8)(255.0f * (1.0f - settings.scanlines) + 0.5f);
+
+	for (int y = 0; y < SCANLINE_TEX_H; y++)
+		for (int x = 0; x < SCANLINE_TEX_W; x++)
+			scanlineTexData[y * SCANLINE_TEX_W + x] = (y & 1) ? dark : 0xFF;
+
+	DCFlushRange(scanlineTexData, sizeof(scanlineTexData));
+
+	GX_InitTexObj(&scanlineTexObj, scanlineTexData, SCANLINE_TEX_W, SCANLINE_TEX_H, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
+	GX_InitTexObjFilterMode(&scanlineTexObj, GX_NEAR, GX_NEAR);
+	GX_LoadTexObj(&scanlineTexObj, GX_TEXMAP1);
+}
+
+//! The projection and viewport for drawing the picture on the canvas
+void OgcEmulatorVideo::setCanvasProjection()
+{
+	Mtx44 p;
+	GXRModeObj* rmode = videoDriver->getVideoMode();
+
+	GX_SetViewport (0, 0, rmode->fbWidth, rmode->efbHeight, 0, 1);
+	GX_SetScissor (0, 0, rmode->fbWidth, rmode->efbHeight);
+
+	guOrtho(p, CANVAS_H/2, -(CANVAS_H/2), -(CANVAS_W/2), CANVAS_W/2, 100, 1000);	// matrix, t, b, l, r, n, f
+	GX_LoadProjectionMtx (p, GX_ORTHOGRAPHIC);
 }
 
 /****************************************************************************
@@ -108,7 +265,6 @@ void OgcEmulatorVideo::drawSquare()
  ****************************************************************************/
 void OgcEmulatorVideo::resetVideo()
 {
-	Mtx44 p;
 	GXRModeObj * rmode = videoDriver->findVideoMode();
 	u8 vfilter[7] = {0, 0, 21, 22, 21, 0, 0};
 
@@ -144,15 +300,16 @@ void OgcEmulatorVideo::resetVideo()
 	GX_SetColorUpdate (GX_TRUE);
 	GX_SetBlendMode (GX_BM_NONE, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 
-	guOrtho(p, CANVAS_H/2, -(CANVAS_H/2), -(CANVAS_W/2), CANVAS_W/2, 100, 1000);	// matrix, t, b, l, r, n, f
-	GX_LoadProjectionMtx (p, GX_ORTHOGRAPHIC);
+	setCanvasProjection();
 
-	drawInit();
+	scanlinesApplied = scanlinesActive();
+	drawInit(scanlinesApplied);
+	drawDirty = false;
 
-	// force the texture object and quad to be rebuilt on the next frame
-	frameWidth = 0;
-	frameHeight = 0;
+	// the menu has used the texture units; reload everything on the next frame.
+	// The frame size is kept so the placement can still be asked for.
 	updateScaling = true;
+	rectDirty = true;
 	filterDirty = true;
 }
 
@@ -168,43 +325,83 @@ void OgcEmulatorVideo::stopVideo()
 }
 
 /****************************************************************************
- * recalculateScaling
+ * Placement
  *
- * Fits the frame, with its pixel aspect applied, inside the 640x480 canvas
+ * ensureRect() works out the picture's rect on the 640x480 canvas from the
+ * frame size, pixel aspect and settings, with no GX calls, so the menu can
+ * ask for it at any time. recalculateScaling() (presentFrame only) then
+ * writes it into the vertex array.
  ***************************************************************************/
-void OgcEmulatorVideo::recalculateScaling()
+void OgcEmulatorVideo::ensureRect()
 {
-	if (frameWidth <= 0 || frameHeight <= 0)
+	if (!rectDirty)
 		return;
 
-	float displayW = frameWidth * pixelAspectX;
-	float displayH = frameHeight * pixelAspectY;
+	VideoLayoutInput in;
+	in.frameWidth = frameWidth;
+	in.frameHeight = frameHeight;
+	in.pixelAspectX = pixelAspectX;
+	in.pixelAspectY = pixelAspectY;
+	in.targetWidth = CANVAS_W;
+	in.targetHeight = CANVAS_H;
+	in.outputPixelAspect = widescreenCompensation() ? (4.0f / 3.0f) : 1.0f;
 
-	float scale = (float)CANVAS_W / displayW;
-	float scaleV = (float)CANVAS_H / displayH;
-	if (scaleV < scale)
-		scale = scaleV;
+	VideoRect r = ComputeVideoLayout(settings, in);
 
-	frameW = displayW * scale;
-	frameH = displayH * scale;
-	frameX = (CANVAS_W - frameW) / 2.0f;
-	frameY = (CANVAS_H - frameH) / 2.0f;
+	// Whole canvas units: the vertices are s16, and an edge between two EFB
+	// pixels keeps nearest sampling even
+	const float x0 = floorf(r.x + 0.5f);
+	const float y0 = floorf(r.y + 0.5f);
+	const float x1 = floorf(r.x + r.w + 0.5f);
+	const float y1 = floorf(r.y + r.h + 0.5f);
 
-	s16 halfW = (s16)(frameW / 2.0f + 0.5f);
-	s16 halfH = (s16)(frameH / 2.0f + 0.5f);
+	frameX = x0; frameY = y0;
+	frameW = x1 - x0; frameH = y1 - y0;
+	rectDirty = false;
+}
 
-	square[0] = -halfW; square[1]  =  halfH;
-	square[3] =  halfW; square[4]  =  halfH;
-	square[6] =  halfW; square[7]  = -halfH;
-	square[9] = -halfW; square[10] = -halfH;
+void OgcEmulatorVideo::recalculateScaling()
+{
+	ensureRect();
+
+	if (frameW <= 0.0f || frameH <= 0.0f)
+		return;
+
+	const s16 left = toS16(frameX - CANVAS_W / 2.0f);
+	const s16 top = toS16(CANVAS_H / 2.0f - frameY);
+	const s16 right = toS16(frameX + frameW - CANVAS_W / 2.0f);
+	const s16 bottom = toS16(CANVAS_H / 2.0f - (frameY + frameH));
+
+	square[0] = left;  square[1]  = top;
+	square[3] = right; square[4]  = top;
+	square[6] = right; square[7]  = bottom;
+	square[9] = left;  square[10] = bottom;
 	DCFlushRange(square, sizeof(square));
 	GX_InvVtxCache();
 
 	updateScaling = false;
 }
 
+bool OgcEmulatorVideo::getCanvasRect(float* x, float* y, float* w, float* h)
+{
+	if (frameWidth <= 0 || frameHeight <= 0)
+		return false;
+
+	ensureRect();
+	if (frameW <= 0.0f || frameH <= 0.0f)
+		return false;
+
+	if (x) *x = frameX;
+	if (y) *y = frameY;
+	if (w) *w = frameW;
+	if (h) *h = frameH;
+	return true;
+}
+
 bool OgcEmulatorVideo::mapPointerToUnit(float canvasX, float canvasY, bool, float* u, float* v)
 {
+	ensureRect();
+
 	if (!u || !v || frameW <= 0.0f || frameH <= 0.0f) // scaling hasn't been computed yet
 		return false;
 
@@ -223,22 +420,110 @@ void OgcEmulatorVideo::setPixelAspect(float scaleX, float scaleY)
 		return;
 	pixelAspectX = scaleX;
 	pixelAspectY = scaleY;
+	rectDirty = true;
 	updateScaling = true;
-}
-
-void OgcEmulatorVideo::setSmoothing(bool smooth)
-{
-	if (smoothing != smooth) {
-		smoothing = smooth;
-		filterDirty = true;
-	}
 }
 
 void OgcEmulatorVideo::renderInit(int width, int height)
 {
 	frameWidth = width;
 	frameHeight = height;
+	rectDirty = true;
 	updateScaling = true;
+}
+
+/****************************************************************************
+ * Sharp filter (prescale)
+ *
+ * Plain bilinear blurs every source pixel. Sharp bilinear first enlarges the
+ * frame by the largest whole number that still fits the output, with no
+ * blending, then lets bilinear do the rest: pixels stay crisp and only the
+ * edges between them are blended. GX has no shaders, so the whole-number
+ * enlargement is a first pass into the EFB that is copied back out as a
+ * texture. Needs N >= 2; below that sharp and bilinear are the same thing.
+ ***************************************************************************/
+int OgcEmulatorVideo::choosePrescale()
+{
+	if (settings.filter != VideoFilter::Sharp || frameWidth <= 0 || frameHeight <= 0)
+		return 0;
+
+	GXRModeObj* mode = videoDriver->getVideoMode();
+	ensureRect();
+	if (frameW <= 0.0f || frameH <= 0.0f)
+		return 0;
+
+	// Output size in EFB pixels
+	const float outW = frameW * ((float) mode->fbWidth / CANVAS_W);
+	const float outH = frameH * ((float) mode->efbHeight / CANVAS_H);
+
+	int n = (int) floorf(fminf(outW / frameWidth, outH / frameHeight));
+
+	// The enlarged frame, padded to whole tiles, has to fit the EFB it is drawn in
+	while (n >= 2)
+	{
+		const int w = (frameWidth * n + 3) & ~3;
+		const int h = (frameHeight * n + 3) & ~3;
+		if (w <= (int) mode->fbWidth && h <= (int) mode->efbHeight && w <= MAX_TEX_DIM && h <= MAX_TEX_DIM)
+			return n;
+		n--;
+	}
+	return 0;
+}
+
+bool OgcEmulatorVideo::ensurePrescaleBuffer(int width, int height)
+{
+	const size_t needed = GX_GetTexBufferSize(width, height, GX_TF_RGB565, GX_FALSE, 0);
+
+	if (needed > prescaleCapacity)
+	{
+		free(prescaleMem);
+		prescaleMem = memalign(32, needed);
+		prescaleCapacity = prescaleMem ? needed : 0;
+		if (!prescaleMem)
+			return false;
+		// the GPU writes it; make sure no stale cached line is ever written back over it
+		DCInvalidateRange(prescaleMem, needed);
+	}
+	return true;
+}
+
+//! Pass 1: draws the frame, nearest-sampled, at N times its size into the
+//! top-left of the EFB and copies it out to prescaleMem. Leaves GX as the
+//! picture pass expects, with the enlarged frame in TEXMAP0.
+void OgcEmulatorVideo::renderPrescale()
+{
+	const int w = frameWidth * prescaleN;
+	const int h = frameHeight * prescaleN;
+	const int w4 = (w + 3) & ~3;
+	const int h4 = (h + 3) & ~3;
+
+	// the prescale quad, in pixels from the top-left (vertices 4-7)
+	square[12] = 0;           square[13] = 0;
+	square[15] = (s16) w;     square[16] = 0;
+	square[18] = (s16) w;     square[19] = (s16) -h;
+	square[21] = 0;           square[22] = (s16) -h;
+	DCFlushRange(square, sizeof(square));
+
+	Mtx44 p;
+	GX_SetViewport (0, 0, w, h, 0, 1);
+	GX_SetScissor (0, 0, w, h);
+	guOrtho(p, 0, -h, 0, w, 100, 1000);
+	GX_LoadProjectionMtx (p, GX_ORTHOGRAPHIC);
+
+	drawInit(false);
+	GX_LoadTexObj(&texobj, GX_TEXMAP0); // nearest
+	drawSquare(4, false);
+
+	GX_SetTexCopySrc(0, 0, w4, h4);
+	GX_SetTexCopyDst(w4, h4, GX_TF_RGB565, GX_FALSE);
+	GX_CopyTex(prescaleMem, GX_TRUE); // and clear, so none of this reaches the picture pass
+	GX_PixModeSync();
+	GX_InvalidateTexAll();
+
+	// back to drawing the picture on the canvas
+	setCanvasProjection();
+	drawInit(scanlinesActive());
+	GX_LoadTexObj(&texobjPre, GX_TEXMAP0); // linear
 }
 
 /****************************************************************************
@@ -333,6 +618,8 @@ void OgcEmulatorVideo::snapshotFrame()
 	if (!texMem || frameWidth <= 0 || frameHeight <= 0)
 		return;
 
+	ensureRect();
+
 	size_t size = (size_t)((frameWidth + 3) & ~3) * ((frameHeight + 3) & ~3) * 2;
 	screenshotSnapshot = (uint8_t *) malloc(size);
 	if (screenshotSnapshot) {
@@ -412,6 +699,7 @@ void OgcEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 	if (width != frameWidth || height != frameHeight) {
 		frameWidth = width;
 		frameHeight = height;
+		rectDirty = true;
 		updateScaling = true;
 		filterDirty = true;
 	}
@@ -420,13 +708,35 @@ void OgcEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 	// and for the GPU to finish rendering it, before touching texture memory.
 	videoDriver->waitForBufferReady();
 
+	// A settings change can turn the scanline stage on or off
+	const bool scanlines = scanlinesActive();
+	if (drawDirty || scanlines != scanlinesApplied) {
+		drawInit(scanlines);
+		scanlinesApplied = scanlines;
+		drawDirty = false;
+	}
+
 	if (updateScaling)
 		recalculateScaling();
 
 	if (filterDirty) {
+		const int n = choosePrescale();
+		prescaleN = (n >= 2 && ensurePrescaleBuffer((frameWidth * n + 3) & ~3, (frameHeight * n + 3) & ~3)) ? n : 0;
+
+		// With a prescale pass the frame is only ever sampled nearest, to be enlarged
+		const bool linear = prescaleN == 0 && settings.filter != VideoFilter::Nearest;
 		GX_InitTexObj(&texobj, texMem, frameWidth, frameHeight, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
-		GX_InitTexObjFilterMode(&texobj, smoothing ? GX_LINEAR : GX_NEAR, smoothing ? GX_LINEAR : GX_NEAR);
+		GX_InitTexObjFilterMode(&texobj, linear ? GX_LINEAR : GX_NEAR, linear ? GX_LINEAR : GX_NEAR);
 		GX_LoadTexObj(&texobj, GX_TEXMAP0);
+
+		if (prescaleN) {
+			GX_InitTexObj(&texobjPre, prescaleMem, frameWidth * prescaleN, frameHeight * prescaleN, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
+			GX_InitTexObjFilterMode(&texobjPre, GX_LINEAR, GX_LINEAR);
+		}
+
+		if (scanlines)
+			loadScanlineTexture();
+
 		filterDirty = false;
 	}
 
@@ -435,7 +745,14 @@ void OgcEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 
 	GX_InvalidateTexAll();
 
-	drawSquare(); // render textured quad
+	if (prescaleN)
+		renderPrescale();
+
+	drawSquare(0, scanlines); // render textured quad
+
+	// The prescale pass loaded its own texture; the next frame's upload needs the source back
+	if (prescaleN)
+		GX_LoadTexObj(&texobj, GX_TEXMAP0);
 
 	videoDriver->presentBuffer();
 }

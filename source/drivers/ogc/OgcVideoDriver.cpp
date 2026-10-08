@@ -171,7 +171,8 @@ GXRModeObj* OgcVideoDriver::findVideoMode()
 		progressive = false;
 
 	#ifdef HW_RVL
-	if (CONF_GetAspectRatio() == CONF_ASPECT_16_9) {
+	widescreen = (CONF_GetAspectRatio() == CONF_ASPECT_16_9);
+	if (widescreen) {
 		WiiPlatform * wiiPlatform = static_cast<WiiPlatform*>(platform);
 		if(wiiPlatform->isWiiU())
 			mode->viWidth = 720;

@@ -14,6 +14,8 @@
 
 #include "WutEmulatorVideo.h"
 #include "WutVideoDriver.h"
+#include "WutOutputFilter.h"
+#include "../EmulatorVideoLayout.h"
 #include "shaders/Texture2DShader.h"
 
 namespace
@@ -102,42 +104,71 @@ void WutEmulatorVideo::setPixelAspect(float scaleX, float scaleY)
 	placementDirty = true;
 }
 
-void WutEmulatorVideo::setSmoothing(bool smooth)
+void WutEmulatorVideo::settingsChanged()
 {
-	if (smoothing != smooth)
-	{
-		smoothing = smooth;
-		samplerDirty = true;
-	}
+	samplerDirty = true;
+	placementDirty = true;
+}
+
+EmulatorVideoCapabilities WutEmulatorVideo::getCapabilities() const
+{
+	EmulatorVideoCapabilities caps;
+	caps.scanlines = true;
+	caps.sharpFilter = true;
+	// Each output's real shape is known, so there is nothing to tell it
+	caps.widescreenSetting = false;
+	return caps;
+}
+
+bool WutEmulatorVideo::getCanvasRect(float* x, float* y, float* w, float* h)
+{
+	if (frameWidth <= 0 || frameHeight <= 0)
+		return false;
+
+	if (placementDirty)
+		recalculatePlacement();
+
+	if (canvasW <= 0.0f || canvasH <= 0.0f)
+		return false;
+
+	if (x) *x = canvasX;
+	if (y) *y = canvasY;
+	if (w) *w = canvasW;
+	if (h) *h = canvasH;
+	return true;
 }
 
 /****************************************************************************
  * recalculatePlacement
  *
- * Fits the frame, at its pixel aspect, inside each target's own physical
- * pixels (letterboxed or pillarboxed, centred). Every target's buffer is
- * square-pixel, so a target's aspect ratio is simply width/height.
+ * Places the frame inside each target's own physical pixels with the user's
+ * settings (fit, aspect, zoom, shift). Every target's buffer is
+ * square-pixel, so a target's aspect ratio is simply width/height and no
+ * 16:9 setting is needed: a 16:9 TV and the 4:3-ish GamePad each get a
+ * correctly shaped picture.
  ***************************************************************************/
 void WutEmulatorVideo::recalculatePlacement()
 {
 	if (frameWidth <= 0 || frameHeight <= 0)
 		return;
 
-	const float displayW = (float)frameWidth * pixelAspectX;
-	const float displayH = (float)frameHeight * pixelAspectY;
-
 	for (int i = 0; i < OUTPUT_TARGET_COUNT; i++)
 	{
 		const OutputTarget target = static_cast<OutputTarget>(i);
-		const float targetW = (float)videoDriver->getTargetWidth(target);
-		const float targetH = (float)videoDriver->getTargetHeight(target);
 
-		const float scale = std::min(targetW / displayW, targetH / displayH);
+		VideoLayoutInput in;
+		in.frameWidth = frameWidth;
+		in.frameHeight = frameHeight;
+		in.pixelAspectX = pixelAspectX;
+		in.pixelAspectY = pixelAspectY;
+		in.targetWidth = (float)videoDriver->getTargetWidth(target);
+		in.targetHeight = (float)videoDriver->getTargetHeight(target);
 
-		placement[i].w = displayW * scale;
-		placement[i].h = displayH * scale;
-		placement[i].x = (targetW - placement[i].w) * 0.5f;
-		placement[i].y = (targetH - placement[i].h) * 0.5f;
+		const VideoRect r = ComputeVideoLayout(settings, in);
+		placement[i].x = r.x;
+		placement[i].y = r.y;
+		placement[i].w = r.w;
+		placement[i].h = r.h;
 	}
 
 	const TargetPlacement& tv = placement[static_cast<int>(OutputTarget::TV)];
@@ -272,20 +303,24 @@ void WutEmulatorVideo::drawQuad()
 
 	if (samplerDirty)
 	{
+		// Sharp samples linearly too: the output filter does the sharpening
 		GX2InitSampler(&sampler, GX2_TEX_CLAMP_MODE_CLAMP,
-			smoothing ? GX2_TEX_XY_FILTER_MODE_LINEAR : GX2_TEX_XY_FILTER_MODE_POINT);
+			settings.filter == VideoFilter::Nearest ? GX2_TEX_XY_FILTER_MODE_POINT : GX2_TEX_XY_FILTER_MODE_LINEAR);
 		samplerDirty = false;
 	}
 
 	const float colorIntensity[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	Texture2DShader* shader = Texture2DShader::instance();
 
-	auto drawPass = [&](OutputTarget target) {
+	auto placementNdc = [&](OutputTarget target, float offset[3], float scale[3]) {
 		const TargetPlacement& p = placement[static_cast<int>(target)];
+		PixelRectToNdc(p.x, p.y, p.w, p.h, videoDriver->getTargetWidth(target), videoDriver->getTargetHeight(target), offset, scale);
+	};
 
+	auto drawPass = [&](OutputTarget target) {
 		float offset[3];
 		float scale[3];
-		PixelRectToNdc(p.x, p.y, p.w, p.h, videoDriver->getTargetWidth(target), videoDriver->getTargetHeight(target), offset, scale);
+		placementNdc(target, offset, scale);
 
 		shader->setShaders();
 		shader->setAttributeBuffer();
@@ -298,10 +333,36 @@ void WutEmulatorVideo::drawQuad()
 		shader->draw(GX2_PRIMITIVE_MODE_QUADS, 4);
 	};
 
+	const bool sharp = settings.filter == VideoFilter::Sharp;
+	const float scanlines = settings.scanlines;
+
+	// Sharp bilinear and/or scanlines go through the output filter; if it is
+	// unavailable (shader failed to set up) the plain textured quad is drawn
+	auto drawGame = [&](OutputTarget target) {
+		if (sharp || scanlines > 0.0f)
+		{
+			const TargetPlacement& p = placement[static_cast<int>(target)];
+
+			WutOutputFilter::Params pp;
+			pp.texture = texture;
+			placementNdc(target, pp.offset, pp.scale);
+			pp.outWidth = p.w;
+			pp.outHeight = p.h;
+			pp.linear = settings.filter != VideoFilter::Nearest;
+			pp.sharp = sharp;
+			pp.scanlineStrength = scanlines;
+			// the emulated lines the quad covers, so the gaps follow the picture's own lines
+			pp.sourceLines = (float)frameHeight;
+			if (WutOutputFilter::instance()->draw(pp))
+				return;
+		}
+		drawPass(target);
+	};
+
 	WHBGfxBeginRenderTV();
-	drawPass(OutputTarget::TV);
+	drawGame(OutputTarget::TV);
 	WHBGfxBeginRenderDRC();
-	drawPass(OutputTarget::DRC);
+	drawGame(OutputTarget::DRC);
 }
 
 /****************************************************************************
