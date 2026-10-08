@@ -14,4 +14,9 @@
 //! and GUI must already be up. Returns when DOSBox has shut down.
 void RunDOSBox(int argc, char* argv[]);
 
+//! True when DOSBox is at the DOS prompt rather than inside a program, which
+//! is when it is safe to change hardware settings (sound card, joystick, CPU
+//! core) under it. False before the first shell exists.
+bool IsShellIdle();
+
 #endif

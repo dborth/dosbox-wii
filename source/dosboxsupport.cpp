@@ -21,6 +21,7 @@
 
 #include "dosbox.h"
 #include "dos_inc.h"
+#include "shell.h"
 #include "video.h"
 #include "setup.h"
 #include "support.h"
@@ -92,6 +93,15 @@ void Restart(bool pressed) { // mapper handler
 	restart_program(control->startup_params);
 }
 
+
+/****************************************************************************
+ * IsShellIdle
+ *
+ * Used before a hardware setting change
+ ***************************************************************************/
+bool IsShellIdle() {
+	return first_shell != NULL && (DOS_PSP(dos.psp()).GetSegment() == DOS_PSP(dos.psp()).GetParent());
+}
 
 /****************************************************************************
  * C library functions newlib does not have. Both are used by the core's

@@ -24,6 +24,7 @@
 #include "filelist.h"
 #include "input.h"
 #include "menu.h"
+#include "settings.h"
 
 // Declared here rather than including cpu.h, to keep DOSBox headers out of
 // this libgui/HAL file.
@@ -391,6 +392,191 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 }
 
 /****************************************************************************
+ * SettingsBrowser
+ *
+ * A GuiOptionBrowser that says which option is highlighted, which it keeps
+ * to itself. The page needs it to show help for that option and to step it
+ * with left and right.
+ ***************************************************************************/
+class SettingsBrowser : public GuiOptionBrowser
+{
+	public:
+		SettingsBrowser(int w, int h, OptionList * l) : GuiOptionBrowser(w, h, l)
+		{
+			for(int i = 0; i < OPTION_PAGESIZE; i++)
+				optionIndex[i] = -1; // not set until the first update()
+		}
+
+		//! The highlighted option's index, or -1 until the list has been drawn.
+		int getSelectedOption() const { return optionIndex[selectedItem]; }
+};
+
+static void RefreshSettingsValues(SettingsPage page, OptionList * options, GuiOptionBrowser * browser)
+{
+	for(int i = 0; i < options->length; i++)
+		Settings_RowValue(page, i, options->value[i], sizeof(options->value[i]));
+
+	browser->triggerUpdate();
+}
+
+static void RefreshSettingsHelp(SettingsPage page, int row, GuiText * helpTxt)
+{
+	char help[320];
+
+	Settings_RowHelp(page, row, help, sizeof(help));
+	helpTxt->setText(help);
+}
+
+/****************************************************************************
+ * SettingsPageScreen
+ *
+ * One page of the settings registry: a row per setting. A (or clicking)
+ * moves the row to its next value, left and right step it back and forth.
+ * Every change is applied to DOSBox as it is made. Returns when the page
+ * is closed.
+ ***************************************************************************/
+static void SettingsPageScreen(SettingsPage page)
+{
+	VideoDriver * video = platform->getVideo();
+	const PixelColor white = {255, 255, 255, 255};
+	char title[64];
+
+	// about 15 KB: kept off the stack, which this runs deep in the core's call
+	// chain on a size nothing here sets. Reset on every entry.
+	static OptionList options;
+
+	memset(&options, 0, sizeof(options));
+
+	options.length = Settings_RowCount(page);
+	if(options.length > MAX_OPTIONS)
+		options.length = MAX_OPTIONS;
+
+	for(int i = 0; i < options.length; i++)
+		snprintf(options.name[i], sizeof(options.name[i]), "%s", Settings_RowLabel(page, i));
+
+	snprintf(title, sizeof(title), "Settings - %s", Settings_PageTitle(page));
+	GuiText titleTxt(title, 28, white);
+	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	titleTxt.setPosition(50, 50);
+
+	GuiText helpTxt("", 18, white);
+	helpTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	helpTxt.setPosition(0, 366);
+	helpTxt.setMaxWidth(540);
+	helpTxt.setScroll(SCROLL::HORIZONTAL);
+
+	GuiText hintTxt("A or Left/Right: change", 16, (PixelColor){200, 200, 200, 255});
+	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	hintTxt.setPosition(-50, -50);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+
+	GuiTrigger trigA, trigB;
+	trigA.setPrimaryTrigger();
+	trigB.setSecondaryTrigger();
+
+	GuiText backBtnTxt("Go Back", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage backBtnImg(&btnOutline);
+	GuiImage backBtnImgOver(&btnOutlineOver);
+	GuiButton backBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	backBtn.setPosition(100, -35);
+	backBtn.setLabel(&backBtnTxt);
+	backBtn.setImage(&backBtnImg);
+	backBtn.setImageOver(&backBtnImgOver);
+	backBtn.setSoundOver(&btnSoundOver);
+	backBtn.setSoundClick(&btnSoundClick);
+	backBtn.setTrigger(&trigA);
+	backBtn.setTrigger(&trigB);
+	backBtn.setEffectGrow();
+
+	SettingsBrowser browser(552, 248, &options);
+	browser.setPosition(0, 108);
+	browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+
+	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
+	w.append(&backBtn);
+
+	RefreshSettingsValues(page, &options, &browser);
+	RefreshSettingsHelp(page, 0, &helpTxt);
+
+	// the browser first: it is what takes focus
+	mainWindow->append(&browser);
+	mainWindow->append(&w);
+	mainWindow->append(&titleTxt);
+	mainWindow->append(&helpTxt);
+	mainWindow->append(&hintTxt);
+
+	int helpRow = 0;
+	bool done = false;
+
+	while(!done)
+	{
+		UpdateGui();
+
+		bool changed = false;
+		const int clicked = browser.getClickedOption();
+
+		if(clicked >= 0)
+			changed = Settings_RowStep(page, clicked, 1);
+
+		// the browser does not use left and right itself
+		if(!changed && browser.isFocused() == 1 && browser.getSelectedOption() >= 0)
+		{
+			for(int i = 0; i < 4 && !changed; i++)
+			{
+				if(controller[i]->left())
+					changed = Settings_RowStep(page, browser.getSelectedOption(), -1);
+				else if(controller[i]->right())
+					changed = Settings_RowStep(page, browser.getSelectedOption(), 1);
+			}
+		}
+
+		// one change can alter other rows (the cycles amount follows the
+		// mode, a CPU core may rule out a CPU type), so redo them all
+		if(changed)
+		{
+			RefreshSettingsValues(page, &options, &browser);
+			helpRow = -1;
+		}
+
+		const int selected = browser.getSelectedOption();
+
+		if(selected >= 0 && selected != helpRow)
+		{
+			RefreshSettingsHelp(page, selected, &helpTxt);
+			helpRow = selected;
+		}
+
+		if(backBtn.getState() == STATE::CLICKED)
+			done = true;
+	}
+
+	mainWindow->remove(&browser);
+	mainWindow->remove(&w);
+	mainWindow->remove(&titleTxt);
+	mainWindow->remove(&helpTxt);
+	mainWindow->remove(&hintTxt);
+}
+
+/****************************************************************************
+ * SettingsMenu
+ *
+ * Opens the settings in place of the home screen, which is taken off the
+ * main window while they are up. There is only one page so far, so it goes
+ * straight to it; a list of pages goes here when there is a second.
+ ***************************************************************************/
+static void SettingsMenu(GuiWindow * home)
+{
+	mainWindow->remove(home);
+	SettingsPageScreen(SETTINGS_PAGE_PERFORMANCE);
+	mainWindow->append(home);
+}
+
+/****************************************************************************
  * HomeMenu
  ***************************************************************************/
 void HomeMenu ()
@@ -545,6 +731,20 @@ void HomeMenu ()
 	keyboardBtn.setTrigger(&trigA);
 	keyboardBtn.setEffectGrow();
 
+	GuiText settingsBtnTxt("Settings", 24, (PixelColor){0, 0, 0, 255});
+	GuiImage settingsBtnImg(&btnLargeOutline);
+	GuiImage settingsBtnImgOver(&btnLargeOutlineOver);
+	GuiButton settingsBtn(btnLargeOutline.getWidth(), btnLargeOutline.getHeight());
+	settingsBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	settingsBtn.setPosition(0, 235);
+	settingsBtn.setLabel(&settingsBtnTxt);
+	settingsBtn.setImage(&settingsBtnImg);
+	settingsBtn.setImageOver(&settingsBtnImgOver);
+	settingsBtn.setSoundOver(&btnSoundOver);
+	settingsBtn.setSoundClick(&btnSoundClick);
+	settingsBtn.setTrigger(&trigA);
+	settingsBtn.setEffectGrow();
+
 	GuiText closeBtnTxt("Close", 22, (PixelColor){0, 0, 0, 255});
 	GuiImage closeBtnImg(&btnCloseOutline);
 	GuiImage closeBtnImgOver(&btnCloseOutlineOver);
@@ -621,6 +821,7 @@ void HomeMenu ()
 	w.append(&fskipDecBtn);
 	w.append(&fskipIncBtn);
 	w.append(&keyboardBtn);
+	w.append(&settingsBtn);
 
 	mainWindow->append(screenImg);
 	mainWindow->append(&w);
@@ -728,6 +929,15 @@ void HomeMenu ()
 		{
 			fskipIncBtn.resetState();
 			MENU_IncreaseOrDecreaseFrameSkip(true);
+			updateFskipText(&fskipText);
+		}
+		else if (settingsBtn.getState() == STATE::CLICKED)
+		{
+			settingsBtn.resetState();
+			SettingsMenu(&w);
+
+			// the settings may have changed what these show
+			updateCyclesText(&cycleText);
 			updateFskipText(&fskipText);
 		}
 		else if (logoBtn.getState() == STATE::CLICKED)
