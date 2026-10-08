@@ -29,9 +29,9 @@
 
 // disable this to reduce the size of the TLB
 // NOTE: does not work with the dynamic core (dynrec is fine)
-#ifndef HW_RVL
+// The full TLB is ~20 MB on 32-bit targets, so it is heap allocated through
+// BulkMemory (MEM2 on Wii) in PAGING_InitTLB() rather than living in .bss.
 #define USE_FULL_TLB
-#endif
 
 class PageDirectory;
 
@@ -162,11 +162,11 @@ struct PagingBlock {
 	} base;
 #if defined(USE_FULL_TLB)
 	struct {
-		HostPt read[TLB_SIZE];
-		HostPt write[TLB_SIZE];
-		PageHandler * readhandler[TLB_SIZE];
-		PageHandler * writehandler[TLB_SIZE];
-		Bit32u	phys_page[TLB_SIZE];
+		HostPt * read;
+		HostPt * write;
+		PageHandler ** readhandler;
+		PageHandler ** writehandler;
+		Bit32u * phys_page;
 	} tlb;
 #else
 	tlb_entry tlbh[TLB_SIZE];

@@ -29,6 +29,7 @@
 #include "cpu.h"
 #include "debug.h"
 #include "setup.h"
+#include "drivers/BulkMemory.h"
 
 #define LINK_TOTAL		(64*1024)
 
@@ -645,6 +646,18 @@ bool PAGING_ForcePageInit(Bitu lin_addr) {
 
 #if defined(USE_FULL_TLB)
 void PAGING_InitTLB(void) {
+	if (!paging.tlb.read) {
+		/* One block for all five arrays; pointer-sized arrays first so every
+		   array stays naturally aligned behind a suitably aligned base. */
+		const size_t bytes=(size_t)TLB_SIZE*(2*sizeof(HostPt)+2*sizeof(PageHandler *)+sizeof(Bit32u));
+		Bit8u * mem=(Bit8u *)BulkMemory::allocate(bytes);
+		if (!mem) E_Exit("Can't allocate paging TLB (%d MB)",(int)(bytes/(1024*1024)));
+		paging.tlb.read=(HostPt *)mem;						mem+=TLB_SIZE*sizeof(HostPt);
+		paging.tlb.write=(HostPt *)mem;						mem+=TLB_SIZE*sizeof(HostPt);
+		paging.tlb.readhandler=(PageHandler **)mem;			mem+=TLB_SIZE*sizeof(PageHandler *);
+		paging.tlb.writehandler=(PageHandler **)mem;		mem+=TLB_SIZE*sizeof(PageHandler *);
+		paging.tlb.phys_page=(Bit32u *)mem;
+	}
 	for (Bitu i=0;i<TLB_SIZE;i++) {
 		paging.tlb.read[i]=0;
 		paging.tlb.write[i]=0;
