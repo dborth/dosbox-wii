@@ -578,7 +578,7 @@ static bool cache_init(bool enable) {
 		if (cache_unavailable) return false;
 		if (cache_blocks == NULL) {
 			// allocate the cache blocks memory
-			cache_blocks=(CacheBlockDynRec*)malloc(CACHE_BLOCKS*sizeof(CacheBlockDynRec));
+			cache_blocks=(CacheBlockDynRec*)BulkMemory::allocate(CACHE_BLOCKS*sizeof(CacheBlockDynRec));
 			if(!cache_blocks) E_Exit("Allocating cache_blocks has failed");
 			memset(cache_blocks,0,sizeof(CacheBlockDynRec)*CACHE_BLOCKS);
 			cache.block.free=&cache_blocks[0];

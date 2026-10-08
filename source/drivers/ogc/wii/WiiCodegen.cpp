@@ -10,8 +10,9 @@
  * and invalidate it in the I-cache when it closes.
  ***************************************************************************/
 #include "../../Codegen.h"
+#include "../../BulkMemory.h"
 
-#include <stdlib.h>
+#include <malloc.h>
 
 namespace {
 	int       writeDepth = 0;
@@ -38,12 +39,12 @@ namespace {
 
 uint8_t * Codegen::acquire(size_t preferred, size_t minimum, size_t & got)
 {
-	uint8_t * mem = (uint8_t *)malloc(preferred);
+	uint8_t * mem = (uint8_t *)mem1_memalign(32, preferred);
 	got = preferred;
 
 	if (!mem && minimum < preferred)
 	{
-		mem = (uint8_t *)malloc(minimum);
+		mem = (uint8_t *)mem1_memalign(32, minimum);
 		got = minimum;
 	}
 	if (!mem) got = 0;

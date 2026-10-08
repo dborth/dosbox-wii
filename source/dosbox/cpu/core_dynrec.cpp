@@ -52,6 +52,7 @@
 #include "lazyflags.h"
 #include "pic.h"
 #include "drivers/Codegen.h"
+#include "drivers/BulkMemory.h"
 
 #define CACHE_MAXSIZE	(4096*2)
 #define CACHE_TOTAL_MAX	(1024*1024*8)

@@ -13,3 +13,8 @@ void * BulkMemory::allocate(size_t bytes)
 {
 	return memalign(64, bytes);
 }
+
+void BulkMemory::release(void * block)
+{
+	free(block);
+}

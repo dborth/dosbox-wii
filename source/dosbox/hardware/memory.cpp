@@ -23,6 +23,7 @@
 #include "setup.h"
 #include "paging.h"
 #include "regs.h"
+#include "drivers/BulkMemory.h"
 
 #include <string.h>
 
@@ -559,7 +560,7 @@ public:
 			LOG_MSG("Memory sizes above %d MB are NOT recommended.",SAFE_MEMORY - 1);
 			LOG_MSG("Stick with the default values unless you are absolutely certain.");
 		}
-		MemBase = new Bit8u[memsize*1024*1024];
+		MemBase = (Bit8u*)BulkMemory::allocate(memsize*1024*1024);
 		if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);
 		/* Clear the memory, as new doesn't always give zeroed memory
 		 * (Visual C debug mode). We want zeroed memory though. */
@@ -594,7 +595,7 @@ public:
 		MEM_A20_Enable(false);
 	}
 	~MEMORY(){
-		delete [] MemBase;
+		BulkMemory::release(MemBase);
 		delete [] memory.phandlers;
 		delete [] memory.mhandles;
 	}
