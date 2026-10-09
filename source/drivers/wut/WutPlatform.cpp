@@ -14,6 +14,8 @@
 #include <malloc.h>
 
 #include "WutPlatform.h"
+#include "../../libgui/GuiImageDataCache.h"
+#include "imagelist.h"
 
 void WutPlatform::init(const PlatformConfig& config)
 {
@@ -57,10 +59,14 @@ void WutPlatform::init(const PlatformConfig& config)
 	}
 	this->logger->init(logConfig);
 #endif
+
+	GuiImageDataCache::preload(guiImageAssets, guiImageAssetCount);
 }
 
 void WutPlatform::shutdown()
 {
+	GuiImageDataCache::shutdown();
+
 	if (logger) {
 		logger->shutdown();
 		delete logger;

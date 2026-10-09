@@ -92,6 +92,10 @@ static void InitApp()
 	PlatformConfig platformConfig;
 	platformConfig.canvasWidth = 640;
 	platformConfig.canvasHeight = 480;
+#ifdef __WIIU__
+	platformConfig.assetScaleX = 3.0f;
+	platformConfig.assetScaleY = 2.25f;
+#endif
 	platform->init(platformConfig);
 
 	FindAppDrive();
