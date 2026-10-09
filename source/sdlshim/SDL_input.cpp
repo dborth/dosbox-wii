@@ -19,7 +19,10 @@
 
 #include "SDL_input.h"
 
+#include <math.h>
 #include "drivers/Platform.h"
+#include "drivers/VideoDriver.h"
+#include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputData.h"
 #include "drivers/InputDriver.h"
 #include "drivers/InputController.h"
@@ -28,6 +31,7 @@
 #include "drivers/Logger.h"
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
+#include "osk.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
  * often than the hardware updates, and a scan is not free. */
@@ -476,6 +480,23 @@ static void PollKeyboard(void)
 		event.key.keysym.mod = modState;
 		SDL_PushEvent(&event);
 	}
+
+	// The on-screen keyboard, one event a scan so a press and release are never together
+	if (OSK_PollKey(ke)) {
+		const SDLKey sym = (ke.hidUsage < 232) ? keymap[ke.hidUsage] : SDLK_UNKNOWN;
+		modState = ModsFromKeyEvent(ke.modifiers);
+
+		if (sym != SDLK_UNKNOWN) {
+			SDL_Event event;
+			memset(&event, 0, sizeof(event));
+			event.type = ke.pressed ? SDL_KEYDOWN : SDL_KEYUP;
+			event.key.state = ke.pressed ? SDL_PRESSED : SDL_RELEASED;
+			event.key.keysym.scancode = (Uint8)ke.hidUsage;
+			event.key.keysym.sym = sym;
+			event.key.keysym.mod = modState;
+			SDL_PushEvent(&event);
+		}
+	}
 }
 
 /****************************************************************************
@@ -559,6 +580,7 @@ static void PostMouseButton(int button, bool pressed)
 // the other source's idle state.
 static Uint8 irButtons = 0;   // SDL_BUTTON masks held via Wiimote 0
 static Uint8 usbButtons = 0;  // SDL_BUTTON masks held via USB mouse
+static Uint8 touchButtons = 0; // SDL_BUTTON masks held via the GamePad (touch tap, ZL/ZR)
 
 static void SetMouseButton(Uint8 * source, int button, bool pressed)
 {
@@ -570,10 +592,122 @@ static void SetMouseButton(Uint8 * source, int button, bool pressed)
 	if (pressed) *source |= mask; else *source &= ~mask;
 
 	// Report only a change of the combined state
-	bool nowHeld = ((irButtons | usbButtons) & mask) != 0;
+	bool nowHeld = ((irButtons | usbButtons | touchButtons) & mask) != 0;
 	bool reported = (mouseButtons & mask) != 0;
 	if (nowHeld != reported)
 		PostMouseButton(button, nowHeld);
+}
+
+/****************************************************************************
+ * GamePad touch screen as a trackpad
+ *
+ * Relative motion: dragging a finger moves the DOS cursor by the same
+ * fraction of the screen the finger moved over the game picture, wherever
+ * the touch starts. Lifting and touching again picks up where the cursor is.
+ *
+ *   tap        left click
+ *   ZR / ZL    left / right button, held (so ZR + drag drags)
+ *
+ * The picture position comes from EmulatorVideoDriver::mapPointerToUnit(),
+ * which follows however the game is placed on the GamePad, but clamps at the
+ * picture's edge: a finger dragged past it stops moving the cursor.
+ * While the on-screen keyboard is open, touch belongs to it.
+ ***************************************************************************/
+#define TOUCH_SPEED       1.0f  // 1.0: a drag across the picture crosses the DOS screen
+#define TAP_MAX_MS        250   // longer than this is not a tap
+#define TAP_HOLD_MS       40    // how long a tap's click is held, so DOS sees it
+#define TAP_SLOP_CANVAS   10.0f // finger movement (canvas units) that still counts as a tap
+
+static bool touchDown = false;
+static bool touchMoved = false;
+static float touchU = 0, touchV = 0;          // last position in the picture, 0..1
+static float touchStartX = 0, touchStartY = 0; // where it began, canvas units
+static float touchRemX = 0, touchRemY = 0;     // motion smaller than a whole unit, carried over
+static Ticks touchStartTime = 0;
+static bool tapActive = false;
+static Ticks tapStartTime = 0;
+
+static void ResetTouch(void)
+{
+	touchDown = false;
+	touchMoved = false;
+	touchRemX = touchRemY = 0;
+	tapActive = false;
+	touchButtons = 0;
+}
+
+static void PollTouch(void)
+{
+	const Ticks now = SystemTime::now();
+
+	// The GamePad is whichever controller reports it
+	const InputPadData * pad = NULL;
+	for (int i = 0; i < 4; i++) {
+		const InputPadData & p = controller[i]->getPadData();
+		if (p.hw_connected[INPUT_HW_DRC]) {
+			pad = &p;
+			break;
+		}
+	}
+
+	// Touch belongs to the on-screen keyboard while it is open. Anything held
+	// is let go, and a touch in progress is not a tap when it ends.
+	if (!pad || OSK_IsActive()) {
+		// release first: SetMouseButton() only reports a change
+		SetMouseButton(&touchButtons, SDL_BUTTON_LEFT, false);
+		SetMouseButton(&touchButtons, SDL_BUTTON_RIGHT, false);
+		ResetTouch();
+		return;
+	}
+
+	const uint32_t buttons = pad->hw_buttons_h[INPUT_HW_DRC];
+
+	// A tap's click ends after a short hold
+	if (tapActive && SystemTime::diffMillisecs(tapStartTime, now) >= TAP_HOLD_MS)
+		tapActive = false;
+
+	float u = 0, v = 0;
+	EmulatorVideoDriver * emu = platform->getVideo()->getEmulatorVideo();
+	const bool touching = pad->isTouch && pad->validPointer && emu &&
+		emu->mapPointerToUnit(pad->cursor_x, pad->cursor_y, true, &u, &v);
+
+	if (touching) {
+		if (!touchDown) {
+			touchDown = true;
+			touchMoved = false;
+			touchStartX = pad->cursor_x;
+			touchStartY = pad->cursor_y;
+			touchStartTime = now;
+			touchRemX = touchRemY = 0;
+		}
+		else {
+			const float fx = (u - touchU) * MOUSE_W * TOUCH_SPEED + touchRemX;
+			const float fy = (v - touchV) * MOUSE_H * TOUCH_SPEED + touchRemY;
+			const int dx = (int)fx;
+			const int dy = (int)fy;
+			touchRemX = fx - dx;
+			touchRemY = fy - dy;
+			PostMouseMotion(dx, dy);
+		}
+
+		touchU = u;
+		touchV = v;
+
+		if (!touchMoved &&
+			(fabsf(pad->cursor_x - touchStartX) > TAP_SLOP_CANVAS ||
+			 fabsf(pad->cursor_y - touchStartY) > TAP_SLOP_CANVAS))
+			touchMoved = true;
+	}
+	else if (touchDown) {
+		touchDown = false;
+		if (!touchMoved && SystemTime::diffMillisecs(touchStartTime, now) <= TAP_MAX_MS) {
+			tapActive = true;
+			tapStartTime = now;
+		}
+	}
+
+	SetMouseButton(&touchButtons, SDL_BUTTON_LEFT, tapActive || (buttons & INPUT_TRIGGER_ZR) != 0);
+	SetMouseButton(&touchButtons, SDL_BUTTON_RIGHT, (buttons & INPUT_TRIGGER_ZL) != 0);
 }
 
 static void PollMouse(void)
@@ -582,7 +716,7 @@ static void PollMouse(void)
 	const InputPadData & pad = controller[0]->getPadData();
 	const uint32_t wm = pad.hw_buttons_h[INPUT_HW_WIIMOTE];
 
-	if (pad.hw_connected[INPUT_HW_WIIMOTE] && pad.validPointer) {
+	if (pad.hw_connected[INPUT_HW_WIIMOTE] && pad.validPointer && !pad.isTouch) {
 		if (irWasValid)
 			PostMouseMotion((int)(pad.cursor_x - irLastX), (int)(pad.cursor_y - irLastY));
 		irLastX = pad.cursor_x;
@@ -597,6 +731,9 @@ static void PollMouse(void)
 		SetMouseButton(&irButtons, SDL_BUTTON_LEFT, (wm & INPUT_BTN_A) != 0);
 		SetMouseButton(&irButtons, SDL_BUTTON_RIGHT, (wm & INPUT_BTN_B) != 0);
 	}
+
+	// GamePad touch screen
+	PollTouch();
 
 	// USB mouse
 	MouseEvent me;
@@ -884,7 +1021,8 @@ void InputHal_Init(void)
 
 	eventHead = eventCount = 0;
 	modState = KMOD_NONE;
-	mouseButtons = irButtons = usbButtons = 0;
+	mouseButtons = irButtons = usbButtons = touchButtons = 0;
+	ResetTouch();
 	irWasValid = false;
 }
 
@@ -899,6 +1037,7 @@ void InputHal_Update(void)
 
 	platform->getInput()->update();
 
+	OSK_Update();
 	UpdateJoysticks();
 	PollKeyboard();
 	PollMouse();

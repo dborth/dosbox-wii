@@ -34,6 +34,11 @@ void GFX_Suspend(void);
 //! DOSBox only presents a frame when something on screen changed.
 void GFX_Resume(void);
 
+//! Presents the last frame again. DOSBox only presents when the DOS screen
+//! changes; this is for things drawn with the frame (the GamePad overlay) that
+//! must update when it has not. Does nothing while the menu owns the display,
+//! while DOSBox is part way through a frame, or before any mode is set.
+void GFX_Refresh(void);
 //! Shows a finished RGB565 picture that is not emulator output (the mapper
 //! screen), square pixels, in place of the emulator frame. pixels must be 32
 //! byte aligned. GFX_ResetScreen() brings the emulator picture back.

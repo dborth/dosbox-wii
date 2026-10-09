@@ -378,10 +378,16 @@ void WutVideoDriver::flushDrawQueue()
 		return;
 	}
 
-	WHBGfxBeginRenderTV();
-	replayDrawQueue();
-	WHBGfxBeginRenderDRC();
-	replayDrawQueue();
+	if(uiTargets & (1u << (unsigned)OutputTarget::TV))
+	{
+		WHBGfxBeginRenderTV();
+		replayDrawQueue();
+	}
+	if(uiTargets & (1u << (unsigned)OutputTarget::DRC))
+	{
+		WHBGfxBeginRenderDRC();
+		replayDrawQueue();
+	}
 
 	drawQueue.clear();
 }

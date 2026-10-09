@@ -39,6 +39,8 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
 
+		bool setGamePadOverlay(void (*fn)(void* userdata), void* userdata) override;
+
 	protected:
 		void settingsChanged() override;
 
@@ -63,6 +65,8 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 
 		float pixelAspectX = 1.0f;
 		float pixelAspectY = 1.0f;
+		void (*overlayFn)(void*) = nullptr;
+		void* overlayData = nullptr;
 		bool samplerDirty = true;
 		bool placementDirty = true;
 

@@ -362,7 +362,26 @@ void WutEmulatorVideo::drawQuad()
 	WHBGfxBeginRenderTV();
 	drawGame(OutputTarget::TV);
 	WHBGfxBeginRenderDRC();
-	drawGame(OutputTarget::DRC);
+	if (overlayFn)
+	{
+		// The GamePad shows the overlay instead of the game. Its draws are
+		// replayed into the GamePad only; the TV keeps the game.
+		videoDriver->setUiTargets(1u << (unsigned)OutputTarget::DRC);
+		overlayFn(overlayData);
+		videoDriver->flushDrawQueue();
+		videoDriver->setUiTargets(WutVideoDriver::kAllTargets);
+	}
+	else
+	{
+		drawGame(OutputTarget::DRC);
+	}
+}
+
+bool WutEmulatorVideo::setGamePadOverlay(void (*fn)(void* userdata), void* userdata)
+{
+	overlayFn = fn;
+	overlayData = fn ? userdata : nullptr;
+	return true;
 }
 
 /****************************************************************************

@@ -26,6 +26,7 @@
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
 #include "videosupport.h"
+#include "osk.h"
 
 static struct {
 	bool active;			// GFX_Start()/GFX_Stop(): DOSBox may draw
@@ -82,6 +83,8 @@ void GFX_Suspend(void) {
 	if (gfx.suspended)
 		return;
 
+	OSK_Close();		// the menu is about to take over the GamePad too
+
 	// A frame DOSBox is part way through drawing is left alone. Nothing runs
 	// while the menu is up, and the rest of it is drawn after GFX_Resume().
 	EmulatorVideoDriver * video = EmulatorVideo();
@@ -101,6 +104,13 @@ void GFX_Resume(void) {
 	// something changes, which may be a long time at a quiet prompt.
 	if (gfx.frame)
 		PresentFrame();
+}
+
+void GFX_Refresh(void) {
+	if (!gfx.frame || gfx.width == 0 || gfx.height == 0 || gfx.suspended || gfx.updating)
+		return;
+
+	PresentFrame();
 }
 
 void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pitch) {

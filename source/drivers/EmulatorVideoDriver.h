@@ -127,6 +127,19 @@ class EmulatorVideoDriver
 			return false;
 		}
 
+		//! Draws an overlay on the GamePad in place of the game picture (the TV is
+		//! untouched). While one is set, the driver calls fn(userdata) once per
+		//! presented frame, after the game, in the UI canvas coordinates the GUI
+		//! draws in; fn does ordinary GUI draw calls. Pass nullptr to remove it.
+		//! The picture is only presented when DOSBox draws, so a caller that needs
+		//! the overlay to stay live presents the last frame again itself.
+		//! Returns false (and does nothing) if the platform has no second screen.
+		virtual bool setGamePadOverlay(void (*fn)(void* userdata), void* userdata)
+		{
+			(void)fn; (void)userdata;
+			return false;
+		}
+
 	protected:
 		//! Called when setSettings() changed something. Mark state dirty; do not
 		//! touch the GPU here, the menu may own it.

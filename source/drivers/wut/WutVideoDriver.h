@@ -109,6 +109,13 @@ class WutVideoDriver : public VideoDriver
 		//!call it first to keep ordering. Leaves the GamePad context bound.
 		void flushDrawQueue();
 
+		//!Which outputs flushDrawQueue() replays into (bit per OutputTarget:
+		//!1 << TV, 1 << DRC). Default is both. A UI overlay for one output sets
+		//!it around its draws, so even a queue overflow part way through cannot
+		//!put them on the other. Always restore it to kAllTargets.
+		static const unsigned kAllTargets = 3;
+		void setUiTargets(unsigned mask) { uiTargets = mask; }
+
 		//!Waits until the GPU has retired the last submitted frame. Nothing
 		//!happens if no frame is in flight or the foreground is gone. Anything
 		//!about to write to (or free) memory a submitted frame may still be
@@ -125,6 +132,7 @@ class WutVideoDriver : public VideoDriver
 		std::vector<WutDrawCmd> drawQueue;
 		void replayDrawQueue() const; // draws drawQueue into whichever context is currently bound
 
+		unsigned uiTargets = kAllTargets;
 		bool gpuFramesInFlight = false;   // a pipelined frame was submitted and not yet retired/drained
 		OSTime lastSubmitTimeStamp = 0;   // GX2 timestamp of that submit
 
