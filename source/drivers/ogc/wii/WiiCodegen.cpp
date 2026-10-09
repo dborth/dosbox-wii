@@ -76,3 +76,8 @@ void Codegen::endWrite()
 	dirtyLo = nullptr;
 	dirtyHi = nullptr;
 }
+
+bool Codegen::isPlainMemory()
+{
+	return true;
+}

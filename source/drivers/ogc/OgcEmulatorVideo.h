@@ -35,6 +35,7 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		bool getSnapshotInfo(FrameSnapshotInfo* info) const override;
 		//! Un-tiles the buffer snapshotFrame() captured into packed RGB24
 		bool readFrameRGB24(int width, int height, uint8_t* dst) override;
+		void releaseSnapshot() override;
 
 		void renderInit(int width, int height) override;
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;

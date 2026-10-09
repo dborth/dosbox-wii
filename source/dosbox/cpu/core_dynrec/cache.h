@@ -656,6 +656,29 @@ static bool cache_init(bool enable) {
 	return true;
 }
 
+/* The code cache can be lent out as scratch memory while the menu is open (see
+ * memmanager.cpp). Everything translated is thrown away first, and ClearRelease()
+ * also unpatches the jumps between blocks, which needs the code still in place -
+ * so this has to happen before the memory is reused. Afterwards no page holds
+ * code and no block is in use, so nothing refers to the memory. The block area
+ * carries no data of its own (blocks are described in cache_blocks) and does not
+ * include the run/link stubs at the start of the cache, which stay untouched.
+ * While lent, the core must not run: CPU_Core_Dynrec_Run() checks. */
+static bool cache_lent=false;
+
+static bool cache_lend(Bit8u ** base,size_t * size) {
+	if (!cache_initialized || cache_lent || !Codegen::isPlainMemory()) return false;
+	while (cache.used_pages) cache.used_pages->ClearRelease();
+	cache_lent=true;
+	*base=cache_code;
+	*size=cache_total;
+	return true;
+}
+
+static void cache_reclaim(void) {
+	cache_lent=false;
+}
+
 static void cache_close(void) {
 /*	for (;;) {
 		if (cache.used_pages) {

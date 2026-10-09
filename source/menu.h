@@ -11,9 +11,6 @@
 extern int MENU_CyclesDisplay;
 extern int MENU_FrameskipDisplay;
 
-/** One-time GUI setup. The platform and fontSystem must already exist. */
-void InitGUI();
-
 /** The home menu. Blocks, stepping the GUI itself, until it is closed. */
 void HomeMenu();
 

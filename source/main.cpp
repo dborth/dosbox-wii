@@ -33,6 +33,7 @@
 #include "drivers/MouseDriver.h"
 #include "videosupport.h"
 #include "input.h"
+#include "memmanager.h"
 
 #ifdef HW_RVL
 #include "drivers/ogc/wii/WiiPlatform.h"
@@ -81,8 +82,6 @@ static void SwitchAudioMode(int mode)
  * Brings up the platform (thread, video, audio, input, filesystem, logger
  * drivers) and the GUI text system.
  ***************************************************************************/
-#define IMAGE_DECODE_SCRATCH_SIZE ((640 * 480 * 4) + (480 * sizeof(void *)))
-
 static void InitApp()
 {
 	// stdout/stderr go nowhere; diagnostics use the platform Logger
@@ -97,8 +96,6 @@ static void InitApp()
 
 	FindAppDrive();
 
-	GuiImageData::setDecodeScratch(malloc(IMAGE_DECODE_SCRATCH_SIZE), IMAGE_DECODE_SCRATCH_SIZE);
-
 	keyboard->init();
 	usbMouse->init();
 
@@ -108,7 +105,6 @@ static void InitApp()
 	textTranslator->loadLanguage(en_lang, en_lang_size);
 
 	platform->getVideo()->startMenuVideo();
-	InitGUI();
 
 	InitKeyInjection();
 }
@@ -125,6 +121,7 @@ void EnterMenu()
 	AbortKeys();
 
 	SwitchAudioMode(1);
+	SwitchMemoryModeMenu();
 
 	// Waits for the last frame to reach the screen, and keeps a copy of it
 	// for the menu background. Must come before the mode switch below.
@@ -132,6 +129,8 @@ void EnterMenu()
 	platform->getVideo()->startMenuVideo();
 
 	HomeMenu();
+
+	SwitchMemoryModeEmulator();
 
 	SwitchAudioMode(0);
 	GFX_Resume();	// also repaints: DOSBox won't present again until something changes

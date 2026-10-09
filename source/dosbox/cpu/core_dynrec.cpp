@@ -185,7 +185,19 @@ CacheBlockDynRec * LinkBlocks(BlockReturn ret) {
 	execution process, or returning from the core etc.
 */
 
+bool CPU_Core_Dynrec_LendCache(void ** base,size_t * size) {
+	Bit8u * lent_base;
+	if (!cache_lend(&lent_base,size)) return false;
+	*base=lent_base;
+	return true;
+}
+
+void CPU_Core_Dynrec_ReclaimCache(void) {
+	cache_reclaim();
+}
+
 Bits CPU_Core_Dynrec_Run(void) {
+	if (GCC_UNLIKELY(cache_lent)) E_Exit("The dynamic core ran while its code cache was lent out");
 	for (;;) {
 		// Determine the linear address of CS:EIP
 		PhysPt ip_point=SegPhys(cs)+reg_eip;

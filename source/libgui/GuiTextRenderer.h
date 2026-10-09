@@ -100,6 +100,9 @@ public:
 
 	void setPixelSize(int16_t pixelSize);
 
+	//! Destroys every cached glyph texture. Glyphs are re-rendered when next used.
+	void clearGlyphCache() { unloadFont(); }
+
 	// Core Drawing Signatures
 	uint16_t drawText(int16_t x, int16_t y, const wchar_t* text, PixelColor color = black, uint32_t renderFlags = 0);
 	uint16_t drawText(int16_t x, int16_t y, const char* text, PixelColor color = black, uint32_t renderFlags = 0);

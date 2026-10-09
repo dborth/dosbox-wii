@@ -39,6 +39,12 @@ class Codegen
 		//! \return the region, or nullptr if less than minimum is available
 		static uint8_t * acquire(size_t preferred, size_t minimum, size_t & got);
 
+		//! True if the cache is ordinary RAM that can serve as scratch memory
+		//! while no generated code is running (Wii). False where the region
+		//! is special - Wii U's is an executable region that may only be
+		//! written inside a write window.
+		static bool isPlainMemory();
+
 		//! Opens a write window. Nestable - only the outermost call
 		//! changes the region's state.
 		static void beginWrite();

@@ -111,3 +111,8 @@ uint8_t * Codegen::acquire(size_t preferred, size_t minimum, size_t & got) {
 void Codegen::beginWrite() { WutCodegenBeginWrite(); }
 void Codegen::markDirty(const void * p, size_t n) { WutCodegenMarkDirty(p, n); }
 void Codegen::endWrite() { WutCodegenEndWrite(); }
+
+bool Codegen::isPlainMemory()
+{
+	return false;
+}

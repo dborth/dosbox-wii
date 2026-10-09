@@ -6,6 +6,7 @@
 #include <gccore.h>
 #include <ogcsys.h>
 #include <malloc.h>
+#include "../../memmanager.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,7 +61,7 @@ static inline s16 toS16(float v)
 
 OgcEmulatorVideo::~OgcEmulatorVideo()
 {
-	free(screenshotSnapshot);
+	releaseSnapshot();
 	free(texMem);
 	free(prescaleMem);
 }
@@ -610,10 +611,16 @@ void OgcEmulatorVideo::tileRGB565(const uint8_t* src, int pitch, int width, int 
 /****************************************************************************
  * Screenshot support
  ***************************************************************************/
+void OgcEmulatorVideo::releaseSnapshot()
+{
+	memspace_free(screenshotSnapshot);
+	screenshotSnapshot = nullptr;
+}
+
+// The snapshot is menu memory: take it after SwitchMemoryModeMenu()
 void OgcEmulatorVideo::snapshotFrame()
 {
-	free(screenshotSnapshot);
-	screenshotSnapshot = nullptr;
+	releaseSnapshot();
 
 	if (!texMem || frameWidth <= 0 || frameHeight <= 0)
 		return;
@@ -621,7 +628,7 @@ void OgcEmulatorVideo::snapshotFrame()
 	ensureRect();
 
 	size_t size = (size_t)((frameWidth + 3) & ~3) * ((frameHeight + 3) & ~3) * 2;
-	screenshotSnapshot = (uint8_t *) malloc(size);
+	screenshotSnapshot = (uint8_t *) memspace_malloc(size);
 	if (screenshotSnapshot) {
 		memcpy(screenshotSnapshot, texMem, size);
 		snapWidth = frameWidth;
@@ -649,8 +656,7 @@ bool OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 		return false;
 
 	if (width != snapWidth || height != snapHeight) {
-		free(screenshotSnapshot);
-		screenshotSnapshot = nullptr;
+		releaseSnapshot();
 		return false;
 	}
 
@@ -676,8 +682,7 @@ bool OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
 		}
 	}
 
-	free(screenshotSnapshot);
-	screenshotSnapshot = nullptr;
+	releaseSnapshot();
 	return true;
 }
 

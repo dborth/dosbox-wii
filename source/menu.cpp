@@ -25,6 +25,7 @@
 #include "input.h"
 #include "menu.h"
 #include "settings.h"
+#include "memmanager.h"
 
 // Declared here rather than including cpu.h, to keep DOSBox headers out of
 // this libgui/HAL file.
@@ -38,22 +39,6 @@ int MENU_FrameskipDisplay = 0;
 static GuiImageData * pointer[4] = { NULL, NULL, NULL, NULL };
 static GuiImage cursorImg[4];
 static GuiWindow * mainWindow = NULL;
-
-/****************************************************************************
- * InitGUI
- *
- * One-time setup; the platform and fontSystem must already exist.
- ***************************************************************************/
-void InitGUI()
-{
-	pointer[0] = new GuiImageData(player1_point_png);
-	pointer[1] = new GuiImageData(player2_point_png);
-	pointer[2] = new GuiImageData(player3_point_png);
-	pointer[3] = new GuiImageData(player4_point_png);
-
-	for(int i = 0; i < 4; i++)
-		cursorImg[i].setImage(pointer[i]);
-}
 
 /****************************************************************************
  * ExitApp
@@ -368,13 +353,13 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 	if(!emu->getSnapshotInfo(&info))
 		return NULL;
 
-	uint8_t * rgb = (uint8_t *) malloc((size_t)info.width * info.height * 3);
+	uint8_t * rgb = (uint8_t *) memspace_malloc((size_t)info.width * info.height * 3);
 	if(!rgb)
 		return NULL;
 
 	if(!emu->readFrameRGB24(info.width, info.height, rgb))
 	{
-		free(rgb);
+		memspace_free(rgb);
 		return NULL;
 	}
 
@@ -387,7 +372,7 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 		images->fillTexture(texture, screenwidth, screenheight, BackgroundPixel, &src);
 	}
 
-	free(rgb);
+	memspace_free(rgb);
 	return texture;
 }
 
@@ -584,6 +569,14 @@ void HomeMenu ()
 	VideoDriver * video = platform->getVideo();
 	const int screenwidth = video->getScreenWidth();
 	const int screenheight = video->getScreenHeight();
+
+	pointer[0] = new GuiImageData(player1_point_png);
+	pointer[1] = new GuiImageData(player2_point_png);
+	pointer[2] = new GuiImageData(player3_point_png);
+	pointer[3] = new GuiImageData(player4_point_png);
+
+	for(int i = 0; i < 4; i++)
+		cursorImg[i].setImage(pointer[i]);
 
 	mainWindow = new GuiWindow(screenwidth, screenheight);
 
@@ -972,5 +965,12 @@ void HomeMenu ()
 		delete batteryImg[i];
 		delete batteryBarImg[i];
 		delete batteryTxt[i];
+	}
+
+	for(int i = 0; i < 4; i++)
+	{
+		cursorImg[i].setImage(nullptr);
+		delete pointer[i];
+		pointer[i] = nullptr;
 	}
 }

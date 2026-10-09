@@ -108,6 +108,10 @@ class EmulatorVideoDriver
 		//! untouched, if there is no snapshot or width/height don't match it.
 		virtual bool readFrameRGB24(int width, int height, uint8_t* dst) = 0;
 
+		//! Drops the snapshot if readFrameRGB24() has not consumed it. The
+		//! snapshot lives in menu memory, which goes away when the menu does.
+		virtual void releaseSnapshot() {}
+
 		//! Sets the initial console dimensions, before the first presentFrame() call
 		virtual void renderInit(int width, int height) { (void)width; (void)height; }
 
