@@ -336,6 +336,21 @@ void DOS_BuildUMBChain(bool umb_active,bool ems_active) {
 	}
 }
 
+/* True when building the UMB chain again (what re-initialising XMS does) would
+ * destroy nothing: no chain has been built, or it is unlinked and its first
+ * block is still the one free block DOS_BuildUMBChain made. A linked chain
+ * makes the scan for the last block in DOS_BuildUMBChain run on into the UMBs
+ * and write the cover MCB past them; a program loaded high is overwritten.
+ * first_umb_seg must match DOS_BuildUMBChain. */
+bool DOS_UMBChainIsPristine(void) {
+	const Bit16u first_umb_seg = 0xd000;
+
+	if (dos_infoblock.GetStartOfUMBChain()!=UMB_START_SEG) return true;
+	if (dos_infoblock.GetUMBChainState()&1) return false;
+	DOS_MCB umb_mcb(first_umb_seg);
+	return umb_mcb.GetType()==0x5a && umb_mcb.GetPSPSeg()==0;
+}
+
 bool DOS_LinkUMBsToMemChain(Bit16u linkstate) {
 	/* Get start of UMB-chain */
 	Bit16u umb_start=dos_infoblock.GetStartOfUMBChain();

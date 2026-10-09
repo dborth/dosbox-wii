@@ -25,4 +25,10 @@ bool IsShellIdle();
 //! which case neither value is set.
 bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer);
 
+//! True when the DOS section (XMS, EMS, UMB, keyboard layout) can be
+//! re-initialised without damage: the upper memory blocks are untouched and
+//! enough callback slots are left for EMS, which keeps one per init. When
+//! false, *reason (if not NULL) is a short sentence saying why.
+bool CanReinitDosSection(const char ** reason);
+
 #endif

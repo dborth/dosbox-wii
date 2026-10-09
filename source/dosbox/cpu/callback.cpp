@@ -56,6 +56,17 @@ void CALLBACK_DeAllocate(Bitu in) {
 	CallBack_Handlers[in]=&illegal_handler;
 }
 
+/* How many callback slots CALLBACK_Allocate could still hand out. The menu
+ * asks before re-initialising EMS, which takes a slot every time and never
+ * gives it back. */
+Bitu CALLBACK_FreeCount(void) {
+	Bitu free_slots=0;
+	for (Bitu i=1;i<CB_MAX;i++) {
+		if (CallBack_Handlers[i]==&illegal_handler) free_slots++;
+	}
+	return free_slots;
+}
+
 
 void CALLBACK_Idle(void) {
 /* this makes the cpu execute instructions to handle irq's and then come back */

@@ -513,6 +513,159 @@ static bool TandyAllowed(const char * candidate)
 }
 
 /****************************************************************************
+ * sblaster and gus: clashes
+ *
+ * DOSBox does not check that two devices ask for the same resource. Handlers
+ * installed on the same I/O port overwrite each other (and the loser's port
+ * goes dead when either is removed), and two devices on one IRQ or DMA
+ * channel confuse each other. So a step to a value that would start a clash
+ * is skipped. A clash that is already there (from dosbox.conf) does not stop
+ * the rows that have nothing to do with it.
+ *
+ * What each device claims, from the constructors:
+ *   SB / OPL (sblaster.cpp, adlib.cpp): sbbase .. sbbase+0xf, and 0x388.
+ *   GUS (gus.cpp): gusbase+0x0, 0x6, 0x8-0xb and gusbase+0x102-0x107.
+ *     With gusbase 2c0 that is 3c2-3c7, which VGA owns (vga_misc.cpp,
+ *     vga_seq.cpp, vga_dac.cpp). The bases in the lists are 0x20 apart, so
+ *     two devices only meet when their bases are equal.
+ * The SB16's 8 bit and 16 bit DMA channels must differ as well.
+ *
+ * Not checked, because nothing here was read for it: IRQs against the PS/2
+ * mouse (12) or the dummy serial ports (3, 4).
+ ***************************************************************************/
+enum { CLASH_PORT = 1, CLASH_IRQ = 2, CLASH_DMA = 4, CLASH_VGA = 8, CLASH_SBDMA = 16 };
+
+struct Resources
+{
+	bool sbOn, sb16, gusOn;
+	int sbBase, sbIrq, sbDma, sbHdma;
+	int gusBase, gusIrq, gusDma;
+};
+
+//! The value of section.prop with the candidate (if any) in place of the config's.
+static std::string ValueWith(const char * section, const char * prop,
+	const char * candSection, const char * candProp, const std::string * cand)
+{
+	if(cand && !strcasecmp(section, candSection) && !strcasecmp(prop, candProp))
+		return *cand;
+
+	return GetConfig(section, prop);
+}
+
+static Resources ReadResources(const char * candSection, const char * candProp, const std::string * cand)
+{
+	Resources r;
+	const std::string type = ValueWith("sblaster", "sbtype", candSection, candProp, cand);
+
+	r.sbOn = (type != "none" && type != "gb" && type != "");
+	r.sb16 = (type == "sb16");
+	r.gusOn = (ValueWith("gus", "gus", candSection, candProp, cand) == "true");
+	r.sbBase = (int)strtol(ValueWith("sblaster", "sbbase", candSection, candProp, cand).c_str(), NULL, 16);
+	r.sbIrq = atoi(ValueWith("sblaster", "irq", candSection, candProp, cand).c_str());
+	r.sbDma = atoi(ValueWith("sblaster", "dma", candSection, candProp, cand).c_str());
+	r.sbHdma = atoi(ValueWith("sblaster", "hdma", candSection, candProp, cand).c_str());
+	r.gusBase = (int)strtol(ValueWith("gus", "gusbase", candSection, candProp, cand).c_str(), NULL, 16);
+	r.gusIrq = atoi(ValueWith("gus", "gusirq", candSection, candProp, cand).c_str());
+	r.gusDma = atoi(ValueWith("gus", "gusdma", candSection, candProp, cand).c_str());
+	return r;
+}
+
+static int Clashes(const Resources & r)
+{
+	int bits = 0;
+
+	if(r.gusOn)
+	{
+		if(r.gusBase == 0x2c0)
+			bits |= CLASH_VGA;
+
+		if(r.sbOn)
+		{
+			if(r.sbBase == r.gusBase)
+				bits |= CLASH_PORT;
+			if(r.sbIrq == r.gusIrq)
+				bits |= CLASH_IRQ;
+			if(r.gusDma == r.sbDma || (r.sb16 && r.gusDma == r.sbHdma))
+				bits |= CLASH_DMA;
+		}
+	}
+
+	if(r.sbOn && r.sb16 && r.sbDma == r.sbHdma)
+		bits |= CLASH_SBDMA;
+
+	return bits;
+}
+
+static const char * ClashReason(int bits)
+{
+	if(bits & CLASH_VGA)
+		return "A Gravis Ultrasound at 2c0 would take over the VGA registers.";
+	if(bits & CLASH_PORT)
+		return "The Sound Blaster and the Gravis Ultrasound would share a port address.";
+	if(bits & CLASH_IRQ)
+		return "The Sound Blaster and the Gravis Ultrasound would share an IRQ.";
+	if(bits & CLASH_DMA)
+		return "The Sound Blaster and the Gravis Ultrasound would share a DMA channel.";
+	if(bits & CLASH_SBDMA)
+		return "The Sound Blaster's 8 bit and 16 bit DMA would be the same channel.";
+	return NULL;
+}
+
+static bool IsResourceProp(const char * section, const char * prop)
+{
+	static const char * const sbProps[] = { "sbtype", "sbbase", "irq", "dma", "hdma", NULL };
+	static const char * const gusProps[] = { "gus", "gusbase", "gusirq", "gusdma", NULL };
+	const char * const * list = !strcasecmp(section, "sblaster") ? sbProps
+		: (!strcasecmp(section, "gus") ? gusProps : NULL);
+
+	for(int i = 0; list && list[i]; i++)
+	{
+		if(!strcasecmp(list[i], prop))
+			return true;
+	}
+	return false;
+}
+
+/****************************************************************************
+ * Refusal
+ *
+ * The one place that says whether a value may be written. Every row, on the
+ * curated pages and in the all-settings editor, asks it before Apply(), so
+ * the two cannot disagree about which combinations are safe. Returns why the
+ * value is refused, or NULL.
+ ***************************************************************************/
+static const char * Refusal(const char * section, const char * prop, const std::string & candidate)
+{
+	if(!strcasecmp(section, "cpu"))
+	{
+		if(!strcasecmp(prop, "core") && !CoreAllowed(candidate.c_str()))
+			return "The 386_prefetch CPU type only works with the normal core.";
+		if(!strcasecmp(prop, "cputype") && !CpuTypeAllowed(candidate.c_str()))
+			return "386_prefetch needs the normal or auto core.";
+	}
+	else if(!strcasecmp(section, "speaker") && !strcasecmp(prop, "tandy"))
+	{
+		if(!TandyAllowed(candidate.c_str()))
+			return "Tandy sound can only be forced on for the tandy and pcjr machines.";
+	}
+	else if(IsResourceProp(section, prop))
+	{
+		const int now = Clashes(ReadResources(NULL, NULL, NULL));
+		const int then = Clashes(ReadResources(section, prop, &candidate));
+
+		return ClashReason(then & ~now);
+	}
+	else if(!strcasecmp(section, "dos"))
+	{
+		const char * why = NULL;
+
+		if(!CanReinitDosSection(&why))
+			return why;
+	}
+	return NULL;
+}
+
+/****************************************************************************
  * render.frameskip
  *
  * The home screen's +/- buttons change the running frameskip without
@@ -613,7 +766,7 @@ static const PageDef pages[SETTINGS_PAGE_COUNT] =
 /****************************************************************************
  * Public interface
  ***************************************************************************/
-static const SettingRow * GetRow(SettingsPage page, int row)
+static const SettingRow * GetRow(int page, int row)
 {
 	if((int)page < 0 || (int)page >= SETTINGS_PAGE_COUNT)
 		return NULL;
@@ -624,24 +777,490 @@ static const SettingRow * GetRow(SettingsPage page, int row)
 	return &pages[page].rows[row];
 }
 
-const char * Settings_PageTitle(SettingsPage page)
+static void CuratedValue(const SettingRow * r, char * buf, size_t size);
+static void CuratedHelp(const SettingRow * r, char * buf, size_t size);
+static bool CuratedStep(const SettingRow * r, int direction);
+
+/****************************************************************************
+ * All settings: a reflective editor over Section_prop
+ *
+ * One page per config section, one row per property, built from the property
+ * itself every time it is asked for. A property that has a curated row is
+ * handed to that row, so there is one definition of how it is shown, stepped
+ * and guarded. The rest are shown by what DOSBox says they are:
+ *
+ *   bool                        toggles
+ *   string / int / hex with a list of values (Set_values)   cycles the list
+ *   int with a range of at most 100 (SetMinMax)             steps by 1 or 5
+ *   everything else (free text, paths, multival)            read-only
+ *
+ * There is no free-text entry. Each change goes through Apply() and
+ * Refusal() like every other row.
+ *
+ * Whether a change takes effect now is decided by the section, not the
+ * property: Section::ExecuteInit(false) only runs the init functions that
+ * DOSBOX_Init() registered with canchange=true (render, cpu, midi, sblaster,
+ * gus, speaker, serial, and the JOYSTICK_Init, XMS_Init, EMS_Init and
+ * DOS_KeyboardLayout_Init of joystick and dos), and every property of those
+ * sections is read by one of them. A property of any other section (dosbox,
+ * mixer, sdl) is read once at start. Those rows are read-only here and say
+ * "next launch": the in-memory config would change but nothing would read it,
+ * and nothing saves it to dosbox.conf yet. The list of live sections below
+ * has to follow dosbox.cpp; the host test checks it against the real
+ * registrations.
+ ***************************************************************************/
+struct PropRef
 {
-	if((int)page < 0 || (int)page >= SETTINGS_PAGE_COUNT)
+	const char * section;
+	const char * prop;
+};
+
+//! Not shown. Each one is dead or not ours to set on this build:
+static const PropRef hiddenProps[] =
+{
+	{ "mixer", "rate" },			// the audio driver fixes it (MIXER_Init)
+	{ "mixer", "blocksize" },		// the same
+	{ "midi", "mididevice" },		// no handler that opens: nothing to choose
+	{ "midi", "midiconfig" },		// the options of one
+	{ "render", "aspect" },			// belongs to the display pipeline
+	{ "sdl", "fullscreen" },		// nothing reads these six
+	{ "sdl", "fulldouble" },
+	{ "sdl", "fullresolution" },
+	{ "sdl", "windowresolution" },
+	{ "sdl", "output" },
+	{ "sdl", "waitonerror" },
+	{ "sdl", "priority" },			// only read when an SDL focus event arrives, and nothing sends one
+};
+
+//! Not shown: only dummy and disabled exist on this build (C_MODEM and
+//! C_DIRECTSERIAL are 0), and a console has no serial port to connect.
+static const char * const hiddenSections[] = { "serial" };
+
+//! Sections whose changes reach the running core (see above).
+static const char * const liveSections[] =
+{
+	"render", "cpu", "midi", "sblaster", "gus", "speaker", "joystick", "dos"
+};
+
+//! Of those, the ones that are safe at any time. The rest wait for the DOS prompt.
+static const char * const anytimeSections[] = { "render", "cpu" };
+
+struct SectionTitle
+{
+	const char * name;
+	const char * title;
+};
+
+static const SectionTitle sectionTitles[] =
+{
+	{ "dosbox", "Machine and memory" },
+	{ "render", "Rendering" },
+	{ "cpu", "CPU" },
+	{ "mixer", "Mixer" },
+	{ "midi", "MIDI" },
+	{ "sblaster", "Sound Blaster" },
+	{ "gus", "Gravis Ultrasound" },
+	{ "speaker", "PC speaker, Tandy, Disney" },
+	{ "joystick", "Joystick" },
+	{ "dos", "DOS memory and keyboard" },
+	{ "sdl", "Mouse and mapper" },
+};
+
+enum AllKind { ALL_DELEGATE, ALL_BOOL, ALL_CHOICE, ALL_RANGE, ALL_READONLY };
+
+struct AllRow
+{
+	Section_prop * sec;
+	Property * prop;
+	const SettingRow * curated;	//!< ALL_DELEGATE: the row that owns this property
+	AllKind kind;
+	bool live;
+	bool atPrompt;
+	const char * note;			//!< ALL_READONLY: where to change it
+};
+
+static bool InList(const char * const * list, int count, const char * name)
+{
+	for(int i = 0; i < count; i++)
+	{
+		if(!strcasecmp(list[i], name))
+			return true;
+	}
+	return false;
+}
+
+static bool IsHidden(const char * section, const char * prop)
+{
+	for(int i = 0; i < ARRAY_COUNT(hiddenProps); i++)
+	{
+		if(!strcasecmp(hiddenProps[i].section, section) && !strcasecmp(hiddenProps[i].prop, prop))
+			return true;
+	}
+	return false;
+}
+
+static const SettingRow * FindCuratedRow(const char * section, const char * prop)
+{
+	// cpu.cycles has two rows (mode and amount); neither is the property
+	if(!strcasecmp(section, "cpu") && !strcasecmp(prop, "cycles"))
+		return NULL;
+
+	for(int p = 0; p < SETTINGS_PAGE_COUNT; p++)
+	{
+		for(int i = 0; i < pages[p].count; i++)
+		{
+			const SettingRow & r = pages[p].rows[i];
+
+			if(!strcasecmp(r.section, section) && !strcasecmp(r.prop, prop))
+				return &r;
+		}
+	}
+	return NULL;
+}
+
+static AllKind KindOf(Property * p, const char ** note)
+{
+	*note = "edit dosbox.conf";
+
+	if(dynamic_cast<Prop_multival *>(p))
+		return ALL_READONLY;
+
+	if(p->Get_type() == Value::V_BOOL)
+		return ALL_BOOL;
+
+	if(!p->GetValues().empty())
+		return ALL_CHOICE;
+
+	Prop_int * pi = dynamic_cast<Prop_int *>(p);
+
+	if(pi)
+	{
+		const int lo = pi->getMin(), hi = pi->getMax();
+
+		if(!(lo == -1 && hi == -1) && hi > lo && hi - lo <= 100)
+			return ALL_RANGE;
+	}
+	return ALL_READONLY;
+}
+
+//! The rows of the section at index in control's list, in DOSBox's order. Empty
+//! if it is not a Section_prop or everything in it is hidden.
+static std::vector<AllRow> SectionRows(int controlIndex)
+{
+	std::vector<AllRow> rows;
+	Section_prop * sec = control ? dynamic_cast<Section_prop *>(control->GetSection(controlIndex)) : NULL;
+
+	if(!sec || InList(hiddenSections, ARRAY_COUNT(hiddenSections), sec->GetName()))
+		return rows;
+
+	const bool live = InList(liveSections, ARRAY_COUNT(liveSections), sec->GetName());
+	const bool anytime = InList(anytimeSections, ARRAY_COUNT(anytimeSections), sec->GetName());
+	Property * p;
+
+	for(int i = 0; (p = sec->Get_prop(i)) != NULL; i++)
+	{
+		if(IsHidden(sec->GetName(), p->propname.c_str()))
+			continue;
+
+		AllRow row;
+
+		row.sec = sec;
+		row.prop = p;
+		row.curated = live ? FindCuratedRow(sec->GetName(), p->propname.c_str()) : NULL;
+		row.live = live;
+		row.atPrompt = live && !anytime;
+		row.kind = row.curated ? ALL_DELEGATE : KindOf(p, &row.note);
+
+		if(row.curated)
+			row.note = "";
+		else if(!strcasecmp(sec->GetName(), "cpu") && p->propname == "cycles")
+			row.note = "Performance page";
+
+		rows.push_back(row);
+	}
+	return rows;
+}
+
+//! Control's index of the n'th section that has anything to show, or -1.
+static int VisibleSection(int n)
+{
+	for(int i = 0; control && control->GetSection(i) != NULL; i++)
+	{
+		if(!SectionRows(i).empty() && n-- == 0)
+			return i;
+	}
+	return -1;
+}
+
+static int AllSectionCount()
+{
+	int count = 0;
+
+	for(int i = 0; control && control->GetSection(i) != NULL; i++)
+	{
+		if(!SectionRows(i).empty())
+			count++;
+	}
+	return count;
+}
+
+static bool AllRows(int page, std::vector<AllRow> & rows)
+{
+	const int index = VisibleSection(page - SETTINGS_PAGE_COUNT);
+
+	if(page < SETTINGS_PAGE_COUNT || index < 0)
+		return false;
+
+	rows = SectionRows(index);
+	return true;
+}
+
+static const AllRow * AllRowAt(const std::vector<AllRow> & rows, int row)
+{
+	return (row >= 0 && row < (int)rows.size()) ? &rows[row] : NULL;
+}
+
+static const char * AllSectionTitle(int page)
+{
+	const int index = VisibleSection(page - SETTINGS_PAGE_COUNT);
+	Section * sec = (page >= SETTINGS_PAGE_COUNT && index >= 0 && control) ? control->GetSection(index) : NULL;
+
+	if(!sec)
+		return "";
+
+	for(int i = 0; i < ARRAY_COUNT(sectionTitles); i++)
+	{
+		if(!strcasecmp(sectionTitles[i].name, sec->GetName()))
+			return sectionTitles[i].title;
+	}
+	return sec->GetName();
+}
+
+//! Set when the row cannot be changed right now, and says why.
+static const char * AllLockReason(const AllRow & r)
+{
+	if(!r.live || r.kind == ALL_READONLY)
+		return NULL;
+
+	if(r.atPrompt && !IsShellIdle())
+		return "Only available at the DOS prompt.";
+
+	if(!strcasecmp(r.sec->GetName(), "dos"))
+	{
+		const char * why = NULL;
+
+		if(!CanReinitDosSection(&why))
+			return why;
+	}
+	return NULL;
+}
+
+static std::string AllValueText(const AllRow & r)
+{
+	std::string v = r.sec->GetPropValue(r.prop->propname);
+
+	if(r.kind == ALL_BOOL)
+		v = r.sec->Get_bool(r.prop->propname) ? "On" : "Off";
+	else if(r.prop->Get_type() == Value::V_HEX)
+		v = "0x" + v;
+
+	return v.empty() ? std::string("(none)") : v;
+}
+
+static void AllValue(const AllRow & r, char * buf, size_t size)
+{
+	if(r.kind == ALL_DELEGATE)
+	{
+		CuratedValue(r.curated, buf, size);
+		return;
+	}
+
+	std::string v = AllValueText(r);
+	const char * lock = AllLockReason(r);
+
+	if(!r.live)
+		v += " (next launch)";
+	else if(r.kind == ALL_READONLY)
+		v += std::string(" (") + r.note + ")";
+	else if(lock)
+		v += (r.atPrompt && !IsShellIdle()) ? " (DOS prompt only)" : " (unavailable)";
+
+	snprintf(buf, size, "%s", v.c_str());
+}
+
+static const char * AllExtraNote(const AllRow & r)
+{
+	const char * section = r.sec->GetName();
+
+	if(IsResourceProp(section, r.prop->propname.c_str()))
+		return " A value that would clash with the other sound card (port, IRQ or DMA) is skipped.";
+
+	if(!strcasecmp(section, "joystick"))
+		return " Nothing drives the emulated joystick on this build yet.";
+
+	return "";
+}
+
+static void AllHelp(const AllRow & r, char * buf, size_t size)
+{
+	char help[256];
+	const char * lock = AllLockReason(r);
+
+	if(r.kind == ALL_DELEGATE)
+	{
+		CuratedHelp(r.curated, buf, size);
+		return;
+	}
+
+	CollapseSpaces(r.prop->Get_help(), help, sizeof(help));
+
+	if(!r.live)
+		snprintf(buf, size, "Takes effect the next time DOSBox starts: set it in dosbox.conf. %s", help);
+	else if(r.kind == ALL_READONLY)
+		snprintf(buf, size, "Cannot be changed from the menu (%s). %s", r.note, help);
+	else
+		snprintf(buf, size, "%s%s%s", lock ? lock : "", lock ? " " : "", help);
+
+	const size_t used = strlen(buf);
+
+	if(r.live && r.kind != ALL_READONLY)
+		snprintf(buf + used, size - used, "%s", AllExtraNote(r));
+}
+
+static bool AllStep(const AllRow & r, int direction)
+{
+	if(r.kind == ALL_DELEGATE)
+		return CuratedStep(r.curated, direction);
+
+	if(!r.live || r.kind == ALL_READONLY || AllLockReason(r))
+		return false;
+
+	const char * section = r.sec->GetName();
+	const char * name = r.prop->propname.c_str();
+
+	if(r.kind == ALL_BOOL)
+	{
+		const std::string next = r.sec->Get_bool(name) ? "false" : "true";
+
+		return !Refusal(section, name, next) && Apply(section, name, next);
+	}
+
+	if(r.kind == ALL_RANGE)
+	{
+		Prop_int * pi = dynamic_cast<Prop_int *>(r.prop);
+
+		if(!pi)
+			return false;
+
+		const int lo = pi->getMin(), hi = pi->getMax();
+		const int amount = (hi - lo <= 20) ? 1 : 5;
+		int next = r.sec->Get_int(name) + ((direction >= 0) ? amount : -amount);
+		char value[16];
+
+		if(next > hi)
+			next = lo;
+		else if(next < lo)
+			next = hi;
+
+		snprintf(value, sizeof(value), "%d", next);
+		return !Refusal(section, name, value) && Apply(section, name, value);
+	}
+
+	// ALL_CHOICE: DOSBox's own list, starting from where the value is now.
+	// The list starts with the default and is otherwise in DOSBox's order, which
+	// is right for words but not for numbers (hex bases come out 240, 220, 260
+	// ...), so numbers are stepped in ascending order.
+	const std::vector<Value> & values = r.prop->GetValues();
+	std::vector<std::string> list;
+	const std::string current = GetConfig(section, name);
+	const int step = (direction >= 0) ? 1 : -1;
+	const Value::Etype type = r.prop->Get_type();
+	int index = -1;
+
+	for(size_t i = 0; i < values.size(); i++)
+		list.push_back(values[i].ToString());
+
+	if(type == Value::V_INT || type == Value::V_HEX)
+	{
+		const int base = (type == Value::V_HEX) ? 16 : 10;
+
+		for(size_t i = 1; i < list.size(); i++)
+		{
+			for(size_t j = i; j > 0 && strtol(list[j - 1].c_str(), NULL, base) > strtol(list[j].c_str(), NULL, base); j--)
+				list[j].swap(list[j - 1]);
+		}
+	}
+
+	const int count = (int)list.size();
+
+	for(int i = 0; i < count; i++)
+	{
+		if(!strcasecmp(list[i].c_str(), current.c_str()))
+			index = i;
+	}
+
+	for(int k = 1; k <= count; k++)
+	{
+		const int i = (index < 0) ? (step > 0 ? k - 1 : count - k)
+			: (((index + step * k) % count) + count) % count;
+		const std::string & candidate = list[i];
+
+		if(!strcasecmp(candidate.c_str(), current.c_str()))
+			continue;
+
+		if(Refusal(section, name, candidate))
+			continue;
+
+		return Apply(section, name, candidate);
+	}
+	return false;
+}
+
+/****************************************************************************
+ * Public interface
+ ***************************************************************************/
+int Settings_AllSectionCount()
+{
+	return AllSectionCount();
+}
+
+const char * Settings_PageTitle(int page)
+{
+	if(page >= SETTINGS_PAGE_COUNT)
+		return AllSectionTitle(page);
+
+	if(page < 0)
 		return "";
 
 	return pages[page].title;
 }
 
-int Settings_RowCount(SettingsPage page)
+int Settings_RowCount(int page)
 {
-	if((int)page < 0 || (int)page >= SETTINGS_PAGE_COUNT)
+	std::vector<AllRow> rows;
+
+	if(page >= SETTINGS_PAGE_COUNT)
+		return AllRows(page, rows) ? (int)rows.size() : 0;
+
+	if(page < 0)
 		return 0;
 
 	return pages[page].count;
 }
 
-const char * Settings_RowLabel(SettingsPage page, int row)
+const char * Settings_RowLabel(int page, int row)
 {
+	std::vector<AllRow> rows;
+
+	if(page >= SETTINGS_PAGE_COUNT)
+	{
+		// the property's own name, which is what dosbox.conf calls it; the
+		// pointer is into the property, which outlives the page
+		const AllRow * a = AllRows(page, rows) ? AllRowAt(rows, row) : NULL;
+
+		return a ? a->prop->propname.c_str() : "";
+	}
+
 	const SettingRow * r = GetRow(page, row);
 
 	return r ? r->label : "";
@@ -670,10 +1289,8 @@ static int CurrentInt(const SettingRow & row)
 	return sec ? sec->Get_int(row.prop) : 0;
 }
 
-void Settings_RowValue(SettingsPage page, int row, char * buf, size_t size)
+static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 {
-	const SettingRow * r = GetRow(page, row);
-
 	if(size == 0)
 		return;
 
@@ -724,9 +1341,8 @@ void Settings_RowValue(SettingsPage page, int row, char * buf, size_t size)
 	}
 }
 
-void Settings_RowHelp(SettingsPage page, int row, char * buf, size_t size)
+static void CuratedHelp(const SettingRow * r, char * buf, size_t size)
 {
-	const SettingRow * r = GetRow(page, row);
 	char help[256];
 
 	if(size == 0)
@@ -753,10 +1369,8 @@ void Settings_RowHelp(SettingsPage page, int row, char * buf, size_t size)
 	snprintf(buf, size, "%s%s", IsLocked(*r) ? "Only available at the DOS prompt. " : "", help);
 }
 
-bool Settings_RowStep(SettingsPage page, int row, int direction)
+static bool CuratedStep(const SettingRow * r, int direction)
 {
-	const SettingRow * r = GetRow(page, row);
-
 	if(!r || IsLocked(*r))
 		return false;
 
@@ -778,7 +1392,12 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 			if(!sec)
 				return false;
 
-			return Apply(r->section, r->prop, sec->Get_bool(r->prop) ? "false" : "true");
+			const std::string next = sec->Get_bool(r->prop) ? "false" : "true";
+
+			if(Refusal(r->section, r->prop, next))
+				return false;
+
+			return Apply(r->section, r->prop, next);
 		}
 
 		case ROW_RATE:
@@ -797,6 +1416,10 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 				return false;
 
 			snprintf(value, sizeof(value), "%d", next);
+
+			if(Refusal(r->section, r->prop, value))
+				return false;
+
 			return Apply(r->section, r->prop, value);
 		}
 
@@ -810,6 +1433,10 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 				return false;
 
 			snprintf(value, sizeof(value), "%d", next);
+
+			if(Refusal(r->section, r->prop, value))
+				return false;
+
 			return Apply(r->section, r->prop, value);
 		}
 
@@ -847,6 +1474,9 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 				if(r->allowed && !r->allowed(candidate.c_str()))
 					continue;
 
+				if(Refusal(r->section, r->prop, candidate))
+					continue;
+
 				return Apply(r->section, r->prop, candidate);
 			}
 			return false;
@@ -854,4 +1484,60 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 	}
 
 	return false;
+}
+
+void Settings_RowValue(int page, int row, char * buf, size_t size)
+{
+	std::vector<AllRow> rows;
+
+	if(size == 0)
+		return;
+
+	buf[0] = 0;
+
+	if(page >= SETTINGS_PAGE_COUNT)
+	{
+		const AllRow * a = AllRows(page, rows) ? AllRowAt(rows, row) : NULL;
+
+		if(a)
+			AllValue(*a, buf, size);
+		return;
+	}
+
+	CuratedValue(GetRow(page, row), buf, size);
+}
+
+void Settings_RowHelp(int page, int row, char * buf, size_t size)
+{
+	std::vector<AllRow> rows;
+
+	if(size == 0)
+		return;
+
+	buf[0] = 0;
+
+	if(page >= SETTINGS_PAGE_COUNT)
+	{
+		const AllRow * a = AllRows(page, rows) ? AllRowAt(rows, row) : NULL;
+
+		if(a)
+			AllHelp(*a, buf, size);
+		return;
+	}
+
+	CuratedHelp(GetRow(page, row), buf, size);
+}
+
+bool Settings_RowStep(int page, int row, int direction)
+{
+	std::vector<AllRow> rows;
+
+	if(page >= SETTINGS_PAGE_COUNT)
+	{
+		const AllRow * a = AllRows(page, rows) ? AllRowAt(rows, row) : NULL;
+
+		return a && AllStep(*a, direction);
+	}
+
+	return CuratedStep(GetRow(page, row), direction);
 }

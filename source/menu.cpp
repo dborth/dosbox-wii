@@ -429,7 +429,7 @@ class SettingsBrowser : public GuiOptionBrowser
 		int getSelectedOption() const { return optionIndex[selectedItem]; }
 };
 
-static void RefreshSettingsValues(SettingsPage page, OptionList * options, GuiOptionBrowser * browser)
+static void RefreshSettingsValues(int page, OptionList * options, GuiOptionBrowser * browser)
 {
 	for(int i = 0; i < options->length; i++)
 		Settings_RowValue(page, i, options->value[i], sizeof(options->value[i]));
@@ -437,7 +437,7 @@ static void RefreshSettingsValues(SettingsPage page, OptionList * options, GuiOp
 	browser->triggerUpdate();
 }
 
-static void RefreshSettingsHelp(SettingsPage page, int row, GuiText * helpTxt)
+static void RefreshSettingsHelp(int page, int row, GuiText * helpTxt)
 {
 	char help[320];
 
@@ -453,7 +453,7 @@ static void RefreshSettingsHelp(SettingsPage page, int row, GuiText * helpTxt)
  * Every change is applied to DOSBox as it is made. Returns when the page
  * is closed.
  ***************************************************************************/
-static void SettingsPageScreen(SettingsPage page)
+static void SettingsPageScreen(int page)
 {
 	VideoDriver * video = platform->getVideo();
 	const PixelColor white = {255, 255, 255, 255};
@@ -581,29 +581,44 @@ static void SettingsPageScreen(SettingsPage page)
 }
 
 /****************************************************************************
- * SettingsPageList
+ * SettingsList
  *
- * The list of settings pages, one row per page. A (or clicking) opens the
- * page. Returns when the list is closed.
+ * A list of settings pages, one row per page. A (or clicking) opens the page.
+ * Returns when the list is closed.
+ *
+ * Two lists use it. The first (sections = false) is the curated pages followed
+ * by "All settings", which opens the second: one row per config section, each
+ * opening its all-settings page. The second one is opened from inside the
+ * first, so each level has its own OptionList.
  ***************************************************************************/
-static void SettingsPageList()
+static void SettingsList(bool sections)
 {
 	VideoDriver * video = platform->getVideo();
 	const PixelColor white = {255, 255, 255, 255};
 
-	// kept off the stack for the same reason as the page's list
-	static OptionList options;
+	// kept off the stack for the same reason as the page's list, and not
+	// static because a second list is opened while this one is up
+	OptionList * listOptions = new OptionList;
+	OptionList & options = *listOptions;
 
 	memset(&options, 0, sizeof(options));
 
-	options.length = SETTINGS_PAGE_COUNT;
+	const int pageCount = sections ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT;
+
+	options.length = pageCount + (sections ? 0 : 1);	// the curated list ends with "All settings"
 	if(options.length > MAX_OPTIONS)
 		options.length = MAX_OPTIONS;
 
 	for(int i = 0; i < options.length; i++)
-		snprintf(options.name[i], sizeof(options.name[i]), "%s", Settings_PageTitle((SettingsPage)i));
+	{
+		if(i < pageCount)
+			snprintf(options.name[i], sizeof(options.name[i]), "%s",
+				Settings_PageTitle(sections ? Settings_AllPage(i) : i));
+		else
+			snprintf(options.name[i], sizeof(options.name[i]), "All settings");
+	}
 
-	GuiText titleTxt("Settings", 28, white);
+	GuiText titleTxt(sections ? "Settings - All settings" : "Settings", 28, white);
 	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
 	titleTxt.setPosition(50, 50);
 
@@ -656,7 +671,7 @@ static void SettingsPageList()
 
 		const int clicked = browser.getClickedOption();
 
-		if(clicked >= 0 && clicked < SETTINGS_PAGE_COUNT)
+		if(clicked >= 0 && clicked < options.length)
 		{
 			// the list stays up behind the page; take it off so only one has focus
 			mainWindow->remove(&browser);
@@ -664,7 +679,10 @@ static void SettingsPageList()
 			mainWindow->remove(&titleTxt);
 			mainWindow->remove(&hintTxt);
 
-			SettingsPageScreen((SettingsPage)clicked);
+			if(clicked >= pageCount)
+				SettingsList(true);
+			else
+				SettingsPageScreen(sections ? Settings_AllPage(clicked) : clicked);
 
 			mainWindow->append(&browser);
 			mainWindow->append(&w);
@@ -680,6 +698,8 @@ static void SettingsPageList()
 	mainWindow->remove(&w);
 	mainWindow->remove(&titleTxt);
 	mainWindow->remove(&hintTxt);
+
+	delete listOptions;
 }
 
 /****************************************************************************
@@ -691,7 +711,7 @@ static void SettingsPageList()
 static void SettingsMenu(GuiWindow * home)
 {
 	mainWindow->remove(home);
-	SettingsPageList();
+	SettingsList(false);
 	mainWindow->append(home);
 }
 

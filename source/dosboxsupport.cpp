@@ -105,6 +105,39 @@ bool IsShellIdle() {
 }
 
 /****************************************************************************
+ * CanReinitDosSection
+ *
+ * Re-initialising the dos section re-runs XMS_Init and EMS_Init. XMS builds
+ * the UMB chain again (DOS_UMBChainIsPristine says when that is harmless) and
+ * EMS takes a callback slot with CALLBACK_Allocate that ~EMS never returns,
+ * so after enough re-inits the next one ends in E_Exit. EMS_RESERVE keeps
+ * some slots back for everything else that allocates them.
+ ***************************************************************************/
+#define EMS_RESERVE	8
+
+bool DOS_UMBChainIsPristine(void);
+Bitu CALLBACK_FreeCount(void);
+
+bool CanReinitDosSection(const char ** reason)
+{
+	if(!DOS_UMBChainIsPristine())
+	{
+		if(reason)
+			*reason = "Upper memory is in use by a program.";
+		return false;
+	}
+
+	if(CALLBACK_FreeCount() < EMS_RESERVE)
+	{
+		if(reason)
+			*reason = "DOSBox is out of internal handlers for memory changes. Edit dosbox.conf and restart.";
+		return false;
+	}
+
+	return true;
+}
+
+/****************************************************************************
  * GetEmulatorAudioInfo
  *
  * What the mixer is fixed to (see MIXER_Init): the driver's rate and buffer
