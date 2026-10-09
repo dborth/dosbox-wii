@@ -18,6 +18,7 @@
 
 
 #include <string.h>
+#include <stdlib.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "setup.h"
@@ -27,8 +28,72 @@
 
 //#define ENABLE_PORTLOG
 
-IO_WriteHandler * io_writehandlers[3][IO_MAX];
-IO_ReadHandler * io_readhandlers[3][IO_MAX];
+/* One handler per port and access width (byte, word, dword). Flat arrays of
+ * IO_MAX pointers took 1.5 MB, for the few dozen ports anything is ever
+ * registered on. The ports are split into pages of 256: a page nothing has been
+ * registered on is a shared one that holds the default handler, and only gets a
+ * page of its own when a handler is put there. */
+#define IO_PAGE_BITS	8
+#define IO_PAGE_SIZE	(1 << IO_PAGE_BITS)
+#define IO_PAGE_MASK	(IO_PAGE_SIZE - 1)
+#define IO_PAGES		((IO_MAX + IO_PAGE_SIZE - 1) >> IO_PAGE_BITS)
+
+static IO_ReadHandler ** io_read_pages[3][IO_PAGES];
+static IO_WriteHandler ** io_write_pages[3][IO_PAGES];
+static IO_ReadHandler * io_read_default_page[IO_PAGE_SIZE];
+static IO_WriteHandler * io_write_default_page[IO_PAGE_SIZE];
+
+#define IO_READ_HANDLER(width,port)		(io_read_pages[width][(port) >> IO_PAGE_BITS][(port) & IO_PAGE_MASK])
+#define IO_WRITE_HANDLER(width,port)	(io_write_pages[width][(port) >> IO_PAGE_BITS][(port) & IO_PAGE_MASK])
+
+static Bitu IO_ReadDefault(Bitu port,Bitu iolen);
+void IO_WriteDefault(Bitu port,Bitu val,Bitu iolen);
+
+/* Returns false if a page of its own was needed and there was no memory */
+static bool IO_SetReadHandler(Bitu width,Bitu port,IO_ReadHandler * handler) {
+	IO_ReadHandler ** & page=io_read_pages[width][port >> IO_PAGE_BITS];
+	if (page==io_read_default_page) {
+		if (handler==IO_ReadDefault) return true;	// that is what the shared page says
+		IO_ReadHandler ** own=(IO_ReadHandler **)malloc(IO_PAGE_SIZE*sizeof(IO_ReadHandler *));
+		if (!own) return false;
+		for (Bitu i=0;i<IO_PAGE_SIZE;i++) own[i]=IO_ReadDefault;
+		page=own;
+	}
+	page[port & IO_PAGE_MASK]=handler;
+	return true;
+}
+
+static bool IO_SetWriteHandler(Bitu width,Bitu port,IO_WriteHandler * handler) {
+	IO_WriteHandler ** & page=io_write_pages[width][port >> IO_PAGE_BITS];
+	if (page==io_write_default_page) {
+		if (handler==IO_WriteDefault) return true;
+		IO_WriteHandler ** own=(IO_WriteHandler **)malloc(IO_PAGE_SIZE*sizeof(IO_WriteHandler *));
+		if (!own) return false;
+		for (Bitu i=0;i<IO_PAGE_SIZE;i++) own[i]=IO_WriteDefault;
+		page=own;
+	}
+	page[port & IO_PAGE_MASK]=handler;
+	return true;
+}
+
+static void IO_NoMemory(Bitu port) {
+	E_Exit("Out of memory for the I/O handler of port %x",(unsigned int)port);
+}
+
+static void IO_InitPages(void) {
+	for (Bitu i=0;i<IO_PAGE_SIZE;i++) {
+		io_read_default_page[i]=IO_ReadDefault;
+		io_write_default_page[i]=IO_WriteDefault;
+	}
+	for (Bitu w=0;w<3;w++) {
+		for (Bitu p=0;p<IO_PAGES;p++) {
+			if (io_read_pages[w][p] && io_read_pages[w][p]!=io_read_default_page) free(io_read_pages[w][p]);
+			if (io_write_pages[w][p] && io_write_pages[w][p]!=io_write_default_page) free(io_write_pages[w][p]);
+			io_read_pages[w][p]=io_read_default_page;
+			io_write_pages[w][p]=io_write_default_page;
+		}
+	}
+}
 
 static Bitu IO_ReadBlocked(Bitu /*port*/,Bitu /*iolen*/) {
 	return ~0;
@@ -41,16 +106,16 @@ static Bitu IO_ReadDefault(Bitu port,Bitu iolen) {
 	switch (iolen) {
 	case 1:
 		LOG(LOG_IO,LOG_WARN)("Read from port %04X",port);
-		io_readhandlers[0][port]=IO_ReadBlocked;
+		IO_SetReadHandler(0,port,IO_ReadBlocked);	// not remembered if there is no memory: harmless
 		return 0xff;
 	case 2:
 		return
-			(io_readhandlers[0][port+0](port+0,1) << 0) |
-			(io_readhandlers[0][port+1](port+1,1) << 8);
+			(IO_READ_HANDLER(0,port+0)(port+0,1) << 0) |
+			(IO_READ_HANDLER(0,port+1)(port+1,1) << 8);
 	case 4:
 		return
-			(io_readhandlers[1][port+0](port+0,2) << 0) |
-			(io_readhandlers[1][port+2](port+2,2) << 16);
+			(IO_READ_HANDLER(1,port+0)(port+0,2) << 0) |
+			(IO_READ_HANDLER(1,port+2)(port+2,2) << 16);
 	}
 	return 0;
 }
@@ -59,51 +124,51 @@ void IO_WriteDefault(Bitu port,Bitu val,Bitu iolen) {
 	switch (iolen) {
 	case 1:
 		LOG(LOG_IO,LOG_WARN)("Writing %02X to port %04X",val,port);
-		io_writehandlers[0][port]=IO_WriteBlocked;
+		IO_SetWriteHandler(0,port,IO_WriteBlocked);
 		break;
 	case 2:
-		io_writehandlers[0][port+0](port+0,(val >> 0) & 0xff,1);
-		io_writehandlers[0][port+1](port+1,(val >> 8) & 0xff,1);
+		IO_WRITE_HANDLER(0,port+0)(port+0,(val >> 0) & 0xff,1);
+		IO_WRITE_HANDLER(0,port+1)(port+1,(val >> 8) & 0xff,1);
 		break;
 	case 4:
-		io_writehandlers[1][port+0](port+0,(val >> 0 ) & 0xffff,2);
-		io_writehandlers[1][port+2](port+2,(val >> 16) & 0xffff,2);
+		IO_WRITE_HANDLER(1,port+0)(port+0,(val >> 0 ) & 0xffff,2);
+		IO_WRITE_HANDLER(1,port+2)(port+2,(val >> 16) & 0xffff,2);
 		break;
 	}
 }
 
 void IO_RegisterReadHandler(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range) {
 	while (range--) {
-		if (mask&IO_MB) io_readhandlers[0][port]=handler;
-		if (mask&IO_MW) io_readhandlers[1][port]=handler;
-		if (mask&IO_MD) io_readhandlers[2][port]=handler;
+		if ((mask&IO_MB) && !IO_SetReadHandler(0,port,handler)) IO_NoMemory(port);
+		if ((mask&IO_MW) && !IO_SetReadHandler(1,port,handler)) IO_NoMemory(port);
+		if ((mask&IO_MD) && !IO_SetReadHandler(2,port,handler)) IO_NoMemory(port);
 		port++;
 	}
 }
 
 void IO_RegisterWriteHandler(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range) {
 	while (range--) {
-		if (mask&IO_MB) io_writehandlers[0][port]=handler;
-		if (mask&IO_MW) io_writehandlers[1][port]=handler;
-		if (mask&IO_MD) io_writehandlers[2][port]=handler;
+		if ((mask&IO_MB) && !IO_SetWriteHandler(0,port,handler)) IO_NoMemory(port);
+		if ((mask&IO_MW) && !IO_SetWriteHandler(1,port,handler)) IO_NoMemory(port);
+		if ((mask&IO_MD) && !IO_SetWriteHandler(2,port,handler)) IO_NoMemory(port);
 		port++;
 	}
 }
 
 void IO_FreeReadHandler(Bitu port,Bitu mask,Bitu range) {
 	while (range--) {
-		if (mask&IO_MB) io_readhandlers[0][port]=IO_ReadDefault;
-		if (mask&IO_MW) io_readhandlers[1][port]=IO_ReadDefault;
-		if (mask&IO_MD) io_readhandlers[2][port]=IO_ReadDefault;
+		if ((mask&IO_MB) && !IO_SetReadHandler(0,port,IO_ReadDefault)) IO_NoMemory(port);
+		if ((mask&IO_MW) && !IO_SetReadHandler(1,port,IO_ReadDefault)) IO_NoMemory(port);
+		if ((mask&IO_MD) && !IO_SetReadHandler(2,port,IO_ReadDefault)) IO_NoMemory(port);
 		port++;
 	}
 }
 
 void IO_FreeWriteHandler(Bitu port,Bitu mask,Bitu range) {
 	while (range--) {
-		if (mask&IO_MB) io_writehandlers[0][port]=IO_WriteDefault;
-		if (mask&IO_MW) io_writehandlers[1][port]=IO_WriteDefault;
-		if (mask&IO_MD) io_writehandlers[2][port]=IO_WriteDefault;
+		if ((mask&IO_MB) && !IO_SetWriteHandler(0,port,IO_WriteDefault)) IO_NoMemory(port);
+		if ((mask&IO_MW) && !IO_SetWriteHandler(1,port,IO_WriteDefault)) IO_NoMemory(port);
+		if ((mask&IO_MD) && !IO_SetWriteHandler(2,port,IO_WriteDefault)) IO_NoMemory(port);
 		port++;
 	}
 }
@@ -318,7 +383,7 @@ void IO_WriteB(Bitu port,Bitu val) {
 	}
 	else {
 		IO_USEC_write_delay();
-		io_writehandlers[0][port](port,val,1);
+		IO_WRITE_HANDLER(0,port)(port,val,1);
 	}
 }
 
@@ -354,7 +419,7 @@ void IO_WriteW(Bitu port,Bitu val) {
 	}
 	else {
 		IO_USEC_write_delay();
-		io_writehandlers[1][port](port,val,2);
+		IO_WRITE_HANDLER(1,port)(port,val,2);
 	}
 }
 
@@ -388,7 +453,7 @@ void IO_WriteD(Bitu port,Bitu val) {
 		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
 		cpudecoder=old_cpudecoder;
 	}
-	else io_writehandlers[2][port](port,val,4);
+	else IO_WRITE_HANDLER(2,port)(port,val,4);
 }
 
 Bitu IO_ReadB(Bitu port) {
@@ -424,7 +489,7 @@ Bitu IO_ReadB(Bitu port) {
 	}
 	else {
 		IO_USEC_read_delay();
-		retval = io_readhandlers[0][port](port,1);
+		retval = IO_READ_HANDLER(0,port)(port,1);
 	}
 	log_io(0, false, port, retval);
 	return retval;
@@ -462,7 +527,7 @@ Bitu IO_ReadW(Bitu port) {
 	}
 	else {
 		IO_USEC_read_delay();
-		retval = io_readhandlers[1][port](port,2);
+		retval = IO_READ_HANDLER(1,port)(port,2);
 	}
 	log_io(1, false, port, retval);
 	return retval;
@@ -498,7 +563,7 @@ Bitu IO_ReadD(Bitu port) {
 		memcpy(&lflags,&old_lflags,sizeof(LazyFlags));
 		cpudecoder=old_cpudecoder;
 	} else {
-		retval = io_readhandlers[2][port](port,4);
+		retval = IO_READ_HANDLER(2,port)(port,4);
 	}
 	log_io(2, false, port, retval);
 	return retval;
@@ -508,12 +573,13 @@ class IO :public Module_base {
 public:
 	IO(Section* configuration):Module_base(configuration){
 	iof_queue.used=0;
+	IO_InitPages();
 	IO_FreeReadHandler(0,IO_MA,IO_MAX);
 	IO_FreeWriteHandler(0,IO_MA,IO_MAX);
 	}
 	~IO()
 	{
-		//Same as the constructor ?
+		IO_InitPages();	// puts every port back on the shared pages, freeing the rest
 	}
 };
 

@@ -29,6 +29,7 @@
 #include "shell.h"
 #include "math.h"
 #include "regs.h"
+#include "drivers/BulkMemory.h"
 using namespace std;
 
 //Extra bits of precision over normal gus
@@ -60,7 +61,10 @@ Bit8u adlib_commandreg;
 static MixerChannel * gus_chan;
 static Bit8u irqtable[8] = { 0, 2, 5, 3, 7, 11, 12, 15 };
 static Bit8u dmatable[8] = { 0, 1, 3, 5, 6, 7, 0, 0 };
-static Bit8u GUSRam[1024*1024]; // 1024K of GUS Ram
+#define GUS_RAM_SIZE (1024*1024)
+/* 1024K of GUS RAM. Only there while a GUS is configured: a static array took
+ * the megabyte whether or not anything used it. */
+static Bit8u * GUSRam = NULL;
 static Bit16u vol16bit[4096];
 static Bit32u pantable[16];
 
@@ -645,7 +649,7 @@ static Bitu read_gus(Bitu port,Bitu iolen) {
 	case 0x305:
 		return ExecuteReadRegister() >> 8;
 	case 0x307:
-		if(myGUS.gDramAddr < sizeof(GUSRam)) {
+		if(myGUS.gDramAddr < GUS_RAM_SIZE) {
 			return GUSRam[myGUS.gDramAddr];
 		} else {
 			return 0;
@@ -730,7 +734,7 @@ static void write_gus(Bitu port,Bitu val,Bitu iolen) {
 		ExecuteGlobRegister();
 		break;
 	case 0x307:
-		if(myGUS.gDramAddr < sizeof(GUSRam)) GUSRam[myGUS.gDramAddr] = (Bit8u)val;
+		if(myGUS.gDramAddr < GUS_RAM_SIZE) GUSRam[myGUS.gDramAddr] = (Bit8u)val;
 		break;
 	default:
 #if LOG_GUS
@@ -822,7 +826,12 @@ public:
 		if(!section->Get_bool("gus")) return;
 	
 		memset(&myGUS,0,sizeof(myGUS));
-		memset(GUSRam,0,1024*1024);
+		GUSRam=(Bit8u *)BulkMemory::allocate(GUS_RAM_SIZE);
+		if (!GUSRam) {
+			LOG_MSG("GUS: no memory for the %d KB of GUS RAM, the GUS is disabled",GUS_RAM_SIZE/1024);
+			return;
+		}
+		memset(GUSRam,0,GUS_RAM_SIZE);
 	
 		myGUS.rate=section->Get_int("gusrate");
 	
@@ -897,6 +906,7 @@ public:
 		if(!IS_EGAVGA_ARCH) return;
 		Section_prop * section=static_cast<Section_prop *>(m_configuration);
 		if(!section->Get_bool("gus")) return;
+		if(!GUSRam) return;	// the constructor found no memory and set nothing up
 	
 		myGUS.gRegData=0x1;
 		GUSReset();
@@ -907,7 +917,8 @@ public:
 		}
 
 		memset(&myGUS,0,sizeof(myGUS));
-		memset(GUSRam,0,1024*1024);
+		BulkMemory::release(GUSRam);
+		GUSRam=NULL;
 	}
 };
 

@@ -21,6 +21,19 @@
 #include "bios.h"
 #include "bios_disk.h"
 #include "setup.h"
+#include <stdlib.h>
+
+/* The layout and codepage files are read through 64 KB buffers. As static
+ * arrays they took 190 KB for good, for something that is done a few times at
+ * most, so each call borrows its buffer instead. */
+struct TempBuffer {
+	Bit8u * data;
+	explicit TempBuffer(size_t size) : data((Bit8u *)malloc(size)) {}
+	~TempBuffer() { free(data); }
+private:
+	TempBuffer(const TempBuffer &);
+	TempBuffer & operator=(const TempBuffer &);
+};
 #include "support.h"
 #include "../ints/int10.h"
 #include "regs.h"
@@ -262,7 +275,9 @@ Bitu keyboard_layout::read_keyboard_file(const char* keyboard_file_name, Bit32s 
 	if (specific_layout==-1) strcpy(current_keyboard_file_name, keyboard_file_name);
 	if (!strcmp(keyboard_file_name,"none")) return KEYB_NOERROR;
 
-	static Bit8u read_buf[65535];
+	TempBuffer read_buf_mem(65535);
+	Bit8u * read_buf=read_buf_mem.data;
+	if (!read_buf) return KEYB_INVALIDFILE;
 	Bit32u read_buf_size, read_buf_pos, bytes_read;
 	Bit32u start_pos=5;
 
@@ -616,7 +631,9 @@ Bit16u keyboard_layout::extract_codepage(const char* keyboard_file_name) {
 	if (!strcmp(keyboard_file_name,"none")) return 437;
 
 	Bit32u read_buf_size;
-	static Bit8u read_buf[65535];
+	TempBuffer read_buf_mem(65535);
+	Bit8u * read_buf=read_buf_mem.data;
+	if (!read_buf) return 437;
 	Bit32u start_pos=5;
 
 	char nbuf[512];
@@ -755,7 +772,9 @@ Bitu keyboard_layout::read_codepage_file(const char* codepage_file_name, Bit32s 
 		}
 	}
 
-	static Bit8u cpi_buf[65536];
+	TempBuffer cpi_buf_mem(65536);
+	Bit8u * cpi_buf=cpi_buf_mem.data;
+	if (!cpi_buf) return KEYB_INVALIDCPFILE;
 	Bit32u cpi_buf_size=0,size_of_cpxdata=0;;
 	bool upxfound=false;
 	Bit16u found_at_pos=5;

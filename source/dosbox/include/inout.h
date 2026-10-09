@@ -30,9 +30,6 @@
 typedef Bitu IO_ReadHandler(Bitu port,Bitu iolen);
 typedef void IO_WriteHandler(Bitu port,Bitu val,Bitu iolen);
 
-extern IO_WriteHandler * io_writehandlers[3][IO_MAX];
-extern IO_ReadHandler * io_readhandlers[3][IO_MAX];
-
 void IO_RegisterReadHandler(Bitu port,IO_ReadHandler * handler,Bitu mask,Bitu range=1);
 void IO_RegisterWriteHandler(Bitu port,IO_WriteHandler * handler,Bitu mask,Bitu range=1);
 
