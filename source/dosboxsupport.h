@@ -19,4 +19,10 @@ void RunDOSBox(int argc, char* argv[]);
 //! core) under it. False before the first shell exists.
 bool IsShellIdle();
 
+//! The fixed output format of the emulator audio driver, as DOSBox's mixer
+//! runs it: sample rate in Hz and stereo frames per buffer. Returns false
+//! when there is no emulator audio driver (nothing to play through), in
+//! which case neither value is set.
+bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer);
+
 #endif

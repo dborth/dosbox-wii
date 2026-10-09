@@ -32,6 +32,7 @@
 #include "SDL.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
+#include "drivers/EmulatorAudioDriver.h"
 #include "drivers/Logger.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
@@ -101,6 +102,28 @@ void Restart(bool pressed) { // mapper handler
  ***************************************************************************/
 bool IsShellIdle() {
 	return first_shell != NULL && (DOS_PSP(dos.psp()).GetSegment() == DOS_PSP(dos.psp()).GetParent());
+}
+
+/****************************************************************************
+ * GetEmulatorAudioInfo
+ *
+ * What the mixer is fixed to (see MIXER_Init): the driver's rate and buffer
+ * size, never a number assumed here, so a platform with a different output
+ * format needs no change.
+ ***************************************************************************/
+bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer)
+{
+	if(!platform || !platform->getAudio())
+		return false;
+
+	EmulatorAudioDriver * audio = platform->getAudio()->getEmulatorAudio();
+
+	if(!audio)
+		return false;
+
+	*sampleRate = audio->getSampleRate();
+	*framesPerBuffer = audio->getFramesPerBuffer();
+	return true;
 }
 
 /****************************************************************************

@@ -20,6 +20,7 @@
 #include <string.h>
 #include <strings.h>
 #include <string>
+#include <vector>
 
 #include "dosbox.h"
 #include "setup.h"
@@ -37,7 +38,10 @@ enum RowKind
 	ROW_CHOICE,			//!< a string property: cycles through DOSBox's own list of values
 	ROW_INT,			//!< an integer property: cycles through a list of presets
 	ROW_CYCLES_MODE,	//!< cpu.cycles: auto / fixed / max
-	ROW_CYCLES_AMOUNT	//!< cpu.cycles: the number that goes with fixed or max
+	ROW_CYCLES_AMOUNT,	//!< cpu.cycles: the number that goes with fixed or max
+	ROW_BOOL,			//!< a bool property: On / Off
+	ROW_RATE,			//!< a device's source sample rate: Fast / Matched / Native presets
+	ROW_AUDIO_OUTPUT	//!< read-only: the audio driver's fixed output format
 };
 
 //! When a row may be changed. A row that has to wait for a restart will be a
@@ -67,6 +71,7 @@ struct SettingRow
 	int (*effective)();				//!< ROW_INT: the live value where it can differ from the config; NULL = the config
 	bool (*allowed)(const char *);	//!< ROW_CHOICE: refuses a value the core cannot take right now; NULL = any
 	const char * help;				//!< NULL = DOSBox's own help for the property
+	int nativeRate;					//!< ROW_RATE: a further preset, the device's own rate; 0 = none
 };
 
 struct PageDef
@@ -192,6 +197,121 @@ static void CollapseSpaces(const char * in, char * out, size_t size)
 		out[n++] = *in;
 	}
 	out[n] = 0;
+}
+
+/****************************************************************************
+ * Audio output and source rates
+ *
+ * The mixer is fixed to the audio driver's rate (MIXER_Init). A device
+ * (OPL, GUS, PC speaker, Tandy) whose own rate equals it is mixed as is;
+ * any other rate makes MixerChannel::SetFreq turn interpolation on for
+ * the channel (mixer.cpp). So the presets are built from the driver's rate
+ * every time, never from a number written here.
+ ***************************************************************************/
+#define RATE_FAST	22050	//!< half-way down: cheaper to generate, resampled by the mixer
+
+static bool OutputInfo(int * rate, int * frames)
+{
+	*rate = 0;
+	*frames = 0;
+
+	return GetEmulatorAudioInfo(rate, frames) && *rate > 0;
+}
+
+//! The rate the mixer runs at: the driver's, or the configured one when
+//! there is no driver (nosound), which is what MIXER_Init then keeps.
+static int OutputRate()
+{
+	int rate, frames;
+
+	if(OutputInfo(&rate, &frames))
+		return rate;
+
+	Section_prop * mixer = GetSection("mixer");
+
+	return mixer ? mixer->Get_int("rate") : 0;
+}
+
+static bool RateInValues(Property * p, int rate)
+{
+	char text[16];
+
+	snprintf(text, sizeof(text), "%d", rate);
+
+	const std::vector<Value> & values = p->GetValues();
+
+	for(size_t i = 0; i < values.size(); i++)
+	{
+		if(values[i].ToString() == text)
+			return true;
+	}
+	return false;
+}
+
+//! The presets for a rate row, ascending, without duplicates and without
+//! any rate DOSBox would not accept for the property. Room for 3.
+static int RatePresets(const SettingRow & row, int * out)
+{
+	Section_prop * sec = GetSection(row.section);
+	Property * p = sec ? FindProp(sec, row.prop) : NULL;
+	const int candidates[3] = { RATE_FAST, OutputRate(), row.nativeRate };
+	int n = 0;
+
+	if(!p)
+		return 0;
+
+	for(int c = 0; c < 3; c++)
+	{
+		const int rate = candidates[c];
+		bool known = false;
+
+		if(rate <= 0 || !RateInValues(p, rate))
+			continue;
+
+		for(int i = 0; i < n; i++)
+			known = known || (out[i] == rate);
+
+		if(known)
+			continue;
+
+		int at = n++;
+		while(at > 0 && out[at - 1] > rate)
+		{
+			out[at] = out[at - 1];
+			at--;
+		}
+		out[at] = rate;
+	}
+	return n;
+}
+
+static void FormatRate(const SettingRow & row, int rate, char * buf, size_t size)
+{
+	const char * name = NULL;
+
+	if(rate == OutputRate())
+		name = "Matched";
+	else if(rate == RATE_FAST)
+		name = "Fast";
+	else if(row.nativeRate > 0 && rate == row.nativeRate)
+		name = "Native";
+
+	if(name)
+		snprintf(buf, size, "%s (%d Hz)", name, rate);
+	else
+		snprintf(buf, size, "%d Hz", rate);
+}
+
+static void AudioOutputValue(char * buf, size_t size)
+{
+	int rate, frames;
+
+	if(OutputInfo(&rate, &frames) && frames > 0)
+		snprintf(buf, size, "%d Hz, %d frames (%d ms)", rate, frames, (frames * 1000) / rate);
+	else if(rate > 0)
+		snprintf(buf, size, "%d Hz", rate);
+	else
+		snprintf(buf, size, "No audio output"); // nosound: MIXER_Init found no driver
 }
 
 /****************************************************************************
@@ -372,6 +492,27 @@ static bool CpuTypeAllowed(const char * candidate)
 }
 
 /****************************************************************************
+ * speaker.tandy
+ *
+ * "on" on a machine that is not a Tandy or PCjr makes TANDYSOUND close the
+ * second DMA controller (tandy_sound.cpp, CloseSecondDMAController), and
+ * nothing opens it again until DOSBox restarts. Without it GetDMAChannel()
+ * returns NULL for channels 4-7 and DMA_Write_Port dereferences it for a
+ * write to page register 0x89, 0x8a or 0x8b (dma.cpp), and an SB16 can no
+ * longer be set up. On a Tandy or PCjr "auto" already turns the sound on,
+ * so "on" is only ever offered where it does no harm.
+ ***************************************************************************/
+static bool TandyAllowed(const char * candidate)
+{
+	if(strcmp(candidate, "on") != 0)
+		return true;
+
+	const std::string machine = GetConfig("dosbox", "machine");
+
+	return machine == "tandy" || machine == "pcjr";
+}
+
+/****************************************************************************
  * render.frameskip
  *
  * The home screen's +/- buttons change the running frameskip without
@@ -416,9 +557,57 @@ static const SettingRow performanceRows[] =
 	{ "Frameskip",			"render",	"frameskip",	ROW_INT,			TIER_LIVE,		frameskipPresets, ARRAY_COUNT(frameskipPresets), FMT_NUMBER, EffectiveFrameskip, NULL, NULL },
 };
 
+/****************************************************************************
+ * Audio page
+ *
+ * Everything here re-initialises a whole section (sblaster, gus, speaker,
+ * midi), which resets the hardware it emulates, so each row is for the DOS
+ * prompt. The ports, IRQs and DMA channels are not on this page: they are
+ * raw hex and numbers with no safe preset, and a change that collides with
+ * another device is silent, so they are left to the all-settings page.
+ ***************************************************************************/
+static const char * const helpAudioOutput =
+	"Fixed by the console's audio hardware, and DOSBox's mixer follows it. A device set to the same rate "
+	"is not resampled.";
+static const char * const helpSbType =
+	"Which Sound Blaster DOSBox pretends to be. An SB16 needs a VGA machine type, otherwise DOSBox uses an SB Pro 2.";
+static const char * const helpOplRate =
+	"Matched skips resampling. Fast (22050 Hz) is cheaper to compute. Native (49716 Hz) is the OPL chip's own "
+	"rate: the most accurate and the most work.";
+static const char * const helpDeviceRate =
+	"Matched skips resampling. Fast (22050 Hz) is cheaper to compute and is resampled by the mixer.";
+static const char * const helpTandy =
+	"auto turns Tandy sound on only for the tandy and pcjr machines. on is not offered on other machines: it "
+	"removes the second DMA controller until DOSBox restarts.";
+static const char * const helpDisney =
+	"Disney Sound Source (and Covox) compatible sound.";
+static const char * const helpMpu =
+	"MIDI port for games. This build has no MIDI synthesizer, so a game that picks MIDI music plays nothing. "
+	"none lets it fall back to the OPL.";
+
+#define RATE_NATIVE_OPL	49716
+
+static const SettingRow audioRows[] =
+{
+	{ "Output",			"mixer",	"rate",			ROW_AUDIO_OUTPUT,	TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpAudioOutput, 0 },
+	{ "Sound Blaster",	"sblaster",	"sbtype",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpSbType, 0 },
+	{ "OPL mode",		"sblaster",	"oplmode",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
+	{ "OPL emulator",	"sblaster",	"oplemu",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
+	{ "OPL rate",		"sblaster",	"oplrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpOplRate, RATE_NATIVE_OPL },
+	{ "PC speaker",		"speaker",	"pcspeaker",	ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
+	{ "PC speaker rate","speaker",	"pcrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
+	{ "Tandy sound",	"speaker",	"tandy",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, TandyAllowed, helpTandy, 0 },
+	{ "Tandy rate",		"speaker",	"tandyrate",	ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
+	{ "Disney",			"speaker",	"disney",		ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDisney, 0 },
+	{ "Gravis Ultrasound","gus",	"gus",			ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
+	{ "GUS rate",		"gus",		"gusrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
+	{ "MPU-401",		"midi",		"mpu401",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpMpu, 0 },
+};
+
 static const PageDef pages[SETTINGS_PAGE_COUNT] =
 {
 	{ "Performance", performanceRows, ARRAY_COUNT(performanceRows) },
+	{ "Audio", audioRows, ARRAY_COUNT(audioRows) },
 };
 
 /****************************************************************************
@@ -510,6 +699,22 @@ void Settings_RowValue(SettingsPage page, int row, char * buf, size_t size)
 		case ROW_CYCLES_AMOUNT:
 			CyclesAmountValue(buf, size);
 			break;
+
+		case ROW_BOOL:
+		{
+			Section_prop * sec = GetSection(r->section);
+
+			snprintf(buf, size, "%s", (sec && sec->Get_bool(r->prop)) ? "On" : "Off");
+			break;
+		}
+
+		case ROW_RATE:
+			FormatRate(*r, CurrentInt(*r), buf, size);
+			break;
+
+		case ROW_AUDIO_OUTPUT:
+			AudioOutputValue(buf, size);
+			break;
 	}
 
 	if(IsLocked(*r))
@@ -562,6 +767,38 @@ bool Settings_RowStep(SettingsPage page, int row, int direction)
 
 		case ROW_CYCLES_AMOUNT:
 			return StepCyclesAmount(direction);
+
+		case ROW_AUDIO_OUTPUT:
+			return false; // read-only
+
+		case ROW_BOOL:
+		{
+			Section_prop * sec = GetSection(r->section);
+
+			if(!sec)
+				return false;
+
+			return Apply(r->section, r->prop, sec->Get_bool(r->prop) ? "false" : "true");
+		}
+
+		case ROW_RATE:
+		{
+			int presets[3];
+			const int count = RatePresets(*r, presets);
+			const int current = CurrentInt(*r);
+
+			if(count == 0)
+				return false;
+
+			const int next = StepPreset(presets, count, current, direction);
+			char value[16];
+
+			if(next == current)
+				return false;
+
+			snprintf(value, sizeof(value), "%d", next);
+			return Apply(r->section, r->prop, value);
+		}
 
 		case ROW_INT:
 		{

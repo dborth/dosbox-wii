@@ -548,16 +548,117 @@ static void SettingsPageScreen(SettingsPage page)
 }
 
 /****************************************************************************
+ * SettingsPageList
+ *
+ * The list of settings pages, one row per page. A (or clicking) opens the
+ * page. Returns when the list is closed.
+ ***************************************************************************/
+static void SettingsPageList()
+{
+	VideoDriver * video = platform->getVideo();
+	const PixelColor white = {255, 255, 255, 255};
+
+	// kept off the stack for the same reason as the page's list
+	static OptionList options;
+
+	memset(&options, 0, sizeof(options));
+
+	options.length = SETTINGS_PAGE_COUNT;
+	if(options.length > MAX_OPTIONS)
+		options.length = MAX_OPTIONS;
+
+	for(int i = 0; i < options.length; i++)
+		snprintf(options.name[i], sizeof(options.name[i]), "%s", Settings_PageTitle((SettingsPage)i));
+
+	GuiText titleTxt("Settings", 28, white);
+	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	titleTxt.setPosition(50, 50);
+
+	GuiText hintTxt("A: open", 16, (PixelColor){200, 200, 200, 255});
+	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	hintTxt.setPosition(-50, -50);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+
+	GuiTrigger trigA, trigB;
+	trigA.setPrimaryTrigger();
+	trigB.setSecondaryTrigger();
+
+	GuiText backBtnTxt("Go Back", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage backBtnImg(&btnOutline);
+	GuiImage backBtnImgOver(&btnOutlineOver);
+	GuiButton backBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	backBtn.setPosition(100, -35);
+	backBtn.setLabel(&backBtnTxt);
+	backBtn.setImage(&backBtnImg);
+	backBtn.setImageOver(&backBtnImgOver);
+	backBtn.setSoundOver(&btnSoundOver);
+	backBtn.setSoundClick(&btnSoundClick);
+	backBtn.setTrigger(&trigA);
+	backBtn.setTrigger(&trigB);
+	backBtn.setEffectGrow();
+
+	GuiOptionBrowser browser(552, 248, &options);
+	browser.setPosition(0, 108);
+	browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+
+	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
+	w.append(&backBtn);
+
+	// the browser first: it is what takes focus
+	mainWindow->append(&browser);
+	mainWindow->append(&w);
+	mainWindow->append(&titleTxt);
+	mainWindow->append(&hintTxt);
+
+	bool done = false;
+
+	while(!done)
+	{
+		UpdateGui();
+
+		const int clicked = browser.getClickedOption();
+
+		if(clicked >= 0 && clicked < SETTINGS_PAGE_COUNT)
+		{
+			// the list stays up behind the page; take it off so only one has focus
+			mainWindow->remove(&browser);
+			mainWindow->remove(&w);
+			mainWindow->remove(&titleTxt);
+			mainWindow->remove(&hintTxt);
+
+			SettingsPageScreen((SettingsPage)clicked);
+
+			mainWindow->append(&browser);
+			mainWindow->append(&w);
+			mainWindow->append(&titleTxt);
+			mainWindow->append(&hintTxt);
+		}
+
+		if(backBtn.getState() == STATE::CLICKED)
+			done = true;
+	}
+
+	mainWindow->remove(&browser);
+	mainWindow->remove(&w);
+	mainWindow->remove(&titleTxt);
+	mainWindow->remove(&hintTxt);
+}
+
+/****************************************************************************
  * SettingsMenu
  *
  * Opens the settings in place of the home screen, which is taken off the
- * main window while they are up. There is only one page so far, so it goes
- * straight to it; a list of pages goes here when there is a second.
+ * main window while they are up: the list of pages, then the chosen page.
  ***************************************************************************/
 static void SettingsMenu(GuiWindow * home)
 {
 	mainWindow->remove(home);
-	SettingsPageScreen(SETTINGS_PAGE_PERFORMANCE);
+	SettingsPageList();
 	mainWindow->append(home);
 }
 

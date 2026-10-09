@@ -382,8 +382,14 @@ public:
 	}
 	~DISNEY(){
 		DISNEY_disable(0);
-		if (disney.mo)
+		if (disney.mo) {
 			delete disney.mo;
+			// the next DISNEY (the section is re-initialised when a setting
+			// changes) must not find the deleted mixer object, and the pending
+			// DISNEY_disable event must not touch the deleted channel
+			disney.mo = 0;
+			disney.chan = 0;
+		}
 	}
 };
 
