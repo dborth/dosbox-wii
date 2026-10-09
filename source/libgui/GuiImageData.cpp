@@ -9,6 +9,7 @@
 
 #include "Gui.h"
 #include "GuiImageDataCache.h"
+#include "../memmanager.h"
 
 namespace {
 	uint8_t * scratchBuffer = nullptr;
@@ -210,7 +211,7 @@ GuiImageData::DecodedImage GuiImageData::decodeToRgba(const uint8_t * pngData, i
 
 	// Final output buffer this call owns and returns - deliberately NOT part of the shared scratch allocation,
 	// since the caller (eg: a background thread) will go on using it.
-	std::unique_ptr<uint8_t, decltype(&free)> outRgba(static_cast<uint8_t *>(malloc(static_cast<size_t>(w) * h * 4)), free);
+	std::unique_ptr<uint8_t, decltype(&free)> outRgba(static_cast<uint8_t *>(memspace_malloc(static_cast<size_t>(w) * h * 4)), free);
 	if(!outRgba)
 	{
 		png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
