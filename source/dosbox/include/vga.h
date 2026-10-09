@@ -29,6 +29,13 @@
 //#define VGA_KEEP_CHANGES
 #define VGA_CHANGE_SHIFT	9
 
+/* Size of vga.fastmem, the one byte per pixel copy of 16 colour planar (and
+ * chain4 compatible) video memory that the display reads. A plane of a real VGA
+ * is 64 KB: 8 pixels per address makes that 512 KB. Planar modes that reach
+ * further than that are SVGA banked modes above 800x600, which this build
+ * cannot display (SCALER_MAXWIDTH). Writes past the end are not copied. */
+#define VGA_FASTMEM_SIZE	(512*1024)
+
 class PageHandler;
 
 
@@ -400,7 +407,7 @@ typedef struct {
 	VGA_OTHER other;
 	VGA_Memory mem;
 	Bit32u vmemwrap; /* this is assumed to be power of 2 */
-	Bit8u* fastmem;  /* memory for fast (usually 16-color) rendering, always twice as big as vmemsize */
+	Bit8u* fastmem;  /* memory for fast (usually 16-color) rendering, VGA_FASTMEM_SIZE */
 	Bit8u* fastmem_orgptr;
 	Bit32u vmemsize;
 #ifdef VGA_KEEP_CHANGES
@@ -456,6 +463,13 @@ void VGA_KillDrawing(void);
 void VGA_SetOverride(bool vga_override);
 
 extern VGA_Type vga;
+
+/* What the display wraps fastmem at: twice the video memory it can show, up to
+ * what is allocated */
+static inline Bitu VGA_FastMemWrap(void) {
+	Bitu wrap = (Bitu)vga.vmemwrap << 1;
+	return wrap > VGA_FASTMEM_SIZE ? VGA_FASTMEM_SIZE : wrap;
+}
 
 /* Support for modular SVGA implementation */
 /* Video mode extra data to be passed to FinishSetMode_SVGA().

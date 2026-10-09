@@ -6,7 +6,6 @@
 #include <gccore.h>
 #include <ogcsys.h>
 #include <malloc.h>
-#include "../../memmanager.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -613,11 +612,11 @@ void OgcEmulatorVideo::tileRGB565(const uint8_t* src, int pitch, int width, int 
  ***************************************************************************/
 void OgcEmulatorVideo::releaseSnapshot()
 {
-	memspace_free(screenshotSnapshot);
-	screenshotSnapshot = nullptr;
+	snapshotValid = false;
 }
 
-// The snapshot is menu memory: take it after SwitchMemoryModeMenu()
+// Nothing is copied: the tiled frame in texMem is read in place. It is not
+// written again until the next presentFrame(), which invalidates the snapshot.
 void OgcEmulatorVideo::snapshotFrame()
 {
 	releaseSnapshot();
@@ -627,19 +626,15 @@ void OgcEmulatorVideo::snapshotFrame()
 
 	ensureRect();
 
-	size_t size = (size_t)((frameWidth + 3) & ~3) * ((frameHeight + 3) & ~3) * 2;
-	screenshotSnapshot = (uint8_t *) memspace_malloc(size);
-	if (screenshotSnapshot) {
-		memcpy(screenshotSnapshot, texMem, size);
-		snapWidth = frameWidth;
-		snapHeight = frameHeight;
-		snapX = frameX; snapY = frameY; snapW = frameW; snapH = frameH;
-	}
+	snapWidth = frameWidth;
+	snapHeight = frameHeight;
+	snapX = frameX; snapY = frameY; snapW = frameW; snapH = frameH;
+	snapshotValid = true;
 }
 
 bool OgcEmulatorVideo::getSnapshotInfo(FrameSnapshotInfo* info) const
 {
-	if (!screenshotSnapshot || !info || snapW <= 0.0f || snapH <= 0.0f)
+	if (!snapshotValid || !info || snapW <= 0.0f || snapH <= 0.0f)
 		return false;
 
 	info->width = snapWidth;
@@ -648,41 +643,29 @@ bool OgcEmulatorVideo::getSnapshotInfo(FrameSnapshotInfo* info) const
 	return true;
 }
 
-// Un-tiles the GX_TF_RGB565 buffer snapshotFrame() captured. The width and
-// height must match the frame the snapshot was taken from.
-bool OgcEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
+// Un-tiles one row of the GX_TF_RGB565 frame snapshotFrame() refers to
+bool OgcEmulatorVideo::readFrameRowRGB24(int y, uint8_t* dst)
 {
-	if (!screenshotSnapshot || !dst)
+	if (!snapshotValid || !dst || y < 0 || y >= snapHeight)
 		return false;
 
-	if (width != snapWidth || height != snapHeight) {
-		releaseSnapshot();
-		return false;
+	const int paddedWidth = (snapWidth + 3) & ~3;
+	const uint16_t* tex16 = (const uint16_t*) texMem;
+	const int rowBase = (y >> 2) * (paddedWidth >> 2);
+	const int inTileY = (y & 3) * 4;
+
+	for (int x = 0; x < snapWidth; x++) {
+		uint16_t c = tex16[(rowBase + (x >> 2)) * 16 + inTileY + (x & 3)];
+
+		uint8_t r = (c >> 11) & 0x1F;
+		uint8_t g = (c >> 5) & 0x3F;
+		uint8_t b = c & 0x1F;
+
+		dst[0] = (r << 3) | (r >> 2);
+		dst[1] = (g << 2) | (g >> 4);
+		dst[2] = (b << 3) | (b >> 2);
+		dst += 3;
 	}
-
-	int paddedWidth = (width + 3) & ~3;
-	const uint16_t* tex16 = (const uint16_t*) screenshotSnapshot;
-
-	for (int y = 0; y < height; y++) {
-		int tileY = y >> 2;
-		int inTileY = y & 3;
-		for (int x = 0; x < width; x++) {
-			int tileX = x >> 2;
-			int inTileX = x & 3;
-			uint16_t c = tex16[(tileY * (paddedWidth >> 2) + tileX) * 16 + (inTileY * 4 + inTileX)];
-
-			uint8_t r = (c >> 11) & 0x1F;
-			uint8_t g = (c >> 5) & 0x3F;
-			uint8_t b = c & 0x1F;
-
-			uint8_t* o = dst + (y * width + x) * 3;
-			o[0] = (r << 3) | (r >> 2);
-			o[1] = (g << 2) | (g >> 4);
-			o[2] = (b << 3) | (b >> 2);
-		}
-	}
-
-	releaseSnapshot();
 	return true;
 }
 
@@ -700,6 +683,8 @@ void OgcEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 {
 	if (!pixels || !ensureTexture(width, height))
 		return;
+
+	snapshotValid = false; // texMem is about to be overwritten
 
 	if (width != frameWidth || height != frameHeight) {
 		frameWidth = width;

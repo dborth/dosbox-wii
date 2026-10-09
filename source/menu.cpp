@@ -286,21 +286,50 @@ static void updateFskipText(GuiText * fskipText)
  * The last emulated frame, placed where it was on screen, dimmed, behind
  * the menu. GFX_Suspend() took the snapshot before the display was handed
  * over; this turns it into a screen-size texture. fillTexture() writes the
- * result straight into the texture, so no screen-size RGBA buffer is needed,
- * only the snapshot itself.
+ * result straight into the texture, and the snapshot is read a row at a
+ * time, so the only memory this needs is the texture and two rows: no
+ * screen-size RGBA buffer, no converted copy of the frame.
  ***************************************************************************/
 #define BACKGROUND_BRIGHTNESS	0.4f
 
+//! The widest frame the background is built from
+#define BACKGROUND_MAX_WIDTH	640
+
 struct BackgroundSource
 {
-	const uint8_t * rgb;	// packed RGB24
-	int width, height;		// of rgb
+	EmulatorVideoDriver * emu;
+	int width, height;		// of the snapshot
 	float x, y, w, h;		// where the frame goes on the canvas
+
+	// The two most recently read rows. The texture is filled top to bottom
+	// and each pixel needs the source row above and below its position, so
+	// every source row is read about twice.
+	uint8_t rows[2][BACKGROUND_MAX_WIDTH * 3];
+	int rowIndex[2];
+	int victim;
 };
+
+//! Row y of the snapshot, as packed RGB24. `keep` is a row that must stay
+//! valid (the other one the caller is using), or -1.
+static const uint8_t * BackgroundRow(BackgroundSource * s, int y, int keep)
+{
+	for(int i = 0; i < 2; i++)
+		if(s->rowIndex[i] == y)
+			return s->rows[i];
+
+	const int slot = (s->rowIndex[0] == keep) ? 1 : (s->rowIndex[1] == keep) ? 0 : s->victim;
+	s->victim = slot ^ 1;
+
+	if(!s->emu->readFrameRowRGB24(y, s->rows[slot]))
+		memset(s->rows[slot], 0, (size_t)s->width * 3);
+
+	s->rowIndex[slot] = y;
+	return s->rows[slot];
+}
 
 static void BackgroundPixel(int x, int y, PixelColor * out, void * userdata)
 {
-	const BackgroundSource * s = (const BackgroundSource *) userdata;
+	BackgroundSource * s = (BackgroundSource *) userdata;
 	const float fx = (x + 0.5f - s->x) / s->w;
 	const float fy = (y + 0.5f - s->y) / s->h;
 
@@ -325,10 +354,13 @@ static void BackgroundPixel(int x, int y, PixelColor * out, void * userdata)
 	const float tx = sx - x0;
 	const float ty = sy - y0;
 
-	const uint8_t * p00 = s->rgb + ((size_t)y0 * s->width + x0) * 3;
-	const uint8_t * p10 = s->rgb + ((size_t)y0 * s->width + x1) * 3;
-	const uint8_t * p01 = s->rgb + ((size_t)y1 * s->width + x0) * 3;
-	const uint8_t * p11 = s->rgb + ((size_t)y1 * s->width + x1) * 3;
+	const uint8_t * row0 = BackgroundRow(s, y0, -1);
+	const uint8_t * row1 = BackgroundRow(s, y1, y0);
+
+	const uint8_t * p00 = row0 + x0 * 3;
+	const uint8_t * p10 = row0 + x1 * 3;
+	const uint8_t * p01 = row1 + x0 * 3;
+	const uint8_t * p11 = row1 + x1 * 3;
 
 	uint8_t rgb[3];
 	for(int i = 0; i < 3; i++)
@@ -353,13 +385,9 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 	if(!emu->getSnapshotInfo(&info))
 		return NULL;
 
-	uint8_t * rgb = (uint8_t *) memspace_malloc((size_t)info.width * info.height * 3);
-	if(!rgb)
-		return NULL;
-
-	if(!emu->readFrameRGB24(info.width, info.height, rgb))
+	if(info.width <= 0 || info.width > BACKGROUND_MAX_WIDTH)
 	{
-		memspace_free(rgb);
+		emu->releaseSnapshot();
 		return NULL;
 	}
 
@@ -368,11 +396,16 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 
 	if(texture)
 	{
-		BackgroundSource src = { rgb, info.width, info.height, info.x, info.y, info.w, info.h };
+		BackgroundSource src;
+		src.emu = emu;
+		src.width = info.width; src.height = info.height;
+		src.x = info.x; src.y = info.y; src.w = info.w; src.h = info.h;
+		src.rowIndex[0] = src.rowIndex[1] = -1;
+		src.victim = 0;
 		images->fillTexture(texture, screenwidth, screenheight, BackgroundPixel, &src);
 	}
 
-	memspace_free(rgb);
+	emu->releaseSnapshot();
 	return texture;
 }
 

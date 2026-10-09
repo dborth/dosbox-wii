@@ -59,7 +59,7 @@ static void getPixel(Bits x, Bits y, int &r, int &g, int &b, int shift)
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
 
-	Bit8u* src = (Bit8u *)&scalerSourceCache;
+	Bit8u* src = Scaler_SourceCache;
 	Bit32u pixel;
 	switch (render.scale.inMode) {
 	case scalerMode8:

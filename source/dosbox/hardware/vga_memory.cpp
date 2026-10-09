@@ -189,6 +189,8 @@ public:
 		start >>= 2;
 		pixels.d=((Bit32u*)vga.mem.linear)[start];
 
+		if (GCC_UNLIKELY((start<<3) >= VGA_FASTMEM_SIZE))
+			return;	// beyond what the display can show
 		Bit8u * write_pixels=&vga.fastmem[start<<3];
 
 		Bit32u colors0_3, colors4_7;
@@ -273,6 +275,8 @@ public:
 		pixels.d&=vga.config.full_not_map_mask;
 		pixels.d|=(data & vga.config.full_map_mask);
 		((Bit32u*)vga.mem.linear)[start]=pixels.d;
+		if (GCC_UNLIKELY((start<<3) >= VGA_FASTMEM_SIZE))
+			return;	// beyond what the display can show
 		Bit8u * write_pixels=&vga.fastmem[start<<3];
 
 		Bit32u colors0_3, colors4_7;
@@ -334,6 +338,8 @@ public:
 	}
 	template <class Size>
 	static INLINE void writeCache(PhysPt addr, Bitu val) {
+		if (GCC_UNLIKELY(addr >= VGA_FASTMEM_SIZE))
+			return;	// beyond what the display can show
 		hostWrite<Size>( &vga.fastmem[addr], val );
 		if (GCC_UNLIKELY(addr < 320)) {
 			// And replicate the first line
@@ -961,11 +967,12 @@ void VGA_SetupMemory(Section* sec) {
 	vga.mem.linear=(Bit8u*)(((Bitu)vga.mem.linear_orgptr + 16-1) & ~(16-1));
 	memset(vga.mem.linear,0,vga_allocsize);
 
-	vga.fastmem_orgptr = new Bit8u[(vga.vmemsize<<1)+4096+16];
+	vga.fastmem_orgptr = new Bit8u[VGA_FASTMEM_SIZE+4096+16];
 	vga.fastmem=(Bit8u*)(((Bitu)vga.fastmem_orgptr + 16-1) & ~(16-1));
 
 	// In most cases these values stay the same. Assumptions: vmemwrap is power of 2,
-	// vmemwrap <= vmemsize, fastmem implicitly has mem wrap twice as big
+	// vmemwrap <= vmemsize. fastmem wraps at twice that, up to VGA_FASTMEM_SIZE
+	// (VGA_FastMemWrap()); writes beyond it are dropped
 	vga.vmemwrap = vga.vmemsize;
 
 #ifdef VGA_KEEP_CHANGES

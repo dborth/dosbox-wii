@@ -400,7 +400,7 @@ void WutEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 }
 
 /****************************************************************************
- * snapshotFrame / getSnapshotInfo / readFrameRGB24
+ * snapshotFrame / getSnapshotInfo / readFrameRowRGB24
  ***************************************************************************/
 void WutEmulatorVideo::snapshotFrame()
 {
@@ -435,34 +435,25 @@ bool WutEmulatorVideo::getSnapshotInfo(FrameSnapshotInfo* info) const
 	return true;
 }
 
-bool WutEmulatorVideo::readFrameRGB24(int width, int height, uint8_t* dst)
+bool WutEmulatorVideo::readFrameRowRGB24(int y, uint8_t* dst)
 {
-	if (!screenshotSnapshot || !dst)
+	if (!screenshotSnapshot || !dst || y < 0 || y >= snapHeight)
 		return false;
-
-	if (width != snapWidth || height != snapHeight)
-	{
-		free(screenshotSnapshot);
-		screenshotSnapshot = nullptr;
-		return false;
-	}
 
 	const uint32_t srcStride = snapPitch * 4; // bytes/row, RGBA8
+	const uint8_t* srcRow = screenshotSnapshot + (size_t)y * srcStride;
 
-	for (int y = 0; y < height; y++)
+	for (int x = 0; x < snapWidth; x++)
 	{
-		const uint8_t* srcRow = screenshotSnapshot + (size_t)y * srcStride;
-		uint8_t* dstRow = dst + (size_t)y * width * 3;
-
-		for (int x = 0; x < width; x++)
-		{
-			dstRow[x * 3 + 0] = srcRow[x * 4 + 0];
-			dstRow[x * 3 + 1] = srcRow[x * 4 + 1];
-			dstRow[x * 3 + 2] = srcRow[x * 4 + 2];
-		}
+		dst[x * 3 + 0] = srcRow[x * 4 + 0];
+		dst[x * 3 + 1] = srcRow[x * 4 + 1];
+		dst[x * 3 + 2] = srcRow[x * 4 + 2];
 	}
+	return true;
+}
 
+void WutEmulatorVideo::releaseSnapshot()
+{
 	free(screenshotSnapshot);
 	screenshotSnapshot = nullptr;
-	return true;
 }

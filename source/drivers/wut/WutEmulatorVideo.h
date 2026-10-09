@@ -30,11 +30,12 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
 
 		//! Copies the live RGBA8 texture into a driver-owned buffer so it
-		//! survives until readFrameRGB24()
+		//! survives until releaseSnapshot()
 		void snapshotFrame() override;
 		bool getSnapshotInfo(FrameSnapshotInfo* info) const override;
 		//! Packs the RGBA8 buffer snapshotFrame() captured into RGB24
-		bool readFrameRGB24(int width, int height, uint8_t* dst) override;
+		bool readFrameRowRGB24(int y, uint8_t* dst) override;
+		void releaseSnapshot() override;
 
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
 
@@ -77,7 +78,7 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		// per axis, so this lines up with what the player was looking at)
 		float canvasX = 0, canvasY = 0, canvasW = 0, canvasH = 0;
 
-		// One-shot: allocated by snapshotFrame(), freed by readFrameRGB24()
+		// Allocated by snapshotFrame(), freed by releaseSnapshot()
 		uint8_t* screenshotSnapshot = nullptr;
 		int snapWidth = 0, snapHeight = 0;
 		uint32_t snapPitch = 0; // texels/row, RGBA8, as snapshotted

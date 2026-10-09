@@ -120,19 +120,6 @@ static void RENDER_StartLineHandler(const void * s) {
 	render.scale.outLine++;
 }
 
-static void RENDER_FinishLineHandler(const void * s) {
-	if (s) {
-		const Bitu *src = (Bitu*)s;
-		Bitu *cache = (Bitu*)(render.scale.cacheRead);
-		for (Bits x=render.src.start;x>0;) {
-			cache[0] = src[0];
-			x--; src++; cache++;
-		}
-	}
-	render.scale.cacheRead += render.scale.cachePitch;
-}
-
-
 static void RENDER_ClearCacheHandler(const void * src) {
 	Bitu x, width;
 	Bit32u *srcLine, *cacheLine;
@@ -159,7 +146,7 @@ bool RENDER_StartUpdate(void) {
 	}
 	render.scale.inLine = 0;
 	render.scale.outLine = 0;
-	render.scale.cacheRead = (Bit8u*)&scalerSourceCache;
+	render.scale.cacheRead = Scaler_SourceCache;
 	render.scale.outWrite = 0;
 	render.scale.outPitch = 0;
 	Scaler_ChangedLines[0] = 0;
@@ -216,7 +203,7 @@ void RENDER_EndUpdate( bool abort ) {
 		if (render.frameskip.max)
 			fps /= 1+render.frameskip.max;
 		CAPTURE_AddImage( render.src.width, render.src.height, render.src.bpp, pitch,
-			flags, fps, (Bit8u *)&scalerSourceCache, (Bit8u*)&render.pal.rgb );
+			flags, fps, Scaler_SourceCache, (Bit8u*)&render.pal.rgb );
 	}
 	if ( render.scale.outWrite ) {
 		GFX_EndUpdate( abort? NULL : Scaler_ChangedLines );
@@ -376,8 +363,11 @@ static void RENDER_Reset( void ) {
 	render.pal.last = 255;
 	render.pal.changed = false;
 	memset(render.pal.modified, 0, sizeof(render.pal.modified));
-	//Finish this frame using a copy only handler
-	RENDER_DrawLine = RENDER_FinishLineHandler;
+	/* The rest of the frame being drawn is not shown. It used to be copied into
+	 * the cache here, but the next frame refills the whole cache (clearCache,
+	 * below), and the cache is sized for the new mode, which the lines of a
+	 * frame from the old mode may not fit */
+	RENDER_DrawLine = RENDER_EmptyLineHandler;
 	render.scale.outWrite = 0;
 	/* Signal the next frame to first reinit the cache */
 	render.scale.clearCache = true;
@@ -409,6 +399,12 @@ void RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double ratio,bool 
 		ratio = target / height;
 	} else {
 		//This would alter the width of the screen, we don't care about rounding errors here
+	}
+	/* The cache is made for this mode before anything else changes: if there is
+	 * no memory the renderer stays halted, as for a mode that is too big */
+	if (!Scaler_SizeCache((size_t)width * height * (bpp == 8 ? 1 : (bpp == 15 || bpp == 16) ? 2 : 4))) {
+		LOG_MSG("RENDER: no memory for a %dx%d source cache", (int)width, (int)height);
+		return;
 	}
 	render.src.width=width;
 	render.src.height=height;

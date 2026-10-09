@@ -13,8 +13,8 @@
 //! Describes the frame captured by EmulatorVideoDriver::snapshotFrame()
 struct FrameSnapshotInfo
 {
-	int width;     //!< snapshot width in pixels (pass to readFrameRGB24)
-	int height;    //!< snapshot height in pixels (pass to readFrameRGB24)
+	int width;     //!< snapshot width in pixels of the frame
+	int height;    //!< snapshot height in pixels of the frame
 	//! Where the frame was on the UI canvas (the 640x480 design space of the
 	//! menu) when it was captured: aspect, scale and position already applied,
 	//! so a background built from it lines up with what the player was looking at.
@@ -90,26 +90,25 @@ class EmulatorVideoDriver
 			setSettings(next);
 		}
 
-		//! Copies whatever this driver needs out of its live frame source,
-		//! into storage it owns itself, so a later readFrameRGB24() call
-		//! still has something valid to read even if the live source gets
-		//! invalidated/repurposed in between.
+		//! Captures the last presented frame for the menu's background: its size
+		//! and where it was on the canvas. A driver that can read its frame again
+		//! later does not copy it (no presentFrame() runs while the menu is up);
+		//! the snapshot is valid until releaseSnapshot(), or the next
+		//! presentFrame(), whichever comes first.
 		virtual void snapshotFrame() = 0;
 
 		//! Describes the frame the last snapshotFrame() captured. Returns false
-		//! if there isn't one (nothing was presented yet, or it was already
-		//! consumed by readFrameRGB24()).
+		//! if there isn't one (nothing was presented yet, or it was released).
 		virtual bool getSnapshotInfo(FrameSnapshotInfo* info) const { (void)info; return false; }
 
-		//! Converts the width x height frame most recently captured by
-		//! snapshotFrame() into packed RGB24, written to dst
-		//! (width*height*3 bytes, tightly packed, no dst padding).
-		//! One-shot: consumes the snapshot. Returns false, leaving dst
-		//! untouched, if there is no snapshot or width/height don't match it.
-		virtual bool readFrameRGB24(int width, int height, uint8_t* dst) = 0;
+		//! Writes row `y` of the snapshot as packed RGB24 to dst
+		//! (FrameSnapshotInfo::width * 3 bytes). A row at a time, so the caller
+		//! never needs the whole frame converted at once. Does not consume the
+		//! snapshot. Returns false, leaving dst untouched, if there is no
+		//! snapshot or y is out of range.
+		virtual bool readFrameRowRGB24(int y, uint8_t* dst) = 0;
 
-		//! Drops the snapshot if readFrameRGB24() has not consumed it. The
-		//! snapshot lives in menu memory, which goes away when the menu does.
+		//! Drops the snapshot. Call when the background is built.
 		virtual void releaseSnapshot() {}
 
 		//! Sets the initial console dimensions, before the first presentFrame() call

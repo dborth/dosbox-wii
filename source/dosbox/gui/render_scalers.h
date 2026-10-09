@@ -19,6 +19,7 @@
 #ifndef _RENDER_SCALERS_H
 #define _RENDER_SCALERS_H
 
+#include <stddef.h>
 #include "video.h"
 
 #define SCALER_MAXWIDTH		640
@@ -34,12 +35,16 @@ extern Bit8u Scaler_Aspect[];
 extern Bitu Scaler_ChangedLineIndex;
 extern Bit16u Scaler_ChangedLines[];
 
-typedef union {
-	Bit32u b32	[SCALER_MAXHEIGHT] [SCALER_MAXWIDTH];
-	Bit16u b16	[SCALER_MAXHEIGHT] [SCALER_MAXWIDTH];
-	Bit8u b8	[SCALER_MAXHEIGHT] [SCALER_MAXWIDTH];
-} scalerSourceCache_t;
-extern scalerSourceCache_t scalerSourceCache;
+/* The source frame as it was last drawn, one line per source line
+ * (render.scale.cachePitch bytes apart). Kept to find which lines changed.
+ * Sized for the current mode by Scaler_SizeCache(): a 320x200 8 bit mode needs
+ * 64 KB, where a cache for the largest mode (640x480 32 bit) is 1.2 MB. NULL
+ * until a mode has sized it. */
+extern Bit8u *Scaler_SourceCache;
+
+/* Makes the cache hold at least `bytes`. Its contents are not kept. Returns
+ * false if there is no memory for it, with no cache left. */
+bool Scaler_SizeCache(size_t bytes);
 
 //! Line handlers by source mode (8, 15, 16, 32 bit, then 8 bit with palette
 //! change detection) and destination mode (scalerMode_t). Only the

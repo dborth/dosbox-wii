@@ -20,12 +20,39 @@
 #include "dosbox.h"
 #include "render.h"
 #include <string.h>
+#include <stdlib.h>
 
 Bit8u Scaler_Aspect[SCALER_MAXHEIGHT];
 Bit16u Scaler_ChangedLines[SCALER_MAXHEIGHT];
 Bitu Scaler_ChangedLineIndex;
 
-scalerSourceCache_t scalerSourceCache;
+Bit8u *Scaler_SourceCache = 0;
+static size_t scalerCacheSize = 0;
+
+/* The line handlers compare whole words, so the last line can be read a few
+ * bytes past its end when the width is not a multiple of the word size */
+#define SCALER_CACHE_SLACK	64
+
+bool Scaler_SizeCache(size_t bytes) {
+	bytes += SCALER_CACHE_SLACK;
+	/* Keep a block that is the right size to within a factor of two. A mode
+	 * change is rare, a heap with no spare room does not like churn, but a
+	 * 640x480 cache left behind by a 320x200 mode is 240 KB wasted */
+	if (Scaler_SourceCache && bytes <= scalerCacheSize && bytes * 2 > scalerCacheSize) {
+		memset(Scaler_SourceCache, 0, scalerCacheSize);
+		return true;
+	}
+	/* Free first: the old block and the new one are never both needed */
+	free(Scaler_SourceCache);
+	Scaler_SourceCache = 0;
+	scalerCacheSize = 0;
+	Scaler_SourceCache = (Bit8u *)malloc(bytes);
+	if (!Scaler_SourceCache)
+		return false;
+	scalerCacheSize = bytes;
+	memset(Scaler_SourceCache, 0, bytes);
+	return true;
+}
 
 #define _conc7(A,B,C,D,E,F,G) A ## B ## C ## D ## E ## F ## G
 #define conc4d(A,B,C,D) _conc7(A,_,B,_,C,_,D)

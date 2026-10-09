@@ -29,12 +29,12 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		EmulatorVideoCapabilities getCapabilities() const override;
 		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
 
-		//! Copies the live (4x4-tiled GX_TF_RGB565) texture into a
-		//! driver-owned buffer so it survives until readFrameRGB24()
+		//! Refers to the live (4x4-tiled GX_TF_RGB565) texture instead of
+		//! copying it: nothing presents while the menu is up
 		void snapshotFrame() override;
 		bool getSnapshotInfo(FrameSnapshotInfo* info) const override;
-		//! Un-tiles the buffer snapshotFrame() captured into packed RGB24
-		bool readFrameRGB24(int width, int height, uint8_t* dst) override;
+		//! Un-tiles one row of the frame snapshotFrame() refers to into packed RGB24
+		bool readFrameRowRGB24(int y, uint8_t* dst) override;
 		void releaseSnapshot() override;
 
 		void renderInit(int width, int height) override;
@@ -93,8 +93,8 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		void* prescaleMem = nullptr;
 		size_t prescaleCapacity = 0;
 
-		// One-shot: allocated by snapshotFrame(), freed by readFrameRGB24()
-		uint8_t* screenshotSnapshot = nullptr;
+		// Set by snapshotFrame(), cleared by releaseSnapshot() and presentFrame()
+		bool snapshotValid = false; // snap* describe texMem as it is now
 
 		// The game quad's rect on the UI canvas (top-left x/y, size w/h),
 		// recomputed by recalculateScaling(); used to map the pointer
