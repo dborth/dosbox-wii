@@ -255,16 +255,13 @@ static void RENDER_Reset( void ) {
 	
 	Bitu gfx_flags, xscale, yscale;
 	ScalerSimpleBlock_t		*simpleBlock = &ScaleNormal1x;
-	if (render.aspect) {
-		if (render.src.ratio>1.0) {
-			gfx_scalew = 1;
-			gfx_scaleh = render.src.ratio;
-		} else {
-			gfx_scalew = (1/render.src.ratio);
-			gfx_scaleh = 1;
-		}
-	} else {
+	/* Always the pixel aspect of the source. Whether it is used (aspect
+	 * corrected or square pixels) is the display's setting, [display] aspect. */
+	if (render.src.ratio>1.0) {
 		gfx_scalew = 1;
+		gfx_scaleh = render.src.ratio;
+	} else {
+		gfx_scalew = (1/render.src.ratio);
 		gfx_scaleh = 1;
 	}
 	/* No enlarging or filtering here: the display scales the frame. Modes
@@ -438,17 +435,11 @@ void RENDER_Init(Section * sec) {
 
 	//For restarting the renderer.
 	static bool running = false;
-	bool aspect = render.aspect;
 
 	render.pal.first=256;
 	render.pal.last=0;
-	render.aspect=section->Get_bool("aspect");
 	render.frameskip.max=section->Get_int("frameskip");
 	render.frameskip.count=0;
-	//If something changed that needs a ReInit
-	// Only ReInit when there is a src.bpp (fixes crashes on startup and directly changing the scaler without a screen specified yet)
-	if(running && render.src.bpp && (render.aspect != aspect))
-		RENDER_CallBack( GFX_CallBackReset );
 
 	if(!running) render.updating=true;
 	running = true;

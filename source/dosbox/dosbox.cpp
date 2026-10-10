@@ -446,9 +446,6 @@ void DOSBOX_Init(void) {
 	Pint->SetMinMax(0,10);
 	Pint->Set_help("How many frames DOSBox skips before drawing one.");
 
-	Pbool = secprop->Add_bool("aspect",Property::Changeable::Always,false);
-	Pbool->Set_help("Do aspect correction, if your output method doesn't support scaling this can slow things down!");
-
 
 	secprop=control->AddSection_prop("cpu",&CPU_Init,true);//done
 	const char* cores[] = { "auto",

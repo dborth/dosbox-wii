@@ -72,7 +72,6 @@ typedef struct {
 	RenderPal_t pal;
 	bool updating;
 	bool active;
-	bool aspect;
 	bool fullFrame;
 } Render_t;
 

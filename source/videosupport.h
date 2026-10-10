@@ -44,6 +44,13 @@ void GFX_Refresh(void);
 //! byte aligned. GFX_ResetScreen() brings the emulator picture back.
 void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pitch);
 
+class Section;
+
+//! Init function of the [display] section (displayconfig.cpp). Hands the
+//! section's values to the video driver, which applies them on its next
+//! frame. Runs at start and again for every change the menu makes.
+void GFX_DisplayInit(Section * sec);
+
 //! The Wii has no windowed mode, so this is always true.
 bool GFX_IsFullscreen(void);
 

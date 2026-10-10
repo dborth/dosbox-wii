@@ -41,7 +41,8 @@ enum RowKind
 	ROW_CYCLES_AMOUNT,	//!< cpu.cycles: the number that goes with fixed or max
 	ROW_BOOL,			//!< a bool property: On / Off
 	ROW_RATE,			//!< a device's source sample rate: Fast / Matched / Native presets
-	ROW_AUDIO_OUTPUT	//!< read-only: the audio driver's fixed output format
+	ROW_AUDIO_OUTPUT,	//!< read-only: the audio driver's fixed output format
+	ROW_RANGE			//!< an integer property stepped through its own SetMinMax range, by a fixed amount
 };
 
 //! When a row may be changed. A row that has to wait for a restart will be a
@@ -55,7 +56,9 @@ enum RowTier
 enum IntFormat
 {
 	FMT_NUMBER,
-	FMT_CYCLE_STEP		//!< below 100 is a percentage, otherwise a number of cycles
+	FMT_CYCLE_STEP,		//!< below 100 is a percentage, otherwise a number of cycles
+	FMT_PERCENT,		//!< 80 shows as 80%
+	FMT_SIGNED			//!< a position: +12, 0, -12
 };
 
 struct SettingRow
@@ -72,6 +75,9 @@ struct SettingRow
 	bool (*allowed)(const char *);	//!< ROW_CHOICE: refuses a value the core cannot take right now; NULL = any
 	const char * help;				//!< NULL = DOSBox's own help for the property
 	int nativeRate;					//!< ROW_RATE: a further preset, the device's own rate; 0 = none
+	int step;						//!< ROW_RANGE: how far one press moves the value
+	bool (*shown)();				//!< NULL = always; false leaves the row off the page (the platform cannot do it)
+	const char * (*inactive)();		//!< NULL = never; why the setting has no effect right now, if it has none
 };
 
 struct PageDef
@@ -670,8 +676,8 @@ static const char * Refusal(const char * section, const char * prop, const std::
  *
  * The home screen's +/- buttons change the running frameskip without
  * touching the config, so that is the value to show. Writing the config
- * from here is safe while the display is suspended: RENDER_Init only resets
- * the screen when render.aspect changes, which this never does.
+ * from here is safe while the display is suspended: RENDER_Init only reads
+ * frameskip and does not reset the screen.
  ***************************************************************************/
 static int EffectiveFrameskip()
 {
@@ -708,6 +714,65 @@ static const SettingRow performanceRows[] =
 	{ "Cycle step up",		"cpu",		"cycleup",		ROW_INT,			TIER_LIVE,		cycleStepPresets, ARRAY_COUNT(cycleStepPresets), FMT_CYCLE_STEP, NULL, NULL, helpCycleStepUp },
 	{ "Cycle step down",	"cpu",		"cycledown",	ROW_INT,			TIER_LIVE,		cycleStepPresets, ARRAY_COUNT(cycleStepPresets), FMT_CYCLE_STEP, NULL, NULL, helpCycleStepDown },
 	{ "Frameskip",			"render",	"frameskip",	ROW_INT,			TIER_LIVE,		frameskipPresets, ARRAY_COUNT(frameskipPresets), FMT_NUMBER, EffectiveFrameskip, NULL, NULL },
+};
+
+/****************************************************************************
+ * Video page
+ *
+ * The [display] section (displayconfig.cpp), which the video driver reads on
+ * its next frame. Nothing here touches the screen, so every row is safe at
+ * any time the menu is open. The driver says what it can do, and a row it
+ * cannot honour is left off: scanlines need a 480 line mode, and the
+ * widescreen row is for consoles that cannot tell what shape the TV is.
+ ***************************************************************************/
+static bool ScanlinesShown()
+{
+	bool scanlines = false;
+
+	GetEmulatorVideoCapabilities(&scanlines, NULL, NULL);
+	return scanlines;
+}
+
+static bool WidescreenShown()
+{
+	bool widescreen = false;
+
+	GetEmulatorVideoCapabilities(NULL, NULL, &widescreen);
+	return widescreen;
+}
+
+//! "sharp" is only offered where the driver has it
+static bool FilterAllowed(const char * candidate)
+{
+	bool sharp = false;
+
+	if(strcmp(candidate, "sharp") != 0)
+		return true;
+
+	GetEmulatorVideoCapabilities(NULL, &sharp, NULL);
+	return sharp;
+}
+
+//! The whole-number fit picks its own size, so the zoom has nothing to do
+static const char * ZoomInactive()
+{
+	return (GetConfig("display", "fit") == "integer") ? "Zoom is not used with the integer fit." : NULL;
+}
+
+#define SHIFT_STEP	5	//!< of 1/640 of the width, 1/480 of the height
+#define ZOOM_STEP	5	//!< percent
+
+static const SettingRow videoRows[] =
+{
+	{ "Aspect",			"display",	"aspect",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
+	{ "Fit",			"display",	"fit",			ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
+	{ "Filter",			"display",	"filter",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, FilterAllowed, NULL, 0, 0, NULL, NULL },
+	{ "Scanlines",		"display",	"scanlines",	ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, 10, ScanlinesShown, NULL },
+	{ "Zoom width",		"display",	"zoomx",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, ZOOM_STEP, NULL, ZoomInactive },
+	{ "Zoom height",	"display",	"zoomy",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, ZOOM_STEP, NULL, ZoomInactive },
+	{ "Shift X",		"display",	"shiftx",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_SIGNED, NULL, NULL, NULL, 0, SHIFT_STEP, NULL, NULL },
+	{ "Shift Y",		"display",	"shifty",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_SIGNED, NULL, NULL, NULL, 0, SHIFT_STEP, NULL, NULL },
+	{ "Widescreen",		"display",	"widescreen",	ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, WidescreenShown, NULL },
 };
 
 /****************************************************************************
@@ -760,21 +825,30 @@ static const SettingRow audioRows[] =
 static const PageDef pages[SETTINGS_PAGE_COUNT] =
 {
 	{ "Performance", performanceRows, ARRAY_COUNT(performanceRows) },
+	{ "Video", videoRows, ARRAY_COUNT(videoRows) },
 	{ "Audio", audioRows, ARRAY_COUNT(audioRows) },
 };
 
 /****************************************************************************
  * Public interface
  ***************************************************************************/
+static bool RowShown(const SettingRow & row)
+{
+	return !row.shown || row.shown();
+}
+
+//! The row at a position among the rows that are shown
 static const SettingRow * GetRow(int page, int row)
 {
-	if((int)page < 0 || (int)page >= SETTINGS_PAGE_COUNT)
+	if((int)page < 0 || (int)page >= SETTINGS_PAGE_COUNT || row < 0)
 		return NULL;
 
-	if(row < 0 || row >= pages[page].count)
-		return NULL;
-
-	return &pages[page].rows[row];
+	for(int i = 0; i < pages[page].count; i++)
+	{
+		if(RowShown(pages[page].rows[i]) && row-- == 0)
+			return &pages[page].rows[i];
+	}
+	return NULL;
 }
 
 static void CuratedValue(const SettingRow * r, char * buf, size_t size);
@@ -800,7 +874,7 @@ static bool CuratedStep(const SettingRow * r, int direction);
  * Whether a change takes effect now is decided by the section, not the
  * property: Section::ExecuteInit(false) only runs the init functions that
  * DOSBOX_Init() registered with canchange=true (render, cpu, midi, sblaster,
- * gus, speaker, serial, and the JOYSTICK_Init, XMS_Init, EMS_Init and
+ * gus, speaker, serial, display, and the JOYSTICK_Init, XMS_Init, EMS_Init and
  * DOS_KeyboardLayout_Init of joystick and dos), and every property of those
  * sections is read by one of them. A property of any other section (dosbox,
  * mixer, sdl) is read once at start. Those rows are read-only here and say
@@ -822,7 +896,6 @@ static const PropRef hiddenProps[] =
 	{ "mixer", "blocksize" },		// the same
 	{ "midi", "mididevice" },		// no handler that opens: nothing to choose
 	{ "midi", "midiconfig" },		// the options of one
-	{ "render", "aspect" },			// belongs to the display pipeline
 	{ "sdl", "fullscreen" },		// nothing reads these six
 	{ "sdl", "fulldouble" },
 	{ "sdl", "fullresolution" },
@@ -839,11 +912,11 @@ static const char * const hiddenSections[] = { "serial" };
 //! Sections whose changes reach the running core (see above).
 static const char * const liveSections[] =
 {
-	"render", "cpu", "midi", "sblaster", "gus", "speaker", "joystick", "dos"
+	"render", "display", "cpu", "midi", "sblaster", "gus", "speaker", "joystick", "dos"
 };
 
 //! Of those, the ones that are safe at any time. The rest wait for the DOS prompt.
-static const char * const anytimeSections[] = { "render", "cpu" };
+static const char * const anytimeSections[] = { "render", "display", "cpu" };
 
 struct SectionTitle
 {
@@ -855,6 +928,7 @@ static const SectionTitle sectionTitles[] =
 {
 	{ "dosbox", "Machine and memory" },
 	{ "render", "Rendering" },
+	{ "display", "Video output" },
 	{ "cpu", "CPU" },
 	{ "mixer", "Mixer" },
 	{ "midi", "MIDI" },
@@ -971,7 +1045,14 @@ static std::vector<AllRow> SectionRows(int controlIndex)
 		row.atPrompt = live && !anytime;
 		row.kind = row.curated ? ALL_DELEGATE : KindOf(p, &row.note);
 
-		if(row.curated)
+		if(row.curated && !RowShown(*row.curated))
+		{
+			// the Video page leaves this row off because the platform cannot do it
+			row.curated = NULL;
+			row.kind = ALL_READONLY;
+			row.note = "not available here";
+		}
+		else if(row.curated)
 			row.note = "";
 		else if(!strcasecmp(sec->GetName(), "cpu") && p->propname == "cycles")
 			row.note = "Performance page";
@@ -1245,7 +1326,12 @@ int Settings_RowCount(int page)
 	if(page < 0)
 		return 0;
 
-	return pages[page].count;
+	int count = 0;
+
+	for(int i = 0; i < pages[page].count; i++)
+		count += RowShown(pages[page].rows[i]) ? 1 : 0;
+
+	return count;
 }
 
 const char * Settings_RowLabel(int page, int row)
@@ -1275,6 +1361,10 @@ static void FormatInt(const SettingRow & row, int value, char * buf, size_t size
 		else
 			snprintf(buf, size, "%d cycles", value);
 	}
+	else if(row.format == FMT_PERCENT)
+		snprintf(buf, size, "%d%%", value);
+	else if(row.format == FMT_SIGNED)
+		snprintf(buf, size, value == 0 ? "%d" : "%+d", value);
 	else
 		snprintf(buf, size, "%d", value);
 }
@@ -1306,6 +1396,7 @@ static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 			break;
 
 		case ROW_INT:
+		case ROW_RANGE:
 			FormatInt(*r, CurrentInt(*r), buf, size);
 			break;
 
@@ -1339,6 +1430,11 @@ static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 		const size_t used = strlen(buf);
 		snprintf(buf + used, size - used, " (DOS prompt only)");
 	}
+	else if(r->inactive && r->inactive())
+	{
+		const size_t used = strlen(buf);
+		snprintf(buf + used, size - used, " (not used)");
+	}
 }
 
 static void CuratedHelp(const SettingRow * r, char * buf, size_t size)
@@ -1366,7 +1462,10 @@ static void CuratedHelp(const SettingRow * r, char * buf, size_t size)
 			CollapseSpaces(p->Get_help(), help, sizeof(help));
 	}
 
-	snprintf(buf, size, "%s%s", IsLocked(*r) ? "Only available at the DOS prompt. " : "", help);
+	const char * unused = (!IsLocked(*r) && r->inactive) ? r->inactive() : NULL;
+
+	snprintf(buf, size, "%s%s%s%s", IsLocked(*r) ? "Only available at the DOS prompt. " : "",
+		unused ? unused : "", unused ? " " : "", help);
 }
 
 static bool CuratedStep(const SettingRow * r, int direction)
@@ -1414,6 +1513,40 @@ static bool CuratedStep(const SettingRow * r, int direction)
 
 			if(next == current)
 				return false;
+
+			snprintf(value, sizeof(value), "%d", next);
+
+			if(Refusal(r->section, r->prop, value))
+				return false;
+
+			return Apply(r->section, r->prop, value);
+		}
+
+		case ROW_RANGE:
+		{
+			// the property's own range, in fixed steps. A value off the grid (from
+			// dosbox.conf) steps from where it is; the last step before an end lands
+			// on the end, and one more wraps to the other.
+			Section_prop * sec = GetSection(r->section);
+			Prop_int * p = sec ? dynamic_cast<Prop_int *>(FindProp(sec, r->prop)) : NULL;
+
+			if(!p)
+				return false;
+
+			const int lo = p->getMin(), hi = p->getMax();
+			const int amount = (r->step > 0) ? r->step : 1;
+			const int current = CurrentInt(*r);
+			int next = current + ((direction >= 0) ? amount : -amount);
+
+			if(direction >= 0 && next > hi)
+				next = (current >= hi) ? lo : hi;
+			else if(direction < 0 && next < lo)
+				next = (current <= lo) ? hi : lo;
+
+			if(next == current)
+				return false;
+
+			char value[16];
 
 			snprintf(value, sizeof(value), "%d", next);
 

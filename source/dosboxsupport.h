@@ -25,6 +25,11 @@ bool IsShellIdle();
 //! which case neither value is set.
 bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer);
 
+//! What the emulator video driver can do, so the Video page can leave out rows
+//! that would do nothing here. Any of the three may be NULL. Returns false when
+//! there is no emulator video driver, in which case all three are false.
+bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting);
+
 //! True when the DOS section (XMS, EMS, UMB, keyboard layout) can be
 //! re-initialised without damage: the upper memory blocks are untouched and
 //! enough callback slots are left for EMS, which keeps one per init. When

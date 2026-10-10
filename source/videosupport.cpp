@@ -25,7 +25,9 @@
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
+#include "setup.h"
 #include "videosupport.h"
+#include "displayconfig.h"
 #include "osk.h"
 
 static struct {
@@ -59,9 +61,13 @@ static void PresentFrame(void) {
 void GFX_HalInit(void) {
 	memset(&gfx, 0, sizeof(gfx));
 
-	EmulatorVideoDriver * video = EmulatorVideo();
-	video->resetVideo();
-	video->setSmoothing(true);
+	// The user's display options are not set here: the [display] section
+	// hands them over (GFX_DisplayInit)
+	EmulatorVideo()->resetVideo();
+}
+
+void GFX_DisplayInit(Section * sec) {
+	EmulatorVideo()->setSettings(DisplaySettingsFromConfig(static_cast<Section_prop *>(sec)));
 }
 
 void GFX_HalShutdown(void) {

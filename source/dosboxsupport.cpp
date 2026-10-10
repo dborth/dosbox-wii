@@ -33,9 +33,12 @@
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/EmulatorAudioDriver.h"
+#include "drivers/VideoDriver.h"
+#include "drivers/EmulatorVideoDriver.h"
 #include "drivers/Logger.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
+#include "displayconfig.h"
 #include "input.h"
 #include "fileop.h"
 #include "menu.h"
@@ -160,6 +163,30 @@ bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer)
 }
 
 /****************************************************************************
+ * GetEmulatorVideoCapabilities
+ *
+ * Asked of the driver every time: what it can do depends on the console and
+ * the video mode it found, not on anything written here.
+ ***************************************************************************/
+bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting)
+{
+	EmulatorVideoCapabilities caps;
+	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
+
+	if(video)
+		caps = video->getCapabilities();
+
+	if(scanlines)
+		*scanlines = caps.scanlines;
+	if(sharpFilter)
+		*sharpFilter = caps.sharpFilter;
+	if(widescreenSetting)
+		*widescreenSetting = caps.widescreenSetting;
+
+	return video != NULL;
+}
+
+/****************************************************************************
  * C library functions newlib does not have. Both are used by the core's
  * path handling.
  ***************************************************************************/
@@ -201,6 +228,7 @@ void RunDOSBox(int argc, char* argv[]) {
 		control=&myconf;
 		/* Init the configuration system and add default values */
 		Config_Add_SDL();
+		Config_Add_Display();
 		DOSBOX_Init();
 
 		ResetPrefs();

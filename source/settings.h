@@ -22,6 +22,7 @@
 enum SettingsPage
 {
 	SETTINGS_PAGE_PERFORMANCE = 0,
+	SETTINGS_PAGE_VIDEO,
 	SETTINGS_PAGE_AUDIO,
 	SETTINGS_PAGE_COUNT
 };
@@ -42,7 +43,9 @@ static inline int Settings_AllPage(int index) { return SETTINGS_PAGE_COUNT + ind
 //! name as shown to the user.
 const char * Settings_PageTitle(int page);
 
-//! Number of rows on a page. Row indices are 0 .. count-1 with no gaps.
+//! Number of rows on a page. Row indices are 0 .. count-1 with no gaps. A row
+//! the platform cannot honour (scanlines on a mode that has none) is not
+//! counted, so the same page can have fewer rows on another console.
 int Settings_RowCount(int page);
 
 //! The row's name. On an all-settings page it is the property's name in
