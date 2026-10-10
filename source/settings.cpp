@@ -28,6 +28,7 @@
 #include "cpu.h"
 #include "settings.h"
 #include "dosboxsupport.h"
+#include "configsave.h"
 #include "menu.h"
 
 /****************************************************************************
@@ -1673,4 +1674,102 @@ bool Settings_RowStep(int page, int row, int direction)
 	}
 
 	return CuratedStep(GetRow(page, row), direction);
+}
+
+/****************************************************************************
+ * Save
+ *
+ * The config is the single copy of every setting, and the pages write to it,
+ * with two exceptions: the home screen's +/- buttons change the running
+ * cycles and frameskip without touching it (the pages show the running
+ * values). Those two are put into the config first, with no re-initialisation
+ * (nothing is meant to run differently), so the file says what the player was
+ * looking at. Cycles in auto mode are not: they are what DOSBox guessed, not
+ * a choice.
+ ***************************************************************************/
+static void SyncRunningValues()
+{
+	Section_prop * render = GetSection("render");
+	Section_prop * cpu = GetSection("cpu");
+	char line[48];
+
+	if(render && render->Get_int("frameskip") != MENU_FrameskipDisplay)
+	{
+		snprintf(line, sizeof(line), "frameskip=%d", MENU_FrameskipDisplay);
+		render->HandleInputline(line);
+	}
+
+	if(!cpu)
+		return;
+
+	const CyclesState state = ReadCycles();
+
+	if(state.mode == CYCLES_FIXED)
+	{
+		const int running = EffectiveFixed(state);
+
+		if(running > 0 && running != state.amount)
+		{
+			snprintf(line, sizeof(line), "cycles=fixed %d", running);
+			cpu->HandleInputline(line);
+		}
+	}
+	else if(state.mode == CYCLES_MAX)
+	{
+		// "max 80% 20000" has a cycle limit after the percentage; rewriting it
+		// from the percentage alone would lose it, so that form is left as it is
+		Prop_multival * cycles = cpu->Get_multival("cycles");
+		const std::string params = cycles ? cycles->GetSection()->Get_string("parameters") : "";
+		size_t tokens = 0, percents = 0, pos = 0;
+
+		while(pos < params.size())
+		{
+			size_t end = params.find(' ', pos);
+
+			if(end == std::string::npos)
+				end = params.size();
+
+			if(end > pos)
+			{
+				tokens++;
+				percents += (params[end - 1] == '%') ? 1 : 0;
+			}
+			pos = end + 1;
+		}
+
+		const int running = EffectiveMaxPercent(state);
+
+		if(tokens == percents && running != (state.amount > 0 ? state.amount : 100))
+		{
+			snprintf(line, sizeof(line), "cycles=max %d%%", running);
+			cpu->HandleInputline(line);
+		}
+	}
+}
+
+static const char * BaseName(const std::string & path)
+{
+	const size_t slash = path.find_last_of("/\\");
+
+	return path.c_str() + ((slash == std::string::npos) ? 0 : slash + 1);
+}
+
+bool Settings_Save(char * message, size_t size)
+{
+	if(size == 0)
+		return false;
+
+	SyncRunningValues();
+
+	const std::string path = ConfigSavePath();
+	std::string error;
+
+	if(!ConfigSave(path.c_str(), &error))
+	{
+		snprintf(message, size, "Not saved. %s", error.c_str());
+		return false;
+	}
+
+	snprintf(message, size, "Saved %s. The file it replaced is kept as %s.bak.", path.c_str(), BaseName(path));
+	return true;
 }

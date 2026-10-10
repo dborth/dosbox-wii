@@ -789,7 +789,7 @@ static void SettingsList(bool sections)
 
 	const int pageCount = sections ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT;
 
-	options.length = pageCount + (sections ? 0 : 2);	// the curated list ends with "Drives" and "All settings"
+	options.length = pageCount + (sections ? 0 : 3);	// the curated list ends with "Drives", "All settings" and "Save settings"
 	if(options.length > MAX_OPTIONS)
 		options.length = MAX_OPTIONS;
 
@@ -800,6 +800,8 @@ static void SettingsList(bool sections)
 				Settings_PageTitle(sections ? Settings_AllPage(i) : i));
 		else if(i == pageCount && !sections)
 			snprintf(options.name[i], sizeof(options.name[i]), "Drives");
+		else if(i == pageCount + 2 && !sections)
+			snprintf(options.name[i], sizeof(options.name[i]), "Save settings");
 		else
 			snprintf(options.name[i], sizeof(options.name[i]), "All settings");
 	}
@@ -811,6 +813,13 @@ static void SettingsList(bool sections)
 	GuiText hintTxt("A: open", 16, (PixelColor){200, 200, 200, 255});
 	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	hintTxt.setPosition(-50, -50);
+
+	// what "Save settings" did, where the pages show their help
+	GuiText statusTxt("", 18, white);
+	statusTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	statusTxt.setPosition(0, 366);
+	statusTxt.setMaxWidth(540);
+	statusTxt.setScroll(SCROLL::HORIZONTAL);
 
 	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
 	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
@@ -847,6 +856,7 @@ static void SettingsList(bool sections)
 	mainWindow->append(&browser);
 	mainWindow->append(&w);
 	mainWindow->append(&titleTxt);
+	mainWindow->append(&statusTxt);
 	mainWindow->append(&hintTxt);
 
 	bool done = false;
@@ -857,12 +867,22 @@ static void SettingsList(bool sections)
 
 		const int clicked = browser.getClickedOption();
 
-		if(clicked >= 0 && clicked < options.length)
+		if(!sections && clicked == pageCount + 2)
+		{
+			// writes a few KB to the card, which is quick enough not to need the
+			// worker thread; if it ever hitches the menu on a slow USB drive it should
+			char message[320];
+
+			Settings_Save(message, sizeof(message));
+			statusTxt.setText(message);
+		}
+		else if(clicked >= 0 && clicked < options.length)
 		{
 			// the list stays up behind the page; take it off so only one has focus
 			mainWindow->remove(&browser);
 			mainWindow->remove(&w);
 			mainWindow->remove(&titleTxt);
+			mainWindow->remove(&statusTxt);
 			mainWindow->remove(&hintTxt);
 
 			if(!sections && clicked == pageCount)
@@ -875,6 +895,7 @@ static void SettingsList(bool sections)
 			mainWindow->append(&browser);
 			mainWindow->append(&w);
 			mainWindow->append(&titleTxt);
+			mainWindow->append(&statusTxt);
 			mainWindow->append(&hintTxt);
 		}
 
@@ -885,6 +906,7 @@ static void SettingsList(bool sections)
 	mainWindow->remove(&browser);
 	mainWindow->remove(&w);
 	mainWindow->remove(&titleTxt);
+	mainWindow->remove(&statusTxt);
 	mainWindow->remove(&hintTxt);
 
 	delete listOptions;

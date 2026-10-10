@@ -76,4 +76,16 @@ void Settings_RowHelp(int page, int row, char * buf, size_t size);
  */
 bool Settings_RowStep(int page, int row, int direction);
 
+/**
+ * Saves the running config to dosbox.conf (see ConfigSave in configsave.h
+ * for how the file is replaced). First the values the home screen's +/-
+ * buttons left running (cycles, frameskip) are put into the config, so the
+ * file holds what the pages show. Takes no re-initialisation: nothing runs
+ * differently afterwards.
+ *
+ * @param message  always set: one line for the user, where it went or why not
+ * @return true if it was saved
+ */
+bool Settings_Save(char * message, size_t size);
+
 #endif
