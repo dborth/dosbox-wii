@@ -481,7 +481,7 @@ static void InputLines()
 		AddPlain("Controllers", "None connected", "No controller is connected.");
 
 	AddProp("Joystick", "joystick", "joysticktype", "",
-		"The kind of joystick DOSBox emulates. Nothing drives the emulated joystick on this build yet.");
+		"The kind of joystick DOSBox emulates. Auto picks 4axis: one joystick with four buttons, driven by the first controller.");
 }
 
 /****************************************************************************

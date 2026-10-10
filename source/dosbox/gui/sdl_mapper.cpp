@@ -2151,8 +2151,9 @@ static void InitializeJoysticks(void) {
 				// choose joystick type now that we know which physical joysticks are usable
 				if (first_usable) {
 					if (second_usable) {
-						joytype=JOY_2AXIS;
-						LOG_MSG("Two or more joysticks reported, initializing with 2axis");
+						// A pad has four buttons; 2axis would leave only two per joystick
+						joytype=JOY_4AXIS;
+						LOG_MSG("Two or more joysticks reported, initializing with 4axis");
 					} else {
 						joytype=JOY_4AXIS;
 						LOG_MSG("One joystick reported, initializing with 4axis");

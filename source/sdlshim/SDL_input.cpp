@@ -38,14 +38,14 @@
  * often than the hardware updates, and a scan is not free. */
 #define SCAN_INTERVAL_MS 4
 
-#define NUM_WII_JOYSTICKS 4
-#define NUM_GC_JOYSTICKS  4
-#define NUM_JOYSTICKS     (NUM_WII_JOYSTICKS + NUM_GC_JOYSTICKS)
+/* One joystick per HAL channel (player), fed from the channel's merged pad data.
+ * Button order: 0 A, 1 B, 2 X (Wiimote 1), 3 Y (Wiimote 2), 4 L (Nunchuk C),
+ * 5 R, 6 ZL (Nunchuk Z), 7 ZR (GC Z), 8 Minus, 9 Plus, 10 L3, 11 R3.
+ * HOME is not a joystick button; it opens the menu. */
+#define NUM_JOYSTICKS 4
 
-#define WII_AXES    9
-#define WII_BUTTONS 20
-#define GC_AXES     6
-#define GC_BUTTONS  8
+#define JOY_AXES    4   // left X/Y, right X/Y
+#define JOY_BUTTONS 12
 
 #define EVENT_QUEUE_SIZE 256
 
@@ -773,15 +773,13 @@ struct SDL_Joystick {
 	int index;
 	bool opened;
 	int naxes, nbuttons, nhats;
-	Sint16 axes[WII_AXES];
-	Uint8 buttons[WII_BUTTONS];
+	Sint16 axes[JOY_AXES];
+	Uint8 buttons[JOY_BUTTONS];
 	Uint8 hat;
 };
 
 static SDL_Joystick joysticks[NUM_JOYSTICKS];
 static bool joystickEvents = true;
-
-static inline bool IsGC(int index) { return index >= NUM_WII_JOYSTICKS; }
 
 static inline Sint16 AxisValue(float v)
 {
@@ -790,118 +788,75 @@ static inline Sint16 AxisValue(float v)
 	return (Sint16)(v * 32767.0f);
 }
 
-// The SDL port reported triggers as (0..255) << 7
-static inline Sint16 TriggerValue(float v)
+static inline Uint8 Held(uint32_t buttons, uint32_t mask) { return (buttons & mask) ? 1 : 0; }
+
+// A Wiimote held on its side has its D-pad turned a quarter turn
+static inline uint32_t RotateDpad(uint32_t b)
 {
-	if (v > 1.0f) v = 1.0f;
-	if (v < 0.0f) v = 0.0f;
-	return (Sint16)(((int)(v * 255.0f)) << 7);
+	uint32_t r = b & ~(INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT);
+	if (b & INPUT_BTN_UP)    r |= INPUT_BTN_LEFT;
+	if (b & INPUT_BTN_DOWN)  r |= INPUT_BTN_RIGHT;
+	if (b & INPUT_BTN_LEFT)  r |= INPUT_BTN_DOWN;
+	if (b & INPUT_BTN_RIGHT) r |= INPUT_BTN_UP;
+	return r;
 }
 
-static inline Uint8 DpadToHat(uint32_t b, bool sideways)
+static inline Uint8 DpadToHat(uint32_t b)
 {
-	Uint8 up = SDL_HAT_UP, down = SDL_HAT_DOWN, left = SDL_HAT_LEFT, right = SDL_HAT_RIGHT;
-	if (sideways) { // Wiimote held on its side
-		up = SDL_HAT_LEFT; down = SDL_HAT_RIGHT; left = SDL_HAT_DOWN; right = SDL_HAT_UP;
-	}
-
 	Uint8 hat = SDL_HAT_CENTERED;
-	if (b & INPUT_BTN_UP)    hat |= up;
-	if (b & INPUT_BTN_DOWN)  hat |= down;
-	if (b & INPUT_BTN_LEFT)  hat |= left;
-	if (b & INPUT_BTN_RIGHT) hat |= right;
+	if (b & INPUT_BTN_UP)    hat |= SDL_HAT_UP;
+	if (b & INPUT_BTN_DOWN)  hat |= SDL_HAT_DOWN;
+	if (b & INPUT_BTN_LEFT)  hat |= SDL_HAT_LEFT;
+	if (b & INPUT_BTN_RIGHT) hat |= SDL_HAT_RIGHT;
 	return hat;
 }
 
-static inline Uint8 Held(uint32_t buttons, uint32_t mask) { return (buttons & mask) ? 1 : 0; }
-
-// Builds the joystick's new state from the HAL pad data
-static void ReadWiimote(const InputPadData & pad, SDL_Joystick & js)
+// A held D-pad direction overrides the stick on that axis (a DOS joystick has no D-pad)
+static inline Sint16 StickWithDpad(float stick, bool negative, bool positive)
 {
-	memset(js.buttons, 0, sizeof(js.buttons));
-	memset(js.axes, 0, sizeof(js.axes));
-	js.hat = SDL_HAT_CENTERED;
-
-	const bool wm = pad.hw_connected[INPUT_HW_WIIMOTE];
-	const bool nun = pad.hw_connected[INPUT_HW_NUNCHUK];
-	int cl = -1;
-	if (pad.hw_connected[INPUT_HW_CLASSIC]) cl = INPUT_HW_CLASSIC;
-	else if (pad.hw_connected[INPUT_HW_WUPC]) cl = INPUT_HW_WUPC;
-
-	if (wm) {
-		const uint32_t b = pad.hw_buttons_h[INPUT_HW_WIIMOTE];
-		js.buttons[0] = Held(b, INPUT_BTN_A);
-		js.buttons[1] = Held(b, INPUT_BTN_B);
-		js.buttons[2] = Held(b, INPUT_BTN_1);
-		js.buttons[3] = Held(b, INPUT_BTN_2);
-		js.buttons[4] = Held(b, INPUT_BTN_MINUS);
-		js.buttons[5] = Held(b, INPUT_BTN_PLUS);
-		js.buttons[6] = Held(b, INPUT_BTN_HOME);
-		js.hat = DpadToHat(b, true);
-
-		js.axes[6] = AxisValue(-pad.hw_pitch[INPUT_HW_WIIMOTE] / 180.0f);
-		js.axes[7] = AxisValue(pad.hw_roll[INPUT_HW_WIIMOTE] / 180.0f);
-		js.axes[8] = AxisValue(pad.hw_yaw[INPUT_HW_WIIMOTE] / 180.0f);
-	}
-
-	if (nun) {
-		const uint32_t b = pad.hw_buttons_h[INPUT_HW_NUNCHUK];
-		js.buttons[7] = Held(b, INPUT_TRIGGER_ZL); // Z
-		js.buttons[8] = Held(b, INPUT_TRIGGER_L);  // C
-		js.axes[0] = AxisValue(pad.hw_stickX[INPUT_HW_NUNCHUK]);
-		js.axes[1] = AxisValue(-pad.hw_stickY[INPUT_HW_NUNCHUK]);
-	}
-
-	if (cl >= 0) {
-		const uint32_t b = pad.hw_buttons_h[cl];
-		js.buttons[9]  = Held(b, INPUT_BTN_A);
-		js.buttons[10] = Held(b, INPUT_BTN_B);
-		js.buttons[11] = Held(b, INPUT_BTN_X);
-		js.buttons[12] = Held(b, INPUT_BTN_Y);
-		js.buttons[13] = Held(b, INPUT_TRIGGER_L);
-		js.buttons[14] = Held(b, INPUT_TRIGGER_R);
-		js.buttons[15] = Held(b, INPUT_TRIGGER_ZL);
-		js.buttons[16] = Held(b, INPUT_TRIGGER_ZR);
-		js.buttons[17] = Held(b, INPUT_BTN_MINUS);
-		js.buttons[18] = Held(b, INPUT_BTN_PLUS);
-		js.buttons[19] = Held(b, INPUT_BTN_HOME);
-		js.hat = DpadToHat(b, false);
-
-		js.axes[0] = AxisValue(pad.hw_stickX[cl]);
-		js.axes[1] = AxisValue(-pad.hw_stickY[cl]);
-		js.axes[2] = AxisValue(pad.hw_substickX[cl]);
-		js.axes[3] = AxisValue(-pad.hw_substickY[cl]);
-		js.axes[4] = TriggerValue(pad.hw_triggerR[cl]); // R then L, as the SDL port had it
-		js.axes[5] = TriggerValue(pad.hw_triggerL[cl]);
-	}
+	if (negative != positive)
+		return positive ? 32767 : -32767;
+	return AxisValue(stick);
 }
 
-static void ReadGameCube(const InputPadData & pad, SDL_Joystick & js)
+// Builds the player's joystick from the channel's merged HAL pad data, so
+// every controller type (Wiimote, Nunchuk, Classic, WUPC, GameCube, GamePad)
+// drives it the same way.
+static void ReadPlayer(int ch, SDL_Joystick & js)
 {
+	const InputPadData & pad = controller[ch]->getPadData();
+
 	memset(js.buttons, 0, sizeof(js.buttons));
 	memset(js.axes, 0, sizeof(js.axes));
 	js.hat = SDL_HAT_CENTERED;
 
-	if (!pad.hw_connected[INPUT_HW_GAMECUBE])
-		return;
+	uint32_t b = pad.buttons_h;
 
-	const uint32_t b = pad.hw_buttons_h[INPUT_HW_GAMECUBE];
-	js.buttons[0] = Held(b, INPUT_BTN_A);
-	js.buttons[1] = Held(b, INPUT_BTN_B);
-	js.buttons[2] = Held(b, INPUT_BTN_X);
-	js.buttons[3] = Held(b, INPUT_BTN_Y);
-	js.buttons[4] = Held(b, INPUT_TRIGGER_ZR); // Z
-	js.buttons[5] = Held(b, INPUT_TRIGGER_R);
-	js.buttons[6] = Held(b, INPUT_TRIGGER_L);
-	js.buttons[7] = Held(b, INPUT_BTN_PLUS);   // Start
-	js.hat = DpadToHat(b, false);
+	// Only a lone Wiimote is held sideways; other hardware on the channel keeps its D-pad
+	if (controller[ch]->isSideways() &&
+		!(pad.hw_connected[INPUT_HW_GAMECUBE] || pad.hw_connected[INPUT_HW_CLASSIC] ||
+		  pad.hw_connected[INPUT_HW_WUPC] || pad.hw_connected[INPUT_HW_DRC]))
+		b = RotateDpad(b);
 
-	js.axes[0] = AxisValue(pad.hw_stickX[INPUT_HW_GAMECUBE]);
-	js.axes[1] = AxisValue(-pad.hw_stickY[INPUT_HW_GAMECUBE]);
-	js.axes[2] = AxisValue(pad.hw_substickX[INPUT_HW_GAMECUBE]);
-	js.axes[3] = AxisValue(-pad.hw_substickY[INPUT_HW_GAMECUBE]);
-	js.axes[4] = TriggerValue(pad.hw_triggerL[INPUT_HW_GAMECUBE]);
-	js.axes[5] = TriggerValue(pad.hw_triggerR[INPUT_HW_GAMECUBE]);
+	js.buttons[0]  = Held(b, INPUT_BTN_A);
+	js.buttons[1]  = Held(b, INPUT_BTN_B);
+	js.buttons[2]  = Held(b, INPUT_BTN_X | INPUT_BTN_1);
+	js.buttons[3]  = Held(b, INPUT_BTN_Y | INPUT_BTN_2);
+	js.buttons[4]  = Held(b, INPUT_TRIGGER_L);
+	js.buttons[5]  = Held(b, INPUT_TRIGGER_R);
+	js.buttons[6]  = Held(b, INPUT_TRIGGER_ZL);
+	js.buttons[7]  = Held(b, INPUT_TRIGGER_ZR);
+	js.buttons[8]  = Held(b, INPUT_BTN_MINUS);
+	js.buttons[9]  = Held(b, INPUT_BTN_PLUS);
+	js.buttons[10] = Held(b, INPUT_THUMB_L);
+	js.buttons[11] = Held(b, INPUT_THUMB_R);
+
+	js.hat = DpadToHat(b);
+
+	js.axes[0] = StickWithDpad(pad.stickX, (b & INPUT_BTN_LEFT) != 0, (b & INPUT_BTN_RIGHT) != 0);
+	js.axes[1] = StickWithDpad(-pad.stickY, (b & INPUT_BTN_UP) != 0, (b & INPUT_BTN_DOWN) != 0);
+	js.axes[2] = AxisValue(pad.substickX);
+	js.axes[3] = AxisValue(-pad.substickY);
 }
 
 static void PostJoyEvent(Uint8 type, int which, int number, int value)
@@ -934,20 +889,14 @@ static void UpdateJoysticks(void)
 {
 	for (int i = 0; i < NUM_JOYSTICKS; i++) {
 		SDL_Joystick & js = joysticks[i];
-		const int ch = IsGC(i) ? i - NUM_WII_JOYSTICKS : i;
-		const InputPadData & pad = controller[ch]->getPadData();
-
 		// Previous state, to find what changed
-		Sint16 oldAxes[WII_AXES];
-		Uint8 oldButtons[WII_BUTTONS];
+		Sint16 oldAxes[JOY_AXES];
+		Uint8 oldButtons[JOY_BUTTONS];
 		const Uint8 oldHat = js.hat;
 		memcpy(oldAxes, js.axes, sizeof(oldAxes));
 		memcpy(oldButtons, js.buttons, sizeof(oldButtons));
 
-		if (IsGC(i))
-			ReadGameCube(pad, js);
-		else
-			ReadWiimote(pad, js);
+		ReadPlayer(i, js);
 
 		if (!js.opened || !joystickEvents)
 			continue;
@@ -974,7 +923,7 @@ const char * SDL_JoystickName(int index)
 
 	if (index < 0 || index >= NUM_JOYSTICKS)
 		return NULL;
-	snprintf(name, sizeof(name), IsGC(index) ? "Gamecube %d" : "Wiimote %d", index);
+	snprintf(name, sizeof(name), "Player %d", index + 1);
 	return name;
 }
 
@@ -1035,8 +984,8 @@ void InputHal_Init(void)
 		SDL_Joystick & js = joysticks[i];
 		memset(&js, 0, sizeof(js));
 		js.index = i;
-		js.naxes = IsGC(i) ? GC_AXES : WII_AXES;
-		js.nbuttons = IsGC(i) ? GC_BUTTONS : WII_BUTTONS;
+		js.naxes = JOY_AXES;
+		js.nbuttons = JOY_BUTTONS;
 		js.nhats = 1;
 	}
 
