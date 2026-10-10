@@ -22,7 +22,8 @@ void InitInput();
 //! Init function of the [sdl] config section: video, mouse, key handlers.
 void GUI_StartUp(Section * sec);
 
-//! True while a HOME button is held. Reads the state InputHal_Update() scanned.
+//! True while a controller is asking for the menu: HOME held, or L + R + Plus/Start
+//! held on one device. Reads the state InputHal_Update() scanned.
 bool isMenuRequested();
 
 //! What is connected on a player's channel (0-3), as text such as "Wiimote +

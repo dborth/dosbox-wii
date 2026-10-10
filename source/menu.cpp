@@ -1488,9 +1488,13 @@ void HomeMenu ()
 		}
 	}
 
-	// wait for keys to be depressed
+	// wait for keys to be depressed (rescanning: the pad data is only as
+	// fresh as the last update, and a combo is held longer than a HOME click)
 	while(isMenuRequested())
+	{
+		platform->getInput()->update();
 		usleep(10000);
+	}
 
 	exitSound.stop();
 

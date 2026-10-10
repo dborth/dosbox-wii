@@ -295,7 +295,16 @@ void OgcInputDriver::update() {
 				padData.hw_pitch[INPUT_HW_NUNCHUK]   = wpad->exp.nunchuk.orient.pitch;
 				padData.hw_roll[INPUT_HW_NUNCHUK]    = wpad->exp.nunchuk.orient.roll;
 				padData.hw_yaw[INPUT_HW_NUNCHUK]     = wpad->exp.nunchuk.orient.yaw;
-				
+
+				// The Wiimote still points at the sensor bar with a Nunchuk in the other hand
+				if (wpad->ir.valid) {
+					padData.validPointer = true;
+					padData.isTouch = false;
+					padData.cursor_x = wpad->ir.x;
+					padData.cursor_y = wpad->ir.y;
+					padData.cursor_angle = wpad->ir.angle;
+				}
+
 				controller[i]->setSideways(false);
 			}
 			else if (exp_type == WPAD_EXP_CLASSIC) {

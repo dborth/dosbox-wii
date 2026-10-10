@@ -33,6 +33,9 @@ class MouseDriver
 		//! Pops the next pending event into `out`. Returns false when the
 		//! queue is empty. Call from the main thread, once per frame.
 		virtual bool poll(MouseEvent & out) = 0;
+
+		//! True while at least one mouse is attached (follows hot-plug)
+		virtual bool isConnected() const = 0;
 };
 
 //! The app-owned mouse instance (defined in wiihardware.cpp)

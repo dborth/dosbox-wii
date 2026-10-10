@@ -182,4 +182,12 @@ void InputHal_Update(void);
 //! Number of events posted but not yet polled. Safe from any thread.
 int InputHal_PendingEvents(void);
 
+//! Nonzero once per tap of the USB keyboard's GUI (Windows / Command) key: a
+//! menu request. The key is not passed to DOS. Call once per GFX_Events().
+int InputHal_TakeMenuKeyTap(void);
+
+//! Call after the menu closes. Keyboard events typed while the menu was up
+//! are replayed on the next scan; a GUI tap among them must not reopen it.
+void InputHal_MenuClosed(void);
+
 #endif

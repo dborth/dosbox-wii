@@ -15,6 +15,7 @@ class OgcMouseDriver : public MouseDriver
 		void init() override;
 		void shutdown() override;
 		bool poll(MouseEvent & out) override;
+		bool isConnected() const override;
 
 	private:
 		bool initialized = false;

@@ -28,6 +28,15 @@ void OgcMouseDriver::shutdown()
 	initialized = false;
 }
 
+bool OgcMouseDriver::isConnected() const
+{
+	#ifdef HW_RVL
+	return initialized && MOUSE_IsConnected();
+	#else
+	return false;
+	#endif
+}
+
 bool OgcMouseDriver::poll(MouseEvent & out)
 {
 	#ifdef HW_RVL

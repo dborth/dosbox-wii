@@ -20,6 +20,7 @@ class WutMouseDriver : public MouseDriver
 		void init() override;
 		void shutdown() override;
 		bool poll(MouseEvent & out) override;
+		bool isConnected() const override;
 
 		//!\name OS callbacks
 		//!Called from the HID library's context, not the main thread.

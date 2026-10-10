@@ -24,10 +24,12 @@
 #include "keyboard.h"
 #include "cpu.h"
 #include "SDL.h"
+#include "mousecapture.h"
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
 #include "input.h"
+#include "menurequest.h"
 #include "videosupport.h"
 #include "dosboxwii.h"
 
@@ -135,9 +137,10 @@ void GFX_UpdateSDLCaptureState(void) {
 
 bool mouselocked; //Global variable for mapper
 static void CaptureMouse(bool pressed) {
-	if (!pressed)
-		return;
-	GFX_CaptureMouse();
+	// The mouse is captured from startup and there is no desktop to hand it
+	// back to, so the Ctrl-F10 toggle is left registered (it is in saved mapper
+	// files) but does nothing
+	(void)pressed;
 }
 
 /****************************************************************************
@@ -184,8 +187,10 @@ void GUI_StartUp(Section * sec) {
 	mouselocked=false; //Global for mapper
 	sdl.mouse.requestlock=false;
 
-	sdl.mouse.autoenable=section->Get_bool("autolock");
-	if (!sdl.mouse.autoenable) SDL_ShowCursor(SDL_DISABLE);
+	// Always captured: motion reaches DOS as relative movement and the first
+	// click is not swallowed to capture. [sdl] autolock is ignored, so an old
+	// dosbox.conf with autolock=true behaves the same as a new one.
+	sdl.mouse.autoenable=true;
 	sdl.mouse.autolock=false;
 
 	Prop_multival* p3 = section->Get_multival("sensitivity");
@@ -194,6 +199,9 @@ void GUI_StartUp(Section * sec) {
 
 	/* Setup Mouse correctly if fullscreen */
 	if(GFX_IsFullscreen()) GFX_CaptureMouse();
+
+	/* Captured from the start (see above); GFX_CaptureMouse() toggles */
+	if(!sdl.mouse.locked) GFX_CaptureMouse();
 
 	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
@@ -226,7 +234,7 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 	int width, height;
 	bool fullscreen;
 	GFX_GetSize(width, height, fullscreen);
-	if (sdl.mouse.locked || !sdl.mouse.autoenable)
+	if (MouseMotionForwarded(sdl.mouse.locked, sdl.mouse.autoenable))
 		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.xsensitivity/100.0f,
 						  (float)motion->yrel*sdl.mouse.ysensitivity/100.0f,
 						  (float)motion->x/(width-1)*sdl.mouse.xsensitivity/100.0f,
@@ -237,7 +245,7 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	switch (button->state) {
 	case SDL_PRESSED:
-		if (sdl.mouse.requestlock && !sdl.mouse.locked) {
+		if (MouseClickSwallowed(sdl.mouse.requestlock, sdl.mouse.locked)) {
 			GFX_CaptureMouse();
 			// Don't pass click to mouse handler
 			break;
@@ -289,9 +297,16 @@ void GFX_Events() {
 
 	CheckExit();
 
-	// HOME pressed: hand the display to the menu
-	if(isMenuRequested())
+	// HOME, a controller combo or the keyboard's GUI key: hand the display to the menu.
+	// Both are read before either is acted on, so a tap is never left pending.
+	const bool padRequest = isMenuRequested();
+	const bool keyRequest = InputHal_TakeMenuKeyTap() != 0;
+
+	if(padRequest || keyRequest)
+	{
 		EnterMenu();
+		InputHal_MenuClosed();
+	}
 
 	SDL_Event event;
 #if defined (REDUCE_JOYSTICK_POLLING)
@@ -407,13 +422,13 @@ void InitInput()
  * isMenuRequested
  *
  * Polled once per emulation event pass (GFX_Events), after InputHal_Update()
- * has scanned the platform input.
+ * has scanned the platform input. See MenuRequestFromPad() for what counts.
  ***************************************************************************/
 bool isMenuRequested()
 {
 	for(int i = 0; i < 4; i++)
 	{
-		if(controller[i]->getPadData().buttons_h & INPUT_BTN_HOME)
+		if(MenuRequestFromPad(controller[i]->getPadData()))
 			return true;
 	}
 	return false;

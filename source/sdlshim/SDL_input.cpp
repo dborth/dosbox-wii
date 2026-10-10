@@ -32,6 +32,7 @@
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
 #include "osk.h"
+#include "menurequest.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
  * often than the hardware updates, and a scan is not free. */
@@ -460,6 +461,20 @@ static SDLMod ModsFromKeyEvent(uint16_t m)
 	return (SDLMod)mod;
 }
 
+// The GUI key opens the menu, so DOS never sees it
+static MenuKeyTap menuKeyTap;
+static bool discardMenuTaps = false;
+
+int InputHal_TakeMenuKeyTap(void)
+{
+	return menuKeyTap.consume() ? 1 : 0;
+}
+
+void InputHal_MenuClosed(void)
+{
+	discardMenuTaps = true;
+}
+
 static void PollKeyboard(void)
 {
 	KeyEvent ke;
@@ -467,6 +482,12 @@ static void PollKeyboard(void)
 	while (keyboard->poll(ke)) {
 		SDLKey sym = (ke.hidUsage < 232) ? keymap[ke.hidUsage] : SDLK_UNKNOWN;
 		modState = ModsFromKeyEvent(ke.modifiers);
+
+		// Every key goes through the tap recogniser, so that GUI + key is not a tap
+		menuKeyTap.onKey(ke.hidUsage, ke.pressed);
+
+		if (MenuKeyTap::isMenuKey(ke.hidUsage))
+			continue;
 
 		if (sym == SDLK_UNKNOWN)
 			continue;
@@ -1040,5 +1061,13 @@ void InputHal_Update(void)
 	OSK_Update();
 	UpdateJoysticks();
 	PollKeyboard();
+
+	// Taps replayed from the time the menu was up are not requests; neither
+	// are any while the on-screen keyboard has the keyboard focus
+	if (discardMenuTaps || OSK_IsActive()) {
+		menuKeyTap.discardPending();
+		discardMenuTaps = false;
+	}
+
 	PollMouse();
 }

@@ -62,7 +62,7 @@ void Config_Add_SDL() {
 	Pstring->Set_values(outputs);
 
 	Pbool = sdl_sec->Add_bool("autolock",Property::Changeable::Always,true);
-	Pbool->Set_help("Mouse will automatically lock, if you click on the screen. (Press CTRL-F10 to unlock)");
+	Pbool->Set_help("Ignored on this build: the mouse is always captured, so the first click is not used up capturing it.");
 
 	Pmulti = sdl_sec->Add_multi("sensitivity",Property::Changeable::Always, ",");
 	Pmulti->Set_help("Mouse sensitivity. The optional second parameter specifies vertical sensitivity (e.g. 100,-50).");

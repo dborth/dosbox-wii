@@ -274,6 +274,19 @@ void WutMouseDriver::onReport(int slotIdx, uint32_t handle, int32_t error, uint3
 		detachSlot(s);
 }
 
+bool WutMouseDriver::isConnected() const
+{
+	if (!initialized || !lock)
+		return false;
+
+	// Attach and detach callbacks change the slots from the HID library's context
+	MutexLock guard(*lock);
+	for (int i = 0; i < kMaxMice; i++)
+		if (slots[i].active)
+			return true;
+	return false;
+}
+
 bool WutMouseDriver::poll(MouseEvent & out)
 {
 	if (!initialized || !lock)

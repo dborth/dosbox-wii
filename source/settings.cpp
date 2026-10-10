@@ -903,6 +903,7 @@ static const PropRef hiddenProps[] =
 	{ "sdl", "windowresolution" },
 	{ "sdl", "output" },
 	{ "sdl", "waitonerror" },
+	{ "sdl", "autolock" },		// ignored: the mouse is always captured (GUI_StartUp)
 	{ "sdl", "priority" },			// only read when an SDL focus event arrives, and nothing sends one
 };
 
