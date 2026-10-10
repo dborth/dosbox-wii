@@ -1652,6 +1652,8 @@ private:
 		}	
 	}
 public:
+	OPL_Mode GetOplMode() const { return oplmode; }
+
 	SBLASTER(Section* configuration):Module_base(configuration) {
 		Bitu i;
 		Section_prop * section=static_cast<Section_prop *>(configuration);
@@ -1754,9 +1756,41 @@ public:
 static SBLASTER* test;
 void SBLASTER_ShutDown(Section* /*sec*/) {
 	delete test;	
+	test = NULL;
 }
 
 void SBLASTER_Init(Section* sec) {
 	test = new SBLASTER(sec);
 	sec->AddDestroyFunction(&SBLASTER_ShutDown,true);
+}
+
+/* What is running, as opposed to what sbtype and oplmode ask for: an SB16 is
+ * an SB Pro 2 without a VGA machine or a second DMA controller, and oplmode
+ * auto follows the card. Read by the menu's status page; NULL until the
+ * section has been initialised. */
+const char * SBLASTER_EffectiveType(void) {
+	if (!test) return NULL;
+	switch (sb.type) {
+	case SBT_NONE: return "none";
+	case SBT_1: return "sb1";
+	case SBT_2: return "sb2";
+	case SBT_PRO1: return "sbpro1";
+	case SBT_PRO2: return "sbpro2";
+	case SBT_16: return "sb16";
+	case SBT_GB: return "gb";
+	}
+	return NULL;
+}
+
+const char * SBLASTER_EffectiveOpl(void) {
+	if (!test) return NULL;
+	switch (test->GetOplMode()) {
+	case OPL_none: return "none";
+	case OPL_cms: return "cms";
+	case OPL_opl2: return "opl2";
+	case OPL_dualopl2: return "dualopl2";
+	case OPL_opl3: return "opl3";
+	case OPL_opl3gold: return "opl3gold";
+	}
+	return NULL;
 }

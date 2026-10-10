@@ -12,6 +12,8 @@
 #ifndef _INPUT_H_
 #define _INPUT_H_
 
+#include <stddef.h>
+
 class Section;
 
 //! Starts the input HAL and counts the joysticks. Once, before the config is read.
@@ -22,6 +24,10 @@ void GUI_StartUp(Section * sec);
 
 //! True while a HOME button is held. Reads the state InputHal_Update() scanned.
 bool isMenuRequested();
+
+//! What is connected on a player's channel (0-3), as text such as "Wiimote +
+//! Nunchuk". Returns false, leaving buf alone, if nothing is connected there.
+bool GetControllerSummary(int channel, char * buf, size_t size);
 
 //! Leaves the app if the platform reports a shutdown request. Does not return then.
 void CheckExit();

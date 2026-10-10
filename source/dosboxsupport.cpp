@@ -23,6 +23,10 @@
 #include "dos_inc.h"
 #include "shell.h"
 #include "video.h"
+#include "cpu.h"
+#include "vga.h"
+#include "render.h"
+#include "mem.h"
 #include "setup.h"
 #include "support.h"
 #include "debug.h"
@@ -184,6 +188,102 @@ bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * w
 		*widescreenSetting = caps.widescreenSetting;
 
 	return video != NULL;
+}
+
+/****************************************************************************
+ * GetEmulationStatus
+ *
+ * What is running, for the Status page. The effective values that live in
+ * the core's own files come through small getters defined there; everything
+ * else is read from what the core already exports.
+ ***************************************************************************/
+const char * SBLASTER_EffectiveType(void);
+const char * SBLASTER_EffectiveOpl(void);
+int EMS_EffectiveType(void);
+
+//! The core cpudecoder points at, or NULL if it points at something else.
+static const char * CoreName(CPU_Decoder * decoder)
+{
+	if(decoder == CPU_Core_Normal_Run || decoder == CPU_Core_Normal_Trap_Run)
+		return "normal";
+	if(decoder == CPU_Core_Simple_Run || decoder == CPU_Core_Simple_Trap_Run)
+		return "simple";
+	if(decoder == CPU_Core_Full_Run)
+		return "full";
+	if(decoder == CPU_Core_Prefetch_Run || decoder == CPU_Core_Prefetch_Trap_Run)
+		return "prefetch";
+#if C_DYNREC
+	if(decoder == CPU_Core_Dynrec_Run || decoder == CPU_Core_Dynrec_Trap_Run)
+		return "dynamic";
+#endif
+	return NULL;
+}
+
+bool GetEmulationStatus(EmulationStatus * status)
+{
+	if(!status || !control || !first_shell)
+		return false;
+
+	memset(status, 0, sizeof(*status));
+
+	// While the guest is halted cpudecoder is the halt handler (cpu.cpp) and
+	// the core that will run again is the one it saved. That is only
+	// meaningful then, so it is only looked at when cpudecoder is not a core.
+	const char * core = CoreName(cpudecoder);
+
+	if(!core)
+		core = CoreName(cpu.hlt.old_decoder);
+
+	if(core)
+		safe_strncpy(status->core, core, sizeof(status->core));
+
+	status->autoAdjust = CPU_CycleAutoAdjust;
+	status->cycleMax = (int)CPU_CycleMax;
+	status->cyclePercent = (int)CPU_CyclePercUsed;
+	status->atPrompt = IsShellIdle();
+
+	status->haveMode = render.src.width > 0 && render.src.height > 0;
+	status->textMode = (vga.mode == M_TEXT || vga.mode == M_HERC_TEXT || vga.mode == M_TANDY_TEXT);
+	status->srcWidth = (int)render.src.width;
+	status->srcHeight = (int)render.src.height;
+	status->pixelRatio = render.src.ratio;
+
+	// Whether the source's pixel shape is applied is the display's choice
+	// ([display] aspect); what counts is what the driver has been given
+	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
+
+	status->aspectOn = video ? (video->getSettings().aspect == VideoAspect::Corrected) : true;
+	status->frameskip = MENU_FrameskipDisplay;
+
+	int frameWidth = 0, frameHeight = 0;
+	bool fullscreen = true;
+
+	GFX_GetSize(frameWidth, frameHeight, fullscreen);
+	status->frameWidth = frameWidth;
+	status->frameHeight = frameHeight;
+
+	const char * sb = SBLASTER_EffectiveType();
+	const char * opl = SBLASTER_EffectiveOpl();
+
+	safe_strncpy(status->sbType, sb ? sb : "", sizeof(status->sbType));
+	safe_strncpy(status->oplMode, opl ? opl : "", sizeof(status->oplMode));
+
+	// tandy_sound.cpp: on a Tandy or PCjr "true", "on" and "auto" turn the
+	// sound on; on any other machine only "true" and "on" do
+	Section_prop * speaker = dynamic_cast<Section_prop *>(control->GetSection("speaker"));
+
+	if(speaker)
+	{
+		const std::string tandy = speaker->Get_string("tandy");
+
+		status->tandyOn = (tandy == "true" || tandy == "on" || (IS_TANDY_ARCH && tandy == "auto"));
+	}
+
+	status->memoryMB = (int)(MEM_TotalPages() / 256);	// 4 KB pages
+	status->umbActive = (dos_infoblock.GetStartOfUMBChain() != 0xffff);	// DOS_BuildUMBChain: 0xffff means none
+	status->emsType = EMS_EffectiveType();
+
+	return true;
 }
 
 /****************************************************************************

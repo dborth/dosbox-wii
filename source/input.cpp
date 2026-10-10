@@ -420,6 +420,51 @@ bool isMenuRequested()
 }
 
 /****************************************************************************
+ * GetControllerSummary
+ *
+ * The pad data says which kinds of controller make up the channel (a Wiimote
+ * with a Nunchuk is one channel with two profiles connected).
+ ***************************************************************************/
+bool GetControllerSummary(int channel, char * buf, size_t size)
+{
+	static const struct { uint32_t profile; const char * name; } kinds[] =
+	{
+		{ INPUT_HW_WIIMOTE, "Wiimote" },
+		{ INPUT_HW_NUNCHUK, "Nunchuk" },
+		{ INPUT_HW_CLASSIC, "Classic" },
+		{ INPUT_HW_GAMECUBE, "GameCube" },
+		{ INPUT_HW_WUPC, "Wii U Pro" },
+		{ INPUT_HW_DRC, "GamePad" },
+	};
+
+	if(channel < 0 || channel >= 4 || !controller[channel] || !buf || size == 0)
+		return false;
+
+	const InputPadData & pad = controller[channel]->getPadData();
+	size_t used = 0;
+	char text[64];
+
+	text[0] = 0;
+
+	for(size_t i = 0; i < sizeof(kinds) / sizeof(kinds[0]); i++)
+	{
+		if(!pad.hw_connected[kinds[i].profile])
+			continue;
+
+		used += snprintf(text + used, sizeof(text) - used, "%s%s", used ? " + " : "", kinds[i].name);
+
+		if(used >= sizeof(text))
+			break;
+	}
+
+	if(text[0] == 0)
+		return false;
+
+	snprintf(buf, size, "%s", text);
+	return true;
+}
+
+/****************************************************************************
  * CheckExit
  *
  * Polled once per emulation event pass. Without this, the power button

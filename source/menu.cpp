@@ -26,6 +26,7 @@
 #include "menu.h"
 #include "settings.h"
 #include "drivemap.h"
+#include "status.h"
 #include "memmanager.h"
 
 // Declared here rather than including cpu.h, to keep DOSBox headers out of
@@ -765,6 +766,169 @@ static void DrivesScreen()
 }
 
 /****************************************************************************
+ * FillStatusRows
+ *
+ * The names and values the browser shows. The browser reads the names when
+ * it is constructed (to find its first row), so this comes first.
+ ***************************************************************************/
+static void FillStatusRows(OptionList * options)
+{
+	memset(options, 0, sizeof(OptionList));
+
+	options->length = Status_RowCount();
+	if(options->length > MAX_OPTIONS)
+		options->length = MAX_OPTIONS;
+
+	for(int i = 0; i < options->length; i++)
+	{
+		snprintf(options->name[i], sizeof(options->name[i]), "%s", Status_RowLabel(i));
+		Status_RowValue(i, options->value[i], sizeof(options->value[i]));
+	}
+}
+
+/****************************************************************************
+ * StatusScreen
+ *
+ * What DOSBox is set to and what it is doing, in groups: a row per fact,
+ * the configured value with the value in effect after it in brackets, and a
+ * * on anything that is not the default (see status.h). Nothing here can be
+ * changed. The state is read when the screen opens and again on A, which is
+ * how a controller connected since then shows up. Returns when the screen
+ * is closed.
+ ***************************************************************************/
+static void StatusScreen()
+{
+	VideoDriver * video = platform->getVideo();
+	const PixelColor white = {255, 255, 255, 255};
+
+	// about 15 KB: the menu heap, not the stack or the permanent heap
+	OptionList * listOptions = (OptionList *) memspace_malloc(sizeof(OptionList));
+
+	if(!listOptions)
+		return;
+
+	OptionList & options = *listOptions;
+
+	Status_Refresh();
+	FillStatusRows(&options);
+
+	GuiText titleTxt("Status", 28, white);
+	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	titleTxt.setPosition(50, 50);
+
+	GuiText helpTxt("", 18, white);
+	helpTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	helpTxt.setPosition(0, 366);
+	helpTxt.setMaxWidth(540);
+	helpTxt.setScroll(SCROLL::HORIZONTAL);
+
+	GuiText hintTxt("A: refresh    * not the default", 16, (PixelColor){200, 200, 200, 255});
+	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	hintTxt.setPosition(-50, -50);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+
+	GuiTrigger trigA, trigB;
+	trigA.setPrimaryTrigger();
+	trigB.setSecondaryTrigger();
+
+	GuiText backBtnTxt("Go Back", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage backBtnImg(&btnOutline);
+	GuiImage backBtnImgOver(&btnOutlineOver);
+	GuiButton backBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	backBtn.setPosition(100, -35);
+	backBtn.setLabel(&backBtnTxt);
+	backBtn.setImage(&backBtnImg);
+	backBtn.setImageOver(&backBtnImgOver);
+	backBtn.setSoundOver(&btnSoundOver);
+	backBtn.setSoundClick(&btnSoundClick);
+	backBtn.setTrigger(&trigA);
+	backBtn.setTrigger(&trigB);
+	backBtn.setEffectGrow();
+
+	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
+	w.append(&backBtn);
+
+	SettingsBrowser * browser = NULL;
+
+	// as the drives screen: the browser works out its first row only when it
+	// is constructed, so a different number of rows means a new one
+	auto attach = [&]()
+	{
+		browser = new SettingsBrowser(552, 248, &options);
+		browser->setPosition(0, 108);
+		browser->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+
+		mainWindow->append(browser);
+		mainWindow->append(&w);
+		mainWindow->append(&titleTxt);
+		mainWindow->append(&helpTxt);
+		mainWindow->append(&hintTxt);
+	};
+
+	auto detach = [&]()
+	{
+		mainWindow->remove(browser);
+		mainWindow->remove(&w);
+		mainWindow->remove(&titleTxt);
+		mainWindow->remove(&helpTxt);
+		mainWindow->remove(&hintTxt);
+
+		delete browser;
+		browser = NULL;
+	};
+
+	attach();
+
+	int helpRow = -1;
+	bool done = false;
+
+	while(!done)
+	{
+		UpdateGui();
+
+		if(browser->getClickedOption() >= 0)
+		{
+			const int oldLength = options.length;
+
+			Status_Refresh();
+			FillStatusRows(&options);
+
+			if(options.length != oldLength)
+			{
+				detach();
+				attach();
+			}
+			else
+				browser->triggerUpdate();
+
+			helpRow = -1;
+		}
+
+		const int selected = browser->getSelectedOption();
+
+		if(selected >= 0 && selected != helpRow)
+		{
+			char help[320];
+
+			Status_RowHelp(selected, help, sizeof(help));
+			helpTxt.setText(help);
+			helpRow = selected;
+		}
+
+		if(backBtn.getState() == STATE::CLICKED)
+			done = true;
+	}
+
+	detach();
+	memspace_free(listOptions);
+}
+
+/****************************************************************************
  * SettingsList
  *
  * A list of settings pages, one row per page. A (or clicking) opens the page.
@@ -789,7 +953,7 @@ static void SettingsList(bool sections)
 
 	const int pageCount = sections ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT;
 
-	options.length = pageCount + (sections ? 0 : 2);	// the curated list ends with "Drives" and "All settings"
+	options.length = pageCount + (sections ? 0 : 3);	// the curated list ends with "Drives", "Status" and "All settings"
 	if(options.length > MAX_OPTIONS)
 		options.length = MAX_OPTIONS;
 
@@ -800,6 +964,8 @@ static void SettingsList(bool sections)
 				Settings_PageTitle(sections ? Settings_AllPage(i) : i));
 		else if(i == pageCount && !sections)
 			snprintf(options.name[i], sizeof(options.name[i]), "Drives");
+		else if(i == pageCount + 1 && !sections)
+			snprintf(options.name[i], sizeof(options.name[i]), "Status");
 		else
 			snprintf(options.name[i], sizeof(options.name[i]), "All settings");
 	}
@@ -903,6 +1069,8 @@ static void SettingsList(bool sections)
 
 			if(!sections && clicked == pageCount)
 				DrivesScreen();
+			else if(!sections && clicked == pageCount + 1)
+				StatusScreen();
 			else if(clicked >= pageCount)
 				SettingsList(true);
 			else

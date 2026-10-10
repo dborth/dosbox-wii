@@ -1467,5 +1467,11 @@ void EMS_Init(Section* sec) {
 	sec->AddDestroyFunction(&EMS_ShutDown,true);
 }
 
+/* What the section ended up with, which is not what ems asks for on a PCjr
+ * (0 off, 1 true, 2 emsboard, 3 emm386). Read by the menu's status page. */
+int EMS_EffectiveType(void) {
+	return (int)ems_type;
+}
+
 //Initialize static members
 Bit16u EMS::ems_baseseg = 0;
