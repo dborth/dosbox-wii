@@ -475,31 +475,6 @@ static bool StepCyclesAmount(int direction)
 }
 
 /****************************************************************************
- * cpu.core and cpu.cputype
- *
- * CPU::Change_Config calls E_Exit, which ends the program, when cputype is
- * 386_prefetch and the core is anything but normal or auto. Neither row may
- * ever produce that pair, so each refuses the values that would.
- ***************************************************************************/
-static bool CoreAllowed(const char * candidate)
-{
-	if(GetConfig("cpu", "cputype") == "386_prefetch")
-		return strcmp(candidate, "auto") == 0 || strcmp(candidate, "normal") == 0;
-
-	return true;
-}
-
-static bool CpuTypeAllowed(const char * candidate)
-{
-	if(strcmp(candidate, "386_prefetch") == 0)
-	{
-		const std::string core = GetConfig("cpu", "core");
-		return core == "auto" || core == "normal";
-	}
-	return true;
-}
-
-/****************************************************************************
  * speaker.tandy
  *
  * "on" on a machine that is not a Tandy or PCjr makes TANDYSOUND close the
@@ -539,7 +514,7 @@ static bool TandyAllowed(const char * candidate)
  * The SB16's 8 bit and 16 bit DMA channels must differ as well.
  *
  * Not checked, because nothing here was read for it: IRQs against the PS/2
- * mouse (12) or the dummy serial ports (3, 4).
+ * mouse (12).
  ***************************************************************************/
 enum { CLASH_PORT = 1, CLASH_IRQ = 2, CLASH_DMA = 4, CLASH_VGA = 8, CLASH_SBDMA = 16 };
 
@@ -644,14 +619,7 @@ static bool IsResourceProp(const char * section, const char * prop)
  ***************************************************************************/
 static const char * Refusal(const char * section, const char * prop, const std::string & candidate)
 {
-	if(!strcasecmp(section, "cpu"))
-	{
-		if(!strcasecmp(prop, "core") && !CoreAllowed(candidate.c_str()))
-			return "The 386_prefetch CPU type only works with the normal core.";
-		if(!strcasecmp(prop, "cputype") && !CpuTypeAllowed(candidate.c_str()))
-			return "386_prefetch needs the normal or auto core.";
-	}
-	else if(!strcasecmp(section, "speaker") && !strcasecmp(prop, "tandy"))
+	if(!strcasecmp(section, "speaker") && !strcasecmp(prop, "tandy"))
 	{
 		if(!TandyAllowed(candidate.c_str()))
 			return "Tandy sound can only be forced on for the tandy and pcjr machines.";
@@ -709,8 +677,8 @@ static const char * const helpCycleStepDown =
 
 static const SettingRow performanceRows[] =
 {
-	{ "CPU core",			"cpu",		"core",			ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, CoreAllowed, NULL },
-	{ "CPU type",			"cpu",		"cputype",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, CpuTypeAllowed, NULL },
+	{ "CPU core",			"cpu",		"core",			ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL },
+	{ "CPU type",			"cpu",		"cputype",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL },
 	{ "Cycles mode",		"cpu",		"cycles",		ROW_CYCLES_MODE,	TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpCyclesMode },
 	{ "Cycles amount",		"cpu",		"cycles",		ROW_CYCLES_AMOUNT,	TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpCyclesAmount },
 	{ "Cycle step up",		"cpu",		"cycleup",		ROW_INT,			TIER_LIVE,		cycleStepPresets, ARRAY_COUNT(cycleStepPresets), FMT_CYCLE_STEP, NULL, NULL, helpCycleStepUp },
@@ -780,8 +748,8 @@ static const SettingRow videoRows[] =
 /****************************************************************************
  * Audio page
  *
- * Everything here re-initialises a whole section (sblaster, gus, speaker,
- * midi), which resets the hardware it emulates, so each row is for the DOS
+ * Everything here re-initialises a whole section (sblaster, gus, speaker),
+ * which resets the hardware it emulates, so each row is for the DOS
  * prompt. The ports, IRQs and DMA channels are not on this page: they are
  * raw hex and numbers with no safe preset, and a change that collides with
  * another device is silent, so they are left to the all-settings page.
@@ -801,9 +769,6 @@ static const char * const helpTandy =
 	"removes the second DMA controller until DOSBox restarts.";
 static const char * const helpDisney =
 	"Disney Sound Source (and Covox) compatible sound.";
-static const char * const helpMpu =
-	"MIDI port for games. This build has no MIDI synthesizer, so a game that picks MIDI music plays nothing. "
-	"none lets it fall back to the OPL.";
 
 #define RATE_NATIVE_OPL	49716
 
@@ -812,7 +777,6 @@ static const SettingRow audioRows[] =
 	{ "Output",			"mixer",	"rate",			ROW_AUDIO_OUTPUT,	TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpAudioOutput, 0 },
 	{ "Sound Blaster",	"sblaster",	"sbtype",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpSbType, 0 },
 	{ "OPL mode",		"sblaster",	"oplmode",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
-	{ "OPL emulator",	"sblaster",	"oplemu",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
 	{ "OPL rate",		"sblaster",	"oplrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpOplRate, RATE_NATIVE_OPL },
 	{ "PC speaker",		"speaker",	"pcspeaker",	ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
 	{ "PC speaker rate","speaker",	"pcrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
@@ -821,7 +785,6 @@ static const SettingRow audioRows[] =
 	{ "Disney",			"speaker",	"disney",		ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDisney, 0 },
 	{ "Gravis Ultrasound","gus",	"gus",			ROW_BOOL,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0 },
 	{ "GUS rate",		"gus",		"gusrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
-	{ "MPU-401",		"midi",		"mpu401",		ROW_CHOICE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpMpu, 0 },
 };
 
 static const PageDef pages[SETTINGS_PAGE_COUNT] =
@@ -875,8 +838,8 @@ static bool CuratedStep(const SettingRow * r, int direction);
  *
  * Whether a change takes effect now is decided by the section, not the
  * property: Section::ExecuteInit(false) only runs the init functions that
- * DOSBOX_Init() registered with canchange=true (render, cpu, midi, sblaster,
- * gus, speaker, serial, display, and the JOYSTICK_Init, XMS_Init, EMS_Init and
+ * DOSBOX_Init() registered with canchange=true (render, cpu, sblaster,
+ * gus, speaker, display, and the JOYSTICK_Init, XMS_Init, EMS_Init and
  * DOS_KeyboardLayout_Init of joystick and dos), and every property of those
  * sections is read by one of them. A property of any other section (dosbox,
  * mixer, sdl) is read once at start. Those rows are read-only here and say
@@ -896,8 +859,6 @@ static const PropRef hiddenProps[] =
 {
 	{ "mixer", "rate" },			// the audio driver fixes it (MIXER_Init)
 	{ "mixer", "blocksize" },		// the same
-	{ "midi", "mididevice" },		// no handler that opens: nothing to choose
-	{ "midi", "midiconfig" },		// the options of one
 	{ "sdl", "fullscreen" },		// nothing reads these six
 	{ "sdl", "fulldouble" },
 	{ "sdl", "fullresolution" },
@@ -908,14 +869,10 @@ static const PropRef hiddenProps[] =
 	{ "sdl", "priority" },			// only read when an SDL focus event arrives, and nothing sends one
 };
 
-//! Not shown: only dummy and disabled exist on this build (C_MODEM and
-//! C_DIRECTSERIAL are 0), and a console has no serial port to connect.
-static const char * const hiddenSections[] = { "serial" };
-
 //! Sections whose changes reach the running core (see above).
 static const char * const liveSections[] =
 {
-	"render", "display", "cpu", "midi", "sblaster", "gus", "speaker", "joystick", "dos"
+	"render", "display", "cpu", "sblaster", "gus", "speaker", "joystick", "dos"
 };
 
 //! Of those, the ones that are safe at any time. The rest wait for the DOS prompt.
@@ -934,7 +891,6 @@ static const SectionTitle sectionTitles[] =
 	{ "display", "Video output" },
 	{ "cpu", "CPU" },
 	{ "mixer", "Mixer" },
-	{ "midi", "MIDI" },
 	{ "sblaster", "Sound Blaster" },
 	{ "gus", "Gravis Ultrasound" },
 	{ "speaker", "PC speaker, Tandy, Disney" },
@@ -1027,7 +983,7 @@ static std::vector<AllRow> SectionRows(int controlIndex)
 	std::vector<AllRow> rows;
 	Section_prop * sec = control ? dynamic_cast<Section_prop *>(control->GetSection(controlIndex)) : NULL;
 
-	if(!sec || InList(hiddenSections, ARRAY_COUNT(hiddenSections), sec->GetName()))
+	if(!sec)
 		return rows;
 
 	const bool live = InList(liveSections, ARRAY_COUNT(liveSections), sec->GetName());

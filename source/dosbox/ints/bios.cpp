@@ -28,9 +28,10 @@
 #include "hardware.h"
 #include "pci_bus.h"
 #include "joystick.h"
+#include "timer.h"
+#include "dos_inc.h"
 #include "mouse.h"
 #include "setup.h"
-#include "serialport.h"
 #include <time.h>
 
 #if defined(DB_HAVE_CLOCK_GETTIME) && ! defined(WIN32)
@@ -618,125 +619,9 @@ static Bitu INT17_Handler(void) {
 	return CBRET_NONE;
 }
 
-static bool INT14_Wait(Bit16u port, Bit8u mask, Bit8u timeout, Bit8u* retval) {
-	double starttime = PIC_FullIndex();
-	double timeout_f = timeout * 1000.0;
-	while (((*retval = IO_ReadB(port)) & mask) != mask) {
-		if (starttime < (PIC_FullIndex() - timeout_f)) {
-			return false;
-		}
-		CALLBACK_Idle();
-	}
-	return true;
-}
-
+/* No serial ports are emulated: the BIOS data area lists none, so every
+ * INT 14h request is for a port that does not exist. */
 static Bitu INT14_Handler(void) {
-	if (reg_ah > 0x3 || reg_dx > 0x3) {	// 0-3 serial port functions
-										// and no more than 4 serial ports
-		LOG_MSG("BIOS INT14: Unhandled call AH=%2X DX=%4x",reg_ah,reg_dx);
-		return CBRET_NONE;
-	}
-	
-	Bit16u port = real_readw(0x40,reg_dx*2); // DX is always port number
-	Bit8u timeout = mem_readb(BIOS_COM1_TIMEOUT + reg_dx);
-	if (port==0)	{
-		LOG(LOG_BIOS,LOG_NORMAL)("BIOS INT14: port %d does not exist.",reg_dx);
-		return CBRET_NONE;
-	}
-	switch (reg_ah)	{
-	case 0x00:	{
-		// Initialize port
-		// Parameters:				Return:
-		// AL: port parameters		AL: modem status
-		//							AH: line status
-
-		// set baud rate
-		Bitu baudrate = 9600;
-		Bit16u baudresult;
-		Bitu rawbaud=reg_al>>5;
-		
-		if (rawbaud==0){ baudrate=110;}
-		else if (rawbaud==1){ baudrate=150;}
-		else if (rawbaud==2){ baudrate=300;}
-		else if (rawbaud==3){ baudrate=600;}
-		else if (rawbaud==4){ baudrate=1200;}
-		else if (rawbaud==5){ baudrate=2400;}
-		else if (rawbaud==6){ baudrate=4800;}
-		else if (rawbaud==7){ baudrate=9600;}
-
-		baudresult = (Bit16u)(115200 / baudrate);
-
-		IO_WriteB(port+3, 0x80);	// enable divider access
-		IO_WriteB(port, (Bit8u)baudresult&0xff);
-		IO_WriteB(port+1, (Bit8u)(baudresult>>8));
-
-		// set line parameters, disable divider access
-		IO_WriteB(port+3, reg_al&0x1F); // LCR
-		
-		// disable interrupts
-		IO_WriteB(port+1, 0); // IER
-
-		// get result
-		reg_ah=(Bit8u)(IO_ReadB(port+5)&0xff);
-		reg_al=(Bit8u)(IO_ReadB(port+6)&0xff);
-		CALLBACK_SCF(false);
-		break;
-	}
-	case 0x01: // Transmit character
-		// Parameters:				Return:
-		// AL: character			AL: unchanged
-		// AH: 0x01					AH: line status from just before the char was sent
-		//								(0x80 | unpredicted) in case of timeout
-		//						[undoc]	(0x80 | line status) in case of tx timeout
-		//						[undoc]	(0x80 | modem status) in case of dsr/cts timeout
-
-		// set DTR & RTS on
-		IO_WriteB(port+4,0x3);
-		// wait for DSR & CTS
-		if (INT14_Wait(port+6, 0x30, timeout, &reg_ah)) {
-			// wait for TX buffer empty
-			if (INT14_Wait(port+5, 0x20, timeout, &reg_ah)) {
-				// fianlly send the character
-				IO_WriteB(port,reg_al);
-			} else
-				reg_ah |= 0x80;
-		} else // timed out
-			reg_ah |= 0x80;
-
-		CALLBACK_SCF(false);
-		break;
-	case 0x02: // Read character
-		// Parameters:				Return:
-		// AH: 0x02					AL: received character
-		//						[undoc]	will be trashed in case of timeout
-		//							AH: (line status & 0x1E) in case of success
-		//								(0x80 | unpredicted) in case of timeout
-		//						[undoc]	(0x80 | line status) in case of rx timeout
-		//						[undoc]	(0x80 | modem status) in case of dsr timeout
-
-		// set DTR on
-		IO_WriteB(port+4,0x1);
-
-		// wait for DSR
-		if (INT14_Wait(port+6, 0x20, timeout, &reg_ah)) {
-			// wait for character to arrive
-			if (INT14_Wait(port+5, 0x01, timeout, &reg_ah)) {
-				reg_ah &= 0x1E;
-				reg_al = IO_ReadB(port);
-			} else
-				reg_ah |= 0x80;
-		} else
-			reg_ah |= 0x80;
-
-		CALLBACK_SCF(false);
-		break;
-	case 0x03: // get status
-		reg_ah=(Bit8u)(IO_ReadB(port+5)&0xff);
-		reg_al=(Bit8u)(IO_ReadB(port+6)&0xff);
-		CALLBACK_SCF(false);
-		break;
-
-	}
 	return CBRET_NONE;
 }
 
@@ -1349,28 +1234,6 @@ public:
 		}
 	}
 };
-
-// set com port data in bios data area
-// parameter: array of 4 com port base addresses, 0 = none
-void BIOS_SetComPorts(Bit16u baseaddr[]) {
-	Bit16u portcount=0;
-	Bit16u equipmentword;
-	for(Bitu i = 0; i < 4; i++) {
-		if(baseaddr[i]!=0) portcount++;
-		if(i==0)		mem_writew(BIOS_BASE_ADDRESS_COM1,baseaddr[i]);
-		else if(i==1)	mem_writew(BIOS_BASE_ADDRESS_COM2,baseaddr[i]);
-		else if(i==2)	mem_writew(BIOS_BASE_ADDRESS_COM3,baseaddr[i]);
-		else			mem_writew(BIOS_BASE_ADDRESS_COM4,baseaddr[i]);
-	}
-	// set equipment word
-	equipmentword = mem_readw(BIOS_CONFIGURATION);
-	equipmentword &= (~0x0E00);
-	equipmentword |= (portcount << 9);
-	mem_writew(BIOS_CONFIGURATION,equipmentword);
-	if (IS_EGAVGA_ARCH) equipmentword &= ~0x30; //EGA/VGA startup display mode differs in CMOS
-	CMOS_SetRegister(0x14,(Bit8u)(equipmentword&0xff)); //Should be updated on changes
-}
-
 
 static BIOS* test;
 

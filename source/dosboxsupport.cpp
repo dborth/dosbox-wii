@@ -198,12 +198,8 @@ static const char * CoreName(CPU_Decoder * decoder)
 {
 	if(decoder == CPU_Core_Normal_Run || decoder == CPU_Core_Normal_Trap_Run)
 		return "normal";
-	if(decoder == CPU_Core_Simple_Run || decoder == CPU_Core_Simple_Trap_Run)
-		return "simple";
 	if(decoder == CPU_Core_Full_Run)
 		return "full";
-	if(decoder == CPU_Core_Prefetch_Run || decoder == CPU_Core_Prefetch_Trap_Run)
-		return "prefetch";
 #if C_DYNREC
 	if(decoder == CPU_Core_Dynrec_Run || decoder == CPU_Core_Dynrec_Trap_Run)
 		return "dynamic";

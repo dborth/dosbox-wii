@@ -26,9 +26,9 @@
 #include "callback.h"
 #include "regs.h"
 #include "dos_inc.h"
+#include "timer.h"
 #include "setup.h"
 #include "support.h"
-#include "serialport.h"
 
 DOS_Block dos;
 DOS_InfoBlock dos_infoblock;
@@ -137,27 +137,10 @@ static Bitu DOS_21Handler(void) {
 		}
 		break;
 	case 0x03:		/* Read character from STDAUX */
-		{
-			Bit16u port = real_readw(0x40,0);
-			if(port!=0 && serialports[0]) {
-				Bit8u status;
-				// RTS/DTR on
-				IO_WriteB(port+4,0x3);
-				serialports[0]->Getchar(&reg_al, &status, true, 0xFFFFFFFF);
-			}
-		}
+		/* no serial ports: nothing to read */
 		break;
 	case 0x04:		/* Write Character to STDAUX */
-		{
-			Bit16u port = real_readw(0x40,0);
-			if(port!=0 && serialports[0]) {
-				// RTS/DTR on
-				IO_WriteB(port+4,0x3);
-				serialports[0]->Putchar(reg_dl,true,true, 0xFFFFFFFF);
-				// RTS off
-				IO_WriteB(port+4,0x1);
-			}
-		}
+		/* no serial ports: the character is dropped */
 		break;
 	case 0x05:		/* Write Character to PRINTER */
 		E_Exit("DOS:Unhandled call %02X",reg_ah);

@@ -47,7 +47,6 @@
 #include "mapper.h"
 #include "hardware.h"
 #include "programs.h"
-#include "midi.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/EmulatorAudioDriver.h"
@@ -655,10 +654,6 @@ public:
 	}
 
 	void Run(void) {
-		if(cmd->FindExist("/LISTMIDI")) {
-			ListMidi();
-			return;
-		}
 		if (cmd->FindString("MASTER",temp_line,false)) {
 			MakeVolume((char *)temp_line.c_str(),mixer.mastervol[0],mixer.mastervol[1]);
 		}
@@ -683,10 +678,6 @@ private:
 			20*log(vol0)/log(10.0f),20*log(vol1)/log(10.0f)
 		);
 	}
-
-	void ListMidi(){
-		if(midi.handler) midi.handler->ListAll(this);
-	};
 
 };
 

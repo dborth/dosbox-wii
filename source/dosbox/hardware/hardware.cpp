@@ -40,7 +40,6 @@ extern const char* RunningProgram;
 Bitu CaptureState;
 
 #define WAVE_BUF 16*1024
-#define MIDI_BUF 4*1024
 #define AVI_HEADER_SIZE	500
 
 static struct {
@@ -51,12 +50,6 @@ static struct {
 		Bit32u length;
 		Bit32u freq;
 	} wave; 
-	struct {
-		FILE * handle;
-		Bit8u buffer[MIDI_BUF];
-		Bitu used,done;
-		Bit32u last;
-	} midi;
 	struct {
 		Bitu rowlen;
 	} image;
@@ -655,94 +648,6 @@ static void CAPTURE_WaveEvent(bool pressed) {
 	CaptureState ^= CAPTURE_WAVE;
 }
 
-/* MIDI capturing */
-
-static Bit8u midi_header[]={
-	'M','T','h','d',			/* Bit32u, Header Chunk */
-	0x0,0x0,0x0,0x6,			/* Bit32u, Chunk Length */
-	0x0,0x0,					/* Bit16u, Format, 0=single track */
-	0x0,0x1,					/* Bit16u, Track Count, 1 track */
-	0x01,0xf4,					/* Bit16u, Timing, 2 beats/second with 500 frames */
-	'M','T','r','k',			/* Bit32u, Track Chunk */
-	0x0,0x0,0x0,0x0,			/* Bit32u, Chunk Length */
-	//Track data
-};
-
-
-static void RawMidiAdd(Bit8u data) {
-	capture.midi.buffer[capture.midi.used++]=data;
-	if (capture.midi.used >= MIDI_BUF ) {
-		capture.midi.done += capture.midi.used;
-		fwrite(capture.midi.buffer,1,MIDI_BUF,capture.midi.handle);
-		capture.midi.used = 0;
-	}
-}
-
-static void RawMidiAddNumber(Bit32u val) {
-	if (val & 0xfe00000) RawMidiAdd((Bit8u)(0x80|((val >> 21) & 0x7f)));
-	if (val & 0xfffc000) RawMidiAdd((Bit8u)(0x80|((val >> 14) & 0x7f)));
-	if (val & 0xfffff80) RawMidiAdd((Bit8u)(0x80|((val >> 7) & 0x7f)));
-	RawMidiAdd((Bit8u)(val & 0x7f));
-}
-
-void CAPTURE_AddMidi(bool sysex, Bitu len, Bit8u * data) {
-	if (!capture.midi.handle) {
-		capture.midi.handle=OpenCaptureFile("Raw Midi",".mid");
-		if (!capture.midi.handle) {
-			return;
-		}
-		fwrite(midi_header,1,sizeof(midi_header),capture.midi.handle);
-		capture.midi.last=PIC_Ticks;
-	}
-	Bit32u delta=PIC_Ticks-capture.midi.last;
-	capture.midi.last=PIC_Ticks;
-	RawMidiAddNumber(delta);
-	if (sysex) {
-		RawMidiAdd( 0xf0 );
-		RawMidiAddNumber( len );
-	}
-	for (Bitu i=0;i<len;i++) 
-		RawMidiAdd(data[i]);
-}
-
-static void CAPTURE_MidiEvent(bool pressed) {
-	if (!pressed)
-		return;
-	/* Check for previously opened wave file */
-	if (capture.midi.handle) {
-		LOG_MSG("Stopping raw midi saving and finalizing file.");
-		//Delta time
-		RawMidiAdd(0x00);
-		//End of track event
-		RawMidiAdd(0xff);
-		RawMidiAdd(0x2F);
-		RawMidiAdd(0x00);
-		/* clear out the final data in the buffer if any */
-		fwrite(capture.midi.buffer,1,capture.midi.used,capture.midi.handle);
-		capture.midi.done+=capture.midi.used;
-		fseek(capture.midi.handle,18, SEEK_SET);
-		Bit8u size[4];
-		size[0]=(Bit8u)(capture.midi.done >> 24);
-		size[1]=(Bit8u)(capture.midi.done >> 16);
-		size[2]=(Bit8u)(capture.midi.done >> 8);
-		size[3]=(Bit8u)(capture.midi.done >> 0);
-		fwrite(&size,1,4,capture.midi.handle);
-		fclose(capture.midi.handle);
-		capture.midi.handle=0;
-		CaptureState &= ~CAPTURE_MIDI;
-		return;
-	} 
-	CaptureState ^= CAPTURE_MIDI;
-	if (CaptureState & CAPTURE_MIDI) {
-		LOG_MSG("Preparing for raw midi capture, will start with first data.");
-		capture.midi.used=0;
-		capture.midi.done=0;
-		capture.midi.handle=0;
-	} else {
-		LOG_MSG("Stopped capturing raw midi before any data arrived.");
-	}
-}
-
 class HARDWARE:public Module_base{
 public:
 	HARDWARE(Section* configuration):Module_base(configuration){
@@ -751,7 +656,6 @@ public:
 		capturedir = proppath->realpath;
 		CaptureState = 0;
 		MAPPER_AddHandler(CAPTURE_WaveEvent,MK_f6,MMOD1,"recwave","Rec Wave");
-		MAPPER_AddHandler(CAPTURE_MidiEvent,MK_f8,MMOD1|MMOD2,"caprawmidi","Cap MIDI");
 #if (C_SSHOT)
 		MAPPER_AddHandler(CAPTURE_ScreenShotEvent,MK_f5,MMOD1,"scrshot","Screenshot");
 		MAPPER_AddHandler(CAPTURE_VideoEvent,MK_f5,MMOD1|MMOD2,"video","Video");
@@ -762,7 +666,6 @@ public:
 		if (capture.video.handle) CAPTURE_VideoEvent(true);
 #endif
 		if (capture.wave.handle) CAPTURE_WaveEvent(true);
-		if (capture.midi.handle) CAPTURE_MidiEvent(true);
 	}
 };
 

@@ -61,7 +61,6 @@ extern Bitu CPU_AutoDetermineMode;
 
 extern Bitu CPU_ArchitectureType;
 
-extern Bitu CPU_PrefetchQueueSize;
 
 /* Some common Defines */
 /* A CPU Handler */
@@ -70,15 +69,11 @@ extern CPU_Decoder * cpudecoder;
 
 Bits CPU_Core_Normal_Run(void);
 Bits CPU_Core_Normal_Trap_Run(void);
-Bits CPU_Core_Simple_Run(void);
-Bits CPU_Core_Simple_Trap_Run(void);
 Bits CPU_Core_Full_Run(void);
 Bits CPU_Core_Dyn_X86_Run(void);
 Bits CPU_Core_Dyn_X86_Trap_Run(void);
 Bits CPU_Core_Dynrec_Run(void);
 Bits CPU_Core_Dynrec_Trap_Run(void);
-Bits CPU_Core_Prefetch_Run(void);
-Bits CPU_Core_Prefetch_Trap_Run(void);
 
 void CPU_Enable_SkipAutoAdjust(void);
 void CPU_Disable_SkipAutoAdjust(void);

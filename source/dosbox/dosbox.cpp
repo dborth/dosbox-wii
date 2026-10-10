@@ -71,7 +71,6 @@ void FPU_Init(Section*);
 void DMA_Init(Section*);
 
 void MIXER_Init(Section*);
-void MIDI_Init(Section*);
 void HARDWARE_Init(Section*);
 
 #if defined(PCI_FUNCTIONALITY_ENABLED)
@@ -84,11 +83,9 @@ void JOYSTICK_Init(Section*);
 void MOUSE_Init(Section*);
 void SBLASTER_Init(Section*);
 void GUS_Init(Section*);
-void MPU401_Init(Section*);
 void PCSPEAKER_Init(Section*);
 void TANDYSOUND_Init(Section*);
 void DISNEY_Init(Section*);
-void SERIAL_Init(Section*);
 
 
 #if C_IPX
@@ -452,13 +449,13 @@ void DOSBOX_Init(void) {
 #if (C_DYNAMIC_X86) || (C_DYNREC)
 		"dynamic",
 #endif
-		"normal", "simple",0 };
+		"normal",0 };
 	Pstring = secprop->Add_string("core",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(cores);
 	Pstring->Set_help("CPU Core used in emulation. auto will switch to dynamic if available and\n"
 		"appropriate.");
 
-	const char* cputype_values[] = { "auto", "386", "386_slow", "486_slow", "pentium_slow", "386_prefetch", 0};
+	const char* cputype_values[] = { "auto", "386", "386_slow", "486_slow", "pentium_slow", 0};
 	Pstring = secprop->Add_string("cputype",Property::Changeable::Always,"auto");
 	Pstring->Set_values(cputype_values);
 	Pstring->Set_help("CPU Type used in emulation. auto is the fastest choice.");
@@ -522,27 +519,6 @@ void DOSBOX_Init(void) {
 	Pint->SetMinMax(0,100);
 	Pint->Set_help("How many milliseconds of data to keep on top of the blocksize.");
 
-	secprop=control->AddSection_prop("midi",&MIDI_Init,true);//done
-	secprop->AddInitFunction(&MPU401_Init,true);//done
-
-	const char* mputypes[] = { "intelligent", "uart", "none",0};
-	// FIXME: add some way to offer the actually available choices.
-	const char *devices[] = { "default", "win32", "alsa", "oss", "coreaudio", "coremidi","none", 0};
-	Pstring = secprop->Add_string("mpu401",Property::Changeable::WhenIdle,"intelligent");
-	Pstring->Set_values(mputypes);
-	Pstring->Set_help("Type of MPU-401 to emulate.");
-
-	Pstring = secprop->Add_string("mididevice",Property::Changeable::WhenIdle,"default");
-	Pstring->Set_values(devices);
-	Pstring->Set_help("Device that will receive the MIDI data from MPU-401.");
-
-	Pstring = secprop->Add_string("midiconfig",Property::Changeable::WhenIdle,"");
-	Pstring->Set_help("Special configuration options for the device driver. This is usually the id or part of the name of the device you want to use (find the id/name with mixer/listmidi).\n"
-	                  "Or in the case of coreaudio, you can specify a soundfont here.\n"
-	                  "When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
-	                  "In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
-	                  "See the README/Manual for more details.");
-
 #if C_DEBUG
 	secprop=control->AddSection_prop("debug",&DEBUG_Init);
 #endif
@@ -577,11 +553,6 @@ void DOSBOX_Init(void) {
 	Pstring = secprop->Add_string("oplmode",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(oplmodes);
 	Pstring->Set_help("Type of OPL emulation. On 'auto' the mode is determined by sblaster type. All OPL modes are Adlib-compatible, except for 'cms'.");
-
-	const char* oplemus[]={ "default", "compat", "fast", "mame", 0};
-	Pstring = secprop->Add_string("oplemu",Property::Changeable::WhenIdle,"default");
-	Pstring->Set_values(oplemus);
-	Pstring->Set_help("Provider for the OPL emulation. compat might provide better quality (see oplrate as well).");
 
 	Pint = secprop->Add_int("oplrate",Property::Changeable::WhenIdle,32000); // match the mixer, so the channel skips interpolation
 	Pint->Set_values(oplrates);
@@ -674,49 +645,6 @@ void DOSBOX_Init(void) {
 	Pint = secprop->Add_int("deadzone",Property::Changeable::WhenIdle,10);
 	Pint->SetMinMax(0,100);
 	Pint->Set_help("the percentage of motion to ignore. 100 turns the stick into a digital one.");
-
-	secprop=control->AddSection_prop("serial",&SERIAL_Init,true);
-	const char* serials[] = { "dummy", "disabled", "modem", "nullmodem",
-	                          "directserial",0 };
-
-	Pmulti_remain = secprop->Add_multiremain("serial1",Property::Changeable::WhenIdle," ");
-	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"dummy");
-	Pmulti_remain->SetValue("dummy");
-	Pstring->Set_values(serials);
-	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::WhenIdle,"");
-	Pmulti_remain->Set_help(
-		"set type of device connected to com port.\n"
-		"Can be disabled, dummy, modem, nullmodem, directserial.\n"
-		"Additional parameters must be in the same line in the form of\n"
-		"parameter:value. Parameter for all types is irq (optional).\n"
-		"for directserial: realport (required), rxdelay (optional).\n"
-		"                 (realport:COM1 realport:ttyS0).\n"
-		"for modem: listenport (optional).\n"
-		"for nullmodem: server, rxdelay, txdelay, telnet, usedtr,\n"
-		"               transparent, port, inhsocket (all optional).\n"
-		"Example: serial1=modem listenport:5000");
-
-	Pmulti_remain = secprop->Add_multiremain("serial2",Property::Changeable::WhenIdle," ");
-	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"dummy");
-	Pmulti_remain->SetValue("dummy");
-	Pstring->Set_values(serials);
-	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::WhenIdle,"");
-	Pmulti_remain->Set_help("see serial1");
-
-	Pmulti_remain = secprop->Add_multiremain("serial3",Property::Changeable::WhenIdle," ");
-	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"disabled");
-	Pmulti_remain->SetValue("disabled");
-	Pstring->Set_values(serials);
-	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::WhenIdle,"");
-	Pmulti_remain->Set_help("see serial1");
-
-	Pmulti_remain = secprop->Add_multiremain("serial4",Property::Changeable::WhenIdle," ");
-	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::WhenIdle,"disabled");
-	Pmulti_remain->SetValue("disabled");
-	Pstring->Set_values(serials);
-	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::WhenIdle,"");
-	Pmulti_remain->Set_help("see serial1");
-
 
 	/* All the DOS Related stuff, which will eventually start up in the shell */
 	secprop=control->AddSection_prop("dos",&DOS_Init,false);//done

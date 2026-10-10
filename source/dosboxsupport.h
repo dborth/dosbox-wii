@@ -37,8 +37,8 @@ bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * w
  */
 struct EmulationStatus
 {
-	//! The core running now: "normal", "simple", "full", "dynamic" or
-	//! "prefetch"; empty if it cannot be told (the decoder is momentarily
+	//! The core running now: "normal", "full" or "dynamic";
+	//! empty if it cannot be told (the decoder is momentarily
 	//! something else, eg. while the guest is halted)
 	char core[16];
 	bool autoAdjust;		//!< cycles are a share of the host (max), not a fixed count

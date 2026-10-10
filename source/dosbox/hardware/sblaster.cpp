@@ -32,8 +32,6 @@
 #include "shell.h"
 using namespace std;
 
-void MIDI_RawOutByte(Bit8u data);
-bool MIDI_Available(void);
 
 #define SB_PIC_EVENTS 0
 
@@ -932,7 +930,7 @@ static void DSP_DoCommand(void) {
 		DSP_PrepareDMA_Old(DSP_DMA_8,true,false);
 		break;
 	case 0x38:  /* Write to SB MIDI Output */
-		if (sb.midi == true) MIDI_RawOutByte(sb.dsp.in.data[0]);
+		/* no MIDI output on this build */
 		break;
 	case 0x40:	/* Set Timeconstant */
 		DSP_ChangeRate(1000000 / (256 - sb.dsp.in.data[0]));
@@ -1726,9 +1724,8 @@ public:
 
 		autoexecline.Install(temp.str());
 
-		/* Soundblaster midi interface */
-		if (!MIDI_Available()) sb.midi = false;
-		else sb.midi = true;
+		/* Soundblaster midi interface: there is no MIDI output on this build */
+		sb.midi = false;
 	}	
 	
 	~SBLASTER() {

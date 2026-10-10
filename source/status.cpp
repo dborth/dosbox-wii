@@ -207,7 +207,7 @@ static void CpuLines(const EmulationStatus & st)
 
 	AddProp("CPU core", "cpu", "core", core,
 		"The core DOSBox is running now. With auto, the dynamic recompiler is used from the start "
-		"if it could get a code cache. The 386_prefetch CPU type runs the prefetch core instead.");
+		"if it could get a code cache.");
 
 	// The one question the page exists to answer for some people
 	AddPlain("Dynarec", core.empty() ? "Unknown" : (core == "dynamic" ? "Active" : "Not active"),
@@ -424,10 +424,6 @@ static void AudioLines(const EmulationStatus & st)
 	AddBool("Disney", "speaker", "disney", "", "Disney Sound Source (and Covox) compatible sound.");
 
 	AddBool("Gravis Ultrasound", "gus", "gus", "", "Gravis Ultrasound emulation.");
-
-	AddProp("MPU-401", "midi", "mpu401", "",
-		"MIDI port for games. This build has no MIDI synthesizer, so a game that picks MIDI music plays "
-		"nothing. none lets it fall back to the OPL.");
 }
 
 /****************************************************************************

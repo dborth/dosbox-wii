@@ -25,7 +25,7 @@ SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
 				source/dosbox source/dosbox/cpu \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \
 				source/dosbox/hardware source/dosbox/hardware/mame \
-				source/dosbox/hardware/serialport source/dosbox/ints \
+				source/dosbox/ints \
 				source/dosbox/misc source/dosbox/shell \
 				source/sdlshim
 DATA		:=	data/images data/fonts data/sounds data/lang

@@ -131,6 +131,5 @@ bool BIOS_AddKeyToBuffer(Bit16u code);
 
 void INT10_ReloadRomFonts();
 
-void BIOS_SetComPorts (Bit16u baseaddr[]);
 
 #endif
