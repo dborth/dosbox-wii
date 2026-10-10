@@ -98,7 +98,7 @@ bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
 			return false;
 	}
 
-	if(!(test.st_mode & S_IFDIR))
+	if(!S_ISDIR(test.st_mode))
 		return false;
 
 	if(dir[dir.size() - 1] != CROSS_FILESPLIT)

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <string>
 #include <vector>
 
@@ -1771,6 +1772,12 @@ bool Settings_Save(char * message, size_t size)
 		return false;
 	}
 
-	snprintf(message, size, "Saved %s. The file it replaced is kept as %s.bak.", path.c_str(), BaseName(path));
+	struct stat st;
+	const std::string bak = path + ".bak";
+
+	if(stat(bak.c_str(), &st) == 0)
+		snprintf(message, size, "Saved %s. The file it replaced is kept as %s.bak.", path.c_str(), BaseName(path));
+	else
+		snprintf(message, size, "Saved %s.", path.c_str());
 	return true;
 }

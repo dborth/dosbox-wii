@@ -78,7 +78,8 @@ void SwitchMemoryModeMenu()
 	if(base)
 	{
 		menuSpace = create_mspace_with_base(base, size, 1);
-		mspace_set_footprint_limit(menuSpace, size);
+		if(menuSpace)
+			mspace_set_footprint_limit(menuSpace, size);
 	}
 
 	menuMode = true;

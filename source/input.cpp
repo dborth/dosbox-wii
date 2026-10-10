@@ -92,7 +92,14 @@ static void PauseDOSBox(bool pressed) {
 	}
 
 	while (paused) {
-		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
+		// Not SDL_WaitEvent(): it never looks at the power button, and nothing
+		// else does while paused (GFX_Events() is not running).
+		if (!SDL_PollEvent(&event)) {
+			InputHal_Update();
+			CheckExit();
+			SDL_Delay(1);
+			continue;
+		}
 		switch (event.type) {
 
 			case SDL_QUIT: KillSwitch(true); break;
@@ -594,6 +601,7 @@ void InitKeyInjection()
 	shiftkey[40] = 57;
 	shiftkey[41] = 48;
 	shiftkey[42] = 56;
+	shiftkey[43] = 61;	// + (shifted =)
 	shiftkey[58] = 59;
 	shiftkey[60] = 44;
 	shiftkey[62] = 46;
@@ -601,6 +609,9 @@ void InitKeyInjection()
 	shiftkey[64] = 50;
 	shiftkey[94] = 54;
 	shiftkey[95] = 45;
+	shiftkey[123] = 91;	// { (shifted [)
+	shiftkey[124] = 92;	// | (shifted \)
+	shiftkey[125] = 93;	// } (shifted ])
 	shiftkey[126] = 96;
 }
 

@@ -82,20 +82,12 @@ extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
 
 void restart_program(std::vector<std::string> & parameters) {
-	char** newargs = new char* [parameters.size() + 1];
-	// parameter 0 is the executable path
-	// contents of the vector follow
-	// last one is NULL
-	for(Bitu i = 0; i < parameters.size(); i++) newargs[i] = (char*)parameters[i].c_str();
-	newargs[parameters.size()] = NULL;
-	platform->getAudio()->stopEmulatorAudio();
-	SDL_Delay(50);
-#if C_DEBUG
-	// shutdown curses
-	DEBUG_ShutDown(NULL);
-#endif
-
-	delete [] newargs;
+	// There is no relaunch path on this platform (see the Status and Settings
+	// pages: changes that need one take effect next launch). It used to stop
+	// the emulator audio and return, which left DOSBox running silent for
+	// good after CONFIG -r or Ctrl+Alt+Home.
+	(void)parameters;
+	Log_Printf(LOG_LEVEL_INFO, "Restart is not available here; settings that need one apply next launch");
 }
 void Restart(bool pressed) { // mapper handler
 	restart_program(control->startup_params);

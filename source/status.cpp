@@ -359,7 +359,7 @@ static void VideoLines(const EmulationStatus & st)
 
 	Add("Zoom", Cfg("display", "zoomx") + "% x " + Cfg("display", "zoomy") + "%", "",
 		Changed("display", "zoomx") || Changed("display", "zoomy"),
-		"Width and height of the picture as a percentage of its normal size. Fit size only: integer ignores it.");
+		"Width and height of the picture as a percentage of its normal size. Used by the fit and fill sizes; integer ignores it.");
 
 	Add("Shift", Cfg("display", "shiftx") + ", " + Cfg("display", "shifty"), "",
 		Changed("display", "shiftx") || Changed("display", "shifty"),

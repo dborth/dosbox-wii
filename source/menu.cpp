@@ -109,7 +109,9 @@ static void OnScreenKeyboard(char * var, uint32_t maxlen)
 {
 	int save = -1;
 
-	GuiKeyboard kb(var, maxlen);
+	// GuiKeyboard edits its own 256 byte buffer, so it must not be told it has more
+	const uint32_t kbLimit = (uint32_t)sizeof(GuiKeyboard::kbtextstr);
+	GuiKeyboard kb(var, maxlen < kbLimit ? maxlen : kbLimit);
 
 	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
 	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
@@ -461,9 +463,14 @@ static void SettingsPageScreen(int page)
 	const PixelColor white = {255, 255, 255, 255};
 	char title[64];
 
-	// about 15 KB: kept off the stack, which this runs deep in the core's call
-	// chain on a size nothing here sets. Reset on every entry.
-	static OptionList options;
+	// about 15 KB: the menu heap, not the stack (this runs deep in the core's
+	// call chain) and not permanent memory the emulator would be sharing
+	OptionList * pageOptions = (OptionList *) memspace_malloc(sizeof(OptionList));
+
+	if(!pageOptions)
+		return;
+
+	OptionList & options = *pageOptions;
 
 	memset(&options, 0, sizeof(options));
 
@@ -580,6 +587,8 @@ static void SettingsPageScreen(int page)
 	mainWindow->remove(&titleTxt);
 	mainWindow->remove(&helpTxt);
 	mainWindow->remove(&hintTxt);
+
+	memspace_free(pageOptions);
 }
 
 /****************************************************************************
@@ -946,7 +955,11 @@ static void SettingsList(bool sections)
 
 	// kept off the stack for the same reason as the page's list, and not
 	// static because a second list is opened while this one is up
-	OptionList * listOptions = new OptionList;
+	OptionList * listOptions = (OptionList *) memspace_malloc(sizeof(OptionList));
+
+	if(!listOptions)
+		return;
+
 	OptionList & options = *listOptions;
 
 	memset(&options, 0, sizeof(options));
@@ -1093,7 +1106,7 @@ static void SettingsList(bool sections)
 	mainWindow->remove(&statusTxt);
 	mainWindow->remove(&hintTxt);
 
-	delete listOptions;
+	memspace_free(listOptions);
 }
 
 /****************************************************************************
@@ -1302,7 +1315,7 @@ void HomeMenu ()
 	closeBtn.setEffectGrow();
 
 	int i;
-	char txt[3];
+	char txt[8];
 	bool status[4] = { false, false, false, false };
 	int level[4] = { 0, 0, 0, 0 };
 	bool newStatus;
@@ -1316,9 +1329,9 @@ void HomeMenu ()
 	for(i=0; i < 4; i++)
 	{
 		if(i == 0)
-			sprintf(txt, "P %d", i+1);
+			snprintf(txt, sizeof(txt), "P %d", i+1);
 		else
-			sprintf(txt, "P%d", i+1);
+			snprintf(txt, sizeof(txt), "P%d", i+1);
 
 		batteryTxt[i] = new GuiText(txt, 22, (PixelColor){255, 255, 255, 255});
 		batteryTxt[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::MIDDLE);
