@@ -193,7 +193,12 @@ bool localDrive::FindFirst(char * _dir,DOS_DTA & dta,bool fcb_findfirst) {
 		DOS_SetError(DOSERR_PATH_NOT_FOUND);
 		return false;
 	}
-	strcpy(srchInfo[id].srch_dir,tempDir);
+	free(srchInfo[id].srch_dir);
+	srchInfo[id].srch_dir = strdup(tempDir);
+	if (!srchInfo[id].srch_dir) {
+		DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
+		return false;
+	}
 	dta.SetDirID(id);
 	
 	Bit8u sAttr;
@@ -248,7 +253,7 @@ again:
 	}
 	if(!WildFileCmp(dir_ent,srch_pattern)) goto again;
 
-	strcpy(full_name,srchInfo[id].srch_dir);
+	strcpy(full_name,GetSearchDir(id));
 	strcat(full_name,dir_ent);
 	
 	//GetExpandName might indirectly destroy dir_ent (by caching in a new directory 
@@ -428,7 +433,13 @@ localDrive::localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors
 	allocation.free_clusters=_free_clusters;
 	allocation.mediaid=_mediaid;
 
+	for (Bitu i=0;i<MAX_OPENDIRS;i++) srchInfo[i].srch_dir=0;
+
 	dirCache.SetBaseDir(basedir);
+}
+
+localDrive::~localDrive() {
+	for (Bitu i=0;i<MAX_OPENDIRS;i++) free(srchInfo[i].srch_dir);
 }
 
 

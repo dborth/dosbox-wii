@@ -52,6 +52,7 @@ private:
 class localDrive : public DOS_Drive {
 public:
 	localDrive(const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid);
+	virtual ~localDrive();
 	virtual bool FileOpen(DOS_File * * file,char * name,Bit32u flags);
 	virtual FILE *GetSystemFilePtr(char const * const name, char const * const type);
 	virtual bool GetSystemFilename(char* sysName, char const * const dosName);
@@ -77,9 +78,15 @@ protected:
 private:
 	friend void DOS_Shell::CMD_SUBST(char* args);
 protected:
+	// The directory each search id (an index into dirCache's search table) is
+	// searching, allocated when the search starts. This was an inline
+	// char[CROSS_LEN] per id: MAX_OPENDIRS * CROSS_LEN = 1 MiB inside every
+	// localDrive, nearly all of it never touched.
 	struct {
-		char srch_dir[CROSS_LEN];
+		char * srch_dir;
 	} srchInfo[MAX_OPENDIRS];
+
+	const char * GetSearchDir(Bit16u id) { return srchInfo[id].srch_dir ? srchInfo[id].srch_dir : ""; }
 
 private:
 	struct {
@@ -195,10 +202,6 @@ private:
 	void zeroOutCluster(Bit32u clustNumber);
 	bool getEntryName(char *fullname, char *entname);
 	friend void DOS_Shell::CMD_SUBST(char* args); 	
-	struct {
-		char srch_dir[CROSS_LEN];
-	} srchInfo[MAX_OPENDIRS];
-
 	struct {
 		Bit16u bytes_sector;
 		Bit8u sectors_cluster;

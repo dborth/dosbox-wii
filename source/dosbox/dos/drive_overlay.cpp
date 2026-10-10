@@ -744,7 +744,7 @@ again:
 	}
 	if(!WildFileCmp(dir_ent,srch_pattern)) goto again;
 
-	strcpy(full_name,srchInfo[id].srch_dir);
+	strcpy(full_name,GetSearchDir(id));
 	strcat(full_name,dir_ent);
 	
 	//GetExpandName might indirectly destroy dir_ent (by caching in a new directory 
@@ -755,7 +755,7 @@ again:
 	//First try overlay:
 	char ovname[CROSS_LEN];
 	char relativename[CROSS_LEN];
-	strcpy(relativename,srchInfo[id].srch_dir);
+	strcpy(relativename,GetSearchDir(id));
 	//strip off basedir: //TODO cleanup
 	strcpy(ovname,overlaydir);
 	char* prel = full_name + strlen(basedir);
