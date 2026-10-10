@@ -1396,9 +1396,13 @@ void HomeMenu ()
 
 		for(i=0; i < 4; i++)
 		{
-			const InputPadData & pad = controller[i]->getPadData();
+			const InputPadData& pad = controller[i]->getPadData();
+			bool hasBattery = pad.hw_connected[INPUT_HW_WIIMOTE];
+			#ifdef __WIIU__
+			hasBattery = hasBattery || pad.hw_connected[INPUT_HW_DRC] || pad.hw_connected[INPUT_HW_WUPC];
+			#endif
 
-			if(pad.hw_connected[INPUT_HW_WIIMOTE])
+			if(hasBattery)
 			{
 				newStatus = true;
 				newLevel = (pad.battery_level / 100.0) * 4;
