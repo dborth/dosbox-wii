@@ -24,7 +24,11 @@
 
 #include <stddef.h>
 
+#ifdef HW_RVL
 #define IMAGE_DECODE_SCRATCH_SIZE ((640 * 480 * 4) + (480 * sizeof(void *)))
+#else
+#define IMAGE_DECODE_SCRATCH_SIZE ((1920 * 1080 * 4) + (1080 * sizeof(void*)))
+#endif
 
 //! The least a lent cache can be and still be worth using as the menu heap.
 //! The menu needs about 5 MB at its busiest (the credits window).
