@@ -789,7 +789,7 @@ static void SettingsList(bool sections)
 
 	const int pageCount = sections ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT;
 
-	options.length = pageCount + (sections ? 0 : 3);	// the curated list ends with "Drives", "All settings" and "Save settings"
+	options.length = pageCount + (sections ? 0 : 2);	// the curated list ends with "Drives" and "All settings"
 	if(options.length > MAX_OPTIONS)
 		options.length = MAX_OPTIONS;
 
@@ -800,8 +800,6 @@ static void SettingsList(bool sections)
 				Settings_PageTitle(sections ? Settings_AllPage(i) : i));
 		else if(i == pageCount && !sections)
 			snprintf(options.name[i], sizeof(options.name[i]), "Drives");
-		else if(i == pageCount + 2 && !sections)
-			snprintf(options.name[i], sizeof(options.name[i]), "Save settings");
 		else
 			snprintf(options.name[i], sizeof(options.name[i]), "All settings");
 	}
@@ -814,7 +812,7 @@ static void SettingsList(bool sections)
 	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	hintTxt.setPosition(-50, -50);
 
-	// what "Save settings" did, where the pages show their help
+	// what the Save button did, where the pages show their help
 	GuiText statusTxt("", 18, white);
 	statusTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	statusTxt.setPosition(0, 366);
@@ -845,12 +843,29 @@ static void SettingsList(bool sections)
 	backBtn.setTrigger(&trigB);
 	backBtn.setEffectGrow();
 
+	// Save sits beside Go Back and only on the list of pages, not the all-settings list
+	GuiText saveBtnTxt("Save", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage saveBtnImg(&btnOutline);
+	GuiImage saveBtnImgOver(&btnOutlineOver);
+	GuiButton saveBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	saveBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	saveBtn.setPosition(100 + btnOutline.getWidth() + 24, -35);
+	saveBtn.setLabel(&saveBtnTxt);
+	saveBtn.setImage(&saveBtnImg);
+	saveBtn.setImageOver(&saveBtnImgOver);
+	saveBtn.setSoundOver(&btnSoundOver);
+	saveBtn.setSoundClick(&btnSoundClick);
+	saveBtn.setTrigger(&trigA);
+	saveBtn.setEffectGrow();
+
 	GuiOptionBrowser browser(552, 248, &options);
 	browser.setPosition(0, 108);
 	browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 
 	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
 	w.append(&backBtn);
+	if(!sections)
+		w.append(&saveBtn);
 
 	// the browser first: it is what takes focus
 	mainWindow->append(&browser);
@@ -867,12 +882,13 @@ static void SettingsList(bool sections)
 
 		const int clicked = browser.getClickedOption();
 
-		if(!sections && clicked == pageCount + 2)
+		if(!sections && saveBtn.getState() == STATE::CLICKED)
 		{
 			// writes a few KB to the card, which is quick enough not to need the
 			// worker thread; if it ever hitches the menu on a slow USB drive it should
 			char message[320];
 
+			saveBtn.resetState();
 			Settings_Save(message, sizeof(message));
 			statusTxt.setText(message);
 		}
