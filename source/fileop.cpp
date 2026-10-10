@@ -68,70 +68,126 @@ void FindAppDrive()
 	LOG_ERROR("No storage device with a %s folder, and none could create one", DOSBOX_DIR_NAME);
 }
 
-// Mounts a folder as a harddrive before starting the shell
-// Designed for the Wii
-int MountDOSBoxDir(char DriveLetter, const char *path) {
-	DOS_Drive * newdrive;
-	Bit16u sizes[4];
-	Bit8u mediaid;
-	std::string str_size;
-	std::string label;
-	str_size="512,127,16383,4031";
-	mediaid=0xF8;		/* Hard Disk */
-	char number[20];
-	const char * scan=str_size.c_str();
-	Bitu index=0;Bitu count=0;
-	/* Parse the str_size string */
-	while (*scan) {
-		if (*scan==',') {
-			number[index]=0;
-			sizes[count++]=atoi(number);
-			index=0;
-		} else number[index++]=*scan;
-		scan++;
-	}
-	number[index]=0;
-	sizes[count++]=atoi(number);
+// Declared here rather than in a core header: the helper MOUNT -u and
+// IMGMOUNT -u share (dos_programs.cpp), which is not static for this reason.
+const char * UnmountHelper(char umount);
 
-	// get the drive letter
-	char drive=toupper(DriveLetter);
-	std::string temp_line = path;
+/****************************************************************************
+ * MountDOSDrive
+ *
+ * Mounts a folder as a hard drive. Same geometry and label rules as MOUNT.
+ ***************************************************************************/
+bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
+{
+	const int index = toupper(DriveLetter) - 'A';
+	const char drive = 'A' + index;
+
+	if(index < 0 || index >= DOS_DRIVES || !path || !path[0])
+		return false;
+
+	if(Drives[index])
+		return false;
+
+	std::string dir = path;
 	struct stat test;
-	bool failed = false;
-	if (stat(temp_line.c_str(),&test)) {
-		failed = true;
-		Cross::ResolveHomedir(temp_line);
-		//Try again after resolving ~
-		if(!stat(temp_line.c_str(),&test)) failed = false;
-	}
-	if(failed) {
-		printf(MSG_Get("PROGRAM_MOUNT_ERROR_1"),temp_line.c_str());
-		return 0;
-	}
-	/* Not a switch so a normal directory/file */
-	if (!(test.st_mode & S_IFDIR)) {
-		printf(MSG_Get("PROGRAM_MOUNT_ERROR_2"),temp_line.c_str());
-		return 0;
-	}
-	if (temp_line[temp_line.size()-1]!=CROSS_FILESPLIT) temp_line+=CROSS_FILESPLIT;
-	Bit8u bit8size=(Bit8u) sizes[1];
-	newdrive=new localDrive(temp_line.c_str(),sizes[0],bit8size,sizes[2],sizes[3],mediaid);
-	if (Drives[drive-'A']) {
-		printf(MSG_Get("PROGRAM_MOUNT_ALREADY_MOUNTED"),drive,Drives[drive-'A']->GetInfo());
-		if (newdrive) delete newdrive;
-		return 0;
-	}
-	if (!newdrive)
-		return 0;
 
-	Drives[drive-'A']=newdrive;
-	/* Set the correct media byte in the table */
-	mem_writeb(Real2Phys(dos.tables.mediaid)+(drive-'A')*2,newdrive->GetMediaByte());
-	printf(MSG_Get("PROGRAM_MOUNT_STATUS_2"),drive,newdrive->GetInfo());
-	/* For hard drives set the label to DRIVELETTER_Drive.
-	 * For floppy drives set the label to DRIVELETTER_Floppy.
-	 * This way every drive except cdroms should get a label.*/
-	label = drive; label+="_DRIVE";
-	newdrive->dirCache.SetLabel(label.c_str(),false,true);
-	return 1;
+	if(stat(dir.c_str(), &test))
+	{
+		Cross::ResolveHomedir(dir); //Try again after resolving ~
+		if(stat(dir.c_str(), &test))
+			return false;
+	}
+
+	if(!(test.st_mode & S_IFDIR))
+		return false;
+
+	if(dir[dir.size() - 1] != CROSS_FILESPLIT)
+		dir += CROSS_FILESPLIT;
+
+	// "512,127,16383,4031" as MountDOSBoxDir always passed it: bytes per
+	// sector, sectors per cluster, total clusters, free clusters. Hard disk.
+	const Bit8u mediaid = 0xF8;
+	DOS_Drive * newdrive = new localDrive(dir.c_str(), 512, 127, 16383, 4031, mediaid);
+
+	if(!newdrive)
+		return false;
+
+	Drives[index] = newdrive;
+
+	/* Set the correct media byte in the table. The table has 9 bytes per
+	 * drive (see dos_programs.cpp); an earlier version of this function
+	 * stepped by 2 and so never set the byte for the drive it mounted. */
+	mem_writeb(Real2Phys(dos.tables.mediaid) + index * 9, newdrive->GetMediaByte());
+
+	/* Every drive except cdroms gets a label; DRIVELETTER_Drive by default. */
+	std::string name;
+	if(label && label[0])
+		name = label;
+	else
+	{
+		name = drive;
+		name += "_DRIVE";
+	}
+	newdrive->dirCache.SetLabel(name.c_str(), false, true);
+
+	return true;
+}
+
+/****************************************************************************
+ * UnmountDOSDrive
+ ***************************************************************************/
+bool UnmountDOSDrive(char DriveLetter)
+{
+	const int index = toupper(DriveLetter) - 'A';
+
+	if(index < 0 || index >= DOS_DRIVES)
+		return false;
+
+	if(!Drives[index])
+		return true;
+
+	UnmountHelper((char)('A' + index));
+
+	return Drives[index] == NULL;
+}
+
+/****************************************************************************
+ * GetDOSDriveInfo
+ ***************************************************************************/
+bool GetDOSDriveInfo(char DriveLetter, char * info, size_t size)
+{
+	const int index = toupper(DriveLetter) - 'A';
+	static const char prefix[] = "local directory ";
+
+	if(index < 0 || index >= DOS_DRIVES || !Drives[index] || !info || size == 0)
+		return false;
+
+	const char * text = Drives[index]->GetInfo();
+
+	if(strncmp(text, prefix, sizeof(prefix) - 1) == 0)
+		text += sizeof(prefix) - 1;
+
+	snprintf(info, size, "%s", text);
+	return true;
+}
+
+/****************************************************************************
+ * IsDOSDriveMounted
+ ***************************************************************************/
+bool IsDOSDriveMounted(char DriveLetter)
+{
+	const int index = toupper(DriveLetter) - 'A';
+
+	return index >= 0 && index < DOS_DRIVES && Drives[index] != NULL;
+}
+
+/****************************************************************************
+ * MountDOSBoxDir
+ *
+ * Mounts a folder as a harddrive before starting the shell. Returns 1 if
+ * it was mounted.
+ ***************************************************************************/
+int MountDOSBoxDir(char DriveLetter, const char *path)
+{
+	return MountDOSDrive(DriveLetter, path, NULL) ? 1 : 0;
 }
