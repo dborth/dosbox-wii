@@ -113,6 +113,11 @@ public:
 	virtual void ActivateEvent(bool ev_trigger,bool skip_action)=0;
 	virtual void DeActivateEvent(bool ev_trigger)=0;
 	void DeActivateAll(void);
+	void ResetState(void) {
+		activity=0;
+		current_value=0;
+		Active(false);
+	}
 	void SetValue(Bits value){
 		current_value=value;
 	}
@@ -471,6 +476,7 @@ public:
 		button_cap=0; axes_cap=0; hats_cap=0;
 		emulated_buttons=0; emulated_axes=0; emulated_hats=0;
 
+		pos_axis_lists=neg_axis_lists=button_lists=hat_lists=NULL;	// a dummy group has none
 		is_dummy=_dummy;
 		if (_dummy) return;
 
@@ -1917,7 +1923,7 @@ static const Bit8u map_pal[6][3]={
 	{0x00,0xff,0x20}			//5=green
 };
 
-static void CreateStringBind(char * line) {
+static void CreateStringBind(char * line,bool sticks_only=false) {
 	line=trim(line);
 	char * eventname=StripWord(line);
 	CEvent * event;
@@ -1932,6 +1938,7 @@ static void CreateStringBind(char * line) {
 foundevent:
 	CBind * bind;
 	for (char * bindline=StripWord(line);*bindline;bindline=StripWord(line)) {
+		if (sticks_only && strncasecmp(bindline,"stick_",6)) continue;	/* the others are in the events already */
 		for (CBindGroup_it it=bindgroups.begin();it!=bindgroups.end();it++) {
 			bind=(*it)->CreateConfigBind(bindline);
 			if (bind) {
@@ -1991,6 +1998,8 @@ static struct {
 	{0,0}
 };
 
+static void CreateDefaultJoystickBinds(void);
+
 static void CreateDefaultBinds(void) {
 	char buffer[512];
 	Bitu i=0;
@@ -2007,6 +2016,12 @@ static void CreateDefaultBinds(void) {
 		(*hit)->MakeDefaultBind(buffer);
 		CreateStringBind(buffer);
 	}
+
+	CreateDefaultJoystickBinds();
+}
+
+static void CreateDefaultJoystickBinds(void) {
+	char buffer[512];
 
 	/* joystick1, buttons 1-6 */
 	sprintf(buffer,"jbutton_0_0 \"stick_0 button 0\" ");CreateStringBind(buffer);
@@ -2075,15 +2090,17 @@ static void MAPPER_SaveBinds(void) {
 	change_action_text("Mapper file saved.",CLR_WHITE);
 }
 
-static bool MAPPER_LoadBinds(void) {
+/* With sticks_only only the binds to a joystick are made, wherever they are in the file (a pad button can be bound
+ * to a key), which is what MAPPER_RebuildJoysticks needs: everything else is already in the events. */
+static bool MAPPER_LoadBinds(bool sticks_only) {
 	FILE * loadfile=fopen(mapper.filename.c_str(),"rt");
 	if (!loadfile) return false;
 	char linein[512];
 	while (fgets(linein,512,loadfile)) {
-		CreateStringBind(linein);
+		CreateStringBind(linein,sticks_only);
 	}
 	fclose(loadfile);
-	LOG_MSG("MAPPER: Loading mapper settings from %s", mapper.filename.c_str());
+	if (!sticks_only) LOG_MSG("MAPPER: Loading mapper settings from %s", mapper.filename.c_str());
 	return true;
 }
 
@@ -2179,9 +2196,7 @@ static void InitializeJoysticks(void) {
 	}
 }
 
-static void CreateBindGroups(void) {
-	bindgroups.clear();
-	new CKeyBindGroup(SDLK_LAST);
+static void CreateJoystickBindGroups(void) {
 	if (joytype != JOY_NONE) {
 #if defined (REDUCE_JOYSTICK_POLLING)
 		// direct access to the SDL joystick, thus removed from the event handling
@@ -2224,6 +2239,12 @@ static void CreateBindGroups(void) {
 	}
 }
 
+static void CreateBindGroups(void) {
+	bindgroups.clear();
+	new CKeyBindGroup(SDLK_LAST);
+	CreateJoystickBindGroups();
+}
+
 #if defined (REDUCE_JOYSTICK_POLLING)
 void MAPPER_UpdateJoysticks(void) {
 	for (Bitu i=0; i<mapper.sticks.num_groups; i++) {
@@ -2231,6 +2252,66 @@ void MAPPER_UpdateJoysticks(void) {
 	}
 }
 #endif
+
+/* The joystick settings (joysticktype, buttonwrap and the rest) are read when the stick bind groups are
+ * built, and the groups hold the binds, so a change takes effect by building them again. The key group and
+ * every event stay as they are; the binds to a joystick are made again as MAPPER_Init made them (from the mapper
+ * file if there is one, else the defaults), so a bind to a joystick added in the mapper screen and not saved is lost.
+ * Called on the main thread, after JOYSTICK_Init has read the new settings. */
+void MAPPER_RebuildJoysticks(void) {
+	/* Take the joystick binds out of the events. What one of them is holding down is let go first, so the
+	 * event ends up where it would be if the button had been released. */
+	for (CEventVector_it evit=events.begin();evit!=events.end();evit++) {
+		CEvent * event=*evit;
+		bool continuous_held=false;
+		for (CBindList_it bit=event->bindlist.begin();bit!=event->bindlist.end();) {
+			CBind * bind=*bit;
+			if (!dynamic_cast<CJAxisBind *>(bind) && !dynamic_cast<CJButtonBind *>(bind) && !dynamic_cast<CJHatBind *>(bind)) {
+				++bit;
+				continue;
+			}
+			if (event->IsTrigger()) {
+				if (bind->holding) {
+					holdlist.remove(bind);
+					bind->holding=false;
+					event->DeActivateEvent(true);
+				} else if (bind->active) {
+					bind->flags&=~BFLG_Hold;
+					bind->DeActivateBind(true);
+				}
+			} else continuous_held=true;
+			bit=event->bindlist.erase(bit);
+			delete bind;
+		}
+		/* An axis event has no record of which bind holds it. One that only the joysticks drove has nothing
+		 * left to hold it, so it is let go outright. */
+		if (continuous_held && event->bindlist.empty()) event->ResetState();
+	}
+	SetActiveEvent(0);	/* the mapper screen may have been pointing at a bind that is gone */
+
+	/* Take the stick groups out. The key group, which is first, stays. */
+	for (CBindGroup_it it=bindgroups.begin();it!=bindgroups.end();) {
+		if (dynamic_cast<CStickBindGroup *>(*it)) {
+			delete *it;
+			it=bindgroups.erase(it);
+		} else ++it;
+	}
+
+	/* The emulated joysticks start from nothing; the groups switch on the ones they use */
+	JOYSTICK_Enable(0,false);
+	JOYSTICK_Enable(1,false);
+	JOYSTICK_Move_X(0,0.0f);JOYSTICK_Move_Y(0,0.0f);
+	JOYSTICK_Move_X(1,0.0f);JOYSTICK_Move_Y(1,0.0f);
+	for (Bitu i=0;i<2;i++) for (Bitu b=0;b<2;b++) JOYSTICK_Button(i,b,false);
+	memset(&virtual_joysticks,0,sizeof(virtual_joysticks));
+
+	InitializeJoysticks();
+	CreateJoystickBindGroups();
+	if (!MAPPER_LoadBinds(true)) CreateDefaultJoystickBinds();
+	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
+		(*but_it)->BindColor();
+	}
+}
 
 void MAPPER_LosingFocus(void) {
 	for (CEventVector_it evit=events.begin();evit!=events.end();evit++) {
@@ -2312,7 +2393,7 @@ void MAPPER_Init(void) {
 	InitializeJoysticks();
 	CreateLayout();
 	CreateBindGroups();
-	if (!MAPPER_LoadBinds()) CreateDefaultBinds();
+	if (!MAPPER_LoadBinds(false)) CreateDefaultBinds();
 	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
 		(*but_it)->BindColor();
 	}

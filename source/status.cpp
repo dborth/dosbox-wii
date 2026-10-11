@@ -454,7 +454,24 @@ static void MemoryLines(const EmulationStatus & st)
 /****************************************************************************
  * Input
  ***************************************************************************/
-static void InputLines()
+//! Which emulated joystick (1 or 2) a player's controller drives with this joystick type, or 0.
+//! SDL_input.cpp makes one joystick per player out of whatever is connected for them, and the
+//! mapper binds the first two for 2axis, the first for 4axis, fcs and ch, and the second for 4axis_2.
+static int JoystickNumber(const char * type, int channel)
+{
+	if(!strcmp(type, "2axis"))
+		return (channel == 0) ? 1 : (channel == 1) ? 2 : 0;
+
+	if(!strcmp(type, "4axis") || !strcmp(type, "fcs") || !strcmp(type, "ch"))
+		return (channel == 0) ? 1 : 0;
+
+	if(!strcmp(type, "4axis_2"))
+		return (channel == 1) ? 1 : 0;
+
+	return 0;
+}
+
+static void InputLines(const EmulationStatus & st)
 {
 	char text[64];
 	int found = 0;
@@ -466,18 +483,29 @@ static void InputLines()
 		if(!GetControllerSummary(channel, text, sizeof(text)))
 			continue;
 
+		const int joystick = JoystickNumber(st.joystick, channel);
 		char label[16];
 
 		snprintf(label, sizeof(label), "Player %d", channel + 1);
-		AddPlain(label, text, "The controller connected for this player.");
+		// the role is the part worth keeping if the controllers' names are too long
+		const std::string role = joystick ? " (Joystick " + Number(joystick) + ")" : " (no joystick)";
+		std::string name = text;
+
+		if(name.size() + role.size() > MAX_VALUE)
+			name = name.substr(0, MAX_VALUE - role.size() - 3) + "...";
+
+		AddPlain(label, name + role,
+			"The controller connected for this player, and which emulated joystick it drives. Every kind of "
+			"controller can; the joystick type decides which players have one.");
 		found++;
 	}
 
 	if(!found)
 		AddPlain("Controllers", "None connected", "No controller is connected.");
 
-	AddProp("Joystick", "joystick", "joysticktype", "",
-		"The kind of joystick DOSBox emulates. Auto picks 4axis: one joystick with four buttons, driven by the first controller.");
+	AddProp("Joystick", "joystick", "joysticktype", st.joystick,
+		"The kind of joystick DOSBox emulates. auto is 4axis: one joystick with four buttons, for player 1. "
+		"Change it on the Controls page.");
 }
 
 /****************************************************************************
@@ -538,7 +566,7 @@ void Status_Refresh()
 	VideoLines(st);
 	AudioLines(st);
 	MemoryLines(st);
-	InputLines();
+	InputLines(st);
 	DriveLines();
 }
 

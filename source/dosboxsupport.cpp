@@ -27,6 +27,7 @@
 #include "vga.h"
 #include "render.h"
 #include "mem.h"
+#include "joystick.h"
 #include "setup.h"
 #include "support.h"
 #include "debug.h"
@@ -192,6 +193,30 @@ bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * w
 const char * SBLASTER_EffectiveType(void);
 const char * SBLASTER_EffectiveOpl(void);
 int EMS_EffectiveType(void);
+void MAPPER_RebuildJoysticks(void);
+
+const char * GetJoystickTypeName(void)
+{
+	switch(joytype)
+	{
+		case JOY_NONE: return "none";
+		case JOY_2AXIS: return "2axis";
+		case JOY_4AXIS: return "4axis";
+		case JOY_4AXIS_2: return "4axis_2";
+		case JOY_FCS: return "fcs";
+		case JOY_CH: return "ch";
+		case JOY_AUTO: break;
+	}
+	// JoystickType is set to auto by JOYSTICK_Init and replaced by what it
+	// stands for when the mapper builds its groups, so this is only seen
+	// between the two
+	return "auto";
+}
+
+void ReinitJoysticks(void)
+{
+	MAPPER_RebuildJoysticks();
+}
 
 //! The core cpudecoder points at, or NULL if it points at something else.
 static const char * CoreName(CPU_Decoder * decoder)
@@ -270,6 +295,7 @@ bool GetEmulationStatus(EmulationStatus * status)
 	status->memoryMB = (int)(MEM_TotalPages() / 256);	// 4 KB pages
 	status->umbActive = (dos_infoblock.GetStartOfUMBChain() != 0xffff);	// DOS_BuildUMBChain: 0xffff means none
 	status->emsType = EMS_EffectiveType();
+	safe_strncpy(status->joystick, GetJoystickTypeName(), sizeof(status->joystick));
 
 	return true;
 }

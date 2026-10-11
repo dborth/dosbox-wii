@@ -30,6 +30,7 @@
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "configsave.h"
+#include "input.h"
 #include "menu.h"
 
 /****************************************************************************
@@ -44,7 +45,8 @@ enum RowKind
 	ROW_BOOL,			//!< a bool property: On / Off
 	ROW_RATE,			//!< a device's source sample rate: Fast / Matched / Native presets
 	ROW_AUDIO_OUTPUT,	//!< read-only: the audio driver's fixed output format
-	ROW_RANGE			//!< an integer property stepped through its own SetMinMax range, by a fixed amount
+	ROW_RANGE,			//!< an integer property stepped through its own SetMinMax range, by a fixed amount
+	ROW_MOUSE_SPEED		//!< one of the two numbers of [sdl] sensitivity (prop is xsens or ysens): cycles through presets
 };
 
 //! When a row may be changed. A row that has to wait for a restart will be a
@@ -80,6 +82,7 @@ struct SettingRow
 	int step;						//!< ROW_RANGE: how far one press moves the value
 	bool (*shown)();				//!< NULL = always; false leaves the row off the page (the platform cannot do it)
 	const char * (*inactive)();		//!< NULL = never; why the setting has no effect right now, if it has none
+	const char * (*detail)();		//!< ROW_CHOICE: what the value comes to in effect, shown in brackets if it is something else; NULL = nothing
 };
 
 struct PageDef
@@ -152,6 +155,11 @@ static bool Apply(const char * section, const char * prop, const std::string & v
 	sec->ExecuteDestroy(false);
 	const bool accepted = sec->HandleInputline(line);
 	sec->ExecuteInit(false);
+
+	// The mapper reads the joystick type and button wrapping when it builds its
+	// joystick groups, so they are built again to put any change in effect
+	if(!strcasecmp(section, "joystick"))
+		ReinitJoysticks();
 
 	return accepted;
 }
@@ -787,11 +795,61 @@ static const SettingRow audioRows[] =
 	{ "GUS rate",		"gus",		"gusrate",		ROW_RATE,			TIER_AT_PROMPT,	NULL, 0, FMT_NUMBER, NULL, NULL, helpDeviceRate, 0 },
 };
 
+/****************************************************************************
+ * Controls page
+ *
+ * The joystick rows re-initialise the joystick section and then build the
+ * mapper's joystick groups again (Apply), which is quick and changes nothing
+ * that a running program holds on to but the port's stick positions, so they
+ * are live. The mouse speeds only set numbers that DOSBox reads on each
+ * movement.
+ ***************************************************************************/
+static const int mouseSpeedPresets[] = { 25, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500 };
+
+static const char * const helpJoystickType =
+	"auto is 4axis: one joystick with four buttons for player 1, the right stick as its other two axes. 2axis is "
+	"two joysticks with two buttons each, for players 1 and 2. 4axis_2 is 4axis for player 2. fcs and ch add a hat. "
+	"none turns joysticks off.";
+static const char * const helpDeadzone =
+	"How far joystick 1's stick must move before DOSBox notices, as a percentage. 100 makes it digital.";
+static const char * const helpButtonWrap =
+	"Lets the buttons past the joystick's own fire too, sharing them: L, R, ZL, ZR, Minus, Plus and the stick "
+	"clicks. Without it only the first buttons count (A, B, X and Y with 4axis; A and B with 2axis).";
+static const char * const helpCircular =
+	"Try this if joystick 1's stick can only reach the edge of a circle, so a game never sees a full diagonal.";
+static const char * const helpMouseSpeed =
+	"How far the pointer moves for the same movement of the controller, as a percentage. A negative value, set in "
+	"dosbox.conf, flips the direction.";
+
+static const char * JoystickEffective()
+{
+	return GetJoystickTypeName();
+}
+
+static const char * JoystickOff()
+{
+	return (GetConfig("joystick", "joysticktype") == "none") ? "No joystick is emulated." : NULL;
+}
+
+static const SettingRow controlsRows[] =
+{
+	{ "Joystick type",	"joystick",	"joysticktype",	ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpJoystickType, 0, 0, NULL, NULL, JoystickEffective },
+	{ "Button wrap",	"joystick",	"buttonwrap",	ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpButtonWrap, 0, 0, NULL, JoystickOff },
+	{ "Dead zone",		"joystick",	"deadzone",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, helpDeadzone, 0, 5, NULL, JoystickOff },
+	{ "Autofire",		"joystick",	"autofire",		ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, JoystickOff },
+	{ "Circular input",	"joystick",	"circularinput",ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpCircular, 0, 0, NULL, JoystickOff },
+	{ "Swap axes 3 and 4","joystick",	"swap34",		ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, JoystickOff },
+	{ "Timed axes",		"joystick",	"timed",		ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, JoystickOff },
+	{ "Mouse speed X",	"sdl",		"xsens",		ROW_MOUSE_SPEED,	TIER_LIVE,		mouseSpeedPresets, ARRAY_COUNT(mouseSpeedPresets), FMT_PERCENT, NULL, NULL, helpMouseSpeed, 0, 0, NULL, NULL },
+	{ "Mouse speed Y",	"sdl",		"ysens",		ROW_MOUSE_SPEED,	TIER_LIVE,		mouseSpeedPresets, ARRAY_COUNT(mouseSpeedPresets), FMT_PERCENT, NULL, NULL, helpMouseSpeed, 0, 0, NULL, NULL },
+};
+
 static const PageDef pages[SETTINGS_PAGE_COUNT] =
 {
 	{ "Performance", performanceRows, ARRAY_COUNT(performanceRows) },
 	{ "Video", videoRows, ARRAY_COUNT(videoRows) },
 	{ "Audio", audioRows, ARRAY_COUNT(audioRows) },
+	{ "Controls", controlsRows, ARRAY_COUNT(controlsRows) },
 };
 
 /****************************************************************************
@@ -1015,6 +1073,12 @@ static std::vector<AllRow> SectionRows(int controlIndex)
 			row.note = "";
 		else if(!strcasecmp(sec->GetName(), "cpu") && p->propname == "cycles")
 			row.note = "Performance page";
+		else if(!strcasecmp(sec->GetName(), "sdl") && p->propname == "sensitivity")
+		{
+			// two numbers in one property, so two rows over there; read when they change
+			row.live = true;
+			row.note = "Controls page";
+		}
 
 		rows.push_back(row);
 	}
@@ -1134,9 +1198,6 @@ static const char * AllExtraNote(const AllRow & r)
 
 	if(IsResourceProp(section, r.prop->propname.c_str()))
 		return " A value that would clash with the other sound card (port, IRQ or DMA) is skipped.";
-
-	if(!strcasecmp(section, "joystick"))
-		return " Nothing drives the emulated joystick on this build yet.";
 
 	return "";
 }
@@ -1338,6 +1399,38 @@ static int CurrentInt(const SettingRow & row)
 	return sec ? sec->Get_int(row.prop) : 0;
 }
 
+//! One of the two numbers of [sdl] sensitivity: the row's prop is xsens or ysens
+static int MouseSpeedOf(const char * prop)
+{
+	Section_prop * sec = GetSection("sdl");
+	Prop_multival * sensitivity = sec ? sec->Get_multival("sensitivity") : NULL;
+
+	return sensitivity ? sensitivity->GetSection()->Get_int(prop) : 100;
+}
+
+static int MouseSpeed(const SettingRow & row)
+{
+	return MouseSpeedOf(row.prop);
+}
+
+//! Sets both numbers of [sdl] sensitivity and puts them in effect
+static bool ApplyMouseSpeed(int x, int y)
+{
+	Section_prop * sec = GetSection("sdl");
+
+	if(!sec)
+		return false;
+
+	char line[48];
+
+	snprintf(line, sizeof(line), "sensitivity=%d,%d", x, y);
+
+	const bool accepted = sec->HandleInputline(line);
+
+	Mouse_SensitivityChanged();
+	return accepted;
+}
+
 static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 {
 	if(size == 0)
@@ -1351,7 +1444,19 @@ static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 	switch(r->kind)
 	{
 		case ROW_CHOICE:
-			snprintf(buf, size, "%s", GetConfig(r->section, r->prop).c_str());
+		{
+			const std::string configured = GetConfig(r->section, r->prop);
+			const char * effective = r->detail ? r->detail() : NULL;
+
+			if(effective && *effective && strcasecmp(effective, configured.c_str()))
+				snprintf(buf, size, "%s (%s)", configured.c_str(), effective);
+			else
+				snprintf(buf, size, "%s", configured.c_str());
+			break;
+		}
+
+		case ROW_MOUSE_SPEED:
+			FormatInt(*r, MouseSpeed(*r), buf, size);
 			break;
 
 		case ROW_INT:
@@ -1442,6 +1547,21 @@ static bool CuratedStep(const SettingRow * r, int direction)
 
 		case ROW_AUDIO_OUTPUT:
 			return false; // read-only
+
+		case ROW_MOUSE_SPEED:
+		{
+			const int current = MouseSpeed(*r);
+			const int next = StepPreset(r->presets, r->presetCount, current, direction);
+
+			if(next == current)
+				return false;
+
+			// the other number keeps what it is
+			const bool isX = !strcasecmp(r->prop, "xsens");
+			const int other = MouseSpeedOf(isX ? "ysens" : "xsens");
+
+			return isX ? ApplyMouseSpeed(next, other) : ApplyMouseSpeed(other, next);
+		}
 
 		case ROW_BOOL:
 		{

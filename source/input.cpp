@@ -22,6 +22,7 @@
 #include "setup.h"
 #include "mapper.h"
 #include "keyboard.h"
+#include "control.h"
 #include "cpu.h"
 #include "SDL.h"
 #include "mousecapture.h"
@@ -235,6 +236,17 @@ void Mouse_AutoLock(bool enable) {
 		SDL_ShowCursor(enable?SDL_DISABLE:SDL_ENABLE);
 		sdl.mouse.requestlock=false;
 	}
+}
+
+void Mouse_SensitivityChanged(void) {
+	Section_prop * section = static_cast<Section_prop *>(control->GetSection("sdl"));
+	Prop_multival * sensitivity = section ? section->Get_multival("sensitivity") : NULL;
+
+	if(!sensitivity)
+		return;
+
+	sdl.mouse.xsensitivity = sensitivity->GetSection()->Get_int("xsens");
+	sdl.mouse.ysensitivity = sensitivity->GetSection()->Get_int("ysens");
 }
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {

@@ -61,7 +61,20 @@ struct EmulationStatus
 	int memoryMB;			//!< total memory the machine has (MEM_TotalPages)
 	bool umbActive;			//!< upper memory blocks are available to DOS
 	int emsType;			//!< 0 off, 1 true, 2 emsboard, 3 emm386
+
+	char joystick[10];		//!< the joystick type in effect: none, 2axis, 4axis, 4axis_2, fcs or ch (auto only before the mapper has built its groups)
 };
+
+//! The joystick type in effect, which is not the config's when that says auto
+//! (the mapper replaces auto with a type when it builds its groups; 4axis, as
+//! things are). Never NULL.
+const char * GetJoystickTypeName(void);
+
+//! Makes the joystick settings in the config take effect: builds the mapper's
+//! joystick bind groups again, as the type, button wrapping and the like are
+//! read when they are built. Call after the joystick section has been
+//! initialised again with the new values. Main thread.
+void ReinitJoysticks(void);
 
 //! Fills in the state above. Returns false before DOSBox is up, when there
 //! is nothing to read. Call from the main thread (the menu's), which is

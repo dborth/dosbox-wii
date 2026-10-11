@@ -30,6 +30,9 @@ bool isMenuRequested();
 //! Nunchuk". Returns false, leaving buf alone, if nothing is connected there.
 bool GetControllerSummary(int channel, char * buf, size_t size);
 
+//! Re-reads [sdl] sensitivity, so a changed value applies to the mouse at once.
+void Mouse_SensitivityChanged(void);
+
 //! Leaves the app if the platform reports a shutdown request. Does not return then.
 void CheckExit();
 
