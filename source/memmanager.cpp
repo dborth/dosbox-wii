@@ -120,10 +120,6 @@ void SwitchMemoryModeEmulator()
 }
 
 #else
-
-// No private heap off the Wii (Wii U has memory to spare)
-static void * decodeScratch = nullptr;
-
 void * memspace_malloc(size_t size) { return malloc(size); }
 void * memspace_memalign(size_t alignment, size_t size) { return memalign(alignment, size); }
 void memspace_free(void * ptr) { free(ptr); }
@@ -131,10 +127,6 @@ void memspace_free(void * ptr) { free(ptr); }
 void SwitchMemoryModeMenu()
 {
 	menuMode = true;
-	if(decodeScratch == nullptr) {
-		decodeScratch = malloc(IMAGE_DECODE_SCRATCH_SIZE);
-		GuiImageData::setDecodeScratch(decodeScratch, IMAGE_DECODE_SCRATCH_SIZE);
-	}
 }
 
 void SwitchMemoryModeEmulator()

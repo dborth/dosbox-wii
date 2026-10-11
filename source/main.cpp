@@ -103,10 +103,13 @@ static void InitApp()
 	keyboard->init();
 	usbMouse->init();
 
-	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size,
-		platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
+	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size, platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
 	textTranslator = new GuiTextTranslator();
 	textTranslator->loadLanguage(en_lang, en_lang_size);
+
+#ifdef __WIIU__
+	GuiImageData::setDecodeScratch(malloc(IMAGE_DECODE_SCRATCH_SIZE), IMAGE_DECODE_SCRATCH_SIZE);
+#endif
 
 	platform->getVideo()->startMenuVideo();
 
