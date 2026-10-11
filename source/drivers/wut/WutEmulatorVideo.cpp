@@ -361,27 +361,56 @@ void WutEmulatorVideo::drawQuad()
 
 	WHBGfxBeginRenderTV();
 	drawGame(OutputTarget::TV);
-	WHBGfxBeginRenderDRC();
-	if (overlayFn)
+	if (!overlayFn)
 	{
-		// The GamePad shows the overlay instead of the game. Its draws are
-		// replayed into the GamePad only; the TV keeps the game.
-		videoDriver->setUiTargets(1u << (unsigned)OutputTarget::DRC);
-		overlayFn(overlayData);
-		videoDriver->flushDrawQueue();
-		videoDriver->setUiTargets(WutVideoDriver::kAllTargets);
-	}
-	else
-	{
+		WHBGfxBeginRenderDRC();
 		drawGame(OutputTarget::DRC);
 	}
+	else if (overlayDirty)
+	{
+		drawOverlay();
+	}
+	// else: the GamePad was not cleared this frame and still shows the overlay
+}
+
+void WutEmulatorVideo::drawOverlay()
+{
+	// The GamePad shows the overlay instead of the game. Its draws are
+	// replayed into the GamePad only; the TV keeps the game.
+	WHBGfxBeginRenderDRC();
+	videoDriver->setUiTargets(1u << (unsigned)OutputTarget::DRC);
+	overlayFn(overlayData);
+	videoDriver->flushDrawQueue();
+	videoDriver->setUiTargets(WutVideoDriver::kAllTargets);
+	overlayDirty = false;
 }
 
 bool WutEmulatorVideo::setGamePadOverlay(void (*fn)(void* userdata), void* userdata)
 {
 	overlayFn = fn;
 	overlayData = fn ? userdata : nullptr;
+	overlayDirty = (fn != nullptr);
 	return true;
+}
+
+void WutEmulatorVideo::refreshGamePadOverlay()
+{
+	if (!overlayFn)
+		return;
+
+	overlayDirty = true;
+
+	// While the foreground is gone nothing can be drawn; the flag stays set
+	// and the next presented frame draws it
+	if (!videoDriver->isForeground())
+		return;
+
+	// Only the GamePad is cleared and redrawn. The TV's colour buffer is not
+	// touched, so presenting sends it the picture it already has: no game
+	// frame is converted or drawn.
+	videoDriver->prepareFrame(1u << (unsigned)OutputTarget::DRC);
+	drawOverlay();
+	videoDriver->presentBuffer();
 }
 
 /****************************************************************************
@@ -396,7 +425,14 @@ void WutEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 	if (!pixels || width <= 0 || height <= 0)
 		return;
 
-	videoDriver->prepareFrame();
+	// What was on the GamePad is lost with the foreground
+	if (overlayFn && !videoDriver->isForeground())
+		overlayDirty = true;
+
+	// With the overlay up and unchanged the GamePad is left alone: not
+	// cleared here, so it keeps showing the overlay
+	const bool clearGamePad = !overlayFn || overlayDirty;
+	videoDriver->prepareFrame(clearGamePad ? WutVideoDriver::kAllTargets : (1u << (unsigned)OutputTarget::TV));
 
 	if (!texture || width != frameWidth || height != frameHeight)
 	{

@@ -226,7 +226,7 @@ EmulatorVideoDriver* WutVideoDriver::getEmulatorVideo()
 	return emulatorVideo;
 }
 
-void WutVideoDriver::prepareFrame()
+void WutVideoDriver::prepareFrame(unsigned targets)
 {
 	drawQueue.clear();
 
@@ -246,8 +246,16 @@ void WutVideoDriver::prepareFrame()
 		GX2SetBlendControl(GX2_RENDER_TARGET_0, GX2_BLEND_MODE_SRC_ALPHA, GX2_BLEND_MODE_INV_SRC_ALPHA, GX2_BLEND_COMBINE_MODE_ADD, GX2_DISABLE, GX2_BLEND_MODE_SRC_ALPHA, GX2_BLEND_MODE_INV_SRC_ALPHA, GX2_BLEND_COMBINE_MODE_ADD);
 	};
 
-	WHBGfxBeginRenderTV(); drawPass();
-	WHBGfxBeginRenderDRC();	drawPass();
+	if(targets & (1u << (unsigned)OutputTarget::TV))
+	{
+		WHBGfxBeginRenderTV();
+		drawPass();
+	}
+	if(targets & (1u << (unsigned)OutputTarget::DRC))
+	{
+		WHBGfxBeginRenderDRC();
+		drawPass();
+	}
 
 	// Every color-shaded draw this frame gets its own slot in ColorShader's
 	// GX2R buffer (see ColorShader.h) - rewind the counter here, once per

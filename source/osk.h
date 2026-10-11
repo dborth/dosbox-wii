@@ -16,7 +16,8 @@
 class KeyboardDriver;
 
 //! Once per input scan, after the pads have been read: handles the toggle
-//! button, runs the keyboard while it is open, and keeps it drawn.
+//! button and runs the keyboard while it is open. The GamePad is redrawn when
+//! a pad button changes (a touch counts), not every scan.
 void OSK_Update(void);
 
 //! True while the keyboard is open.

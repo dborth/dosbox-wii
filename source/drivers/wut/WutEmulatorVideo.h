@@ -40,6 +40,7 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		bool mapPointerToUnit(float canvasX, float canvasY, bool onGamePad, float* u, float* v) override;
 
 		bool setGamePadOverlay(void (*fn)(void* userdata), void* userdata) override;
+		void refreshGamePadOverlay() override;
 
 	protected:
 		void settingsChanged() override;
@@ -50,6 +51,10 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		//! Converts the RGB565 frame into the live linear GX2 texture
 		void uploadFrame(const uint16_t* pixels, int width, int height, int pitch);
 		void drawQuad();
+		//! Draws the overlay into the GamePad's colour buffer. That buffer is
+		//! not cleared while the overlay is up, so this is only done when it
+		//! has changed; every other frame the GamePad shows what is there.
+		void drawOverlay();
 		//! Recomputes where the frame goes on each output target, and the
 		//! same placement in UI-canvas pixels
 		void recalculatePlacement();
@@ -67,6 +72,7 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		float pixelAspectY = 1.0f;
 		void (*overlayFn)(void*) = nullptr;
 		void* overlayData = nullptr;
+		bool overlayDirty = false;
 		bool samplerDirty = true;
 		bool placementDirty = true;
 

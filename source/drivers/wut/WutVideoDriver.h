@@ -126,7 +126,10 @@ class WutVideoDriver : public VideoDriver
 		// (viewport/scissor/blend/depth/cull) that WHBGfxInit() doesn't set
 		// on its own, and rewinds the shared shader slot counters (see
 		// ColorShader::resetFrame() / Texture2DShader::resetFrame()).
-		void prepareFrame();
+		// `targets` (a bit per OutputTarget, as for setUiTargets()) says which
+		// outputs are cleared and rebound; an output left out keeps what it
+		// shows now, and that is what presentBuffer() will send to it again.
+		void prepareFrame(unsigned targets = kAllTargets);
 	private:
 		static const size_t cuMaxQueuedDraws = 4096;
 		std::vector<WutDrawCmd> drawQueue;

@@ -17,7 +17,10 @@
  * from a real USB keyboard. Newline types Return.
  *
  * The widget is drawn by the video driver, on the GamePad only, through
- * EmulatorVideoDriver::setGamePadOverlay().
+ * EmulatorVideoDriver::setGamePadOverlay(). The driver keeps the picture on the
+ * GamePad between redraws, so the widget is only drawn again when it can have
+ * changed: a pad button went down or up (a touch is one), or the foreground
+ * came back. The TV is not involved.
  ***************************************************************************/
 #include <stdint.h>
 #include <string.h>
@@ -37,11 +40,6 @@
 static const uint16_t kUsageReturn = 0x28;
 static const uint16_t kUsageBackspace = 0x2A;
 static const uint16_t kUsageLeftShift = 0xE1;
-
-// While the keyboard is open the GamePad is redrawn at about this rate. DOSBox
-// only presents a frame when the DOS screen changes, which at a quiet prompt
-// can be never.
-static const int kRefreshIntervalMs = 16;
 
 /****************************************************************************
  * Character -> key
@@ -256,7 +254,7 @@ static bool active = false;
 static unsigned toggleButton = INPUT_BTN_MINUS;
 static GuiWindow * root = NULL;
 static DosKeyboard * oskWidget = NULL;
-static Ticks lastRefresh = 0;
+static bool needRedraw = false;
 
 static void DrawOverlay(void *)
 {
@@ -288,8 +286,7 @@ static void Open()
 		return;
 
 	active = true;
-	lastRefresh = 0;
-	GFX_Refresh();
+	needRedraw = true;
 }
 
 void OSK_Close(void)
@@ -342,10 +339,26 @@ void OSK_Update(void)
 	for (int i = 3; i >= 0; i--)
 		root->update(controller[i]);
 
-	const Ticks now = SystemTime::now();
-	if (lastRefresh == 0 || SystemTime::diffMillisecs(lastRefresh, now) >= kRefreshIntervalMs)
+	// Anything the pads did can have changed the keys: a touch is a button
+	// going down and, later, up
+	for (int i = 0; i < 4; i++)
 	{
-		lastRefresh = now;
-		GFX_Refresh();
+		const InputPadData & pad = controller[i]->getPadData();
+
+		if (pad.buttons_d || pad.buttons_r || pad.hw_buttons_d[INPUT_HW_DRC] || pad.hw_buttons_r[INPUT_HW_DRC])
+			needRedraw = true;
+	}
+
+	// What was on the GamePad is lost with the foreground; draw it again when it is back
+	if (platform->getStatus() != Status::Running)
+	{
+		needRedraw = true;
+		return;
+	}
+
+	if (needRedraw)
+	{
+		needRedraw = false;
+		platform->getVideo()->getEmulatorVideo()->refreshGamePadOverlay();
 	}
 }
