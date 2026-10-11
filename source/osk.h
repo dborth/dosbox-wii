@@ -4,8 +4,10 @@
  * osk.h
  *
  * The in-game on-screen keyboard. A button on the GamePad swaps the GamePad
- * screen from the game to a keyboard; touching its keys types into DOS, as
- * if from a real keyboard. The TV keeps showing the game.
+ * screen from the game to the platform's own keyboard (Wii U: the system
+ * software keyboard); what is typed on it goes into DOS, as if from a real
+ * keyboard. The TV keeps showing the game. Does nothing on a platform without
+ * a second screen and a system keyboard.
  *
  * Deliberately includes nothing: used by both DOSBox core files and platform
  * files, whose headers collide (see videosupport.h).
@@ -16,8 +18,8 @@
 class KeyboardDriver;
 
 //! Once per input scan, after the pads have been read: handles the toggle
-//! button and runs the keyboard while it is open. The GamePad is redrawn when
-//! a pad button changes (a touch counts), not every scan.
+//! button and runs the keyboard while it is open: types what was entered and
+//! refreshes the GamePad.
 void OSK_Update(void);
 
 //! True while the keyboard is open.

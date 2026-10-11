@@ -361,16 +361,15 @@ void WutEmulatorVideo::drawQuad()
 
 	WHBGfxBeginRenderTV();
 	drawGame(OutputTarget::TV);
-	if (!overlayFn)
+	if (overlayFn)
+	{
+		drawOverlay();
+	}
+	else
 	{
 		WHBGfxBeginRenderDRC();
 		drawGame(OutputTarget::DRC);
 	}
-	else if (overlayDirty)
-	{
-		drawOverlay();
-	}
-	// else: the GamePad was not cleared this frame and still shows the overlay
 }
 
 void WutEmulatorVideo::drawOverlay()
@@ -382,14 +381,12 @@ void WutEmulatorVideo::drawOverlay()
 	overlayFn(overlayData);
 	videoDriver->flushDrawQueue();
 	videoDriver->setUiTargets(WutVideoDriver::kAllTargets);
-	overlayDirty = false;
 }
 
 bool WutEmulatorVideo::setGamePadOverlay(void (*fn)(void* userdata), void* userdata)
 {
 	overlayFn = fn;
 	overlayData = fn ? userdata : nullptr;
-	overlayDirty = (fn != nullptr);
 	return true;
 }
 
@@ -398,11 +395,10 @@ void WutEmulatorVideo::refreshGamePadOverlay()
 	if (!overlayFn)
 		return;
 
-	overlayDirty = true;
-
-	// While the foreground is gone nothing can be drawn; the flag stays set
-	// and the next presented frame draws it
-	if (!videoDriver->isForeground())
+	// Nothing can be drawn without the foreground; and when the last frame has
+	// not finished, this one is skipped rather than waited for, so a caller on
+	// the emulation thread (which can ask every scan) never blocks it
+	if (!videoDriver->isForeground() || videoDriver->isPresentPending())
 		return;
 
 	// Only the GamePad is cleared and redrawn. The TV's colour buffer is not
@@ -425,14 +421,7 @@ void WutEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 	if (!pixels || width <= 0 || height <= 0)
 		return;
 
-	// What was on the GamePad is lost with the foreground
-	if (overlayFn && !videoDriver->isForeground())
-		overlayDirty = true;
-
-	// With the overlay up and unchanged the GamePad is left alone: not
-	// cleared here, so it keeps showing the overlay
-	const bool clearGamePad = !overlayFn || overlayDirty;
-	videoDriver->prepareFrame(clearGamePad ? WutVideoDriver::kAllTargets : (1u << (unsigned)OutputTarget::TV));
+	videoDriver->prepareFrame();
 
 	if (!texture || width != frameWidth || height != frameHeight)
 	{

@@ -217,6 +217,19 @@ void WutInputDriver::shutdown() {
 	OSEnableHomeButtonMenu(TRUE);
 }
 
+bool WutInputDriver::takeVpadSample(VPADStatus * out) {
+	if (!haveVpad)
+		return false;
+
+	*out = lastVpad;
+	out->trigger = vpadTriggerSince;
+	out->release = vpadReleaseSince;
+	vpadTriggerSince = vpadReleaseSince = 0;
+
+	VPADGetTPCalibratedPoint(VPAD_CHAN_0, &out->tpNormal, &out->tpNormal);
+	return true;
+}
+
 void WutInputDriver::openHomeButtonOverlay() {
 	_SYSSwitchToHBMWithMode(0);
 }
@@ -257,6 +270,11 @@ void WutInputDriver::update() {
 			VPADRead(VPAD_CHAN_0, &vpadStatus, 1, &vpadError);
 
 			if (vpadError == VPAD_READ_SUCCESS) {
+				lastVpad = vpadStatus;
+				haveVpad = true;
+				vpadTriggerSince |= vpadStatus.trigger;
+				vpadReleaseSince |= vpadStatus.release;
+
 				padData.hw_connected[INPUT_HW_DRC] = true;
 				padData.battery_level = vpadStatus.battery * 25; // normalize to 0-100
 

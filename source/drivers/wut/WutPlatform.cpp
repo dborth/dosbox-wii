@@ -41,6 +41,8 @@ void WutPlatform::init(const PlatformConfig& config)
 	this->fileSystemDriver = new WutFileSystemDriver();
 	this->fileSystemDriver->init();
 
+	this->systemKeyboard = new WutSystemKeyboard(this->inputDriver);
+
 #if LOGGING_ENABLED
 	this->logger = new Logger();
 	this->logger->registerBackend(LOGGER_OSREPORT,	new WutLoggerOSReport());
@@ -66,6 +68,13 @@ void WutPlatform::init(const PlatformConfig& config)
 void WutPlatform::shutdown()
 {
 	GuiImageDataCache::shutdown();
+
+	// Before the audio driver: nn::swkbd's sounds need AX until it is destroyed
+	if(systemKeyboard)
+	{
+		delete systemKeyboard;
+		systemKeyboard = nullptr;
+	}
 
 	if (logger) {
 		logger->shutdown();

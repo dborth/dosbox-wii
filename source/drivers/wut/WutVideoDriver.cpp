@@ -264,6 +264,18 @@ void WutVideoDriver::prepareFrame(unsigned targets)
 	Texture2DShader::instance()->resetFrame();
 }
 
+bool WutVideoDriver::isPresentPending() const
+{
+	uint32_t swapCount, flipCount;
+	OSTime lastFlip, lastVsync;
+	GX2GetSwapStatus(&swapCount, &flipCount, &lastFlip, &lastVsync);
+
+	if(flipCount < swapCount)
+		return true;
+
+	return gpuFramesInFlight && GX2GetRetiredTimeStamp() < lastSubmitTimeStamp;
+}
+
 void WutVideoDriver::waitForIdle()
 {
 	if(!isForeground())

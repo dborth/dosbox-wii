@@ -5,33 +5,32 @@
  *
  * The in-game on-screen keyboard (see osk.h).
  *
- * The keys are libgui's GuiKeyboard, which edits a text buffer. It is used
- * as it is, with a trick: before each update the buffer is reset to a single
- * space. Whatever the widget then appends is a character that was just
- * typed, and the space disappearing is a backspace. Those become key events
- * for DOSBox, so nothing here depends on the widget's internals and libgui
- * stays as it is upstream.
+ * The keyboard is the platform's own (SystemKeyboardDriver; on the Wii U the
+ * Cafe OS software keyboard), shown on the GamePad only. It edits a text field.
+ * Whatever changes in that field is turned into key events for DOSBox: added
+ * characters are typed, removed ones are backspaces, and the keyboard's Enter
+ * button is Return. They go out through the same KeyboardDriver interface a USB
+ * keyboard uses.
  *
  * Characters become USB HID usages, US layout, shifted ones with a left
  * shift around them, which is what the keyboard path in SDL_input.cpp takes
- * from a real USB keyboard. Newline types Return.
+ * from a real USB keyboard.
  *
- * The widget is drawn by the video driver, on the GamePad only, through
- * EmulatorVideoDriver::setGamePadOverlay(). The driver keeps the picture on the
- * GamePad between redraws, so the widget is only drawn again when it can have
- * changed: a pad button went down or up (a touch is one), or the foreground
- * came back. The TV is not involved.
+ * The keyboard is drawn by the video driver, on the GamePad only, through
+ * EmulatorVideoDriver::setGamePadOverlay(), and refreshed from here every
+ * input scan without waiting. The TV is not involved.
  ***************************************************************************/
 #include <stdint.h>
 #include <string.h>
+#include <string>
 
-#include "libgui/Gui.h"
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
 #include "drivers/KeyboardDriver.h"
+#include "drivers/SystemKeyboardDriver.h"
 #include "drivers/Time.h"
 #include "osk.h"
 #include "videosupport.h"
@@ -202,91 +201,91 @@ KeyboardDriver * OSK_WrapKeyboard(KeyboardDriver * physical)
 }
 
 /****************************************************************************
- * The keyboard widget
+ * Text field -> keys
  ***************************************************************************/
-class DosKeyboard : public GuiKeyboard
+//! What of the keyboard's text field has been typed into DOS so far
+static std::u16string typed;
+
+static bool IsTypable(char16_t c)
 {
-	public:
-		DosKeyboard() : GuiKeyboard(seed, 16)
+	CharKey key;
+	return c < 128 && CharToKey((char)c, key);
+}
+
+//! Types what changed in the field since last time: the first difference on is
+//! backspaced away and what the field now has there is typed. Stops, and picks
+//! up again next scan, if the pending events have no room.
+static void SyncText(const char16_t * text)
+{
+	size_t common = 0;
+	while (common < typed.size() && text[common] != 0 && typed[common] == text[common])
+		common++;
+
+	while (typed.size() > common)
+	{
+		const char16_t gone = typed[typed.size() - 1];
+
+		if (IsTypable(gone))
 		{
+			if (pendingCount + 2 > kPendingSize)
+				return;
+			TypeKey(kUsageBackspace, false);
 		}
 
-		void update(InputController * c)
+		typed.pop_back();
+	}
+
+	for (; text[common] != 0; common++)
+	{
+		const char16_t c = text[common];
+		CharKey key;
+
+		if (c < 128 && CharToKey((char)c, key))
 		{
-			// The widget edits kbtextstr like a text box; see the file comment.
-			// Anything after the leading space is new, and losing the space is
-			// a backspace.
-			kbtextstr[0] = ' ';
-			kbtextstr[1] = '\0';
-
-			GuiKeyboard::update(c);
-
-			const size_t len = strlen(kbtextstr);
-
-			if (len == 0)
-			{
-				TypeKey(kUsageBackspace, false);
-			}
-			else
-			{
-				for (size_t i = 1; i < len; i++)
-				{
-					CharKey key;
-					if (CharToKey(kbtextstr[i], key))
-						TypeKey(key.usage, key.shift);
-				}
-			}
-
-			if (len != 1)
-				kbText->setText(""); // nothing is kept in the box; DOS shows what was typed
+			if (pendingCount + 4 > kPendingSize)
+				return;
+			TypeKey(key.usage, key.shift);
 		}
 
-	private:
-		static char seed[2];
-};
-
-char DosKeyboard::seed[2] = { ' ', '\0' };
+		typed.push_back(c);
+	}
+}
 
 /****************************************************************************
  * State
  ***************************************************************************/
 static bool active = false;
 static unsigned toggleButton = INPUT_BTN_MINUS;
-static GuiWindow * root = NULL;
-static DosKeyboard * oskWidget = NULL;
-static bool needRedraw = false;
+static SystemKeyboardDriver * systemKeyboard = NULL;
 
 static void DrawOverlay(void *)
 {
-	if (root)
-		root->draw();
-}
-
-static bool Build()
-{
-	if (root)
-		return true;
-
-	VideoDriver * video = platform->getVideo();
-	root = new GuiWindow(video->getScreenWidth(), video->getScreenHeight());
-	oskWidget = new DosKeyboard();
-	root->append(oskWidget);
-	root->changeFocus(oskWidget);
-	return true;
+	if (systemKeyboard)
+		systemKeyboard->drawGamePad();
 }
 
 static void Open()
 {
 	EmulatorVideoDriver * emu = platform->getVideo()->getEmulatorVideo();
-	if (!emu || !Build())
+	SystemKeyboardDriver * keyboard = platform->getSystemKeyboard();
+
+	// No second screen or no system keyboard to put on it: nothing happens
+	if (!emu || !keyboard)
 		return;
 
-	// No second screen to put it on: nothing happens
+	systemKeyboard = keyboard;
+
 	if (!emu->setGamePadOverlay(DrawOverlay, NULL))
 		return;
 
+	if (!keyboard->open())
+	{
+		emu->setGamePadOverlay(NULL, NULL);
+		return;
+	}
+
+	typed.clear();
 	active = true;
-	needRedraw = true;
 }
 
 void OSK_Close(void)
@@ -299,6 +298,8 @@ void OSK_Close(void)
 	EmulatorVideoDriver * emu = platform->getVideo()->getEmulatorVideo();
 	if (emu)
 		emu->setGamePadOverlay(NULL, NULL);
+
+	systemKeyboard->close();
 }
 
 bool OSK_IsActive(void)
@@ -336,29 +337,28 @@ void OSK_Update(void)
 	if (!active)
 		return;
 
-	for (int i = 3; i >= 0; i--)
-		root->update(controller[i]);
-
-	// Anything the pads did can have changed the keys: a touch is a button
-	// going down and, later, up
-	for (int i = 0; i < 4; i++)
-	{
-		const InputPadData & pad = controller[i]->getPadData();
-
-		if (pad.buttons_d || pad.buttons_r || pad.hw_buttons_d[INPUT_HW_DRC] || pad.hw_buttons_r[INPUT_HW_DRC])
-			needRedraw = true;
-	}
-
-	// What was on the GamePad is lost with the foreground; draw it again when it is back
+	// Nothing can be drawn without the foreground
 	if (platform->getStatus() != Status::Running)
 	{
-		needRedraw = true;
+		OSK_Close();
 		return;
 	}
 
-	if (needRedraw)
+	SyncText(systemKeyboard->getText());
+
+	if (systemKeyboard->takeOk())
 	{
-		needRedraw = false;
-		platform->getVideo()->getEmulatorVideo()->refreshGamePadOverlay();
+		if (pendingCount + 2 <= kPendingSize)
+			TypeKey(kUsageReturn, false);
+		typed.clear(); // the field is empty again
 	}
+
+	if (systemKeyboard->takeCancel())
+	{
+		OSK_Close();
+		GFX_Refresh();
+		return;
+	}
+
+	platform->getVideo()->getEmulatorVideo()->refreshGamePadOverlay();
 }

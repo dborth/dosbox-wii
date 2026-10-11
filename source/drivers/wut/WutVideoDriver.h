@@ -130,6 +130,12 @@ class WutVideoDriver : public VideoDriver
 		// outputs are cleared and rebound; an output left out keeps what it
 		// shows now, and that is what presentBuffer() will send to it again.
 		void prepareFrame(unsigned targets = kAllTargets);
+
+		//!True while the last presented frame has not finished: not yet on
+		//!screen (the swap is waiting for the next vsync) or the GPU is still
+		//!drawing it. Presenting now would make prepareFrame()/presentBuffer()
+		//!wait for it. A caller that must not block checks this first.
+		bool isPresentPending() const;
 	private:
 		static const size_t cuMaxQueuedDraws = 4096;
 		std::vector<WutDrawCmd> drawQueue;

@@ -14,6 +14,7 @@
 #include "FileSystemDriver.h"
 #include "ThreadDriver.h"
 #include "Logger.h"
+#include "SystemKeyboardDriver.h"
 
 class AudioDriver;
 class VideoDriver;
@@ -86,6 +87,9 @@ class Platform
 		virtual InputDriver* getInput() = 0;
 		virtual FileSystemDriver* getFileSystem() = 0;
 		virtual ThreadDriver* getThread() = 0;
+		//!The platform's own on-screen keyboard, or nullptr if it has none
+		//!(only the Wii U does, on the GamePad).
+		virtual SystemKeyboardDriver* getSystemKeyboard() { return nullptr; }
 		//!May return nullptr on a Platform that hasn't finished init()
 		//!yet - LogPrintf()/LOG_*() already guard against this, but code
 		//!calling platform->getLogger() directly should too.

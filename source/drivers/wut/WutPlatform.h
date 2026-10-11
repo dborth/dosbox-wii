@@ -12,6 +12,7 @@
 #include "WutInputDriver.h"
 #include "WutFileSystemDriver.h"
 #include "WutThreadDriver.h"
+#include "WutSystemKeyboard.h"
 #include "WutLoggerOSReport.h"
 #include "WutLoggerUdp.h"
 #include "WutLoggerUsbSerial.h"
@@ -39,6 +40,7 @@ class WutPlatform : public Platform
 		InputDriver* getInput() override { return inputDriver; }
 		FileSystemDriver* getFileSystem() override { return fileSystemDriver; }
 		ThreadDriver* getThread() override { return threadDriver; }
+		SystemKeyboardDriver* getSystemKeyboard() override { return systemKeyboard; }
 		Logger* getLogger() override { return logger; }
 
 	protected:
@@ -55,5 +57,6 @@ class WutPlatform : public Platform
 		WutInputDriver* inputDriver = nullptr;
 		WutFileSystemDriver* fileSystemDriver = nullptr;
 		WutThreadDriver* threadDriver = nullptr;
+		WutSystemKeyboard* systemKeyboard = nullptr;
 		Logger* logger = nullptr;
 };
