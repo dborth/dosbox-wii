@@ -33,6 +33,7 @@ class WutPlatform : public Platform
 		const char* getConsoleDetails() override;
 		const char* getMemoryFreeInfo() override;
 
+		bool isCemu();
 		void requestExit() override;
 
 		AudioDriver* getAudio() override { return audioDriver; }
