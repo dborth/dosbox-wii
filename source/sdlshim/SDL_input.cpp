@@ -501,23 +501,6 @@ static void PollKeyboard(void)
 		event.key.keysym.mod = modState;
 		SDL_PushEvent(&event);
 	}
-
-	// The on-screen keyboard, one event a scan so a press and release are never together
-	if (OSK_PollKey(ke)) {
-		const SDLKey sym = (ke.hidUsage < 232) ? keymap[ke.hidUsage] : SDLK_UNKNOWN;
-		modState = ModsFromKeyEvent(ke.modifiers);
-
-		if (sym != SDLK_UNKNOWN) {
-			SDL_Event event;
-			memset(&event, 0, sizeof(event));
-			event.type = ke.pressed ? SDL_KEYDOWN : SDL_KEYUP;
-			event.key.state = ke.pressed ? SDL_PRESSED : SDL_RELEASED;
-			event.key.keysym.scancode = (Uint8)ke.hidUsage;
-			event.key.keysym.sym = sym;
-			event.key.keysym.mod = modState;
-			SDL_PushEvent(&event);
-		}
-	}
 }
 
 /****************************************************************************

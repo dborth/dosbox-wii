@@ -34,6 +34,7 @@
 #include "videosupport.h"
 #include "input.h"
 #include "memmanager.h"
+#include "osk.h"
 
 #ifdef HW_RVL
 #include "drivers/ogc/wii/WiiPlatform.h"
@@ -54,7 +55,7 @@ static WutMouseDriver mouseInstance;
 Platform* platform = &platformInstance;
 
 // USB keyboard and mouse
-KeyboardDriver* keyboard = &keyboardInstance;
+KeyboardDriver* keyboard = OSK_WrapKeyboard(&keyboardInstance);
 MouseDriver* usbMouse = &mouseInstance;
 
 /****************************************************************************

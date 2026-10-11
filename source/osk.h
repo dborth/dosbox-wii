@@ -13,7 +13,7 @@
 #ifndef DOSBOX_OSK_H
 #define DOSBOX_OSK_H
 
-struct KeyEvent;
+class KeyboardDriver;
 
 //! Once per input scan, after the pads have been read: handles the toggle
 //! button, runs the keyboard while it is open, and keeps it drawn.
@@ -26,9 +26,11 @@ bool OSK_IsActive(void);
 //! take the display, eg. for the menu).
 void OSK_Close(void);
 
-//! The next key event typed on the on-screen keyboard, one per call so a
-//! press and its release are never delivered in the same scan.
-bool OSK_PollKey(KeyEvent & out);
+//! Wraps the physical keyboard driver. The returned driver is what the rest of
+//! the app polls: it hands out the physical keyboard's events, then the ones
+//! typed on the on-screen keyboard, so both arrive the same way. Call once,
+//! where the `keyboard` global is defined.
+KeyboardDriver * OSK_WrapKeyboard(KeyboardDriver * physical);
 
 //! Which button (InputDataButtons) on the GamePad opens and closes the
 //! keyboard. Minus (Select) by default. For the future mapping screen.

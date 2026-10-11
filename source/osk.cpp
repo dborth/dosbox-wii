@@ -105,21 +105,38 @@ static bool CharToKey(char c, CharKey & out)
 
 /****************************************************************************
  * Pending key events
+ *
+ * Events wait here until they are polled. A real keyboard's press and release
+ * are never together, and DOS programs that read the keyboard port directly
+ * can miss a key that is down for less than a scan, so each event carries the
+ * least time that must pass after the previous one was handed out.
  ***************************************************************************/
 static const int kPendingSize = 128;
-static KeyEvent pending[kPendingSize];
+static const uint32_t kGapMs = 8;       // between events
+static const uint32_t kHoldMs = 40;     // a key is held this long
+
+struct PendingEvent
+{
+	KeyEvent event;
+	uint32_t gapMs;
+};
+
+static PendingEvent pending[kPendingSize];
 static int pendingHead = 0;
 static int pendingCount = 0;
+static Ticks lastDelivered = 0;
+static bool haveDelivered = false;
 
-static void PushEvent(uint16_t usage, uint16_t modifiers, bool pressed)
+static void PushEvent(uint16_t usage, uint16_t modifiers, bool pressed, uint32_t gapMs)
 {
 	if (pendingCount >= kPendingSize)
 		return;
 
-	KeyEvent & e = pending[(pendingHead + pendingCount) % kPendingSize];
-	e.hidUsage = usage;
-	e.modifiers = modifiers;
-	e.pressed = pressed;
+	PendingEvent & p = pending[(pendingHead + pendingCount) % kPendingSize];
+	p.event.hidUsage = usage;
+	p.event.modifiers = modifiers;
+	p.event.pressed = pressed;
+	p.gapMs = gapMs;
 	pendingCount++;
 }
 
@@ -131,11 +148,59 @@ static void TypeKey(uint16_t usage, bool shift)
 		return;
 
 	if (shift)
-		PushEvent(kUsageLeftShift, KEYMOD_LSHIFT, true);
-	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, true);
-	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, false);
+		PushEvent(kUsageLeftShift, KEYMOD_LSHIFT, true, kGapMs);
+	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, true, kGapMs);
+	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, false, kHoldMs);
 	if (shift)
-		PushEvent(kUsageLeftShift, KEYMOD_NONE, false);
+		PushEvent(kUsageLeftShift, KEYMOD_NONE, false, kGapMs);
+}
+
+//! The next event whose time has come. Events still waiting when the keyboard
+//! is closed are delivered all the same, so a key is never left down.
+static bool PollTyped(KeyEvent & out)
+{
+	if (pendingCount == 0)
+		return false;
+
+	const Ticks now = SystemTime::now();
+	const PendingEvent & p = pending[pendingHead];
+
+	if (haveDelivered && SystemTime::diffMillisecs(lastDelivered, now) < p.gapMs)
+		return false;
+
+	out = p.event;
+	pendingHead = (pendingHead + 1) % kPendingSize;
+	pendingCount--;
+	lastDelivered = now;
+	haveDelivered = true;
+	return true;
+}
+
+/****************************************************************************
+ * The keyboard seen by the rest of the app: the physical one, then ours
+ ***************************************************************************/
+class OskKeyboardMux : public KeyboardDriver
+{
+	public:
+		OskKeyboardMux(KeyboardDriver * p) : physical(p) {}
+
+		void init() override { physical->init(); }
+		void shutdown() override { physical->shutdown(); }
+		bool isConnected() const override { return physical->isConnected(); }
+
+		bool poll(KeyEvent & out) override
+		{
+			return physical->poll(out) || PollTyped(out);
+		}
+
+	private:
+		KeyboardDriver * physical;
+};
+
+KeyboardDriver * OSK_WrapKeyboard(KeyboardDriver * physical)
+{
+	static OskKeyboardMux mux(physical);
+	return &mux;
 }
 
 /****************************************************************************
@@ -247,17 +312,6 @@ bool OSK_IsActive(void)
 void OSK_SetToggleButton(unsigned button)
 {
 	toggleButton = button;
-}
-
-bool OSK_PollKey(KeyEvent & out)
-{
-	if (pendingCount == 0)
-		return false;
-
-	out = pending[pendingHead];
-	pendingHead = (pendingHead + 1) % kPendingSize;
-	pendingCount--;
-	return true;
 }
 
 void OSK_Update(void)
