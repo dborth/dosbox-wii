@@ -29,6 +29,7 @@
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
 #include "input.h"
+#include "preferences.h"
 #include "inputlogic.h"
 #include "videosupport.h"
 #include "dosboxwii.h"
@@ -117,6 +118,17 @@ void GFX_CaptureMouse(void) {
 }
 
 bool mouselocked; //Global variable for mapper
+//! Takes the mouse sensitivity from the [sdl] section (NULL is no section).
+static void ReadSensitivity(Section_prop * section) {
+	Prop_multival * sensitivity = section ? section->Get_multival("sensitivity") : NULL;
+
+	if(!sensitivity)
+		return;
+
+	sdl.mouse.xsensitivity = sensitivity->GetSection()->Get_int("xsens");
+	sdl.mouse.ysensitivity = sensitivity->GetSection()->Get_int("ysens");
+}
+
 /****************************************************************************
  * The [sdl] config section: start up and shut down
  ***************************************************************************/
@@ -143,9 +155,7 @@ void GUI_StartUp(Section * sec) {
 	sdl.mouse.autoenable=true;
 	sdl.mouse.autolock=false;
 
-	Prop_multival* p3 = section->Get_multival("sensitivity");
-	sdl.mouse.xsensitivity = p3->GetSection()->Get_int("xsens");
-	sdl.mouse.ysensitivity = p3->GetSection()->Get_int("ysens");
+	ReadSensitivity(section);
 
 	/* Setup Mouse correctly if fullscreen */
 	if(GFX_IsFullscreen()) GFX_CaptureMouse();
@@ -179,14 +189,7 @@ void Mouse_AutoLock(bool enable) {
 }
 
 void Mouse_SensitivityChanged(void) {
-	Section_prop * section = static_cast<Section_prop *>(control->GetSection("sdl"));
-	Prop_multival * sensitivity = section ? section->Get_multival("sensitivity") : NULL;
-
-	if(!sensitivity)
-		return;
-
-	sdl.mouse.xsensitivity = sensitivity->GetSection()->Get_int("xsens");
-	sdl.mouse.ysensitivity = sensitivity->GetSection()->Get_int("ysens");
+	ReadSensitivity(Config_GetSection("sdl"));
 }
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {

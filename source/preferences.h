@@ -17,6 +17,7 @@
 #include <string>
 #include "drivers/EmulatorVideoSettings.h"
 
+class Property;
 class Section_prop;
 
 //! Declares the [sdl] section. Before DOSBOX_Init().
@@ -56,5 +57,30 @@ void Config_Add_Display();
 
 //! What the section currently holds, as the driver's settings (clamped).
 EmulatorVideoSettings DisplaySettingsFromConfig(Section_prop * section);
+
+/* ---- Reading the running config ---- */
+
+//! The section, or NULL if there is none (or no config system yet).
+Section_prop * Config_GetSection(const char * name);
+
+//! The property by name, ignoring case, or NULL. A NULL section has none.
+Property * Config_FindProp(Section_prop * sec, const char * name);
+
+//! The property's value as it stands in the config, or "" if there isn't one.
+std::string Config_Get(const char * section, const char * prop);
+
+enum CyclesMode { CYCLES_AUTO = 0, CYCLES_FIXED, CYCLES_MAX };
+
+//! cpu.cycles as configured: the one multival property ("type" plus
+//! "parameters", see CPU::Change_Config) taken apart. "auto", "fixed N" and
+//! "max P%" are the forms; a bare number is a fixed amount.
+struct CyclesConfig
+{
+	CyclesMode mode;
+	int amount;		//!< cycles for fixed, percent for max; 0 if not given
+	bool limited;	//!< max with a cycle limit after the percentage ("max 80% 20000")
+};
+
+CyclesConfig Config_ReadCycles();
 
 #endif

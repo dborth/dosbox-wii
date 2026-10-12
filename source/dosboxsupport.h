@@ -19,6 +19,16 @@ void RunDOSBox(int argc, char* argv[]);
 //! core) under it. False before the first shell exists.
 bool IsShellIdle();
 
+//! The CPU cycles the core is running now, as GFX_SetTitle() last heard them.
+//! The home screen's +/- buttons change this without touching the config. The
+//! value is a percentage of the host while *autoAdjust is true, otherwise
+//! cycles per millisecond; 0 until the core has reported one.
+int GetRunningCycles(bool * autoAdjust);
+
+//! The frameskip the core is running now (the home screen's +/- change it
+//! without touching the config); 0 until the core has reported one.
+int GetRunningFrameskip();
+
 //! The fixed output format of the emulator audio driver, as DOSBox's mixer
 //! runs it: sample rate in Hz and stereo frames per buffer. Returns false
 //! when there is no emulator audio driver (nothing to play through), in

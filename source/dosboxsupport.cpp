@@ -45,13 +45,29 @@
 #include "preferences.h"
 #include "input.h"
 #include "storage.h"
-#include "menu/menu.h"
+
+// What the core last reported through GFX_SetTitle()
+static int runningCycles = 0;
+static int runningFrameskip = 0;
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 	if (cycles != -1)
-		MENU_CyclesDisplay = cycles;
+		runningCycles = cycles;
 	if (frameskip != -1)
-		MENU_FrameskipDisplay = frameskip;
+		runningFrameskip = frameskip;
+}
+
+int GetRunningCycles(bool * autoAdjust)
+{
+	if(autoAdjust)
+		*autoAdjust = CPU_CycleAutoAdjust;
+
+	return runningCycles;
+}
+
+int GetRunningFrameskip()
+{
+	return runningFrameskip;
 }
 
 
@@ -254,7 +270,7 @@ bool GetEmulationStatus(EmulationStatus * status)
 	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
 
 	status->aspectOn = video ? (video->getSettings().aspect == VideoAspect::Corrected) : true;
-	status->frameskip = MENU_FrameskipDisplay;
+	status->frameskip = runningFrameskip;
 
 	int frameWidth = 0, frameHeight = 0;
 	bool fullscreen = true;
@@ -271,7 +287,7 @@ bool GetEmulationStatus(EmulationStatus * status)
 
 	// tandy_sound.cpp: on a Tandy or PCjr "true", "on" and "auto" turn the
 	// sound on; on any other machine only "true" and "on" do
-	Section_prop * speaker = dynamic_cast<Section_prop *>(control->GetSection("speaker"));
+	Section_prop * speaker = Config_GetSection("speaker");
 
 	if(speaker)
 	{

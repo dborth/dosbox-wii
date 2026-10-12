@@ -28,6 +28,7 @@
 #include "dosboxsupport.h"
 #include "storage.h"
 #include "input.h"
+#include "preferences.h"
 
 //! An option list holds 49 characters of value
 #define MAX_VALUE	49
@@ -44,39 +45,6 @@ static std::vector<Line> lines;
 /****************************************************************************
  * Config access
  ***************************************************************************/
-static Section_prop * GetSection(const char * name)
-{
-	if(!control)
-		return NULL;
-
-	return dynamic_cast<Section_prop *>(control->GetSection(name));
-}
-
-static Property * FindProp(Section_prop * sec, const char * name)
-{
-	Property * p;
-
-	for(int i = 0; sec && (p = sec->Get_prop(i)) != NULL; i++)
-	{
-		if(strcasecmp(p->propname.c_str(), name) == 0)
-			return p;
-	}
-	return NULL;
-}
-
-//! The property's value as it stands in the config, or "" if there isn't one.
-static std::string Cfg(const char * section, const char * prop)
-{
-	Section_prop * sec = GetSection(section);
-
-	if(!sec)
-		return "";
-
-	const std::string value = sec->GetPropValue(prop);
-
-	return (value == NO_SUCH_PROPERTY) ? std::string("") : value;
-}
-
 static bool SameText(const std::string & a, const std::string & b)
 {
 	return strcasecmp(a.c_str(), b.c_str()) == 0;
@@ -88,7 +56,7 @@ static bool SameText(const std::string & a, const std::string & b)
  */
 static bool Changed(const char * section, const char * prop)
 {
-	Property * p = FindProp(GetSection(section), prop);
+	Property * p = Config_FindProp(Config_GetSection(section), prop);
 
 	if(!p)
 		return false;
@@ -169,14 +137,14 @@ static void AddPlain(const char * label, const std::string & value, const char *
 static void AddProp(const char * label, const char * section, const char * prop,
 	const std::string & effective, const char * help)
 {
-	Add(label, Cfg(section, prop), effective, Changed(section, prop), help);
+	Add(label, Config_Get(section, prop), effective, Changed(section, prop), help);
 }
 
 //! A line for a bool property, shown as On or Off.
 static void AddBool(const char * label, const char * section, const char * prop,
 	const std::string & effective, const char * help)
 {
-	Add(label, OnOff(Cfg(section, prop)), effective, Changed(section, prop), help);
+	Add(label, OnOff(Config_Get(section, prop)), effective, Changed(section, prop), help);
 }
 
 //! The end of a long text, which is the part that tells paths apart.
@@ -220,42 +188,19 @@ static void CpuLines(const EmulationStatus & st)
 	// cycles: the config says auto, fixed N or max P%; the core is running
 	// some number of cycles or a share of the host, and the home screen's
 	// +/- buttons move either without touching the config
-	Section_prop * cpu = GetSection("cpu");
-	Prop_multival * multi = cpu ? cpu->Get_multival("cycles") : NULL;
-	std::string type, params;
-
-	if(multi)
-	{
-		type = multi->GetSection()->Get_string("type");
-		params = multi->GetSection()->Get_string("parameters");
-	}
-
+	const CyclesConfig cycles = Config_ReadCycles();
 	std::string configured = "auto";
 	std::string effective;
 	int amount = 0;
 
-	if(type == "fixed" || atoi(type.c_str()) > 0)
+	if(cycles.mode == CYCLES_FIXED)
 	{
-		amount = (type == "fixed") ? atoi(params.c_str()) : atoi(type.c_str());
+		amount = cycles.amount;
 		configured = "fixed " + Number(amount);
 	}
-	else if(type == "max")
+	else if(cycles.mode == CYCLES_MAX)
 	{
-		amount = 100;
-
-		// the percentage is the parameter that ends in '%'
-		size_t pos = 0;
-		while(pos < params.size())
-		{
-			size_t end = params.find(' ', pos);
-			if(end == std::string::npos)
-				end = params.size();
-
-			if(end > pos && params[end - 1] == '%')
-				amount = atoi(params.substr(pos, end - pos).c_str());
-
-			pos = end + 1;
-		}
+		amount = cycles.amount > 0 ? cycles.amount : 100;
 		configured = "max " + Number(amount) + "%";
 	}
 
@@ -351,17 +296,17 @@ static void VideoLines(const EmulationStatus & st)
 
 	if(scanlines)
 	{
-		const std::string percent = Cfg("display", "scanlines");
+		const std::string percent = Config_Get("display", "scanlines");
 
 		Add("Scanlines", percent == "0" ? "off" : percent + "%", "", Changed("display", "scanlines"),
 			"How dark the gaps between lines are.");
 	}
 
-	Add("Zoom", Cfg("display", "zoomx") + "% x " + Cfg("display", "zoomy") + "%", "",
+	Add("Zoom", Config_Get("display", "zoomx") + "% x " + Config_Get("display", "zoomy") + "%", "",
 		Changed("display", "zoomx") || Changed("display", "zoomy"),
 		"Width and height of the picture as a percentage of its normal size. Used by the fit and fill sizes; integer ignores it.");
 
-	Add("Shift", Cfg("display", "shiftx") + ", " + Cfg("display", "shifty"), "",
+	Add("Shift", Config_Get("display", "shiftx") + ", " + Config_Get("display", "shifty"), "",
 		Changed("display", "shiftx") || Changed("display", "shifty"),
 		"How far the picture is moved right and down from the middle of the screen. Negative moves it left and up.");
 
@@ -371,7 +316,7 @@ static void VideoLines(const EmulationStatus & st)
 			"console's own setting.");
 
 	// the +/- on the home screen change the running value; Save puts it in the config
-	Add("Frameskip", Cfg("render", "frameskip"), Number(st.frameskip), Changed("render", "frameskip"),
+	Add("Frameskip", Config_Get("render", "frameskip"), Number(st.frameskip), Changed("render", "frameskip"),
 		"Frames not drawn for each frame that is. The home screen's + and - change the running value, "
 		"which goes in the config when you press Save.");
 }
@@ -410,7 +355,7 @@ static void AudioLines(const EmulationStatus & st)
 		"The FM music chip. auto follows the Sound Blaster type.");
 
 	// a device whose rate is not the output's is resampled by the mixer
-	const int oplRate = atoi(Cfg("sblaster", "oplrate").c_str());
+	const int oplRate = atoi(Config_Get("sblaster", "oplrate").c_str());
 
 	Add("OPL rate", Number(oplRate) + " Hz", (rate > 0 && oplRate != rate) ? "resampled" : "",
 		Changed("sblaster", "oplrate"),
@@ -438,12 +383,12 @@ static void MemoryLines(const EmulationStatus & st)
 	AddProp("Machine", "dosbox", "machine", "",
 		"The kind of PC DOSBox emulates. Takes effect the next time DOSBox starts.");
 
-	Add("Memory", Cfg("dosbox", "memsize") + " MB", Number(st.memoryMB) + " MB", Changed("dosbox", "memsize"),
+	Add("Memory", Config_Get("dosbox", "memsize") + " MB", Number(st.memoryMB) + " MB", Changed("dosbox", "memsize"),
 		"How much memory the machine has. Takes effect the next time DOSBox starts.");
 
 	AddBool("XMS", "dos", "xms", "", "Extended memory services.");
 
-	Add("EMS", Cfg("dos", "ems"),
+	Add("EMS", Config_Get("dos", "ems"),
 		(st.emsType >= 0 && st.emsType < 4) ? emsNames[st.emsType] : "",
 		Changed("dos", "ems"), "Expanded memory. DOSBox turns it off for the pcjr machine.");
 

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <ctype.h>
 #include <sys/stat.h>
@@ -423,4 +424,91 @@ EmulatorVideoSettings DisplaySettingsFromConfig(Section_prop * section)
 
 	out.clamp();
 	return out;
+}
+
+
+/****************************************************************************
+ * Reading the running config
+ ***************************************************************************/
+Section_prop * Config_GetSection(const char * name)
+{
+	if(!control)
+		return NULL;
+
+	return dynamic_cast<Section_prop *>(control->GetSection(name));
+}
+
+Property * Config_FindProp(Section_prop * sec, const char * name)
+{
+	Property * p;
+
+	for(int i = 0; sec && (p = sec->Get_prop(i)) != NULL; i++)
+	{
+		if(strcasecmp(p->propname.c_str(), name) == 0)
+			return p;
+	}
+	return NULL;
+}
+
+std::string Config_Get(const char * section, const char * prop)
+{
+	Section_prop * sec = Config_GetSection(section);
+
+	if(!sec)
+		return "";
+
+	const std::string value = sec->GetPropValue(prop);
+
+	return (value == NO_SUCH_PROPERTY) ? std::string("") : value;
+}
+
+CyclesConfig Config_ReadCycles()
+{
+	CyclesConfig state = { CYCLES_AUTO, 0, false };
+	Section_prop * sec = Config_GetSection("cpu");
+	Prop_multival * cycles = sec ? sec->Get_multival("cycles") : NULL;
+
+	if(!cycles)
+		return state;
+
+	const std::string type = cycles->GetSection()->Get_string("type");
+	const std::string params = cycles->GetSection()->Get_string("parameters");
+
+	if(type == "max")
+	{
+		state.mode = CYCLES_MAX;
+
+		// the percentage is the parameter that ends in '%'; any other
+		// parameter is a cycle limit
+		size_t pos = 0;
+		while(pos < params.size())
+		{
+			size_t end = params.find(' ', pos);
+			if(end == std::string::npos)
+				end = params.size();
+
+			if(end > pos)
+			{
+				if(params[end - 1] == '%')
+					state.amount = atoi(params.substr(pos, end - pos).c_str());
+				else
+					state.limited = true;
+			}
+
+			pos = end + 1;
+		}
+	}
+	else if(type == "fixed")
+	{
+		state.mode = CYCLES_FIXED;
+		state.amount = atoi(params.c_str());
+	}
+	else if(atoi(type.c_str()) > 0)
+	{
+		// "cycles = 4000": a bare number is a fixed amount
+		state.mode = CYCLES_FIXED;
+		state.amount = atoi(type.c_str());
+	}
+
+	return state;
 }

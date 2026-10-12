@@ -8,9 +8,6 @@
 #ifndef _MENUH_
 #define _MENUH_
 
-extern int MENU_CyclesDisplay;
-extern int MENU_FrameskipDisplay;
-
 /** The home menu. Blocks, stepping the GUI itself, until it is closed. */
 void HomeMenu();
 

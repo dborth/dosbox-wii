@@ -26,12 +26,10 @@
 #include "dosbox.h"
 #include "setup.h"
 #include "control.h"
-#include "cpu.h"
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
 #include "input.h"
-#include "menu.h"
 
 /****************************************************************************
  * Row table types
@@ -93,41 +91,8 @@ struct PageDef
 };
 
 /****************************************************************************
- * Config access
+ * Applying a change
  ***************************************************************************/
-static Section_prop * GetSection(const char * name)
-{
-	if(!control)
-		return NULL;
-
-	return dynamic_cast<Section_prop *>(control->GetSection(name));
-}
-
-static Property * FindProp(Section_prop * sec, const char * name)
-{
-	Property * p;
-
-	for(int i = 0; (p = sec->Get_prop(i)) != NULL; i++)
-	{
-		if(strcasecmp(p->propname.c_str(), name) == 0)
-			return p;
-	}
-	return NULL;
-}
-
-//! The property's value as it stands in the config, or "" if there isn't one.
-static std::string GetConfig(const char * section, const char * prop)
-{
-	Section_prop * sec = GetSection(section);
-
-	if(!sec)
-		return "";
-
-	std::string value = sec->GetPropValue(prop);
-
-	return (value == NO_SUCH_PROPERTY) ? std::string("") : value;
-}
-
 /**
  * Sets one property on the running core.
  *
@@ -243,7 +208,7 @@ static int OutputRate()
 	if(OutputInfo(&rate, &frames))
 		return rate;
 
-	Section_prop * mixer = GetSection("mixer");
+	Section_prop * mixer = Config_GetSection("mixer");
 
 	return mixer ? mixer->Get_int("rate") : 0;
 }
@@ -268,8 +233,8 @@ static bool RateInValues(Property * p, int rate)
 //! any rate DOSBox would not accept for the property. Room for 3.
 static int RatePresets(const SettingRow & row, int * out)
 {
-	Section_prop * sec = GetSection(row.section);
-	Property * p = sec ? FindProp(sec, row.prop) : NULL;
+	Section_prop * sec = Config_GetSection(row.section);
+	Property * p = sec ? Config_FindProp(sec, row.prop) : NULL;
 	const int candidates[3] = { RATE_FAST, OutputRate(), row.nativeRate };
 	int n = 0;
 
@@ -336,14 +301,6 @@ static void AudioOutputValue(char * buf, size_t size)
  * One multival property ("type" plus "parameters", see CPU::Change_Config)
  * shown as two rows: the mode, and the number that goes with it.
  ***************************************************************************/
-enum CyclesMode { CYCLES_AUTO = 0, CYCLES_FIXED, CYCLES_MAX };
-
-struct CyclesState
-{
-	CyclesMode mode;
-	int amount;		//!< as configured: cycles for fixed, percent for max; 0 if not given
-};
-
 //! A fixed amount to start from when there is no number to carry over.
 //! The same figure Change_Config falls back to.
 #define CYCLES_FIXED_START	3000
@@ -354,66 +311,27 @@ static const int maxPercentPresets[] = { 10, 20, 30, 40, 50, 60, 70, 80, 90, 100
 
 #define ARRAY_COUNT(a)	((int)(sizeof(a) / sizeof((a)[0])))
 
-static CyclesState ReadCycles()
-{
-	CyclesState state = { CYCLES_AUTO, 0 };
-	Section_prop * sec = GetSection("cpu");
-	Prop_multival * cycles = sec ? sec->Get_multival("cycles") : NULL;
-
-	if(!cycles)
-		return state;
-
-	const std::string type = cycles->GetSection()->Get_string("type");
-	const std::string params = cycles->GetSection()->Get_string("parameters");
-
-	if(type == "max")
-	{
-		state.mode = CYCLES_MAX;
-
-		// the percentage is the parameter that ends in '%'
-		size_t pos = 0;
-		while(pos < params.size())
-		{
-			size_t end = params.find(' ', pos);
-			if(end == std::string::npos)
-				end = params.size();
-
-			if(end > pos && params[end - 1] == '%')
-				state.amount = atoi(params.substr(pos, end - pos).c_str());
-
-			pos = end + 1;
-		}
-	}
-	else if(type == "fixed")
-	{
-		state.mode = CYCLES_FIXED;
-		state.amount = atoi(params.c_str());
-	}
-	else if(atoi(type.c_str()) > 0)
-	{
-		// "cycles = 4000": a bare number is a fixed amount
-		state.mode = CYCLES_FIXED;
-		state.amount = atoi(type.c_str());
-	}
-
-	return state;
-}
-
 //! The fixed cycle count the core is running, which the home screen's +/-
 //! buttons change without touching the config.
-static int EffectiveFixed(const CyclesState & state)
+static int EffectiveFixed(const CyclesConfig & state)
 {
-	if(!CPU_CycleAutoAdjust && MENU_CyclesDisplay > 0)
-		return MENU_CyclesDisplay;
+	bool autoAdjust;
+	const int running = GetRunningCycles(&autoAdjust);
+
+	if(!autoAdjust && running > 0)
+		return running;
 
 	return state.amount;
 }
 
 //! The same for max, which the +/- buttons run in steps of 5 percent.
-static int EffectiveMaxPercent(const CyclesState & state)
+static int EffectiveMaxPercent(const CyclesConfig & state)
 {
-	if(CPU_CycleAutoAdjust && MENU_CyclesDisplay > 0)
-		return MENU_CyclesDisplay;
+	bool autoAdjust;
+	const int running = GetRunningCycles(&autoAdjust);
+
+	if(autoAdjust && running > 0)
+		return running;
 
 	return state.amount > 0 ? state.amount : 100;
 }
@@ -422,12 +340,12 @@ static void CyclesModeValue(char * buf, size_t size)
 {
 	static const char * const names[] = { "Auto", "Fixed", "Max" };
 
-	snprintf(buf, size, "%s", names[ReadCycles().mode]);
+	snprintf(buf, size, "%s", names[Config_ReadCycles().mode]);
 }
 
 static void CyclesAmountValue(char * buf, size_t size)
 {
-	const CyclesState state = ReadCycles();
+	const CyclesConfig state = Config_ReadCycles();
 
 	if(state.mode == CYCLES_FIXED)
 		snprintf(buf, size, "%d cycles", EffectiveFixed(state));
@@ -439,7 +357,7 @@ static void CyclesAmountValue(char * buf, size_t size)
 
 static bool StepCyclesMode(int direction)
 {
-	const CyclesState state = ReadCycles();
+	const CyclesConfig state = Config_ReadCycles();
 	const int count = 3;
 	const CyclesMode next = (CyclesMode)((state.mode + (direction >= 0 ? 1 : count - 1)) % count);
 	char value[32];
@@ -448,7 +366,9 @@ static bool StepCyclesMode(int direction)
 	{
 		// carry the current speed over when it is a cycle count; not when
 		// it is a percentage of the host
-		int start = (!CPU_CycleAutoAdjust && MENU_CyclesDisplay > 0) ? MENU_CyclesDisplay : CYCLES_FIXED_START;
+		bool autoAdjust;
+		const int running = GetRunningCycles(&autoAdjust);
+		int start = (!autoAdjust && running > 0) ? running : CYCLES_FIXED_START;
 		snprintf(value, sizeof(value), "fixed %d", start);
 	}
 	else if(next == CYCLES_MAX)
@@ -461,7 +381,7 @@ static bool StepCyclesMode(int direction)
 
 static bool StepCyclesAmount(int direction)
 {
-	const CyclesState state = ReadCycles();
+	const CyclesConfig state = Config_ReadCycles();
 	char value[32];
 
 	if(state.mode == CYCLES_FIXED)
@@ -498,7 +418,7 @@ static bool TandyAllowed(const char * candidate)
 	if(strcmp(candidate, "on") != 0)
 		return true;
 
-	const std::string machine = GetConfig("dosbox", "machine");
+	const std::string machine = Config_Get("dosbox", "machine");
 
 	return machine == "tandy" || machine == "pcjr";
 }
@@ -540,7 +460,7 @@ static std::string ValueWith(const char * section, const char * prop,
 	if(cand && !strcasecmp(section, candSection) && !strcasecmp(prop, candProp))
 		return *cand;
 
-	return GetConfig(section, prop);
+	return Config_Get(section, prop);
 }
 
 static Resources ReadResources(const char * candSection, const char * candProp, const std::string * cand)
@@ -659,7 +579,7 @@ static const char * Refusal(const char * section, const char * prop, const std::
  ***************************************************************************/
 static int EffectiveFrameskip()
 {
-	return MENU_FrameskipDisplay;
+	return GetRunningFrameskip();
 }
 
 /****************************************************************************
@@ -734,7 +654,7 @@ static bool FilterAllowed(const char * candidate)
 //! The whole-number fit picks its own size, so the zoom has nothing to do
 static const char * ZoomInactive()
 {
-	return (GetConfig("display", "fit") == "integer") ? "Zoom is not used with the integer fit." : NULL;
+	return (Config_Get("display", "fit") == "integer") ? "Zoom is not used with the integer fit." : NULL;
 }
 
 #define SHIFT_STEP	5	//!< of 1/640 of the width, 1/480 of the height
@@ -828,7 +748,7 @@ static const char * JoystickEffective()
 
 static const char * JoystickOff()
 {
-	return (GetConfig("joystick", "joysticktype") == "none") ? "No joystick is emulated." : NULL;
+	return (Config_Get("joystick", "joysticktype") == "none") ? "No joystick is emulated." : NULL;
 }
 
 static const SettingRow controlsRows[] =
@@ -1265,7 +1185,7 @@ static bool AllStep(const AllRow & r, int direction)
 	// ...), so numbers are stepped in ascending order.
 	const std::vector<Value> & values = r.prop->GetValues();
 	std::vector<std::string> list;
-	const std::string current = GetConfig(section, name);
+	const std::string current = Config_Get(section, name);
 	const int step = (direction >= 0) ? 1 : -1;
 	const Value::Etype type = r.prop->Get_type();
 	int index = -1;
@@ -1386,7 +1306,7 @@ static int CurrentInt(const SettingRow & row)
 	if(row.effective)
 		return row.effective();
 
-	Section_prop * sec = GetSection(row.section);
+	Section_prop * sec = Config_GetSection(row.section);
 
 	return sec ? sec->Get_int(row.prop) : 0;
 }
@@ -1394,7 +1314,7 @@ static int CurrentInt(const SettingRow & row)
 //! One of the two numbers of [sdl] sensitivity: the row's prop is xsens or ysens
 static int MouseSpeedOf(const char * prop)
 {
-	Section_prop * sec = GetSection("sdl");
+	Section_prop * sec = Config_GetSection("sdl");
 	Prop_multival * sensitivity = sec ? sec->Get_multival("sensitivity") : NULL;
 
 	return sensitivity ? sensitivity->GetSection()->Get_int(prop) : 100;
@@ -1408,7 +1328,7 @@ static int MouseSpeed(const SettingRow & row)
 //! Sets both numbers of [sdl] sensitivity and puts them in effect
 static bool ApplyMouseSpeed(int x, int y)
 {
-	Section_prop * sec = GetSection("sdl");
+	Section_prop * sec = Config_GetSection("sdl");
 
 	if(!sec)
 		return false;
@@ -1437,7 +1357,7 @@ static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 	{
 		case ROW_CHOICE:
 		{
-			const std::string configured = GetConfig(r->section, r->prop);
+			const std::string configured = Config_Get(r->section, r->prop);
 			const char * effective = r->detail ? r->detail() : NULL;
 
 			if(effective && *effective && strcasecmp(effective, configured.c_str()))
@@ -1466,7 +1386,7 @@ static void CuratedValue(const SettingRow * r, char * buf, size_t size)
 
 		case ROW_BOOL:
 		{
-			Section_prop * sec = GetSection(r->section);
+			Section_prop * sec = Config_GetSection(r->section);
 
 			snprintf(buf, size, "%s", (sec && sec->Get_bool(r->prop)) ? "On" : "Off");
 			break;
@@ -1511,8 +1431,8 @@ static void CuratedHelp(const SettingRow * r, char * buf, size_t size)
 		CollapseSpaces(r->help, help, sizeof(help));
 	else
 	{
-		Section_prop * sec = GetSection(r->section);
-		Property * p = sec ? FindProp(sec, r->prop) : NULL;
+		Section_prop * sec = Config_GetSection(r->section);
+		Property * p = sec ? Config_FindProp(sec, r->prop) : NULL;
 
 		if(p)
 			CollapseSpaces(p->Get_help(), help, sizeof(help));
@@ -1557,7 +1477,7 @@ static bool CuratedStep(const SettingRow * r, int direction)
 
 		case ROW_BOOL:
 		{
-			Section_prop * sec = GetSection(r->section);
+			Section_prop * sec = Config_GetSection(r->section);
 
 			if(!sec)
 				return false;
@@ -1598,8 +1518,8 @@ static bool CuratedStep(const SettingRow * r, int direction)
 			// the property's own range, in fixed steps. A value off the grid (from
 			// dosbox.conf) steps from where it is; the last step before an end lands
 			// on the end, and one more wraps to the other.
-			Section_prop * sec = GetSection(r->section);
-			Prop_int * p = sec ? dynamic_cast<Prop_int *>(FindProp(sec, r->prop)) : NULL;
+			Section_prop * sec = Config_GetSection(r->section);
+			Prop_int * p = sec ? dynamic_cast<Prop_int *>(Config_FindProp(sec, r->prop)) : NULL;
 
 			if(!p)
 				return false;
@@ -1646,14 +1566,14 @@ static bool CuratedStep(const SettingRow * r, int direction)
 
 		case ROW_CHOICE:
 		{
-			Section_prop * sec = GetSection(r->section);
-			Property * p = sec ? FindProp(sec, r->prop) : NULL;
+			Section_prop * sec = Config_GetSection(r->section);
+			Property * p = sec ? Config_FindProp(sec, r->prop) : NULL;
 
 			if(!p)
 				return false;
 
 			const std::vector<Value> & values = p->GetValues();
-			const std::string current = GetConfig(r->section, r->prop);
+			const std::string current = Config_Get(r->section, r->prop);
 			const int count = (int)values.size();
 			const int step = (direction >= 0) ? 1 : -1;
 			int index = -1;
@@ -1759,20 +1679,20 @@ bool Settings_RowStep(int page, int row, int direction)
  ***************************************************************************/
 static void SyncRunningValues()
 {
-	Section_prop * render = GetSection("render");
-	Section_prop * cpu = GetSection("cpu");
+	Section_prop * render = Config_GetSection("render");
+	Section_prop * cpu = Config_GetSection("cpu");
 	char line[48];
 
-	if(render && render->Get_int("frameskip") != MENU_FrameskipDisplay)
+	if(render && render->Get_int("frameskip") != GetRunningFrameskip())
 	{
-		snprintf(line, sizeof(line), "frameskip=%d", MENU_FrameskipDisplay);
+		snprintf(line, sizeof(line), "frameskip=%d", GetRunningFrameskip());
 		render->HandleInputline(line);
 	}
 
 	if(!cpu)
 		return;
 
-	const CyclesState state = ReadCycles();
+	const CyclesConfig state = Config_ReadCycles();
 
 	if(state.mode == CYCLES_FIXED)
 	{
@@ -1788,28 +1708,9 @@ static void SyncRunningValues()
 	{
 		// "max 80% 20000" has a cycle limit after the percentage; rewriting it
 		// from the percentage alone would lose it, so that form is left as it is
-		Prop_multival * cycles = cpu->Get_multival("cycles");
-		const std::string params = cycles ? cycles->GetSection()->Get_string("parameters") : "";
-		size_t tokens = 0, percents = 0, pos = 0;
-
-		while(pos < params.size())
-		{
-			size_t end = params.find(' ', pos);
-
-			if(end == std::string::npos)
-				end = params.size();
-
-			if(end > pos)
-			{
-				tokens++;
-				percents += (params[end - 1] == '%') ? 1 : 0;
-			}
-			pos = end + 1;
-		}
-
 		const int running = EffectiveMaxPercent(state);
 
-		if(tokens == percents && running != (state.amount > 0 ? state.amount : 100))
+		if(!state.limited && running != (state.amount > 0 ? state.amount : 100))
 		{
 			snprintf(line, sizeof(line), "cycles=max %d%%", running);
 			cpu->HandleInputline(line);

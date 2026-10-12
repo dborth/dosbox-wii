@@ -28,15 +28,9 @@
 #include "storage.h"
 #include "status.h"
 #include "memmanager.h"
-
-// Declared here rather than including cpu.h, to keep DOSBox headers out of
-// this libgui/HAL file.
-extern bool CPU_CycleAutoAdjust;
+#include "dosboxsupport.h"
 
 #define APPVERSION		"2.0"
-
-int MENU_CyclesDisplay = 0;
-int MENU_FrameskipDisplay = 0;
 
 static GuiImageData * pointer[4] = { NULL, NULL, NULL, NULL };
 static GuiImage cursorImg[4];
@@ -269,11 +263,13 @@ static void WindowCredits()
 static void updateCyclesText(GuiText * cycleText)
 {
 	char tmpCyclesTxt[15];
+	bool autoAdjust;
+	const int cycles = GetRunningCycles(&autoAdjust);
 
-	if (CPU_CycleAutoAdjust)
-		sprintf(tmpCyclesTxt, "%d%%", MENU_CyclesDisplay);
+	if (autoAdjust)
+		sprintf(tmpCyclesTxt, "%d%%", cycles);
 	else
-		sprintf(tmpCyclesTxt, "%d", MENU_CyclesDisplay);
+		sprintf(tmpCyclesTxt, "%d", cycles);
 
 	cycleText->setText(tmpCyclesTxt);
 }
@@ -281,7 +277,7 @@ static void updateCyclesText(GuiText * cycleText)
 static void updateFskipText(GuiText * fskipText)
 {
 	char tmpFskipTxt[15];
-	sprintf(tmpFskipTxt, "%d", MENU_FrameskipDisplay);
+	sprintf(tmpFskipTxt, "%d", GetRunningFrameskip());
 	fskipText->setText(tmpFskipTxt);
 }
 
