@@ -136,6 +136,9 @@ void EnterMenu()
 
 	HomeMenu();
 
+	// the button that closed the menu is probably still down
+	ResyncPadBinds();
+
 	SwitchMemoryModeEmulator();
 
 	SwitchAudioMode(0);

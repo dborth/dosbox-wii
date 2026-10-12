@@ -198,6 +198,7 @@ const char * SBLASTER_EffectiveType(void);
 const char * SBLASTER_EffectiveOpl(void);
 int EMS_EffectiveType(void);
 void MAPPER_RebuildJoysticks(void);
+void MAPPER_PadsResync(void);
 
 const char * GetJoystickTypeName(void)
 {
@@ -220,6 +221,11 @@ const char * GetJoystickTypeName(void)
 void ReinitJoysticks(void)
 {
 	MAPPER_RebuildJoysticks();
+}
+
+void ResyncPadBinds(void)
+{
+	MAPPER_PadsResync();
 }
 
 //! The core cpudecoder points at, or NULL if it points at something else.

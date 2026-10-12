@@ -18,6 +18,7 @@
 
 
 #include <vector>
+#include <algorithm>
 #include <list>
 #include <string.h>
 #include <ctype.h>
@@ -429,6 +430,8 @@ public:
 	void BindName(char * buf) {
 		sprintf(buf,"%s Button %d",group->BindStart(),button);
 	}
+	CBindGroup * Group(void) { return group; }
+	Bitu Button(void) { return button; }
 protected:
 	CBindGroup * group;
 	Bitu button;
@@ -455,6 +458,9 @@ public:
 														((dir==SDL_HAT_RIGHT)?"right":
 														((dir==SDL_HAT_DOWN)?"down":"left")));
 	}
+	CBindGroup * Group(void) { return group; }
+	Bitu Hat(void) { return hat; }
+	Bit8u Dir(void) { return dir; }
 protected:
 	CBindGroup * group;
 	Bitu hat;
@@ -601,6 +607,12 @@ public:
 		}
 		return false;
 	}
+
+	Bitu Stick(void) { return stick; }
+	Bitu Emustick(void) { return emustick; }
+	bool IsDummy(void) { return is_dummy; }
+	CBindList * ButtonList(Bitu button) { return (button_lists && button<MAXBUTTON) ? &button_lists[button] : NULL; }
+	CBindList * HatList(Bitu direction) { return (hat_lists && direction<4) ? &hat_lists[direction] : NULL; }
 
 	virtual void UpdateJoystick() {
 		if (is_dummy) return;
@@ -1246,6 +1258,7 @@ void CCaptionButton::Change(const char * format,...) {
 static void change_action_text(const char* text,Bit8u col);
 
 static void MAPPER_SaveBinds(void);
+static bool SaveBindsFile(void);
 class CBindButton : public CTextButton {
 public:	
 	CBindButton(Bitu _x,Bitu _y,Bitu _dx,Bitu _dy,const char * _text,BB_Types _type) 
@@ -1439,6 +1452,8 @@ public:
 		return buttonname;
 	}
 	void MakeDefaultBind(char * buf) {
+		buf[0]=0;
+		if (defkey==MK_none) return;
 		Bitu key=0;
 		switch (defkey) {
 		case MK_f1:case MK_f2:case MK_f3:case MK_f4:
@@ -2014,7 +2029,7 @@ static void CreateDefaultBinds(void) {
 	sprintf(buffer,"mod_2 \"key %d\"",SDLK_LALT);CreateStringBind(buffer);
 	for (CHandlerEventVector_it hit=handlergroup.begin();hit!=handlergroup.end();hit++) {
 		(*hit)->MakeDefaultBind(buffer);
-		CreateStringBind(buffer);
+		if (buffer[0]) CreateStringBind(buffer);
 	}
 
 	CreateDefaultJoystickBinds();
@@ -2068,11 +2083,11 @@ void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char const
 	return ;
 }
 
-static void MAPPER_SaveBinds(void) {
+static bool SaveBindsFile(void) {
 	FILE * savefile=fopen(mapper.filename.c_str(),"wt+");
 	if (!savefile) {
 		LOG_MSG("Can't open %s for saving the mappings",mapper.filename.c_str());
-		return;
+		return false;
 	}
 	char buf[128];
 	for (CEventVector_it event_it=events.begin();event_it!=events.end();event_it++) {
@@ -2086,8 +2101,12 @@ static void MAPPER_SaveBinds(void) {
 		}
 		fprintf(savefile,"\n");
 	}
-	fclose(savefile);
-	change_action_text("Mapper file saved.",CLR_WHITE);
+	/* a full card makes fprintf fail part way, and fclose is where the rest is written */
+	const bool ok=!ferror(savefile) & (fclose(savefile)==0);
+	return ok;
+}
+static void MAPPER_SaveBinds(void) {
+	if (SaveBindsFile()) change_action_text("Mapper file saved.",CLR_WHITE);
 }
 
 /* With sticks_only only the binds to a joystick are made, wherever they are in the file (a pad button can be bound
@@ -2196,6 +2215,135 @@ static void InitializeJoysticks(void) {
 	}
 }
 
+/* The Buttons page's group: the buttons and D-pad of a player's pad as the mapper sees them, so that a button can
+ * be bound to a key, a hotkey or a mouse button whatever the joystick type is, and whether or not button
+ * wrapping is on (a stick group has no binds at all for joysticktype none, and refuses a button past the number
+ * the emulated joystick has). One group per player, "pad_N" in the mapper file. It reads the same SDL joysticks
+ * the stick groups do. Nothing here drives the emulated joystick: a bind to a jbutton_ event does, through the
+ * event, as it does from a stick group. */
+#define MAPPER_PADS 4
+#define PAD_BUTTONS 12
+#define PAD_SOURCES 16	/* the 12 buttons, then the D-pad: up, right, down, left */
+
+class CPadBindGroup;
+
+class CPadButtonBind : public CBind {
+public:
+	CPadButtonBind(CBindList * _list,CBindGroup * _group,Bitu _button) : CBind(_list) {
+		group=_group;
+		button=_button;
+	}
+	void ConfigName(char * buf) {
+		sprintf(buf,"%s button %d",group->ConfigStart(),(int)button);
+	}
+	void BindName(char * buf) {
+		sprintf(buf,"%s Button %d",group->BindStart(),(int)button);
+	}
+protected:
+	CBindGroup * group;
+	Bitu button;
+};
+
+class CPadHatBind : public CBind {
+public:
+	CPadHatBind(CBindList * _list,CBindGroup * _group,Bit8u _dir) : CBind(_list) {
+		group=_group;
+		dir=_dir;
+	}
+	void ConfigName(char * buf) {
+		sprintf(buf,"%s hat 0 %d",group->ConfigStart(),dir);
+	}
+	void BindName(char * buf) {
+		sprintf(buf,"%s D-pad %s",group->BindStart(),(dir==SDL_HAT_UP)?"up":
+			((dir==SDL_HAT_RIGHT)?"right":((dir==SDL_HAT_DOWN)?"down":"left")));
+	}
+protected:
+	CBindGroup * group;
+	Bit8u dir;
+};
+
+class CPadBindGroup : public CBindGroup {
+public:
+	CPadBindGroup(Bitu _pad) : CBindGroup() {
+		pad=_pad;
+		sprintf(configname,"pad_%d",(int)pad);
+		sprintf(bindname,"Player %d",(int)pad+1);
+		sdl_joystick=SDL_JoystickOpen(pad);
+		for (Bitu i=0;i<PAD_SOURCES;i++) old_state[i]=suppressed[i]=false;
+	}
+	~CPadBindGroup() {
+		SDL_JoystickClose(sdl_joystick);
+	}
+	CBind * CreateConfigBind(char *& buf) {
+		if (strncasecmp(configname,buf,strlen(configname))) return 0;
+		StripWord(buf);char * type=StripWord(buf);
+		if (!strcasecmp(type,"button")) {
+			Bitu but=ConvDecWord(StripWord(buf));
+			if (but<PAD_BUTTONS) return new CPadButtonBind(&lists[but],this,but);
+		} else if (!strcasecmp(type,"hat")) {
+			Bitu hat=ConvDecWord(StripWord(buf));
+			Bit8u dir=(Bit8u)ConvDecWord(StripWord(buf));
+			Bitu d=DirectionOf(dir);
+			if (hat==0 && d<4) return new CPadHatBind(&lists[PAD_BUTTONS+d],this,DirMask(d));
+		}
+		return 0;
+	}
+	/* Only the menu makes binds to a pad: the mapper screen leaves them alone */
+	CBind * CreateEventBind(SDL_Event * event) { return 0; }
+	bool CheckEvent(SDL_Event * event) { return false; }
+	const char * ConfigStart(void) { return configname; }
+	const char * BindStart(void) { return bindname; }
+
+	/* Called with the joysticks polled */
+	void Update(void) {
+		for (Bitu i=0;i<PAD_SOURCES;i++) {
+			const bool held=Held(i);
+			if (!held) suppressed[i]=false;
+			const bool pressed=held && !suppressed[i];
+			if (pressed==old_state[i]) continue;
+			if (pressed) ActivateBindList(&lists[i],32767,true);
+			else DeactivateBindList(&lists[i],true);
+			old_state[i]=pressed;
+		}
+	}
+	/* The menu was open: what was pressed before it is let go, and what is still held is ignored until it is
+	 * released, so the button that closed the menu does not press a key in the game */
+	void Resync(void) {
+		for (Bitu i=0;i<PAD_SOURCES;i++) {
+			if (old_state[i]) {
+				DeactivateBindList(&lists[i],true);
+				old_state[i]=false;
+			}
+			suppressed[i]=Held(i);
+		}
+	}
+	CBindList * List(Bitu source) { return source<PAD_SOURCES ? &lists[source] : NULL; }
+	Bitu Pad(void) { return pad; }
+	static Bit8u DirMask(Bitu d) { return (Bit8u)(1<<d); }	/* up 1, right 2, down 4, left 8: SDL_HAT_ */
+	static Bitu DirectionOf(Bit8u value) {
+		if (value&SDL_HAT_UP) return 0;
+		if (value&SDL_HAT_RIGHT) return 1;
+		if (value&SDL_HAT_DOWN) return 2;
+		if (value&SDL_HAT_LEFT) return 3;
+		return 4;
+	}
+private:
+	bool Held(Bitu source) {
+		if (sdl_joystick==NULL) return false;
+		if (source<PAD_BUTTONS) return SDL_JoystickGetButton(sdl_joystick,(int)source)!=0;
+		return (SDL_JoystickGetHat(sdl_joystick,0) & DirMask(source-PAD_BUTTONS))!=0;
+	}
+	Bitu pad;
+	char configname[10];
+	char bindname[16];
+	SDL_Joystick * sdl_joystick;
+	CBindList lists[PAD_SOURCES];
+	bool old_state[PAD_SOURCES];
+	bool suppressed[PAD_SOURCES];
+};
+
+static CPadBindGroup * padgroups[MAPPER_PADS];
+
 static void CreateJoystickBindGroups(void) {
 	if (joytype != JOY_NONE) {
 #if defined (REDUCE_JOYSTICK_POLLING)
@@ -2243,15 +2391,57 @@ static void CreateBindGroups(void) {
 	bindgroups.clear();
 	new CKeyBindGroup(SDLK_LAST);
 	CreateJoystickBindGroups();
+	for (Bitu i=0;i<MAPPER_PADS;i++) padgroups[i]=new CPadBindGroup(i);
 }
 
 #if defined (REDUCE_JOYSTICK_POLLING)
 void MAPPER_UpdateJoysticks(void) {
+	/* The pads first: a pad bind to a joystick button works through the event, and the stick groups copy what the
+	 * events hold to the emulated joystick, so the other way round it would arrive a poll late */
+	for (Bitu i=0; i<MAPPER_PADS; i++) {
+		if (padgroups[i]) padgroups[i]->Update();
+	}
 	for (Bitu i=0; i<mapper.sticks.num_groups; i++) {
 		mapper.sticks.stick[i]->UpdateJoystick();
 	}
 }
 #endif
+
+/* Takes the bind that bit is at out of the event and deletes it, and moves bit on. What the bind is holding down
+ * is let go first, so the event ends up where it would be if the button had been released. Returns true if the
+ * event is an axis one: it has no record of which bind holds it, so the caller lets the event go outright when
+ * nothing else is left on it. */
+static bool RemoveBind(CEvent * event,CBindList_it & bit) {
+	CBind * bind=*bit;
+	bool continuous=false;
+	if (event->IsTrigger()) {
+		if (bind->holding) {
+			holdlist.remove(bind);
+			bind->holding=false;
+			event->DeActivateEvent(true);
+		} else if (bind->active) {
+			bind->flags&=~BFLG_Hold;
+			bind->DeActivateBind(true);
+		}
+	} else continuous=true;
+	bit=event->bindlist.erase(bit);
+	delete bind;
+	return continuous;
+}
+
+/* Takes every bind in a group's list out of its event */
+static void RemoveBindsInList(CBindList * list) {
+	while (list && !list->empty()) {
+		CBind * bind=list->front();
+		CEvent * event=bind->event;
+		CBindList_it bit=std::find(event->bindlist.begin(),event->bindlist.end(),bind);
+		if (bit==event->bindlist.end()) {	/* not on its event: only deleting it will do */
+			delete bind;
+			continue;
+		}
+		if (RemoveBind(event,bit) && event->bindlist.empty()) event->ResetState();
+	}
+}
 
 /* The joystick settings (joysticktype, buttonwrap and the rest) are read when the stick bind groups are
  * built, and the groups hold the binds, so a change takes effect by building them again. The key group and
@@ -2270,18 +2460,7 @@ void MAPPER_RebuildJoysticks(void) {
 				++bit;
 				continue;
 			}
-			if (event->IsTrigger()) {
-				if (bind->holding) {
-					holdlist.remove(bind);
-					bind->holding=false;
-					event->DeActivateEvent(true);
-				} else if (bind->active) {
-					bind->flags&=~BFLG_Hold;
-					bind->DeActivateBind(true);
-				}
-			} else continuous_held=true;
-			bit=event->bindlist.erase(bit);
-			delete bind;
+			continuous_held|=RemoveBind(event,bit);
 		}
 		/* An axis event has no record of which bind holds it. One that only the joysticks drove has nothing
 		 * left to hold it, so it is let go outright. */
@@ -2311,6 +2490,105 @@ void MAPPER_RebuildJoysticks(void) {
 	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
 		(*but_it)->BindColor();
 	}
+}
+
+/* ---- What the menu's Buttons page does with the pad groups. All of it on the main thread. ---- */
+
+int MAPPER_PadSourceCount(void) { return PAD_SOURCES; }
+
+bool MAPPER_EventExists(const char * name) {
+	if (!name || !*name) return false;
+	for (CEventVector_it evit=events.begin();evit!=events.end();evit++) {
+		if (!strcmp((*evit)->GetName(),name)) return true;
+	}
+	return false;
+}
+
+/* The stick group (if any) that reads this player's joystick */
+static CStickBindGroup * StickGroupOf(Bitu pad) {
+	for (CBindGroup_it it=bindgroups.begin();it!=bindgroups.end();++it) {
+		CStickBindGroup * group=dynamic_cast<CStickBindGroup *>(*it);
+		if (group && !group->IsDummy() && group->Stick()==pad) return group;
+	}
+	return NULL;
+}
+
+static CBindList * StickListOf(CStickBindGroup * group,Bitu source) {
+	if (!group) return NULL;
+	return source<PAD_BUTTONS ? group->ButtonList(source) : group->HatList(source-PAD_BUTTONS);
+}
+
+/* What the source does now, as event names: its binds on the pad group first, then those on the stick group
+ * (what the shipped binds give it). Returns how many there are, whatever max is; stick is set if the first is
+ * one of the stick group's. */
+int MAPPER_PadGetEvents(int pad,int source,char names[][16],int max,bool * from_stick) {
+	if (pad<0 || pad>=MAPPER_PADS || source<0 || source>=PAD_SOURCES || !padgroups[pad]) return 0;
+	CBindList * lists[2]={ padgroups[pad]->List(source),StickListOf(StickGroupOf(pad),source) };
+	int count=0;
+	if (from_stick) *from_stick=false;
+	for (int l=0;l<2;l++) {
+		if (!lists[l]) continue;
+		for (CBindList_it bit=lists[l]->begin();bit!=lists[l]->end();++bit) {
+			if (!(*bit)->event) continue;
+			if (count<max) safe_strncpy(names[count],(*bit)->event->GetName(),16);
+			if (count==0 && from_stick) *from_stick=(l==1);
+			count++;
+		}
+	}
+	return count;
+}
+
+/* Makes the source do one thing: whatever it did is let go and removed, from the pad group and the stick group,
+ * then it is bound to the event, or to nothing if that is empty. False if there is no such event. */
+bool MAPPER_PadSetEvent(int pad,int source,const char * event) {
+	if (pad<0 || pad>=MAPPER_PADS || source<0 || source>=PAD_SOURCES || !padgroups[pad]) return false;
+	const bool bind=event && *event;
+	if (bind && !MAPPER_EventExists(event)) return false;
+
+	RemoveBindsInList(padgroups[pad]->List(source));
+	RemoveBindsInList(StickListOf(StickGroupOf(pad),source));
+	SetActiveEvent(0);
+
+	if (bind) {
+		char line[96];
+		if (source<PAD_BUTTONS) sprintf(line,"%s \"pad_%d button %d\" ",event,pad,source);
+		else sprintf(line,"%s \"pad_%d hat 0 %d\" ",event,pad,(int)CPadBindGroup::DirMask(source-PAD_BUTTONS));
+		CreateStringBind(line);
+	}
+	return true;
+}
+
+/* Gives the source back what MAPPER_Init gave it: the shipped bind of the stick group that reads this player's
+ * joystick, if the type has one (4axis gives player 1 four buttons and nothing to player 2). */
+bool MAPPER_PadSetDefault(int pad,int source) {
+	if (!MAPPER_PadSetEvent(pad,source,NULL)) return false;
+	CStickBindGroup * group=StickGroupOf(pad);
+	if (!group) return true;
+
+	const Bitu emu=group->Emustick();
+	char line[96];
+	if (source<PAD_BUTTONS) {
+		if ((emu==0 && source<6) || (emu==1 && source<2)) {
+			sprintf(line,"jbutton_%d_%d \"stick_%d button %d\" ",(int)emu,source,(int)emu,source);
+			CreateStringBind(line);
+		}
+	} else if (emu==0) {
+		const int d=source-PAD_BUTTONS;
+		sprintf(line,"jhat_0_0_%d \"stick_0 hat 0 %d\" ",d,(int)CPadBindGroup::DirMask(d));
+		CreateStringBind(line);
+	}
+	return true;
+}
+
+/* After the menu: what was pressed before is let go, and what is held is ignored until it is released */
+void MAPPER_PadsResync(void) {
+	for (Bitu i=0;i<MAPPER_PADS;i++) {
+		if (padgroups[i]) padgroups[i]->Resync();
+	}
+}
+
+bool MAPPER_SaveBindsNow(void) {
+	return SaveBindsFile();
 }
 
 void MAPPER_LosingFocus(void) {

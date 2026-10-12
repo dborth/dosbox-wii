@@ -28,6 +28,7 @@
 #include "settings.h"
 #include "storage.h"
 #include "status.h"
+#include "buttons.h"
 #include "memmanager.h"
 #include "dosboxsupport.h"
 
@@ -936,6 +937,310 @@ static void StatusScreen()
 }
 
 /****************************************************************************
+ * ChooseFromList
+ *
+ * One of the Buttons page's lists (what to do, which key, which hotkey).
+ * Returns the item chosen, or -1 if the list was left with B or Go Back.
+ ***************************************************************************/
+static int ChooseFromList(const char * title, int list)
+{
+	VideoDriver * video = platform->getVideo();
+	const PixelColor white = {255, 255, 255, 255};
+
+	// the page this is opened from has its own list up
+	OptionList * listOptions = (OptionList *) memspace_malloc(sizeof(OptionList));
+
+	if(!listOptions)
+		return -1;
+
+	OptionList & options = *listOptions;
+
+	memset(&options, 0, sizeof(options));
+
+	options.length = Buttons_ListCount(list);
+	if(options.length > MAX_OPTIONS)
+		options.length = MAX_OPTIONS;
+
+	for(int i = 0; i < options.length; i++)
+		snprintf(options.name[i], sizeof(options.name[i]), "%s", Buttons_ListLabel(list, i));
+
+	GuiText titleTxt(title, 28, white);
+	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	titleTxt.setPosition(50, 50);
+
+	GuiText hintTxt("A: choose    B: cancel", 16, (PixelColor){200, 200, 200, 255});
+	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	hintTxt.setPosition(-50, -50);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+
+	GuiTrigger trigA, trigB;
+	trigA.setPrimaryTrigger();
+	trigB.setSecondaryTrigger();
+
+	GuiText backBtnTxt("Go Back", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage backBtnImg(&btnOutline);
+	GuiImage backBtnImgOver(&btnOutlineOver);
+	GuiButton backBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	backBtn.setPosition(100, -35);
+	backBtn.setLabel(&backBtnTxt);
+	backBtn.setImage(&backBtnImg);
+	backBtn.setImageOver(&backBtnImgOver);
+	backBtn.setSoundOver(&btnSoundOver);
+	backBtn.setSoundClick(&btnSoundClick);
+	backBtn.setTrigger(&trigA);
+	backBtn.setTrigger(&trigB);
+	backBtn.setEffectGrow();
+
+	GuiOptionBrowser browser(552, 248, &options);
+	browser.setPosition(0, 108);
+	browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+
+	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
+	w.append(&backBtn);
+
+	// the browser first: it is what takes focus
+	mainWindow->append(&browser);
+	mainWindow->append(&w);
+	mainWindow->append(&titleTxt);
+	mainWindow->append(&hintTxt);
+
+	int chosen = -1;
+	bool done = false;
+
+	while(!done)
+	{
+		UpdateGui();
+
+		const int clicked = browser.getClickedOption();
+
+		if(clicked >= 0 && clicked < options.length)
+		{
+			chosen = clicked;
+			done = true;
+		}
+		else if(backBtn.getState() == STATE::CLICKED)
+			done = true;
+	}
+
+	mainWindow->remove(&browser);
+	mainWindow->remove(&w);
+	mainWindow->remove(&titleTxt);
+	mainWindow->remove(&hintTxt);
+
+	memspace_free(listOptions);
+	return chosen;
+}
+
+/****************************************************************************
+ * ChooseButtonAction
+ *
+ * What a button should do: the action list, which opens the key list or the
+ * hotkey list for two of its items. Fills message with what happened (it is
+ * left empty if nothing was chosen).
+ ***************************************************************************/
+static void ChooseButtonAction(int row, char * message, size_t size)
+{
+	char title[64];
+
+	message[0] = 0;
+	snprintf(title, sizeof(title), "Buttons - %s", Buttons_RowLabel(row));
+
+	int item = ChooseFromList(title, BUTTONS_LIST_ACTIONS);
+
+	if(item < 0)
+		return;
+
+	const int result = Buttons_Pick(row, BUTTONS_LIST_ACTIONS, item, message, size);
+
+	if(result != BUTTONS_PICK_OPEN_KEYS && result != BUTTONS_PICK_OPEN_HOTKEYS)
+		return;
+
+	const int list = (result == BUTTONS_PICK_OPEN_KEYS) ? BUTTONS_LIST_KEYS : BUTTONS_LIST_HOTKEYS;
+
+	item = ChooseFromList(title, list);
+
+	if(item >= 0)
+		Buttons_Pick(row, list, item, message, size);
+}
+
+/****************************************************************************
+ * FillButtonsRows
+ ***************************************************************************/
+static void FillButtonsRows(OptionList * options)
+{
+	memset(options, 0, sizeof(OptionList));
+
+	options->length = Buttons_RowCount();
+	if(options->length > MAX_OPTIONS)
+		options->length = MAX_OPTIONS;
+
+	for(int i = 0; i < options->length; i++)
+	{
+		snprintf(options->name[i], sizeof(options->name[i]), "%s", Buttons_RowLabel(i));
+		Buttons_RowValue(i, options->value[i], sizeof(options->value[i]));
+	}
+}
+
+/****************************************************************************
+ * ButtonsScreen
+ *
+ * What each button of player 1's pad does in DOS: a row per button, its
+ * action as the value. A on a button opens the choices; a change takes effect
+ * at once and is saved to the mapper file (see buttons.h). The rows never
+ * change in number, so the browser is kept, and keeps the highlight, while
+ * the choices are up. Returns when the screen is closed.
+ ***************************************************************************/
+static void ButtonsScreen()
+{
+	VideoDriver * video = platform->getVideo();
+	const PixelColor white = {255, 255, 255, 255};
+
+	OptionList * listOptions = (OptionList *) memspace_malloc(sizeof(OptionList));
+
+	if(!listOptions)
+		return;
+
+	OptionList & options = *listOptions;
+
+	Buttons_Refresh();
+	FillButtonsRows(&options);
+
+	GuiText titleTxt("Buttons - Player 1", 28, white);
+	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	titleTxt.setPosition(50, 50);
+
+	GuiText helpTxt("", 18, white);
+	helpTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	helpTxt.setPosition(0, 366);
+	helpTxt.setMaxWidth(540);
+	helpTxt.setScroll(SCROLL::HORIZONTAL);
+
+	GuiText hintTxt("A: change", 16, (PixelColor){200, 200, 200, 255});
+	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	hintTxt.setPosition(-50, -50);
+
+	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
+	GuiImageData btnOutline(button_png);
+	GuiImageData btnOutlineOver(button_over_png);
+
+	GuiTrigger trigA, trigB;
+	trigA.setPrimaryTrigger();
+	trigB.setSecondaryTrigger();
+
+	GuiText backBtnTxt("Go Back", 22, (PixelColor){0, 0, 0, 255});
+	GuiImage backBtnImg(&btnOutline);
+	GuiImage backBtnImgOver(&btnOutlineOver);
+	GuiButton backBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	backBtn.setPosition(100, -35);
+	backBtn.setLabel(&backBtnTxt);
+	backBtn.setImage(&backBtnImg);
+	backBtn.setImageOver(&backBtnImgOver);
+	backBtn.setSoundOver(&btnSoundOver);
+	backBtn.setSoundClick(&btnSoundClick);
+	backBtn.setTrigger(&trigA);
+	backBtn.setTrigger(&trigB);
+	backBtn.setEffectGrow();
+
+	SettingsBrowser browser(552, 248, &options);
+	browser.setPosition(0, 108);
+	browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+
+	GuiWindow w(video->getScreenWidth(), video->getScreenHeight());
+	w.append(&backBtn);
+
+	// the browser first: it is what takes focus
+	mainWindow->append(&browser);
+	mainWindow->append(&w);
+	mainWindow->append(&titleTxt);
+	mainWindow->append(&helpTxt);
+	mainWindow->append(&hintTxt);
+
+	int helpRow = -1;
+	bool done = false;
+
+	while(!done)
+	{
+		UpdateGui();
+
+		const int clicked = browser.getClickedOption();
+
+		if(clicked >= 0 && clicked < options.length)
+		{
+			char message[320];
+
+			message[0] = 0;
+
+			const int kind = Buttons_RowKind(clicked);
+
+			if(kind == BUTTONS_ROW_BUTTON)
+			{
+				// the screen stays up behind the choices; take it off so only one has focus
+				mainWindow->remove(&browser);
+				mainWindow->remove(&w);
+				mainWindow->remove(&titleTxt);
+				mainWindow->remove(&helpTxt);
+				mainWindow->remove(&hintTxt);
+
+				ChooseButtonAction(clicked, message, sizeof(message));
+
+				mainWindow->append(&browser);
+				mainWindow->append(&w);
+				mainWindow->append(&titleTxt);
+				mainWindow->append(&helpTxt);
+				mainWindow->append(&hintTxt);
+			}
+			else if(kind == BUTTONS_ROW_RESTORE)
+			{
+				// writes a small file to the card, as the Save button does
+				Buttons_RestoreAll(message, sizeof(message));
+			}
+
+			Buttons_Refresh();
+			FillButtonsRows(&options);
+			browser.triggerUpdate();
+
+			if(message[0])
+			{
+				// what happened stays where the help is until the highlight moves
+				helpTxt.setText(message);
+				helpRow = browser.getSelectedOption();
+			}
+			else
+				helpRow = -1;
+		}
+
+		const int selected = browser.getSelectedOption();
+
+		if(selected >= 0 && selected != helpRow)
+		{
+			char help[320];
+
+			Buttons_RowHelp(selected, help, sizeof(help));
+			helpTxt.setText(help);
+			helpRow = selected;
+		}
+
+		if(backBtn.getState() == STATE::CLICKED)
+			done = true;
+	}
+
+	mainWindow->remove(&browser);
+	mainWindow->remove(&w);
+	mainWindow->remove(&titleTxt);
+	mainWindow->remove(&helpTxt);
+	mainWindow->remove(&hintTxt);
+
+	memspace_free(listOptions);
+}
+
+/****************************************************************************
  * SettingsList
  *
  * A list of settings pages, one row per page. A (or clicking) opens the page.
@@ -964,7 +1269,7 @@ static void SettingsList(bool sections)
 
 	const int pageCount = sections ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT;
 
-	options.length = pageCount + (sections ? 0 : 3);	// the curated list ends with "Drives", "Status" and "All settings"
+	options.length = pageCount + (sections ? 0 : 4);	// the curated list ends with "Buttons", "Drives", "Status" and "All settings"
 	if(options.length > MAX_OPTIONS)
 		options.length = MAX_OPTIONS;
 
@@ -974,8 +1279,10 @@ static void SettingsList(bool sections)
 			snprintf(options.name[i], sizeof(options.name[i]), "%s",
 				Settings_PageTitle(sections ? Settings_AllPage(i) : i));
 		else if(i == pageCount && !sections)
-			snprintf(options.name[i], sizeof(options.name[i]), "Drives");
+			snprintf(options.name[i], sizeof(options.name[i]), "Buttons");
 		else if(i == pageCount + 1 && !sections)
+			snprintf(options.name[i], sizeof(options.name[i]), "Drives");
+		else if(i == pageCount + 2 && !sections)
 			snprintf(options.name[i], sizeof(options.name[i]), "Status");
 		else
 			snprintf(options.name[i], sizeof(options.name[i]), "All settings");
@@ -1079,8 +1386,10 @@ static void SettingsList(bool sections)
 			mainWindow->remove(&hintTxt);
 
 			if(!sections && clicked == pageCount)
-				DrivesScreen();
+				ButtonsScreen();
 			else if(!sections && clicked == pageCount + 1)
+				DrivesScreen();
+			else if(!sections && clicked == pageCount + 2)
 				StatusScreen();
 			else if(clicked >= pageCount)
 				SettingsList(true);

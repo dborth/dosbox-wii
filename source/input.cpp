@@ -135,6 +135,13 @@ static void GUI_ShutDown(Section * /*sec*/) {
 }
 
 
+/* The mouse buttons as mapper events, so that the Buttons page can put one on a pad button (a bind to a button
+ * of a pad group, like a bind to a key). The pointer's own buttons, the Wiimote's A and B and a USB mouse's
+ * buttons, reach DOS through the SDL events as before. */
+static void MouseLeftButton(bool pressed) { if(pressed) Mouse_ButtonPressed(0); else Mouse_ButtonReleased(0); }
+static void MouseRightButton(bool pressed) { if(pressed) Mouse_ButtonPressed(1); else Mouse_ButtonReleased(1); }
+static void MouseMiddleButton(bool pressed) { if(pressed) Mouse_ButtonPressed(2); else Mouse_ButtonReleased(2); }
+
 void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
@@ -162,6 +169,9 @@ void GUI_StartUp(Section * sec) {
 
 	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
+	MAPPER_AddHandler(MouseLeftButton,MK_none,0,"mouseleft","Mouse L");
+	MAPPER_AddHandler(MouseRightButton,MK_none,0,"mouseright","Mouse R");
+	MAPPER_AddHandler(MouseMiddleButton,MK_none,0,"mousemid","Mouse M");
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else

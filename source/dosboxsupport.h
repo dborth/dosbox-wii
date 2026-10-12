@@ -86,6 +86,11 @@ const char * GetJoystickTypeName(void);
 //! initialised again with the new values. Main thread.
 void ReinitJoysticks(void);
 
+//! Call when the menu has closed and emulation is about to run again: what the
+//! pads' binds (the Buttons page) held down is let go, and a button still held
+//! (the one that closed the menu) does nothing until it is released. Main thread.
+void ResyncPadBinds(void);
+
 //! Fills in the state above. Returns false before DOSBox is up, when there
 //! is nothing to read. Call from the main thread (the menu's), which is
 //! between decoder runs.
