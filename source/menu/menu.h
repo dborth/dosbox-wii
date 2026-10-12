@@ -12,6 +12,20 @@
 void HomeMenu();
 
 
+/* ---- Shared by menu.cpp and screens.cpp ---- */
+
+class GuiWindow;
+
+/** The window everything on screen is in while the menu is up. */
+extern GuiWindow * mainWindow;
+
+/** One GUI frame: input, draw, cursors, present. Whatever waits on the menu calls it in a loop. */
+void UpdateGui();
+
+/** Opens the settings (and from there Buttons, Drives and Status) in place of the home screen's window. Returns when they are closed. */
+void SettingsMenu(GuiWindow * home);
+
+
 /**
  * Increase or decrease the current CPU cycles.
  *
