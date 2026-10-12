@@ -916,14 +916,7 @@ static const PropRef hiddenProps[] =
 {
 	{ "mixer", "rate" },			// the audio driver fixes it (MIXER_Init)
 	{ "mixer", "blocksize" },		// the same
-	{ "sdl", "fullscreen" },		// nothing reads these six
-	{ "sdl", "fulldouble" },
-	{ "sdl", "fullresolution" },
-	{ "sdl", "windowresolution" },
-	{ "sdl", "output" },
-	{ "sdl", "waitonerror" },
 	{ "sdl", "autolock" },		// ignored: the mouse is always captured (GUI_StartUp)
-	{ "sdl", "priority" },			// only read when an SDL focus event arrives, and nothing sends one
 };
 
 //! Sections whose changes reach the running core (see above).

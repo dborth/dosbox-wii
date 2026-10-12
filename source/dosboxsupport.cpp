@@ -48,18 +48,10 @@
 #include "menu/menu.h"
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
-	static Bit32s internal_cycles = 0;
-	static int internal_frameskip = 0;
 	if (cycles != -1)
-	{
-		internal_cycles = cycles;
 		MENU_CyclesDisplay = cycles;
-	}
 	if (frameskip != -1)
-	{
-		internal_frameskip = frameskip;
 		MENU_FrameskipDisplay = frameskip;
-	}
 }
 
 
@@ -85,12 +77,9 @@ void restart_program(std::vector<std::string> & parameters) {
 	// There is no relaunch path on this platform (see the Status and Settings
 	// pages: changes that need one take effect next launch). It used to stop
 	// the emulator audio and return, which left DOSBox running silent for
-	// good after CONFIG -r or Ctrl+Alt+Home.
+	// good after CONFIG -r.
 	(void)parameters;
 	Log_Printf(LOG_LEVEL_INFO, "Restart is not available here; settings that need one apply next launch");
-}
-void Restart(bool pressed) { // mapper handler
-	restart_program(control->startup_params);
 }
 
 

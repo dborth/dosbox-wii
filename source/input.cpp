@@ -35,21 +35,7 @@
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused);
 
-enum PRIORITY_LEVELS {
-	PRIORITY_LEVEL_PAUSE,
-	PRIORITY_LEVEL_LOWEST,
-	PRIORITY_LEVEL_LOWER,
-	PRIORITY_LEVEL_NORMAL,
-	PRIORITY_LEVEL_HIGHER,
-	PRIORITY_LEVEL_HIGHEST
-};
-
-
 struct SDL_Block {
-	struct {
-		PRIORITY_LEVELS focus;
-		PRIORITY_LEVELS nofocus;
-	} priority;
 	struct {
 		bool autolock;
 		bool autoenable;
@@ -130,26 +116,7 @@ void GFX_CaptureMouse(void) {
         mouselocked=sdl.mouse.locked;
 }
 
-void GFX_UpdateSDLCaptureState(void) {
-	if (sdl.mouse.locked) {
-		SDL_WM_GrabInput(SDL_GRAB_ON);
-		SDL_ShowCursor(SDL_DISABLE);
-	} else {
-		SDL_WM_GrabInput(SDL_GRAB_OFF);
-		if (sdl.mouse.autoenable || !sdl.mouse.autolock) SDL_ShowCursor(SDL_ENABLE);
-	}
-	CPU_Reset_AutoAdjust();
-	GFX_SetTitle(-1,-1,false);
-}
-
 bool mouselocked; //Global variable for mapper
-static void CaptureMouse(bool pressed) {
-	// The mouse is captured from startup and there is no desktop to hand it
-	// back to, so the Ctrl-F10 toggle is left registered (it is in saved mapper
-	// files) but does nothing
-	(void)pressed;
-}
-
 /****************************************************************************
  * The [sdl] config section: start up and shut down
  ***************************************************************************/
@@ -159,36 +126,12 @@ static void GUI_ShutDown(Section * /*sec*/) {
 }
 
 
-void Restart(bool pressed);
-
 void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
 
 	// Take the display for the emulator (InitApp() left the menu on it)
 	GFX_HalInit();
-
-	Prop_multival* p=section->Get_multival("priority");
-	std::string focus = p->GetSection()->Get_string("active");
-	std::string notfocus = p->GetSection()->Get_string("inactive");
-
-	if      (focus == "lowest")  { sdl.priority.focus = PRIORITY_LEVEL_LOWEST;  }
-	else if (focus == "lower")   { sdl.priority.focus = PRIORITY_LEVEL_LOWER;   }
-	else if (focus == "normal")  { sdl.priority.focus = PRIORITY_LEVEL_NORMAL;  }
-	else if (focus == "higher")  { sdl.priority.focus = PRIORITY_LEVEL_HIGHER;  }
-	else if (focus == "highest") { sdl.priority.focus = PRIORITY_LEVEL_HIGHEST; }
-
-	if      (notfocus == "lowest")  { sdl.priority.nofocus=PRIORITY_LEVEL_LOWEST;  }
-	else if (notfocus == "lower")   { sdl.priority.nofocus=PRIORITY_LEVEL_LOWER;   }
-	else if (notfocus == "normal")  { sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;  }
-	else if (notfocus == "higher")  { sdl.priority.nofocus=PRIORITY_LEVEL_HIGHER;  }
-	else if (notfocus == "highest") { sdl.priority.nofocus=PRIORITY_LEVEL_HIGHEST; }
-	else if (notfocus == "pause")   {
-		/* we only check for pause here, because it makes no sense
-		 * for DOSBox to be paused while it has focus
-		 */
-		sdl.priority.nofocus=PRIORITY_LEVEL_PAUSE;
-	}
 
 	sdl.mouse.locked=false;
 	mouselocked=false; //Global for mapper
@@ -212,8 +155,6 @@ void GUI_StartUp(Section * sec) {
 
 	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
-	MAPPER_AddHandler(CaptureMouse,MK_f10,MMOD1,"capmouse","Cap Mouse");
-	MAPPER_AddHandler(Restart,MK_home,MMOD1|MMOD2,"restart","Restart");
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else
@@ -339,77 +280,12 @@ void GFX_Events() {
 	while (SDL_PollEvent(&event)) {
 
 		switch (event.type) {
-		case SDL_ACTIVEEVENT:
-			if (event.active.state & SDL_APPINPUTFOCUS) {
-				if (event.active.gain) {
-					if (GFX_IsFullscreen() && !sdl.mouse.locked)
-						GFX_CaptureMouse();
-					CPU_Disable_SkipAutoAdjust();
-				} else {
-					if (sdl.mouse.locked) {
-						GFX_CaptureMouse();
-					}
-					GFX_LosingFocus();
-					CPU_Enable_SkipAutoAdjust();
-				}
-			}
-
-			/* Non-focus priority is set to pause; check to see if we've lost window or input focus
-			 * i.e. has the window been minimised or made inactive?
-			 */
-			if (sdl.priority.nofocus == PRIORITY_LEVEL_PAUSE) {
-				if ((event.active.state & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) && (!event.active.gain)) {
-					/* Window has lost focus, pause the emulator.
-					 * This is similar to what PauseDOSBox() does, but the exit criteria is different.
-					 * Instead of waiting for the user to hit Alt-Break, we wait for the window to
-					 * regain window or input focus.
-					 */
-					bool paused = true;
-					SDL_Event ev;
-
-					GFX_SetTitle(-1,-1,true);
-					KEYBOARD_ClrBuffer();
-//					SDL_Delay(500);
-//					while (SDL_PollEvent(&ev)) {
-						// flush event queue.
-//					}
-
-					while (paused) {
-						// WaitEvent waits for an event rather than polling, so CPU usage drops to zero
-						SDL_WaitEvent(&ev);
-
-						switch (ev.type) {
-						case SDL_QUIT: throw(0); break; // a bit redundant at linux at least as the active events gets before the quit event.
-						case SDL_ACTIVEEVENT:     // wait until we get window focus back
-							if (ev.active.state & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) {
-								// We've got focus back, so unpause and break out of the loop
-								if (ev.active.gain) {
-									paused = false;
-									GFX_SetTitle(-1,-1,false);
-								}
-
-								/* Now poke a "release ALT" command into the keyboard buffer
-								 * we have to do this, otherwise ALT will 'stick' and cause
-								 * problems with the app running in the DOSBox.
-								 */
-								KEYBOARD_AddKey(KBD_leftalt, false);
-								KEYBOARD_AddKey(KBD_rightalt, false);
-							}
-							break;
-						}
-					}
-				}
-			}
-			break;
 		case SDL_MOUSEMOTION:
 			HandleMouseMotion(&event.motion);
 			break;
 		case SDL_MOUSEBUTTONDOWN:
 		case SDL_MOUSEBUTTONUP:
 			HandleMouseButton(&event.button);
-			break;
-		case SDL_VIDEORESIZE:
-//			HandleVideoResize(&event.resize);
 			break;
 		case SDL_QUIT:
 			throw(0);

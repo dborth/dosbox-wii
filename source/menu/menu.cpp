@@ -43,12 +43,13 @@ static GuiImage cursorImg[4];
 static GuiWindow * mainWindow = NULL;
 
 /****************************************************************************
- * ExitApp
+ * FadeOutAndExit
  *
- * Fades out and leaves the application. Does not return, so nothing above it
- * on the stack is unwound; that is fine, the platform is shut down.
+ * Fades out and leaves the application. The leaving is ExitApp()'s (main.cpp);
+ * this only adds the fade. Does not return, so nothing above it on the stack
+ * is unwound; that is fine, the platform is shut down.
  ***************************************************************************/
-static void ExitApp()
+static void FadeOutAndExit()
 {
 	VideoDriver * video = platform->getVideo();
 
@@ -96,7 +97,7 @@ static void UpdateGui()
 	platform->getVideo()->renderMenu();
 
 	if(platform->shouldExit())
-		ExitApp();
+		FadeOutAndExit();
 }
 
 /****************************************************************************
@@ -1455,7 +1456,7 @@ void HomeMenu ()
 		}
 		else if(exitBtn.getState() == STATE::CLICKED)
 		{
-			ExitApp(); // does not return
+			FadeOutAndExit(); // does not return
 		}
 		else if(keyboardBtn.getState() == STATE::CLICKED)
 		{
