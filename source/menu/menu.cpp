@@ -25,7 +25,7 @@
 #include "input.h"
 #include "menu.h"
 #include "settings.h"
-#include "drivemap.h"
+#include "storage.h"
 #include "status.h"
 #include "memmanager.h"
 

@@ -43,10 +43,9 @@
 #include "drivers/Logger.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
-#include "displayconfig.h"
 #include "input.h"
-#include "fileop.h"
-#include "menu.h"
+#include "storage.h"
+#include "menu/menu.h"
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused){
 	static Bit32s internal_cycles = 0;

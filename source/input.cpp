@@ -25,12 +25,11 @@
 #include "control.h"
 #include "cpu.h"
 #include "SDL.h"
-#include "mousecapture.h"
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
 #include "input.h"
-#include "menurequest.h"
+#include "inputlogic.h"
 #include "videosupport.h"
 #include "dosboxwii.h"
 

@@ -24,7 +24,7 @@ TARGET		:=	dosbox-wiiu
 TARGETDIR	:=	executables
 BUILD		:=	build_wiiu
 META		:=	meta
-SOURCES		:=	source source/libgui source/drivers source/drivers/wut \
+SOURCES		:=	source source/menu source/libgui source/drivers source/drivers/wut \
 				source/drivers/wut/shaders \
 				source/dosbox source/dosbox/cpu \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \

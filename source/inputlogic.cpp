@@ -1,12 +1,12 @@
 /****************************************************************************
  * DOSBox Wii
  * Daryl Borth 2026
- * menurequest.cpp
+ * inputlogic.cpp
  *
- * See menurequest.h.
+ * See inputlogic.h.
  ***************************************************************************/
 
-#include "menurequest.h"
+#include "inputlogic.h"
 
 static const uint32_t MENU_COMBO =
 	INPUT_TRIGGER_L | INPUT_TRIGGER_R | INPUT_BTN_PLUS;

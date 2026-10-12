@@ -20,7 +20,7 @@ export	FREETYPE_LIBS		:=	`$(DEVKITPRO)/portlibs/ppc/bin/powerpc-eabi-pkg-config 
 TARGET		:=	dosbox-wii
 TARGETDIR	:=	executables
 BUILD		:=	build_wii
-SOURCES		:=	source source/libgui source/drivers source/drivers/ogc \
+SOURCES		:=	source source/menu source/libgui source/drivers source/drivers/ogc \
 				source/drivers/ogc/wii \
 				source/dosbox source/dosbox/cpu \
 				source/dosbox/dos source/dosbox/fpu source/dosbox/gui \

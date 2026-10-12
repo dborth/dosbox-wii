@@ -27,7 +27,7 @@
 #include "drivers/EmulatorVideoDriver.h"
 #include "setup.h"
 #include "videosupport.h"
-#include "displayconfig.h"
+#include "preferences.h"
 #include "osk.h"
 
 static struct {

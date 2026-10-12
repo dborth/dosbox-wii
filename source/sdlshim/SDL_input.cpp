@@ -32,7 +32,7 @@
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
 #include "osk.h"
-#include "menurequest.h"
+#include "inputlogic.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
  * often than the hardware updates, and a scan is not free. */

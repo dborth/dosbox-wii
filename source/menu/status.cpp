@@ -26,7 +26,7 @@
 #include "control.h"
 #include "status.h"
 #include "dosboxsupport.h"
-#include "fileop.h"
+#include "storage.h"
 #include "input.h"
 
 //! An option list holds 49 characters of value

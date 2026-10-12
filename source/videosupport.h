@@ -8,7 +8,7 @@
  * sdlmain.cpp.
  *
  * Deliberately includes nothing: this header is used by both DOSBox core
- * files and platform files, whose headers collide (see fileop.h).
+ * files and platform files, whose headers collide (see storage.h).
  ***************************************************************************/
 #ifndef DOSBOX_VIDEOSUPPORT_H
 #define DOSBOX_VIDEOSUPPORT_H
@@ -46,7 +46,7 @@ void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pi
 
 class Section;
 
-//! Init function of the [display] section (displayconfig.cpp). Hands the
+//! Init function of the [display] section (preferences.cpp). Hands the
 //! section's values to the video driver, which applies them on its next
 //! frame. Runs at start and again for every change the menu makes.
 void GFX_DisplayInit(Section * sec);

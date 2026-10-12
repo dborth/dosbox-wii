@@ -20,8 +20,8 @@
 
 #include "dosboxwii.h"
 #include "dosboxsupport.h"
-#include "fileop.h"
-#include "menu.h"
+#include "storage.h"
+#include "menu/menu.h"
 #include "filelist.h"
 #include "libgui/Gui.h"
 #include "drivers/Platform.h"

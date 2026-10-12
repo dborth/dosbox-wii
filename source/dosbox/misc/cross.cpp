@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "fileop.h"
+#include "storage.h"
 
 #ifdef WIN32
 #ifndef _WIN32_IE

@@ -29,7 +29,7 @@
 #include "cpu.h"
 #include "settings.h"
 #include "dosboxsupport.h"
-#include "configsave.h"
+#include "preferences.h"
 #include "input.h"
 #include "menu.h"
 
@@ -697,7 +697,7 @@ static const SettingRow performanceRows[] =
 /****************************************************************************
  * Video page
  *
- * The [display] section (displayconfig.cpp), which the video driver reads on
+ * The [display] section (preferences.cpp), which the video driver reads on
  * its next frame. Nothing here touches the screen, so every row is safe at
  * any time the menu is open. The driver says what it can do, and a row it
  * cannot honour is left off: scanlines need a 480 line mode, and the
@@ -903,8 +903,7 @@ static bool CuratedStep(const SettingRow * r, int direction);
  * mixer, sdl) is read once at start. Those rows are read-only here and say
  * "next launch": the in-memory config would change but nothing would read it,
  * and nothing saves it to dosbox.conf yet. The list of live sections below
- * has to follow dosbox.cpp; the host test checks it against the real
- * registrations.
+ * has to be kept in step with the registrations in dosbox.cpp.
  ***************************************************************************/
 struct PropRef
 {
