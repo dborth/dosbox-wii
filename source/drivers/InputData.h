@@ -33,7 +33,8 @@ enum InputDataButtons : uint32_t {
 	INPUT_TRIGGER_ZL  = (1 << 15),  // ZL Trigger, Nunchuk Z
 	INPUT_TRIGGER_ZR  = (1 << 16),  // ZR Trigger, GC Z Button
 	INPUT_THUMB_L     = (1 << 17),  // Left Stick Click (L3)
-	INPUT_THUMB_R     = (1 << 18)   // Right Stick Click (R3)
+	INPUT_THUMB_R     = (1 << 18),  // Right Stick Click (R3)
+	INPUT_BTN_TV      = (1 << 19)   // TV (Wii U GamePad)
 };
 
 enum GuiHardwareProfile : uint32_t {

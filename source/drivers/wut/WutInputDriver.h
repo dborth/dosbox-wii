@@ -32,10 +32,10 @@ class WutInputDriver : public InputDriver {
 
 		//! The GamePad's latest sample for nn::swkbd, which cannot read the
 		//! GamePad itself (a second VPADRead() would take samples from update()).
-		//! Buttons pressed or released since the last call are all reported, as
-		//! update() runs several times between the keyboard's frames, and the
-		//! touch point is calibrated. False until a sample has been read.
-		bool takeVpadSample(VPADStatus * out);
+		//! Only the touch point (calibrated) is in it: the buttons and sticks are
+		//! zero, so the keyboard does not react to what is meant for the game.
+		//! False until a sample has been read.
+		bool getTouchSample(VPADStatus * out);
 
 	private:
 		bool rumbleRequest[4];
@@ -48,8 +48,6 @@ class WutInputDriver : public InputDriver {
 
 		VPADStatus lastVpad;
 		bool haveVpad = false;
-		uint32_t vpadTriggerSince = 0;
-		uint32_t vpadReleaseSince = 0;
 
 		bool drcTouchedPrev;
 		float drcLastTouchX;

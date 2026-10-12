@@ -85,6 +85,7 @@ static uint32_t MapVPADToGeneric(uint32_t vpad_btns) {
 	if (vpad_btns & VPAD_BUTTON_PLUS)    mask |= INPUT_BTN_PLUS;
 	if (vpad_btns & VPAD_BUTTON_MINUS)   mask |= INPUT_BTN_MINUS;
 	if (vpad_btns & VPAD_BUTTON_HOME)    mask |= INPUT_BTN_HOME;
+	if (vpad_btns & VPAD_BUTTON_TV)      mask |= INPUT_BTN_TV;
 	if (vpad_btns & VPAD_BUTTON_L)       mask |= INPUT_TRIGGER_L;
 	if (vpad_btns & VPAD_BUTTON_R)       mask |= INPUT_TRIGGER_R;
 	if (vpad_btns & VPAD_BUTTON_ZL)      mask |= INPUT_TRIGGER_ZL;
@@ -217,14 +218,14 @@ void WutInputDriver::shutdown() {
 	OSEnableHomeButtonMenu(TRUE);
 }
 
-bool WutInputDriver::takeVpadSample(VPADStatus * out) {
+bool WutInputDriver::getTouchSample(VPADStatus * out) {
 	if (!haveVpad)
 		return false;
 
 	*out = lastVpad;
-	out->trigger = vpadTriggerSince;
-	out->release = vpadReleaseSince;
-	vpadTriggerSince = vpadReleaseSince = 0;
+	out->hold = out->trigger = out->release = 0;
+	out->leftStick.x = out->leftStick.y = 0.0f;
+	out->rightStick.x = out->rightStick.y = 0.0f;
 
 	VPADGetTPCalibratedPoint(VPAD_CHAN_0, &out->tpNormal, &out->tpNormal);
 	return true;
@@ -272,8 +273,6 @@ void WutInputDriver::update() {
 			if (vpadError == VPAD_READ_SUCCESS) {
 				lastVpad = vpadStatus;
 				haveVpad = true;
-				vpadTriggerSince |= vpadStatus.trigger;
-				vpadReleaseSince |= vpadStatus.release;
 
 				padData.hw_connected[INPUT_HW_DRC] = true;
 				padData.battery_level = vpadStatus.battery * 25; // normalize to 0-100

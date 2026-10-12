@@ -115,7 +115,7 @@ void WutSystemKeyboard::close()
 void WutSystemKeyboard::calc()
 {
 	VPADStatus vpad;
-	const bool haveVpad = input && input->takeVpadSample(&vpad);
+	const bool haveVpad = input && input->getTouchSample(&vpad);
 
 	nn::swkbd::ControllerInfo controllerInfo;
 	controllerInfo.vpad = haveVpad ? &vpad : nullptr;

@@ -255,7 +255,7 @@ static void SyncText(const char16_t * text)
  * State
  ***************************************************************************/
 static bool active = false;
-static unsigned toggleButton = INPUT_BTN_MINUS;
+static unsigned toggleButton = INPUT_BTN_TV;
 static SystemKeyboardDriver * systemKeyboard = NULL;
 
 static void DrawOverlay(void *)

@@ -36,7 +36,8 @@ void OSK_Close(void);
 KeyboardDriver * OSK_WrapKeyboard(KeyboardDriver * physical);
 
 //! Which button (InputDataButtons) on the GamePad opens and closes the
-//! keyboard. Minus (Select) by default. For the future mapping screen.
+//! keyboard. The GamePad's TV button by default: nothing else uses it, so the
+//! game never sees the press. For the future mapping screen.
 void OSK_SetToggleButton(unsigned button);
 
 #endif
