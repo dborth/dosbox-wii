@@ -23,6 +23,7 @@
 #include "drivers/InputController.h"
 #include "filelist.h"
 #include "input.h"
+#include "osk.h"
 #include "menu.h"
 #include "settings.h"
 #include "storage.h"
@@ -1457,10 +1458,16 @@ void HomeMenu ()
 		else if(keyboardBtn.getState() == STATE::CLICKED)
 		{
 			keyboardBtn.resetState();
-			OnScreenKeyboard(dosboxCommand, MAXPATHLEN);
 
-			if(dosboxCommand[0] != 0)
+			// typed into DOS once the menu is closed and the emulator polls again
+			char command[1024] = { 0 };
+			OnScreenKeyboard(command, sizeof(command));
+
+			if(command[0] != 0)
+			{
+				OSK_TypeText(command);
 				break;
+			}
 		}
 		else if (cycleDecBtn.getState() == STATE::CLICKED)
 		{

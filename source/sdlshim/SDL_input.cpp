@@ -92,12 +92,6 @@ int SDL_PollEvent(SDL_Event * event)
 	return 1;
 }
 
-int InputHal_PendingEvents(void)
-{
-	MutexLock lock(QueueMutex());
-	return eventCount;
-}
-
 int SDL_WaitEvent(SDL_Event * event)
 {
 	while (!SDL_PollEvent(event)) {

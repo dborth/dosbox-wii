@@ -9,6 +9,10 @@
  * keyboard. The TV keeps showing the game. Does nothing on a platform without
  * a second screen and a system keyboard.
  *
+ * This is also where text gets typed into DOS from anywhere else: the menu's
+ * own on-screen keyboard hands its command to OSK_TypeText(), on every
+ * platform, with or without a GamePad.
+ *
  * Deliberately includes nothing: used by both DOSBox core files and platform
  * files, whose headers collide (see videosupport.h).
  ***************************************************************************/
@@ -34,6 +38,17 @@ void OSK_Close(void);
 //! typed on the on-screen keyboard, so both arrive the same way. Call once,
 //! where the `keyboard` global is defined.
 KeyboardDriver * OSK_WrapKeyboard(KeyboardDriver * physical);
+
+//! Types text into DOS as if from a keyboard: '\n' (and '\r') type Return,
+//! characters with no key on a US keyboard are skipped. The text is typed as
+//! the emulator polls the keyboard, paced like a real one, so it can be handed
+//! over at any time, even while the menu is up. Adds to text still being
+//! typed; more than 1024 characters waiting are cut off.
+void OSK_TypeText(const char * text);
+
+//! Stops typing, for when the emulator is about to stop polling (the menu).
+//! The key in progress is finished, so no key or shift is left held.
+void OSK_CancelTyping(void);
 
 //! Which button (InputDataButtons) on the GamePad opens and closes the
 //! keyboard. The GamePad's TV button by default: nothing else uses it, so the

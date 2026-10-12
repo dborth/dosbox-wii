@@ -50,9 +50,6 @@ struct SDL_Block {
 
 static SDL_Block sdl;
 
-char dosboxCommand[1024] = { 0 };
-static char shiftkey[130];
-
 //Globals for keyboard initialisation
 bool startup_state_numlock=false;
 bool startup_state_capslock=false;
@@ -298,9 +295,6 @@ void GFX_Events() {
 			MAPPER_CheckEvent(&event);
 		}
 	}
-
-	// Typed after the queue is drained, so the character is taken next pass
-	PumpKeys();
 }
 
 
@@ -386,141 +380,4 @@ void CheckExit()
 {
 	if(platform->shouldExit())
 		ExitApp();
-}
-
-/****************************************************************************
- * Key injection (on-screen keyboard -> DOS)
- *
- * The command typed on the on-screen keyboard is typed into DOS by posting
- * key events to the SDL event queue, one character every few emulated
- * milliseconds. It is driven from GFX_Events() (PumpKeys), on the emulation
- * thread, so it only ever runs while the emulator is polling and the
- * mapper is only ever touched from one thread. There is no typing thread to
- * be starved, woken late or raced.
- *
- * A '\n' in the command is typed as Return.
- ***************************************************************************/
-#define KEY_PACE_TICKS 5 // GFX_Events() calls (about 1 ms of DOS time each) per character
-
-static char keyBuffer[sizeof(dosboxCommand)];
-static size_t keyPos = 0;
-static bool keyActive = false;
-static int keyWait = 0;
-
-static void PostKey(int type, int sym)
-{
-	SDL_Event event;
-	memset(&event, 0, sizeof(event));
-	event.type = type;
-	event.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
-	event.key.keysym.sym = (SDLKey)sym;
-	SDL_PushEvent(&event);
-}
-
-static void TypeChar(unsigned char c)
-{
-	int sym = c;
-	bool shift = false;
-
-	if(c == '\n' || c == '\r')
-	{
-		sym = SDLK_RETURN;
-	}
-	else if(c >= 65 && c <= 90)
-	{
-		sym = c + 32;
-		shift = true;
-	}
-	else if(c > 0 && c < 130 && shiftkey[c] > 0)
-	{
-		sym = shiftkey[c];
-		shift = true;
-	}
-
-	// hack to allow mappings of SDL keys > 127
-	if(sym >= 14 && sym <= 25)
-		sym += 268; // F1-F12 (282-293)
-
-	// One character is posted whole, so a shift is never left held
-	if(shift)
-		PostKey(SDL_KEYDOWN, SDLK_LSHIFT);
-	PostKey(SDL_KEYDOWN, sym);
-	PostKey(SDL_KEYUP, sym);
-	if(shift)
-		PostKey(SDL_KEYUP, SDLK_LSHIFT);
-}
-
-//! Types the next character of the pending command. Called from GFX_Events().
-void PumpKeys()
-{
-	if(!keyActive)
-		return;
-
-	if(keyWait > 0)
-	{
-		keyWait--;
-		return;
-	}
-
-	// A character is up to four events, posted all or nothing. Never post
-	// into a backlog (the queue is 256 deep): wait for the emulator to drain it.
-	if(InputHal_PendingEvents() > 128)
-		return;
-
-	unsigned char c = (unsigned char)keyBuffer[keyPos];
-	if(c == 0)
-	{
-		keyActive = false;
-		return;
-	}
-
-	TypeChar(c);
-	keyPos++;
-	keyWait = KEY_PACE_TICKS;
-}
-
-void InitKeyInjection()
-{
-	memset(shiftkey, 0, sizeof(shiftkey));
-	shiftkey[33] = 49;
-	shiftkey[34] = 39;
-	shiftkey[35] = 51;
-	shiftkey[36] = 52;
-	shiftkey[37] = 53;
-	shiftkey[38] = 55;
-	shiftkey[40] = 57;
-	shiftkey[41] = 48;
-	shiftkey[42] = 56;
-	shiftkey[43] = 61;	// + (shifted =)
-	shiftkey[58] = 59;
-	shiftkey[60] = 44;
-	shiftkey[62] = 46;
-	shiftkey[63] = 47;
-	shiftkey[64] = 50;
-	shiftkey[94] = 54;
-	shiftkey[95] = 45;
-	shiftkey[123] = 91;	// { (shifted [)
-	shiftkey[124] = 92;	// | (shifted \)
-	shiftkey[125] = 93;	// } (shifted ])
-	shiftkey[126] = 96;
-}
-
-//! Takes the command the on-screen keyboard left in dosboxCommand and starts typing it.
-void QueueKeys()
-{
-	if(dosboxCommand[0] == 0)
-		return;
-
-	snprintf(keyBuffer, sizeof(keyBuffer), "%s", dosboxCommand);
-	keyPos = 0;
-	keyWait = 0;
-	keyActive = true;
-
-	dosboxCommand[0] = 0;
-}
-
-//! Cuts any typing short. Characters already posted are whole, so nothing is left held.
-void AbortKeys()
-{
-	keyActive = false;
 }

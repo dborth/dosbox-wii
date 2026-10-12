@@ -3,7 +3,7 @@
  * Daryl Borth 2009-2026
  * input.h
  *
- * Input: event pump, menu and exit requests, key injection.
+ * Input: event pump, menu and exit requests.
  *
  * NOTE: this header is included by DOSBox core files, so it must not pull
  * in drivers/ or libgui/ headers (their LOG() macro collides with DOSBox's).
@@ -35,23 +35,5 @@ void Mouse_SensitivityChanged(void);
 
 //! Leaves the app if the platform reports a shutdown request. Does not return then.
 void CheckExit();
-
-/* Key injection: a command typed on the on-screen keyboard is typed into DOS. */
-
-//! The command the on-screen keyboard left, for QueueKeys() to take.
-extern char dosboxCommand[1024];
-
-//! Builds the shifted-key table. Once, at startup.
-void InitKeyInjection();
-
-//! Starts typing the command in dosboxCommand, and clears it. '\n' types Return.
-void QueueKeys();
-
-//! Types the next character of the command, if one is pending. Called once
-//! per GFX_Events(), on the emulation thread.
-void PumpKeys();
-
-//! Cuts any typing short.
-void AbortKeys();
 
 #endif

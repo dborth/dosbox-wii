@@ -16,6 +16,10 @@
  * shift around them, which is what the keyboard path in SDL_input.cpp takes
  * from a real USB keyboard.
  *
+ * The same events carry text typed from elsewhere (OSK_TypeText, which the
+ * menu's keyboard uses): the text waits in a buffer and is turned into key
+ * events as there is room, so any length can be typed.
+ *
  * The keyboard is drawn by the video driver, on the GamePad only, through
  * EmulatorVideoDriver::setGamePadOverlay(), and refreshed from here every
  * input scan without waiting. The TV is not involved.
@@ -116,6 +120,7 @@ struct PendingEvent
 {
 	KeyEvent event;
 	uint32_t gapMs;
+	bool starts;		//!< the first event of a key: nothing of it has been delivered before this
 };
 
 static PendingEvent pending[kPendingSize];
@@ -124,7 +129,7 @@ static int pendingCount = 0;
 static Ticks lastDelivered = 0;
 static bool haveDelivered = false;
 
-static void PushEvent(uint16_t usage, uint16_t modifiers, bool pressed, uint32_t gapMs)
+static void PushEvent(uint16_t usage, uint16_t modifiers, bool pressed, uint32_t gapMs, bool starts = false)
 {
 	if (pendingCount >= kPendingSize)
 		return;
@@ -134,6 +139,7 @@ static void PushEvent(uint16_t usage, uint16_t modifiers, bool pressed, uint32_t
 	p.event.modifiers = modifiers;
 	p.event.pressed = pressed;
 	p.gapMs = gapMs;
+	p.starts = starts;
 	pendingCount++;
 }
 
@@ -145,17 +151,77 @@ static void TypeKey(uint16_t usage, bool shift)
 		return;
 
 	if (shift)
-		PushEvent(kUsageLeftShift, KEYMOD_LSHIFT, true, kGapMs);
-	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, true, kGapMs);
+		PushEvent(kUsageLeftShift, KEYMOD_LSHIFT, true, kGapMs, true);
+	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, true, kGapMs, !shift);
 	PushEvent(usage, shift ? KEYMOD_LSHIFT : KEYMOD_NONE, false, kHoldMs);
 	if (shift)
 		PushEvent(kUsageLeftShift, KEYMOD_NONE, false, kGapMs);
+}
+
+//! Text waiting to become key events (OSK_TypeText)
+static const size_t kTextMax = 1024;
+static std::string textQueue;
+static size_t textPos = 0;
+
+//! Turns waiting text into key events while there is room for a whole key
+static void FeedText()
+{
+	while (textPos < textQueue.size() && pendingCount + 4 <= kPendingSize)
+	{
+		char c = textQueue[textPos++];
+		CharKey key;
+
+		if (c == '\r')
+			c = '\n';
+
+		if (CharToKey(c, key))
+			TypeKey(key.usage, key.shift);
+	}
+
+	if (textPos >= textQueue.size())
+	{
+		textQueue.clear();
+		textPos = 0;
+	}
+}
+
+void OSK_TypeText(const char * text)
+{
+	if (!text)
+		return;
+
+	const size_t waiting = textQueue.size() - textPos;
+	const size_t room = (waiting < kTextMax) ? kTextMax - waiting : 0;
+
+	size_t length = 0;
+	while (length < room && text[length] != 0)
+		length++;
+
+	textQueue.append(text, length);
+}
+
+void OSK_CancelTyping(void)
+{
+	textQueue.clear();
+	textPos = 0;
+
+	// Keep the key in progress, so nothing is left held; drop the rest
+	for (int i = 0; i < pendingCount; i++)
+	{
+		if (pending[(pendingHead + i) % kPendingSize].starts)
+		{
+			pendingCount = i;
+			return;
+		}
+	}
 }
 
 //! The next event whose time has come. Events still waiting when the keyboard
 //! is closed are delivered all the same, so a key is never left down.
 static bool PollTyped(KeyEvent & out)
 {
+	FeedText();
+
 	if (pendingCount == 0)
 		return false;
 

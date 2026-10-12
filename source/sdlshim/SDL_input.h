@@ -179,9 +179,6 @@ void InputHal_Init(void);
 //! place that calls InputDriver::update() during emulation.
 void InputHal_Update(void);
 
-//! Number of events posted but not yet polled. Safe from any thread.
-int InputHal_PendingEvents(void);
-
 //! Nonzero once per tap of the USB keyboard's GUI (Windows / Command) key: a
 //! menu request. The key is not passed to DOS. Call once per GFX_Events().
 int InputHal_TakeMenuKeyTap(void);

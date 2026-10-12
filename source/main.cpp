@@ -113,8 +113,6 @@ static void InitApp()
 #endif
 
 	platform->getVideo()->startMenuVideo();
-
-	InitKeyInjection();
 }
 
 /****************************************************************************
@@ -126,7 +124,7 @@ void EnterMenu()
 {
 	// Typing is cut short rather than resumed: it is driven by the emulator
 	// polling, which it won't be while the menu is up.
-	AbortKeys();
+	OSK_CancelTyping();
 
 	SwitchAudioMode(1);
 	SwitchMemoryModeMenu();
@@ -142,8 +140,6 @@ void EnterMenu()
 
 	SwitchAudioMode(0);
 	GFX_Resume();	// also repaints: DOSBox won't present again until something changes
-
-	QueueKeys();
 }
 
 /****************************************************************************
