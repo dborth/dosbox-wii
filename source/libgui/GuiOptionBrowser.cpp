@@ -50,7 +50,7 @@ GuiOptionBrowser::GuiOptionBrowser(int w, int h, OptionList * l)
 	dragPos = 0;
 	dragging = false;
 	col1X = OB_TEXT_X;
-	col2X = 400;
+	col2X = 250;
 
 	const GuiTheme& theme = GuiTheme::current();
 	rowWidth = w - OB_PAD - OB_ROW_GAP - OB_SB_WIDTH - OB_SB_INSET;
