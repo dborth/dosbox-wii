@@ -26,6 +26,7 @@
 #include "osk.h"
 #include "menu.h"
 #include "dosboxsupport.h"
+#include "menuart.h"
 
 #define APPVERSION		"2.0"
 
@@ -103,45 +104,42 @@ static void OnScreenKeyboard(char * var, uint32_t maxlen)
 
 	// GuiKeyboard edits its own 256 byte buffer, so it must not be told it has more
 	const uint32_t kbLimit = (uint32_t)sizeof(GuiKeyboard::kbtextstr);
+	// declared before kb, so it is still there when kb lets go of its children
+	MenuKeyboardBox keyboardBox;
 	GuiKeyboard kb(var, maxlen < kbLimit ? maxlen : kbLimit);
 
 	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
 	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
-	GuiImageData btnOutline(button_png);
-	GuiImageData btnOutlineOver(button_over_png);
 
 	GuiTrigger trigA;
 	trigA.setPrimaryTrigger();
 
 	GuiText okBtnTxt("OK", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage okBtnImg(&btnOutline);
-	GuiImage okBtnImgOver(&btnOutlineOver);
-	GuiButton okBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	MenuButtonShape okBtnImg(MenuButtonShape::NORMAL);
+	GuiButton okBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H);
 	okBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	okBtn.setPosition(25, -25);
 	okBtn.setLabel(&okBtnTxt);
 	okBtn.setImage(&okBtnImg);
-	okBtn.setImageOver(&okBtnImgOver);
 	okBtn.setSoundOver(&btnSoundOver);
 	okBtn.setSoundClick(&btnSoundClick);
 	okBtn.setTrigger(&trigA);
 	okBtn.setEffectGrow();
 
 	GuiText cancelBtnTxt("Cancel", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage cancelBtnImg(&btnOutline);
-	GuiImage cancelBtnImgOver(&btnOutlineOver);
-	GuiButton cancelBtn(btnOutline.getWidth(), btnOutline.getHeight());
+	MenuButtonShape cancelBtnImg(MenuButtonShape::NORMAL);
+	GuiButton cancelBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H);
 	cancelBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	cancelBtn.setPosition(-25, -25);
 	cancelBtn.setLabel(&cancelBtnTxt);
 	cancelBtn.setImage(&cancelBtnImg);
-	cancelBtn.setImageOver(&cancelBtnImgOver);
 	cancelBtn.setSoundOver(&btnSoundOver);
 	cancelBtn.setSoundClick(&btnSoundClick);
 	cancelBtn.setTrigger(&trigA);
 	cancelBtn.setEffectGrow();
 
-	// the buttons are destroyed before kb: unregister them on destruction
+	// the box goes behind the keys; the buttons are destroyed before kb: unregister them on destruction
+	kb.insert(&keyboardBox, 0);
 	kb.appendWithAutoRemove(&okBtn);
 	kb.appendWithAutoRemove(&cancelBtn);
 
@@ -176,21 +174,20 @@ static void WindowCredits()
 {
 	bool exit = false;
 	int i = 0;
-	int y = 20;
+	int y = 14;
 
-	GuiWindow creditsWindow(528, 408);
+	GuiWindow creditsWindow(MENU_CREDITS_W, MENU_CREDITS_H);
 	creditsWindow.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 
-	GuiImageData creditsBox(credits_box_png);
-	GuiImage creditsBoxImg(&creditsBox);
-	creditsBoxImg.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
+	MenuDialogShape creditsBoxImg(MENU_CREDITS_W, MENU_CREDITS_H, MENU_CREDITS_HEADER_H);
 	creditsWindow.appendWithAutoRemove(&creditsBoxImg); // destroyed before the window
 
 	const int numEntries = 10;
 	GuiText * txt[numEntries];
 
-	txt[i] = new GuiText("Credits", 30, (PixelColor){0, 0, 0, 255});
-	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0,y); i++; y+=32;
+	// the title sits on the dialog's chrome band, so it is white; the credits start below the band
+	txt[i] = new GuiText("Credits", 30, (PixelColor){255, 255, 255, 255});
+	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0, MENU_CREDITS_TITLE_Y); i++; y+=56;
 
 	txt[i] = new GuiText("Official Site: https://github.com/dborth/dosbox-wii/", 20, (PixelColor){0, 0, 0, 255});
 	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0,y); i++; y+=40;
@@ -214,7 +211,7 @@ static void WindowCredits()
 	txt[i] = new GuiText("shagkur & wintermute (libogc / devkitPPC)");
 	txt[i]->setPosition(0,y); i++; y+=22;
 
-	y+=60;
+	y+=40;
 
 	GuiText::setPresets(18, (PixelColor){0, 0, 0, 255}, 0,
 		GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);
@@ -416,6 +413,8 @@ void HomeMenu ()
 	const int screenwidth = video->getScreenWidth();
 	const int screenheight = video->getScreenHeight();
 
+	MenuApplyTheme(); // the shared widgets follow the palette
+
 	pointer[0] = new GuiImageData(player1_point_png);
 	pointer[1] = new GuiImageData(player2_point_png);
 	pointer[2] = new GuiImageData(player3_point_png);
@@ -450,20 +449,12 @@ void HomeMenu ()
 	GuiSound enterSound(enter_ogg, enter_ogg_size, SOUND::OGG);
 	GuiSound exitSound(exit_ogg, exit_ogg_size, SOUND::OGG);
 
-	GuiImageData btnLargeOutline(button_large_png);
-	GuiImageData btnLargeOutlineOver(button_large_over_png);
-	GuiImageData btnCloseOutline(button_small_png);
-	GuiImageData btnCloseOutlineOver(button_small_over_png);
-
 	GuiImageData battery(battery_png);
 	GuiImageData batteryRed(battery_red_png);
 	GuiImageData batteryBar(battery_bar_png);
 
-	GuiImageData bgTop(bg_top_png);
-	GuiImage bgTopImg(&bgTop);
-	GuiImageData bgBottom(bg_bottom_png);
-	GuiImage bgBottomImg(&bgBottom);
-	bgBottomImg.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
+	MenuBarShape bgTopImg(MenuBarShape::TOP);
+	MenuBarShape bgBottomImg(MenuBarShape::BOTTOM);
 
 	GuiImageData logo(logo_png);
 	GuiImage logoImg(&logo);
@@ -490,16 +481,10 @@ void HomeMenu ()
 	fskipText.setPosition(-45, -180);
 	updateFskipText(&fskipText);
 
-	// the four +/- buttons share their image data
-	GuiImageData keyData(keyboard_key_png);
-	GuiImageData keyDataOver(keyboard_key_over_png);
-
 	GuiText cycleDecBtnTxt("-", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage cycleDecImg(&keyData);
-	GuiImage cycleDecOverImg(&keyDataOver);
-	GuiButton cycleDecBtn(keyData.getWidth(), keyData.getHeight());
+	MenuKeyShape cycleDecImg;
+	GuiButton cycleDecBtn(40, 40);
 	cycleDecBtn.setImage(&cycleDecImg);
-	cycleDecBtn.setImageOver(&cycleDecOverImg);
 	cycleDecBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	cycleDecBtn.setPosition(-270, -180);
 	cycleDecBtn.setLabel(&cycleDecBtnTxt);
@@ -507,11 +492,9 @@ void HomeMenu ()
 	cycleDecBtn.setEffectGrow();
 
 	GuiText cycleIncBtnTxt("+", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage cycleIncImg(&keyData);
-	GuiImage cycleIncOverImg(&keyDataOver);
-	GuiButton cycleIncBtn(keyData.getWidth(), keyData.getHeight());
+	MenuKeyShape cycleIncImg;
+	GuiButton cycleIncBtn(40, 40);
 	cycleIncBtn.setImage(&cycleIncImg);
-	cycleIncBtn.setImageOver(&cycleIncOverImg);
 	cycleIncBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	cycleIncBtn.setPosition(-160, -180);
 	cycleIncBtn.setLabel(&cycleIncBtnTxt);
@@ -519,11 +502,9 @@ void HomeMenu ()
 	cycleIncBtn.setEffectGrow();
 
 	GuiText fskipDecBtnTxt("-", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage fskipDecImg(&keyData);
-	GuiImage fskipDecOverImg(&keyDataOver);
-	GuiButton fskipDecBtn(keyData.getWidth(), keyData.getHeight());
+	MenuKeyShape fskipDecImg;
+	GuiButton fskipDecBtn(40, 40);
 	fskipDecBtn.setImage(&fskipDecImg);
-	fskipDecBtn.setImageOver(&fskipDecOverImg);
 	fskipDecBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	fskipDecBtn.setPosition(-80, -180);
 	fskipDecBtn.setLabel(&fskipDecBtnTxt);
@@ -531,11 +512,9 @@ void HomeMenu ()
 	fskipDecBtn.setEffectGrow();
 
 	GuiText fskipIncBtnTxt("+", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage fskipIncImg(&keyData);
-	GuiImage fskipIncOverImg(&keyDataOver);
-	GuiButton fskipIncBtn(keyData.getWidth(), keyData.getHeight());
+	MenuKeyShape fskipIncImg;
+	GuiButton fskipIncBtn(40, 40);
 	fskipIncBtn.setImage(&fskipIncImg);
-	fskipIncBtn.setImageOver(&fskipIncOverImg);
 	fskipIncBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	fskipIncBtn.setPosition(0, -180);
 	fskipIncBtn.setLabel(&fskipIncBtnTxt);
@@ -543,56 +522,48 @@ void HomeMenu ()
 	fskipIncBtn.setEffectGrow();
 
 	GuiText exitBtnTxt("Exit", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage exitBtnImg(&btnLargeOutline);
-	GuiImage exitBtnImgOver(&btnLargeOutlineOver);
-	GuiButton exitBtn(btnLargeOutline.getWidth(), btnLargeOutline.getHeight());
+	MenuButtonShape exitBtnImg(MenuButtonShape::LARGE);
+	GuiButton exitBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
 	exitBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	exitBtn.setPosition(-125, 120);
 	exitBtn.setLabel(&exitBtnTxt);
 	exitBtn.setImage(&exitBtnImg);
-	exitBtn.setImageOver(&exitBtnImgOver);
 	exitBtn.setSoundOver(&btnSoundOver);
 	exitBtn.setSoundClick(&btnSoundClick);
 	exitBtn.setTrigger(&trigA);
 	exitBtn.setEffectGrow();
 
 	GuiText keyboardBtnTxt("Keyboard", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage keyboardBtnImg(&btnLargeOutline);
-	GuiImage keyboardBtnImgOver(&btnLargeOutlineOver);
-	GuiButton keyboardBtn(btnLargeOutline.getWidth(), btnLargeOutline.getHeight());
+	MenuButtonShape keyboardBtnImg(MenuButtonShape::LARGE);
+	GuiButton keyboardBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
 	keyboardBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	keyboardBtn.setPosition(125, 120);
 	keyboardBtn.setLabel(&keyboardBtnTxt);
 	keyboardBtn.setImage(&keyboardBtnImg);
-	keyboardBtn.setImageOver(&keyboardBtnImgOver);
 	keyboardBtn.setSoundOver(&btnSoundOver);
 	keyboardBtn.setSoundClick(&btnSoundClick);
 	keyboardBtn.setTrigger(&trigA);
 	keyboardBtn.setEffectGrow();
 
 	GuiText settingsBtnTxt("Settings", 24, (PixelColor){0, 0, 0, 255});
-	GuiImage settingsBtnImg(&btnLargeOutline);
-	GuiImage settingsBtnImgOver(&btnLargeOutlineOver);
-	GuiButton settingsBtn(btnLargeOutline.getWidth(), btnLargeOutline.getHeight());
+	MenuButtonShape settingsBtnImg(MenuButtonShape::LARGE);
+	GuiButton settingsBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
 	settingsBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	settingsBtn.setPosition(0, 235);
 	settingsBtn.setLabel(&settingsBtnTxt);
 	settingsBtn.setImage(&settingsBtnImg);
-	settingsBtn.setImageOver(&settingsBtnImgOver);
 	settingsBtn.setSoundOver(&btnSoundOver);
 	settingsBtn.setSoundClick(&btnSoundClick);
 	settingsBtn.setTrigger(&trigA);
 	settingsBtn.setEffectGrow();
 
 	GuiText closeBtnTxt("Close", 22, (PixelColor){0, 0, 0, 255});
-	GuiImage closeBtnImg(&btnCloseOutline);
-	GuiImage closeBtnImgOver(&btnCloseOutlineOver);
-	GuiButton closeBtn(btnCloseOutline.getWidth(), btnCloseOutline.getHeight());
+	MenuButtonShape closeBtnImg(MenuButtonShape::SMALL);
+	GuiButton closeBtn(MENU_BTN_SMALL_W, MENU_BTN_SMALL_H);
 	closeBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::TOP);
 	closeBtn.setPosition(-50, 35);
 	closeBtn.setLabel(&closeBtnTxt);
 	closeBtn.setImage(&closeBtnImg);
-	closeBtn.setImageOver(&closeBtnImgOver);
 	closeBtn.setSoundOver(&btnSoundOver);
 	closeBtn.setSoundClick(&btnSoundClick);
 	closeBtn.setTrigger(0, &trigA);

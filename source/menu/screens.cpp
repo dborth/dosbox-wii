@@ -21,6 +21,7 @@
 #include "drivers/InputController.h"
 #include "filelist.h"
 #include "menu.h"
+#include "menuart.h"
 #include "settings.h"
 #include "storage.h"
 #include "status.h"
@@ -142,17 +143,13 @@ class ListScreen
 		GuiText hintTxt;
 		GuiSound btnSoundOver;
 		GuiSound btnSoundClick;
-		GuiImageData btnOutline;
-		GuiImageData btnOutlineOver;
 		GuiTrigger trigA;
 		GuiTrigger trigB;
 		GuiText backBtnTxt;
-		GuiImage backBtnImg;
-		GuiImage backBtnImgOver;
+		MenuButtonShape backBtnImg;
 		GuiButton backBtn;
 		GuiText extraBtnTxt;
-		GuiImage extraBtnImg;
-		GuiImage extraBtnImgOver;
+		MenuButtonShape extraBtnImg;
 		GuiButton extraBtn;
 		bool hasExtra;
 		bool hasHelpLine;
@@ -170,16 +167,12 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	  hintTxt(hint, 16, kGrey),
 	  btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM),
 	  btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM),
-	  btnOutline(button_png),
-	  btnOutlineOver(button_over_png),
 	  backBtnTxt("Go Back", 22, kBlack),
-	  backBtnImg(&btnOutline),
-	  backBtnImgOver(&btnOutlineOver),
-	  backBtn(btnOutline.getWidth(), btnOutline.getHeight()),
+	  backBtnImg(MenuButtonShape::NORMAL),
+	  backBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H),
 	  extraBtnTxt(extraLabel ? extraLabel : "", 22, kBlack),
-	  extraBtnImg(&btnOutline),
-	  extraBtnImgOver(&btnOutlineOver),
-	  extraBtn(btnOutline.getWidth(), btnOutline.getHeight()),
+	  extraBtnImg(MenuButtonShape::NORMAL),
+	  extraBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H),
 	  hasExtra(extraLabel != NULL),
 	  hasHelpLine(helpLine),
 	  w(platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight())
@@ -202,7 +195,6 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	backBtn.setPosition(100, -35);
 	backBtn.setLabel(&backBtnTxt);
 	backBtn.setImage(&backBtnImg);
-	backBtn.setImageOver(&backBtnImgOver);
 	backBtn.setSoundOver(&btnSoundOver);
 	backBtn.setSoundClick(&btnSoundClick);
 	backBtn.setTrigger(&trigA);
@@ -211,10 +203,9 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 
 	// beside Go Back, and A only
 	extraBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
-	extraBtn.setPosition(100 + btnOutline.getWidth() + 24, -35);
+	extraBtn.setPosition(100 + MENU_BTN_NORMAL_W + 24, -35);
 	extraBtn.setLabel(&extraBtnTxt);
 	extraBtn.setImage(&extraBtnImg);
-	extraBtn.setImageOver(&extraBtnImgOver);
 	extraBtn.setSoundOver(&btnSoundOver);
 	extraBtn.setSoundClick(&btnSoundClick);
 	extraBtn.setTrigger(&trigA);

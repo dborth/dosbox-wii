@@ -22,39 +22,9 @@
 #include "logo_png.h"
 #include "logo_over_png.h"
 
-#include "bg_top_png.h"
-#include "bg_bottom_png.h"
-
-#include "button_png.h"
-#include "button_over_png.h"
-
-#include "button_small_png.h"
-#include "button_small_over_png.h"
-#include "button_large_png.h"
-#include "button_large_over_png.h"
-
 #include "battery_png.h"
 #include "battery_red_png.h"
 #include "battery_bar_png.h"
-
-#include "credits_box_png.h"
-
-#include "bg_options_png.h"
-#include "bg_options_entry_png.h"
-
-#include "scrollbar_png.h"
-#include "scrollbar_arrowup_png.h"
-#include "scrollbar_arrowup_over_png.h"
-#include "scrollbar_arrowdown_png.h"
-#include "scrollbar_arrowdown_over_png.h"
-
-#include "keyboard_textbox_png.h"
-#include "keyboard_key_png.h"
-#include "keyboard_key_over_png.h"
-#include "keyboard_mediumkey_png.h"
-#include "keyboard_mediumkey_over_png.h"
-#include "keyboard_largekey_png.h"
-#include "keyboard_largekey_over_png.h"
 
 #include "player1_point_png.h"
 #include "player2_point_png.h"
