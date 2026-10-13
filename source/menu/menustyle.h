@@ -116,7 +116,7 @@ struct MenuPalette {
 	PixelColor text, textMuted, textOnAccent;
 };
 
-//!DOSBox Wii: monochrome chrome (the gray of the original header/footer art) on a gray page
+//!DOSBox Wii: monochrome chrome on a gray page
 static inline MenuPalette MenuPaletteDefault()
 {
 	MenuPalette p;
