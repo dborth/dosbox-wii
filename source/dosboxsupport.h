@@ -20,13 +20,14 @@ void RunDOSBox(int argc, char* argv[]);
 bool IsShellIdle();
 
 //! The CPU cycles the core is running now, as GFX_SetTitle() last heard them.
-//! The home screen's +/- buttons change this without touching the config. The
-//! value is a percentage of the host while *autoAdjust is true, otherwise
+//! The home screen's +/- buttons and the hotkeys change this; the config does
+//! not follow by itself (see Settings_SyncRunning()). The value is a percentage of the host while *autoAdjust is true, otherwise
 //! cycles per millisecond; 0 until the core has reported one.
 int GetRunningCycles(bool * autoAdjust);
 
-//! The frameskip the core is running now (the home screen's +/- change it
-//! without touching the config); 0 until the core has reported one.
+//! The frameskip the core is running now (the home screen's +/- and the hotkeys
+//! change it; the config does not follow by itself); 0 until the core has
+//! reported one.
 int GetRunningFrameskip();
 
 //! The fixed output format of the emulator audio driver, as DOSBox's mixer

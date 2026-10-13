@@ -25,6 +25,7 @@
 #include "input.h"
 #include "osk.h"
 #include "menu.h"
+#include "settings.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
 
@@ -409,6 +410,10 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
  ***************************************************************************/
 void HomeMenu ()
 {
+	// the hotkeys change the cycles and frameskip without the config; the
+	// settings pages and Save work from the config
+	Settings_SyncRunning();
+
 	VideoDriver * video = platform->getVideo();
 	const int screenwidth = video->getScreenWidth();
 	const int screenheight = video->getScreenHeight();
@@ -731,24 +736,28 @@ void HomeMenu ()
 		{
 			cycleDecBtn.resetState();
 			MENU_CycleIncreaseOrDecrease(false);
+			Settings_SyncRunning();
 			updateCyclesText(&cycleText);
 		}
 		else if (cycleIncBtn.getState() == STATE::CLICKED)
 		{
 			cycleIncBtn.resetState();
 			MENU_CycleIncreaseOrDecrease(true);
+			Settings_SyncRunning();
 			updateCyclesText(&cycleText);
 		}
 		else if (fskipDecBtn.getState() == STATE::CLICKED)
 		{
 			fskipDecBtn.resetState();
 			MENU_IncreaseOrDecreaseFrameSkip(false);
+			Settings_SyncRunning();
 			updateFskipText(&fskipText);
 		}
 		else if (fskipIncBtn.getState() == STATE::CLICKED)
 		{
 			fskipIncBtn.resetState();
 			MENU_IncreaseOrDecreaseFrameSkip(true);
+			Settings_SyncRunning();
 			updateFskipText(&fskipText);
 		}
 		else if (settingsBtn.getState() == STATE::CLICKED)

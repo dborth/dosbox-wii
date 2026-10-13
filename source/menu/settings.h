@@ -78,11 +78,23 @@ void Settings_RowHelp(int page, int row, char * buf, size_t size);
 bool Settings_RowStep(int page, int row, int direction);
 
 /**
+ * Puts the cycles and frameskip the core is running into the config, so the
+ * config says what the player is looking at. They change without the config
+ * when the home screen's +/- buttons, the hotkeys (Ctrl+F7/F8, Ctrl+F11/F12)
+ * or a button mapped to one of them does it.
+ *
+ * Call it when the menu opens and after the home screen's buttons. Then a page
+ * that sets another cpu property, which makes DOSBox read cpu.cycles from the
+ * config again, leaves the cycles where they are, and Save writes them. Takes
+ * no re-initialisation: nothing runs differently afterwards. Cycles in auto
+ * mode are left as they are: what DOSBox worked out is not a choice, so the
+ * config stays "auto" and a cpu change still puts the cycles back to that.
+ */
+void Settings_SyncRunning();
+
+/**
  * Saves the running config to dosbox.conf (see ConfigSave in preferences.h
- * for how the file is replaced). First the values the home screen's +/-
- * buttons left running (cycles, frameskip) are put into the config, so the
- * file holds what the pages show. Takes no re-initialisation: nothing runs
- * differently afterwards.
+ * for how the file is replaced).
  *
  * @param message  always set: one line for the user, where it went or why not
  * @return true if it was saved

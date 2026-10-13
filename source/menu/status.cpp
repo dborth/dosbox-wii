@@ -186,8 +186,9 @@ static void CpuLines(const EmulationStatus & st)
 		"The CPU timing DOSBox emulates. auto picks a mix that suits most games.");
 
 	// cycles: the config says auto, fixed N or max P%; the core is running
-	// some number of cycles or a share of the host, and the home screen's
-	// +/- buttons move either without touching the config
+	// some number of cycles or a share of the host. The home screen's +/-
+	// buttons and the hotkeys move that, and the config follows, except in
+	// auto mode, where the two can differ
 	const CyclesConfig cycles = Config_ReadCycles();
 	std::string configured = "auto";
 	std::string effective;

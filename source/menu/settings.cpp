@@ -98,9 +98,10 @@ struct PageDef
  *
  * Whatever a section's changeable init function reads is re-read, so this
  * has side effects beyond the property: changing any cpu property re-reads
- * cpu.cycles too, which puts the cycles back to the configured value and
- * drops what the home screen's +/- buttons had made of it. That is how the
- * DOS CONFIG command behaves as well.
+ * cpu.cycles too. That is how the DOS CONFIG command behaves as well. The
+ * config already holds the cycles that are running (Settings_SyncRunning(),
+ * when the menu opened and after the home screen's buttons), so that changes
+ * nothing, except in auto mode, where the config only says "auto".
  *
  * If DOSBox rejects the value the property falls back to its default. Every
  * value passed in comes from DOSBox's own list or a preset inside its range,
@@ -312,7 +313,7 @@ static const int maxPercentPresets[] = { 10, 20, 30, 40, 50, 60, 70, 80, 90, 100
 #define ARRAY_COUNT(a)	((int)(sizeof(a) / sizeof((a)[0])))
 
 //! The fixed cycle count the core is running, which the home screen's +/-
-//! buttons change without touching the config.
+//! buttons and the hotkeys change (the config follows: Settings_SyncRunning()).
 static int EffectiveFixed(const CyclesConfig & state)
 {
 	bool autoAdjust;
@@ -1667,17 +1668,17 @@ bool Settings_RowStep(int page, int row, int direction)
 }
 
 /****************************************************************************
- * Save
+ * Running values
  *
- * The config is the single copy of every setting, and the pages write to it,
- * with two exceptions: the home screen's +/- buttons change the running
- * cycles and frameskip without touching it (the pages show the running
- * values). Those two are put into the config first, with no re-initialisation
- * (nothing is meant to run differently), so the file says what the player was
- * looking at. Cycles in auto mode are not: they are what DOSBox guessed, not
- * a choice.
+ * The config is the single copy of every setting, and the pages write to it.
+ * Cycles and frameskip are also changed while playing, by the home screen's
+ * +/- buttons and by hotkeys, which change the running values and not the
+ * config (the pages show the running values). Those two are put into the
+ * config with no re-initialisation (nothing is meant to run differently), so
+ * what the player is looking at is what the config says, and what Save writes.
+ * Cycles in auto mode are not: they are what DOSBox guessed, not a choice.
  ***************************************************************************/
-static void SyncRunningValues()
+void Settings_SyncRunning()
 {
 	Section_prop * render = Config_GetSection("render");
 	Section_prop * cpu = Config_GetSection("cpu");
@@ -1725,12 +1726,13 @@ static const char * BaseName(const std::string & path)
 	return path.c_str() + ((slash == std::string::npos) ? 0 : slash + 1);
 }
 
+/****************************************************************************
+ * Save
+ ***************************************************************************/
 bool Settings_Save(char * message, size_t size)
 {
 	if(size == 0)
 		return false;
-
-	SyncRunningValues();
 
 	const std::string path = ConfigSavePath();
 	std::string error;
