@@ -25,6 +25,7 @@
 #include "input.h"
 #include "osk.h"
 #include "menu.h"
+#include "controlsui.h"
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
@@ -550,11 +551,23 @@ void HomeMenu ()
 	keyboardBtn.setTrigger(&trigA);
 	keyboardBtn.setEffectGrow();
 
+	GuiText controllersBtnTxt("Controllers", 24, (PixelColor){0, 0, 0, 255});
+	MenuButtonShape controllersBtnImg(MenuButtonShape::LARGE);
+	GuiButton controllersBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
+	controllersBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+	controllersBtn.setPosition(-125, 235);
+	controllersBtn.setLabel(&controllersBtnTxt);
+	controllersBtn.setImage(&controllersBtnImg);
+	controllersBtn.setSoundOver(&btnSoundOver);
+	controllersBtn.setSoundClick(&btnSoundClick);
+	controllersBtn.setTrigger(&trigA);
+	controllersBtn.setEffectGrow();
+
 	GuiText settingsBtnTxt("Settings", 24, (PixelColor){0, 0, 0, 255});
 	MenuButtonShape settingsBtnImg(MenuButtonShape::LARGE);
 	GuiButton settingsBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
 	settingsBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	settingsBtn.setPosition(0, 235);
+	settingsBtn.setPosition(125, 235);
 	settingsBtn.setLabel(&settingsBtnTxt);
 	settingsBtn.setImage(&settingsBtnImg);
 	settingsBtn.setSoundOver(&btnSoundOver);
@@ -636,6 +649,7 @@ void HomeMenu ()
 	w.append(&fskipDecBtn);
 	w.append(&fskipIncBtn);
 	w.append(&keyboardBtn);
+	w.append(&controllersBtn);
 	w.append(&settingsBtn);
 
 	mainWindow->append(screenImg);
@@ -759,6 +773,11 @@ void HomeMenu ()
 			MENU_IncreaseOrDecreaseFrameSkip(true);
 			Settings_SyncRunning();
 			updateFskipText(&fskipText);
+		}
+		else if (controllersBtn.getState() == STATE::CLICKED)
+		{
+			controllersBtn.resetState();
+			Controls_Menu(&w);
 		}
 		else if (settingsBtn.getState() == STATE::CLICKED)
 		{
