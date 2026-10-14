@@ -22,6 +22,7 @@
 #include "libgui/Gui.h"
 #include "controlsmodel.h"
 #include "controllerprofile.h"
+#include "menupage.h"
 
 /** Opens the Controllers screens from the home menu. Blocks until the user backs out. */
 void Controls_Menu(GuiWindow * home);
@@ -54,8 +55,8 @@ class UiBatteryBar : public GuiElement
 		std::vector<MeshVertex> scratch;
 };
 
-/** The Controllers hub. */
-class ControlsHubView : public GuiColumn
+/** The Controllers hub: one card per controller (what is connected, then what DOS sees it as), the shared devices on the header. */
+class ControlsHubView : public GuiOverlay
 {
 	public:
 		ControlsHubView(GuiSound * soundOver);
@@ -65,16 +66,18 @@ class ControlsHubView : public GuiColumn
 		const std::string& statusText() const { return status; }
 	private:
 		GuiCard& playerCard(int n);
-		void deviceRow(GuiLayout& grid, const char * name, std::function<bool()> present);
+		GuiCard& deviceChip(const unsigned char * png, std::function<std::string()> tip, std::function<bool()> present);
 
 		UiScope ui;
 		int request;
 		std::string status;
 		GuiTextButton * backBtn;
+		GuiCard * cards[4];
+		bool heroMode;
 };
 
 /** The controller setup screen for one player. */
-class ControllerConfigView : public GuiColumn
+class ControllerConfigView : public GuiOverlay
 {
 	public:
 		ControllerConfigView(int player, GuiSound * soundOver);
@@ -99,7 +102,7 @@ class ControllerConfigView : public GuiColumn
 };
 
 /** The screen for choosing what a control does. */
-class TargetChooserView : public GuiColumn
+class TargetChooserView : public GuiOverlay
 {
 	public:
 		/**
@@ -123,6 +126,7 @@ class TargetChooserView : public GuiColumn
 		int shown;
 		bool done;
 		GuiTextButton * backBtn;
+		std::string hintText;
 };
 
 #endif

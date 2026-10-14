@@ -63,13 +63,22 @@ struct BindingTarget {
 	bool operator!=(const BindingTarget& o) const { return !(*this == o); }
 };
 
+/** The DOS-side device a controller stands in for. */
+enum class Emulated {
+	NONE,
+	JOYSTICK,		/**< A DOS joystick (PlayerInfo::joystick says which) */
+	KEYS_MOUSE		/**< The keyboard and mouse */
+};
+
 /** What the Controllers screen shows for one of the four player slots. */
 struct PlayerInfo {
 	bool connected;
 	PadType type;
 	std::string device;		/**< "Wiimote + Nunchuk" */
 	int battery;			/**< Percent; -1 for wired or unknown */
-	std::string role;		/**< What the player does in DOS: "Joystick 1", "Keys + mouse" */
+	std::string role;		/**< What the player does in DOS, in words: "Joystick 1", "Keys + mouse" (for the hint line) */
+	Emulated emulated;		/**< The same, for the icons */
+	int joystick;			/**< Which DOS joystick (1 or 2) when emulated is JOYSTICK */
 	std::string scheme;		/**< The control scheme in use */
 };
 

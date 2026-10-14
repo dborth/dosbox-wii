@@ -131,12 +131,14 @@ class SampleControlsModel : public ControlsModel
 			p.connected = false;
 			p.type = PadType::NONE;
 			p.battery = -1;
+			p.emulated = Emulated::NONE;
+			p.joystick = 0;
 			const std::string sch = schemes()[(size_t)scheme];
 			switch(i)
 			{
-				case 0: p.connected = true; p.type = PadType::WIIMOTE_NUNCHUK; p.battery = 80; p.role = "Joystick 1"; break;
-				case 1: p.connected = true; p.type = PadType::CLASSIC; p.battery = 45; p.role = "Keys + mouse"; break;
-				case 2: p.connected = true; p.type = PadType::GAMECUBE; p.role = "Joystick 2"; break;
+				case 0: p.connected = true; p.type = PadType::WIIMOTE_NUNCHUK; p.battery = 80; p.role = "Joystick 1"; p.emulated = Emulated::JOYSTICK; p.joystick = 1; break;
+				case 1: p.connected = true; p.type = PadType::CLASSIC; p.battery = 45; p.role = "Keys + mouse"; p.emulated = Emulated::KEYS_MOUSE; break;
+				case 2: p.connected = true; p.type = PadType::GAMECUBE; p.role = "Joystick 2"; p.emulated = Emulated::JOYSTICK; p.joystick = 2; break;
 				default: break;
 			}
 			if(p.connected)

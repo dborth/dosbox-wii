@@ -18,11 +18,18 @@ static ProfileRow row(int control, GLYPH glyph, const char * letter, const char 
 	return r;
 }
 
-static ProfileRow stickRow(int control, const char * letter, const char * name, bool click)
+static ProfileRow stickRow(int control, const char * letter, const char * name)
 {
 	ProfileRow r = row(control, GLYPH::STICK, letter, name);
-	r.binding = click ? (control | BIND_STICK_CLICK) : control;
-	r.stickMode = !click;
+	r.stickMode = true;
+	return r;
+}
+
+// A stick's click (L3, R3): a round button, so it does not look like the stick's movement
+static ProfileRow clickRow(int control, const char * letter, const char * name)
+{
+	ProfileRow r = row(control, GLYPH::BUTTON, letter, name);
+	r.binding = control | BIND_STICK_CLICK;
 	return r;
 }
 
@@ -39,7 +46,7 @@ static ControllerProfile buildPro()
 	ControllerProfile p;
 	p.name = "Pro Controller";
 	p.layout = &GuiProControllerLayout();
-	p.scale = 0.6f;
+	p.scale = 0.4f;
 
 	p.left.push_back(row(INPUT_TRIGGER_L, GLYPH::BUMPER, "L", "Left Bumper"));
 	p.left.push_back(row(INPUT_TRIGGER_ZL, GLYPH::BUMPER, "ZL", "Left Trigger"));
@@ -53,10 +60,10 @@ static ControllerProfile buildPro()
 
 	ProfileGroup sticks;
 	sticks.title = "STICKS";
-	sticks.rows.push_back(stickRow(INPUT_THUMB_L, "L", "L Stick", false));
-	sticks.rows.push_back(stickRow(INPUT_THUMB_L, "L", "L Click", true));
-	sticks.rows.push_back(stickRow(INPUT_THUMB_R, "R", "R Stick", false));
-	sticks.rows.push_back(stickRow(INPUT_THUMB_R, "R", "R Click", true));
+	sticks.rows.push_back(stickRow(INPUT_THUMB_L, "L", "L Stick"));
+	sticks.rows.push_back(clickRow(INPUT_THUMB_L, "L3", "L Click"));
+	sticks.rows.push_back(stickRow(INPUT_THUMB_R, "R", "R Stick"));
+	sticks.rows.push_back(clickRow(INPUT_THUMB_R, "R3", "R Click"));
 	p.groups.push_back(sticks);
 
 	ProfileGroup dpad;

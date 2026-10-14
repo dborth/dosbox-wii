@@ -31,4 +31,15 @@
 #include "player3_point_png.h"
 #include "player4_point_png.h"
 
+#include "icon_joystick_png.h"
+#include "icon_keyboard_png.h"
+#include "icon_mouse_png.h"
+#include "icon_wiimote_png.h"
+#include "icon_pointer_png.h"
+#include "icon_wiimote_nunchuk_png.h"
+#include "icon_classic_png.h"
+#include "icon_wiiu_pro_png.h"
+#include "icon_gamecube_png.h"
+#include "icon_gamepad_png.h"
+
 #endif

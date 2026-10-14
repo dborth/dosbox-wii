@@ -276,3 +276,30 @@ static inline float MenuSpinnerDotSize(int level)
 //!Resting and lit colors of the page-turning arrows (gray, turning to the accent)
 static inline PixelColor MenuArrowRest() { return MenuPaletteCurrent().outlineStrong; }
 static inline PixelColor MenuArrowLit() { return MenuPaletteCurrent().accent; }
+
+//!Buttons on the header and footer bars: white and outlined at rest like the home screen's, and a dark face with
+//!a white outline when highlighted (the label turns white with it)
+static inline GuiShapeStyle MenuBarButtonStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+
+	GuiPaint rest = GuiPaint()
+		.gradient(p.surfaceRaised, MenuMix(p.surface, p.outline, 0.45f))
+		.stroke(2.0f, p.chromeDark)
+		.shadow(6.0f, MenuRGBA(0, 0, 0, 110), 0.0f, 2.0f);
+
+	GuiPaint lit = GuiPaint()
+		.gradient(p.accent, p.accentDark)
+		.stroke(2.5f, p.surfaceRaised)
+		.glow(12.0f, p.glow, 1.0f);
+
+	GuiPaint pressed = GuiPaint()
+		.gradient(p.accentDark, p.accentDark)
+		.stroke(2.0f, p.outlineStrong);
+
+	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
+//!Text on the chrome bars (the page title and the hint line)
+static inline PixelColor MenuChromeText() { return MenuRGBA(255, 255, 255); }
+static inline PixelColor MenuChromeTextMuted() { return MenuRGBA(206, 206, 206); }

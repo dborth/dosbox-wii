@@ -4,3 +4,5 @@ executables
 .settings/
 .cproject
 build_wiiu
+/test/ui/controls_ui_test
+/test/ui/stubs/

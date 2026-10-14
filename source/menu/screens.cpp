@@ -21,6 +21,7 @@
 #include "drivers/InputController.h"
 #include "filelist.h"
 #include "menu.h"
+#include "menupage.h"
 #include "menuart.h"
 #include "settings.h"
 #include "storage.h"
@@ -178,10 +179,10 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	  w(platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight())
 {
 	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
-	titleTxt.setPosition(50, 50);
+	titleTxt.setPosition(MENU_PAGE_MARGIN, 32);	// on the header bar
 
 	helpTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	helpTxt.setPosition(0, 366);
+	helpTxt.setPosition(0, 374);	// the top of the footer bar
 	helpTxt.setMaxWidth(540);
 	helpTxt.setScroll(SCROLL::HORIZONTAL);
 

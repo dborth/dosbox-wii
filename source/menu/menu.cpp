@@ -633,8 +633,6 @@ void HomeMenu ()
 	batteryBtn[3]->setPosition(135, -40);
 
 	GuiWindow w(screenwidth, screenheight);
-	w.append(&bgTopImg);
-	w.append(&bgBottomImg);
 	w.append(batteryBtn[0]);
 	w.append(batteryBtn[1]);
 	w.append(batteryBtn[2]);
@@ -652,7 +650,11 @@ void HomeMenu ()
 	w.append(&controllersBtn);
 	w.append(&settingsBtn);
 
+	// the bars belong to the main window, not to the home screen, so they stay up while the pages (settings,
+	// controllers) come and go on top of the game picture
 	mainWindow->append(screenImg);
+	mainWindow->append(&bgTopImg);
+	mainWindow->append(&bgBottomImg);
 	mainWindow->append(&w);
 
 	enterSound.play();
@@ -808,6 +810,8 @@ void HomeMenu ()
 	// elements are stack objects that the window only points at: take them
 	// out before the window (and the stack) goes away
 	mainWindow->remove(screenImg);
+	mainWindow->remove(&bgTopImg);
+	mainWindow->remove(&bgBottomImg);
 	mainWindow->remove(&w);
 	delete mainWindow;
 	mainWindow = NULL;
