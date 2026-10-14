@@ -411,6 +411,10 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
  ***************************************************************************/
 void HomeMenu ()
 {
+	// Declared first so it runs last, after every menu element below has let go of its mesh:
+	// gives the cached shape meshes (and the video backend's copies) back before the game runs
+	struct MeshCacheFlush { ~MeshCacheFlush() { GuiMeshCache::flush(); } } meshCacheFlush;
+
 	// the hotkeys change the cycles and frameskip without the config; the
 	// settings pages and Save work from the config
 	Settings_SyncRunning();
