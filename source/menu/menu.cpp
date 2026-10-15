@@ -185,7 +185,7 @@ static void WindowCredits()
 	MenuDialogShape creditsBoxImg(MENU_CREDITS_W, MENU_CREDITS_H, MENU_CREDITS_HEADER_H);
 	creditsWindow.appendWithAutoRemove(&creditsBoxImg); // destroyed before the window
 
-	const int numEntries = 10;
+	const int numEntries = 12;
 	GuiText * txt[numEntries];
 
 	// the title sits on the dialog's chrome band, so it is white; the credits start below the band
@@ -214,19 +214,41 @@ static void WindowCredits()
 	txt[i] = new GuiText("shagkur & wintermute (libogc / devkitPPC)");
 	txt[i]->setPosition(0,y); i++; y+=22;
 
-	y+=40;
+	y+=20;
 
-	GuiText::setPresets(18, (PixelColor){0, 0, 0, 255}, 0,
+	GuiText::setPresets(12, (PixelColor){0, 0, 0, 255}, 0,
 		GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);
 
-	txt[i] = new GuiText("This software is open source and may be copied,");
+	txt[i] = new GuiText("This software is open source and may be copied, distributed, or modified");
 	txt[i]->setPosition(0,y); i++; y+=20;
 
-	txt[i] = new GuiText("distributed, or modified under the terms of the");
+	txt[i] = new GuiText("under the terms of the GNU General Public License (GPL) Version 2.");
 	txt[i]->setPosition(0,y); i++; y+=20;
 
-	txt[i] = new GuiText("GNU General Public License (GPL) Version 2.");
-	txt[i]->setPosition(0,y); i++; y+=20;
+	char consoleDetails[64];
+	char memoryFreeInfo[50];
+	char jitInfo[24];
+
+	snprintf(consoleDetails, sizeof(consoleDetails), "%s", platform->getConsoleDetails());
+	snprintf(memoryFreeInfo, sizeof(memoryFreeInfo), "%s", platform->getMemoryFreeInfo());
+
+	EmulationStatus status;
+	const char * jit = "Unknown";
+	if(GetEmulationStatus(&status) && status.core[0])
+		jit = strcmp(status.core, "dynamic") == 0 ? "Enabled" : "Disabled";
+	snprintf(jitInfo, sizeof(jitInfo), "JIT: %s", jit);
+
+	txt[i] = new GuiText(consoleDetails, 14, (PixelColor){0, 0, 0, 255});
+	txt[i]->setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	txt[i]->setPosition(-20,-52); i++;
+
+	txt[i] = new GuiText(memoryFreeInfo, 14, (PixelColor){0, 0, 0, 255});
+	txt[i]->setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	txt[i]->setPosition(-20,-36); i++;
+
+	txt[i] = new GuiText(jitInfo, 14, (PixelColor){0, 0, 0, 255});
+	txt[i]->setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
+	txt[i]->setPosition(-20,-20); i++;
 
 	for(i=0; i < numEntries; i++)
 		creditsWindow.append(txt[i]);
