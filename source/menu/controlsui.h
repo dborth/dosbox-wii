@@ -5,7 +5,7 @@
  *
  * The controller screens, built from shapes with libgui's builder layer:
  *
- *   Controllers hub    four player cards, shared devices, the control scheme
+ *   Controllers hub    four player cards, shared devices, the preset
  *   Controller setup   a controller drawing with its controls listed around it,
  *                      each showing what it does; the selected row is highlighted
  *                      on the drawing
@@ -87,12 +87,15 @@ class ControllerConfigView : public GuiOverlay
 		/** The control highlighted on the drawing (0 = none). */
 		int highlighted() const;
 		PadType type() const { return padType; }
+		/** The player slot being set up (0-3). */
+		int player() const { return playerSlot; }
 		const std::string& statusText() const { return status; }
 	private:
 		enum class Side { LEFT, RIGHT, GROUP };
 		GuiCard& bindingRow(const ProfileRow& row, Side side, int width);
 
 		UiScope ui;
+		int playerSlot;
 		PadType padType;
 		GuiControllerView * view;
 		std::string status;

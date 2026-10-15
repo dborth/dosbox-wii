@@ -52,7 +52,8 @@ struct SceneModel : ControlsModel
 {
 	PlayerInfo players[4];
 	DeviceStatus dev;
-	int scheme = 1;
+	int preset = 1;
+	int mode = 0;
 	SceneModel(int count)
 	{
 		for(int i = 0; i < 4; i++)
@@ -69,23 +70,34 @@ struct SceneModel : ControlsModel
 			players[i].emulated = i == 1 ? Emulated::KEYS_MOUSE : Emulated::JOYSTICK;
 			players[i].joystick = i == 2 ? 2 : 1;
 			players[i].role = i == 1 ? "Keys + mouse" : (i == 2 ? "Joystick 2" : "Joystick 1");
-			players[i].scheme = "Arrow keys";
+			players[i].preset = "Arrow keys";
 		}
 		dev.keyboard = true; dev.mouse = false; dev.wiimoteIr = true; dev.gamepadPresent = false; dev.gamepadTouch = false;
 	}
 	int playerCount() const override { return 4; }
 	PlayerInfo player(int i) const override { return players[i]; }
 	DeviceStatus devices() const override { return dev; }
-	std::vector<std::string> schemes() const override
+	uint32_t held(int) const override { return 0; }
+	std::vector<EmulatedMode> emulatedModes() const override
 	{
-		static const char * names[] = { "Compatible", "Arrow keys", "Arrows + shooter", "Point and click", "Stick mouse", "Menu keys" };
-		return std::vector<std::string>(names, names + 6);
+		return { { "Joystick", "", 1, 4 }, { "Two joysticks", "", 2, 2 }, { "Keyboard + mouse", "", 0, 0 } };
 	}
-	int currentScheme() const override { return scheme; }
-	void setScheme(int i) override { scheme = i; }
-	BindingTarget binding(PadType, int) const override { return BindingTarget(TARGET::KEY, 5); }
-	void setBinding(PadType, int, const BindingTarget&) override {}
-	void resetBindings(PadType) override {}
+	int currentEmulated() const override { return mode; }
+	void setEmulated(int i) override { mode = i; }
+	std::vector<PresetInfo> presets() const override
+	{
+		return { { "Compatible", "", true }, { "Arrow keys", "", false }, { "Arrows + shooter", "", false }, { "Point and click", "", false }, { "Menu keys", "", false } };
+	}
+	int currentPreset() const override { return preset; }
+	void applyPreset(int i) override { preset = i; }
+	bool supported(int) const override { return true; }
+	BindingTarget binding(int, int) const override { return BindingTarget(TARGET::KEY, 5); }
+	void setBinding(int, int, const BindingTarget&) override {}
+	void resetBindings(int) override {}
+	std::vector<SetupInfo> setups() const override { return {}; }
+	bool saveSetup(const std::string&, const std::string&) override { return false; }
+	bool loadSetup(int) override { return false; }
+	std::string runningProgram() const override { return ""; }
 };
 
 int main(int argc, char ** argv)

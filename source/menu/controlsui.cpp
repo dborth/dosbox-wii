@@ -228,15 +228,15 @@ ControlsHubView::ControlsHubView(GuiSound * soundOver) :
 
 	MenuPageFrame f = MenuPage_Build(ui, *this, "Controllers", [this]{ return status; });
 
-	// the shared devices and the scheme, which apply to every player
-	GuiTextButton& scheme = ui.button("").size(204, 38).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("Scheme: %s", m.schemes()[(size_t)m.currentScheme()].c_str()); })
+	// the shared devices and the preset, which apply to every player
+	GuiTextButton& presetBtn = ui.button("").size(204, 38).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
+		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str()); })
 		.onClick([this]{
 			ControlsModel& m = Controls();
-			m.setScheme(m.currentScheme() + 1);
-			status = GuiFormat("Scheme: %s", m.schemes()[(size_t)m.currentScheme()].c_str());
+			m.applyPreset((m.currentPreset() + 1) % (int)m.presets().size());
+			status = GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str());
 		})
-		.onFocus([this]{ status = "A changes the control scheme for every player"; });
+		.onFocus([this]{ status = "A changes the preset for every player"; });
 
 	f.headerRight->add(deviceChip(icon_keyboard_png,
 		[]{ return Controls().devices().keyboard ? "USB keyboard: typing goes to DOS" : "USB keyboard: not connected"; },
@@ -247,7 +247,7 @@ ControlsHubView::ControlsHubView(GuiSound * soundOver) :
 	f.headerRight->add(deviceChip(icon_pointer_png,
 		[]{ return Controls().devices().wiimoteIr ? "Wiimote pointer: moves the DOS mouse" : "Wiimote pointer: not pointing at the screen"; },
 		[]{ return Controls().devices().wiimoteIr; }));
-	f.headerRight->add(scheme);
+	f.headerRight->add(presetBtn);
 
 	// A slot that has nothing in it takes no room (the first one always shows, to say what to do), and the cards
 	// are roomier when there is only one player, which is the usual case. This runs before the cards' own
@@ -282,9 +282,9 @@ ControlsHubView::ControlsHubView(GuiSound * soundOver) :
 	}
 	ui.runBindings();
 	// When the page takes focus its window moves the selection one step down from whatever is selected (or to the
-	// first thing in reading order when nothing is). Starting from the scheme button, which is just above the first
+	// first thing in reading order when nothing is). Starting from the preset button, which is just above the first
 	// card, lands that step on the first player rather than on the header.
-	scheme.setState(STATE::SELECTED);
+	presetBtn.setState(STATE::SELECTED);
 
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
 	back.setTrigger(1, &cancel);
@@ -316,14 +316,14 @@ bool ControllerConfigView::takeRequest(ProfileRow& row)
 GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int width)
 {
 	const GuiTheme& t = ui.theme();
-	const PadType pt = padType;
+	const int pl = playerSlot;
 	const int id = r.binding;
 	const char * fixed = r.fixed;
 	const char * name = r.name;
 
 	GuiLabel& target = ui.label().fontSize(UI_FONT_SMALL + 1);
 	target.setMaxWidth(width - 12 - 22 - 8); // long choices are cut rather than spilling out of the row
-	target.bind([pt, id, fixed]{ return fixed ? std::string(fixed) : Controls().binding(pt, id).describe(); });
+	target.bind([pl, id, fixed]{ return fixed ? std::string(fixed) : Controls().describe(pl, id); });
 
 	GuiLayout& content = ui.row().size(width - 12, 0).gap(8).align(LAYOUT_ALIGN::CENTRE);
 	GuiGlyph& icon = ui.glyph(r.glyph, r.letter);
@@ -336,7 +336,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	row.size(width, 0).style(t.rowStyle()).pad(6, 1);
 	row.corners(GuiCorners(6.0f));
 	const int control = r.control;
-	row.onFocus([this, &row, control, side, name, pt, id, fixed]{
+	row.onFocus([this, &row, control, side, name, pl, id, fixed]{
 		view->setHighlight(control);
 		const float midY = (float)(row.getTop() + row.getHeight() / 2);
 		if(side == Side::LEFT)
@@ -345,7 +345,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 			view->setLeader(true, (float)row.getLeft(), midY);
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
-		status = fixed ? GuiFormat("%s: %s", name, fixed) : GuiFormat("%s: %s.  A changes it", name, Controls().binding(pt, id).describe().c_str());
+		status = fixed ? GuiFormat("%s: %s", name, fixed) : GuiFormat("%s: %s.  A changes it", name, Controls().describe(pl, id).c_str());
 	});
 	if(!fixed)
 	{
@@ -360,7 +360,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 }
 
 ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
-	padType(Controls().player(player).type), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), backBtn(nullptr)
+	playerSlot(player), padType(Controls().player(player).type), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), backBtn(nullptr)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -370,7 +370,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	const PlayerInfo info = Controls().player(player);
 	const ControllerProfile& profile = Controllers_Profile(padType);
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("P%d  %s", player + 1, info.device.c_str()).c_str(), [this]{ return status; });
-	f.headerRight->add(ui.chip().bind([]{ ControlsModel& m = Controls(); return m.schemes()[(size_t)m.currentScheme()]; }));
+	f.headerRight->add(ui.chip().bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; }));
 
 	view = &ui.controllerView(*profile.layout, profile.scale);
 	const int sideW = 168, groupW = 152;
@@ -395,13 +395,13 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	f.body->add(ui.card().selectable(false).style(t.panelStyle()).pad(8, 6).add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right)));
 	f.body->add(groups);
 
-	const PadType pt = padType;
+	const int pl = playerSlot;
 	GuiTextButton& reset = MenuPage_Button(ui, "Reset")
-		.onClick([this, pt]{
-			Controls().resetBindings(pt);
-			status = "Buttons restored to the scheme's defaults";
+		.onClick([this, pl]{
+			Controls().resetBindings(pl);
+			status = "Buttons restored to the preset's defaults";
 		})
-		.onFocus([this]{ status = "A restores every button to the scheme's defaults"; });
+		.onFocus([this]{ status = "A restores every button to the preset's defaults"; });
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
 	back.setTrigger(1, &cancel);
 	backBtn = &back;
@@ -585,9 +585,9 @@ void ConfigScreen(int player)
 		if(view.takeRequest(row))
 		{
 			screen.hide();
-			BindingTarget target = Controls().binding(view.type(), row.binding);
+			BindingTarget target = Controls().binding(view.player(), row.binding);
 			if(ChooserScreen(row.name, row.stickMode, target))
-				Controls().setBinding(view.type(), row.binding, target);
+				Controls().setBinding(view.player(), row.binding, target);
 			screen.show();
 		}
 	}

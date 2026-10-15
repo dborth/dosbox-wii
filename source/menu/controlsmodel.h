@@ -12,6 +12,7 @@
 #ifndef _CONTROLSMODEL_H_
 #define _CONTROLSMODEL_H_
 
+#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -70,7 +71,7 @@ enum class Emulated {
 	KEYS_MOUSE		/**< The keyboard and mouse */
 };
 
-/** What the Controllers screen shows for one of the four player slots. */
+/** What the Controllers screen shows for one of the four player slots. A slot is a HAL channel: player n is controller[n]. */
 struct PlayerInfo {
 	bool connected;
 	PadType type;
@@ -79,7 +80,7 @@ struct PlayerInfo {
 	std::string role;		/**< What the player does in DOS, in words: "Joystick 1", "Keys + mouse" (for the hint line) */
 	Emulated emulated;		/**< The same, for the icons */
 	int joystick;			/**< Which DOS joystick (1 or 2) when emulated is JOYSTICK */
-	std::string scheme;		/**< The control scheme in use */
+	std::string preset;		/**< The preset the player's buttons started from */
 };
 
 /** Which shared input devices are present. */
@@ -89,6 +90,30 @@ struct DeviceStatus {
 	bool wiimoteIr;
 	bool gamepadPresent;	/**< Wii U only: whether to show the GamePad line at all */
 	bool gamepadTouch;
+};
+
+/** A built-in set of targets to start a player's buttons from. */
+struct PresetInfo {
+	std::string name;			/**< "Arrow keys" */
+	std::string description;	/**< One line: what it is for */
+	bool needsJoystick;			/**< Uses joystick buttons, so it means nothing with no joystick */
+};
+
+/**
+ * What the program on the DOS side sees. Keyboard and mouse are always there (DOSBox here cannot turn them
+ * off), so the only choice is the gamepad port: none, one joystick, or two.
+ */
+struct EmulatedMode {
+	std::string name;			/**< "Joystick" */
+	std::string description;
+	int joysticks;				/**< How many DOS joysticks exist: players 1..n each get one */
+	int buttons;				/**< Buttons on each of them */
+};
+
+/** A saved setup: a name and, optionally, the program it loads for. */
+struct SetupInfo {
+	std::string name;
+	std::string program;		/**< "KEEN4E.EXE", or empty */
 };
 
 /** Everything the controller screens read and write. */
@@ -101,15 +126,42 @@ class ControlsModel
 		virtual PlayerInfo player(int index) const = 0;
 		virtual DeviceStatus devices() const = 0;
 
-		virtual std::vector<std::string> schemes() const = 0;
-		virtual int currentScheme() const = 0;
-		virtual void setScheme(int index) = 0;
+		/** The buttons currently held on a player's controllers (INPUT_* bits), for lighting the control on the drawing. */
+		virtual uint32_t held(int player) const = 0;
 
-		/** What a control does. `binding` is a control id, plus BIND_STICK_CLICK for a stick's click. */
-		virtual BindingTarget binding(PadType type, int binding) const = 0;
-		virtual void setBinding(PadType type, int binding, const BindingTarget& target) = 0;
-		/** Puts every control of a hardware type back to the current scheme's defaults. */
-		virtual void resetBindings(PadType type) = 0;
+		// ---- the emulated controller (what DOS sees)
+		virtual std::vector<EmulatedMode> emulatedModes() const = 0;
+		virtual int currentEmulated() const = 0;
+		virtual void setEmulated(int index) = 0;
+
+		/** Buttons on the DOS joystick a player drives; 0 when that player has none. */
+		int joystickButtons(int player) const;
+		/** Whether a target does anything for a player under the current emulated mode (a joystick button the joystick lacks does not). */
+		bool usable(int player, const BindingTarget& target) const;
+
+		// ---- presets
+		virtual std::vector<PresetInfo> presets() const = 0;
+		virtual int currentPreset() const = 0;
+		/** Starts every player's buttons over from a preset. */
+		virtual void applyPreset(int index) = 0;
+
+		// ---- buttons. A binding belongs to a player slot, as in the mapper's per-pad groups.
+		/** Whether a control can be set at all (it has a source in the mapper). `control` is a control id, plus BIND_STICK_CLICK for a stick's click. */
+		virtual bool supported(int control) const = 0;
+		virtual BindingTarget binding(int player, int control) const = 0;
+		virtual void setBinding(int player, int control, const BindingTarget& target) = 0;
+		/** Puts every control of a player back to the current preset's defaults. */
+		virtual void resetBindings(int player) = 0;
+		/** What a control does, in words, saying so when the target would do nothing ("Joystick button 3 (no such button)"). */
+		std::string describe(int player, int control) const;
+
+		// ---- setups: a named, saved configuration, optionally tied to a program
+		virtual std::vector<SetupInfo> setups() const = 0;
+		/** Saves the current configuration under a name (replacing one of the same name). */
+		virtual bool saveSetup(const std::string& name, const std::string& program) = 0;
+		virtual bool loadSetup(int index) = 0;
+		/** The DOS program running now ("" at the prompt or when unknown). */
+		virtual std::string runningProgram() const = 0;
 };
 
 /** The model the screens use (sample data until a real one is installed). */
