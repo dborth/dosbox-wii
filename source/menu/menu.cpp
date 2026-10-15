@@ -769,4 +769,6 @@ void HomeMenu ()
 		delete pointer[i];
 		pointer[i] = nullptr;
 	}
+
+	GuiMeshCache::flush();
 }
