@@ -54,6 +54,8 @@ static void UpdateTiltAngles(float ax, float ay, float az, float& pitch, float& 
 // excludes hw_buttons_d/hw_buttons_r - those are one-frame events
 static void CarryForwardHwProfile(InputPadData& dst, const InputPadData& src, uint32_t hw) {
 	dst.hw_connected[hw] = src.hw_connected[hw];
+	dst.hw_battery_level[hw] = src.hw_battery_level[hw];
+	dst.hw_charging[hw]  = src.hw_charging[hw];
 	dst.hw_buttons_h[hw] = src.hw_buttons_h[hw];
 	dst.hw_stickX[hw]    = src.hw_stickX[hw];
 	dst.hw_stickY[hw]    = src.hw_stickY[hw];
@@ -276,6 +278,7 @@ void WutInputDriver::update() {
 
 				padData.hw_connected[INPUT_HW_DRC] = true;
 				padData.battery_level = vpadStatus.battery * 25; // normalize to 0-100
+				DrcBatteryFromRaw(vpadStatus.battery, padData.hw_battery_level[INPUT_HW_DRC], padData.hw_charging[INPUT_HW_DRC]);
 
 				padData.hw_buttons_d[INPUT_HW_DRC] = MapVPADToGeneric(vpadStatus.trigger);
 				padData.hw_buttons_h[INPUT_HW_DRC] = MapVPADToGeneric(vpadStatus.hold);
@@ -376,6 +379,7 @@ void WutInputDriver::update() {
 			padData.hw_connected[INPUT_HW_WIIMOTE] = true;
 			padData.battery_level = WPADGetBatteryLevel((WPADChan)i) * 25; // normalize to 0-100 range
 			kpadCache[i].battery_level = padData.battery_level;
+			padData.hw_battery_level[INPUT_HW_WIIMOTE] = padData.battery_level;
 			// Default assumption for this fresh frame: no valid IR pointer
 			kpadCache[i].validPointer = false;
 			

@@ -29,6 +29,7 @@
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
+#include "controllerstatus.h"
 
 #define APPVERSION		"2.0"
 
@@ -459,10 +460,6 @@ void HomeMenu ()
 	GuiSound enterSound(enter_ogg, enter_ogg_size, SOUND::OGG);
 	GuiSound exitSound(exit_ogg, exit_ogg_size, SOUND::OGG);
 
-	GuiImageData battery(battery_png);
-	GuiImageData batteryRed(battery_red_png);
-	GuiImageData batteryBar(battery_bar_png);
-
 	MenuBarShape bgTopImg(MenuBarShape::TOP);
 	MenuBarShape bgBottomImg(MenuBarShape::BOTTOM);
 
@@ -592,55 +589,11 @@ void HomeMenu ()
 	closeBtn.setTrigger(1, &trigHome);
 	closeBtn.setEffectGrow();
 
-	int i;
-	char txt[8];
-	bool status[4] = { false, false, false, false };
-	int level[4] = { 0, 0, 0, 0 };
-	bool newStatus;
-	int newLevel;
-
-	GuiText * batteryTxt[4];
-	GuiImage * batteryImg[4];
-	GuiImage * batteryBarImg[4];
-	GuiButton * batteryBtn[4];
-
-	for(i=0; i < 4; i++)
-	{
-		if(i == 0)
-			snprintf(txt, sizeof(txt), "P %d", i+1);
-		else
-			snprintf(txt, sizeof(txt), "P%d", i+1);
-
-		batteryTxt[i] = new GuiText(txt, 22, (PixelColor){255, 255, 255, 255});
-		batteryTxt[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::MIDDLE);
-		batteryImg[i] = new GuiImage(&battery);
-		batteryImg[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::MIDDLE);
-		batteryImg[i]->setPosition(30, 0);
-		batteryBarImg[i] = new GuiImage(&batteryBar);
-		batteryBarImg[i]->setTile(0);
-		batteryBarImg[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::MIDDLE);
-		batteryBarImg[i]->setPosition(34, 0);
-
-		batteryBtn[i] = new GuiButton(70, 20);
-		batteryBtn[i]->setLabel(batteryTxt[i]);
-		batteryBtn[i]->setImage(batteryImg[i]);
-		batteryBtn[i]->setIcon(batteryBarImg[i]);
-		batteryBtn[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
-		batteryBtn[i]->setRumble(false);
-		batteryBtn[i]->setSelectable(false);
-		batteryBtn[i]->setAlpha(150);
-	}
-
-	batteryBtn[0]->setPosition(45, -65);
-	batteryBtn[1]->setPosition(135, -65);
-	batteryBtn[2]->setPosition(45, -40);
-	batteryBtn[3]->setPosition(135, -40);
+	ControllerStatus controllerStatus(&trigA, &btnSoundOver, &btnSoundClick);
+	int controllerClicked;
 
 	GuiWindow w(screenwidth, screenheight);
-	w.append(batteryBtn[0]);
-	w.append(batteryBtn[1]);
-	w.append(batteryBtn[2]);
-	w.append(batteryBtn[3]);
+	controllerStatus.appendTo(w);
 	w.append(&logoBtn);
 	w.append(&closeBtn);
 	w.append(&exitBtn);
@@ -667,56 +620,14 @@ void HomeMenu ()
 	closeBtn.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_IN, 35);
 	bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
 	logoBtn.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
-	for(i=0; i < 4; i++)
-		batteryBtn[i]->setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
+	controllerStatus.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
 	w.setEffect(EFFECT::FADE, 15);
 
 	while(1)
 	{
 		UpdateGui();
 
-		for(i=0; i < 4; i++)
-		{
-			const InputPadData& pad = controller[i]->getPadData();
-			bool hasBattery = pad.hw_connected[INPUT_HW_WIIMOTE];
-			#ifdef __WIIU__
-			hasBattery = hasBattery || pad.hw_connected[INPUT_HW_DRC] || pad.hw_connected[INPUT_HW_WUPC];
-			#endif
-
-			if(hasBattery)
-			{
-				newStatus = true;
-				newLevel = (pad.battery_level / 100.0) * 4;
-				if(newLevel > 4) newLevel = 4;
-			}
-			else
-			{
-				newStatus = false;
-				newLevel = 0;
-			}
-
-			if(status[i] != newStatus || level[i] != newLevel)
-			{
-				if(newStatus == true) // controller connected
-				{
-					batteryBtn[i]->setAlpha(255);
-					batteryBarImg[i]->setTile(newLevel);
-
-					if(newLevel == 0)
-						batteryImg[i]->setImage(&batteryRed);
-					else
-						batteryImg[i]->setImage(&battery);
-				}
-				else // controller not connected
-				{
-					batteryBtn[i]->setAlpha(150);
-					batteryBarImg[i]->setTile(0);
-					batteryImg[i]->setImage(&battery);
-				}
-				status[i] = newStatus;
-				level[i] = newLevel;
-			}
-		}
+		controllerStatus.update();
 
 		if(closeBtn.getState() == STATE::CLICKED)
 		{
@@ -725,8 +636,7 @@ void HomeMenu ()
 			closeBtn.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
 			bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
 			logoBtn.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
-			for(i=0; i < 4; i++)
-				batteryBtn[i]->setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
+			controllerStatus.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
 			w.setEffect(EFFECT::FADE, -15);
 
 			// step the GUI until the effects have finished
@@ -780,6 +690,10 @@ void HomeMenu ()
 			Settings_SyncRunning();
 			updateFskipText(&fskipText);
 		}
+		else if((controllerClicked = controllerStatus.clicked()) >= 0)
+		{
+			Controls_Menu(&w, controllerClicked);
+		}
 		else if (controllersBtn.getState() == STATE::CLICKED)
 		{
 			controllersBtn.resetState();
@@ -824,15 +738,7 @@ void HomeMenu ()
 	delete screenImg;
 	if(backgroundTexture)
 		platform->getVideo()->getImageRenderer()->destroyTexture(backgroundTexture);
-	w.removeAll(); // before the heap-allocated battery elements are deleted
-
-	for(i=0; i < 4; i++)
-	{
-		delete batteryBtn[i];
-		delete batteryImg[i];
-		delete batteryBarImg[i];
-		delete batteryTxt[i];
-	}
+	w.removeAll(); // before the controller strip (which the window only points at) is destroyed
 
 	for(int i = 0; i < 4; i++)
 	{

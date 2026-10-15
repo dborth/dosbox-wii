@@ -25,8 +25,9 @@
 #include "controllerprofile.h"
 #include "menupage.h"
 
-/** Opens the Controllers screens from the home menu. Blocks until the user backs out. */
-void Controls_Menu(GuiWindow * home);
+/** Opens the Controllers screens from the home menu. Blocks until the user backs out. With a player (0-3), goes
+    straight to that player's controller setup instead of the hub. */
+void Controls_Menu(GuiWindow * home, int player = -1);
 
 /** Font sizes used by the controller screens. */
 enum {

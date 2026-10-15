@@ -656,9 +656,12 @@ void HubScreen()
 
 } // namespace
 
-void Controls_Menu(GuiWindow * home)
+void Controls_Menu(GuiWindow * home, int player)
 {
 	mainWindow->remove(home);
-	HubScreen();
+	if(player >= 0)
+		ConfigScreen(player);
+	else
+		HubScreen();
 	mainWindow->append(home);
 }

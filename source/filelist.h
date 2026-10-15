@@ -22,9 +22,13 @@
 #include "logo_png.h"
 #include "logo_over_png.h"
 
-#include "battery_png.h"
-#include "battery_red_png.h"
-#include "battery_bar_png.h"
+#include "controller_gamepad_png.h"
+#include "controller_wiimote_png.h"
+#include "controller_nunchuk_png.h"
+#include "controller_classic_png.h"
+#include "controller_wiiupro_png.h"
+#include "controller_gamecube_png.h"
+#include "controller_charging_png.h"
 
 #include "player1_point_png.h"
 #include "player2_point_png.h"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Turns the files under data/ into C arrays named like the console build's bin2o symbols (battery.png ->
-battery_png, battery_png_size), plus a stub header for each, so the real menu code links on a host.
+"""Turns the files under data/ into C arrays named like the console build's bin2o symbols (controller_wiimote.png ->
+controller_wiimote_png, controller_wiimote_png_size), plus a stub header for each, so the real menu code links on a host.
 usage: gen_assets.py <data dir> <images subdir> <out dir>"""
 import os, sys, re
 
