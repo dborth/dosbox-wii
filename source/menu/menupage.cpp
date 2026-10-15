@@ -11,6 +11,12 @@ GuiTextButton& MenuPage_Button(UiScope& ui, const char * text, int width)
 	return ui.button(text).size(width, 38).fontSize(18).style(MenuBarButtonStyle());
 }
 
+GuiCard& MenuPage_Section(UiScope& ui, int w)
+{
+	GuiCard& c = ui.card().selectable(false).style(MenuSectionStyle()).corners(GuiCorners(10.0f)).pad(8, 6).size(w, 0);
+	return c;
+}
+
 MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint)
 {
 	const int sw = platform->getVideo()->getScreenWidth();
@@ -20,14 +26,21 @@ MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, 
 	f.bodyHeight = sh - MENU_BAR_TOP_H - MENU_BAR_BOTTOM_H;
 
 	f.title = &ui.label(title).fontSize(MENU_PAGE_TITLE_FONT).textColor(MenuChromeText());
+	f.headerLeft = &ui.row().gap(10).align(LAYOUT_ALIGN::CENTRE);
 	f.headerRight = &ui.row().gap(10).align(LAYOUT_ALIGN::CENTRE);
-	GuiLayout& header = ui.row().size(sw, MENU_BAR_TOP_H).pad(MENU_PAGE_MARGIN, 0).align(LAYOUT_ALIGN::CENTRE)
-		.add(*f.title).addSpace().add(*f.headerRight);
+	GuiLayout& header = ui.row().size(sw, MENU_BAR_TOP_H).pad(MENU_PAGE_MARGIN, 0).gap(18).align(LAYOUT_ALIGN::CENTRE)
+		.add(*f.title).add(*f.headerLeft).addSpace().add(*f.headerRight);
 
 	// The body fills the screen between the bars (the padding keeps it clear of them). It goes in the page first,
 	// so the first thing the D-pad can select is in it and not on the header.
 	f.body = &ui.column().size(sw, sh).pad(MENU_PAGE_MARGIN, MENU_BAR_TOP_H + 4, MENU_PAGE_MARGIN, MENU_BAR_BOTTOM_H + 4)
 		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE);
+
+	// everything on the page sits on one card; sections inside it are flat tints, not more cards
+	f.content = &ui.column().gap(6).align(LAYOUT_ALIGN::CENTRE);
+	GuiCard& panel = ui.card().selectable(false).style(MenuPageCardStyle()).pad(MENU_PAGE_CARD_PAD, MENU_PAGE_CARD_PAD).size(MENU_PAGE_BODY_W, 0);
+	panel.add(*f.content);
+	f.body->add(panel);
 
 	f.hint = &ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted());
 	f.hint->bind(hint);

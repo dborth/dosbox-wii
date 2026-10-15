@@ -315,6 +315,7 @@ class SampleControlsModel : public ControlsModel
 				return it->second;
 			return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget();
 		}
+		BindingTarget defaultBinding(int control) const override { return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget(); }
 		void setBinding(int player, int control, const BindingTarget& t) override
 		{
 			if(mapperHasSource(control))

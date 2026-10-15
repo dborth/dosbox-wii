@@ -5,7 +5,8 @@
  *
  * The controller screens, built from shapes with libgui's builder layer:
  *
- *   Controllers hub    four player cards, shared devices, the preset
+ *   Controllers hub    a row per player: the controller, then what DOS sees it as (set by the DOS
+ *                      mode: player n drives joystick n); the preset
  *   Controller setup   a controller drawing with its controls listed around it,
  *                      each showing what it does; the selected row is highlighted
  *                      on the drawing
@@ -65,14 +66,16 @@ class ControlsHubView : public GuiOverlay
 		int takeRequest() { const int r = request; request = -1; return r; }
 		const std::string& statusText() const { return status; }
 	private:
-		GuiCard& playerCard(int n);
-		GuiCard& deviceChip(const unsigned char * png, std::function<std::string()> tip, std::function<bool()> present);
+		GuiCard& playerRow(int n);
+		std::string modeHint() const;
 
 		UiScope ui;
 		int request;
 		std::string status;
 		GuiTextButton * backBtn;
-		GuiCard * cards[4];
+		GuiCard * rows[4];
+		GuiCard * hw[4];
+		GuiCard * dos[4];
 		bool heroMode;
 };
 
@@ -112,8 +115,9 @@ class TargetChooserView : public GuiOverlay
 		 * @param controlName Name of the control being set ("Y Button")
 		 * @param stickMode Choose a stick's mode instead of a button action
 		 * @param current What the control does now
+		 * @param defaultTarget What the scheme makes it do (the Default button)
 		 */
-		TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& current, GuiSound * soundOver);
+		TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether the user picked something. */
 		bool chosen() const { return done; }

@@ -277,15 +277,16 @@ static inline float MenuSpinnerDotSize(int level)
 static inline PixelColor MenuArrowRest() { return MenuPaletteCurrent().outlineStrong; }
 static inline PixelColor MenuArrowLit() { return MenuPaletteCurrent().accent; }
 
-//!Buttons on the header and footer bars: white and outlined at rest like the home screen's, and a dark face with
-//!a white outline when highlighted (the label turns white with it)
-static inline GuiShapeStyle MenuBarButtonStyle()
+//!The one button look for the controller screens (and the bars): white and outlined at rest like the home
+//!screen's, a dark face with a white outline and a glow when highlighted (the label turns white with it).
+//!`marked` outlines a resting button in the accent color: the choice a control has now.
+static inline GuiShapeStyle MenuBarButtonStyle(bool marked = false)
 {
 	const MenuPalette& p = MenuPaletteCurrent();
 
 	GuiPaint rest = GuiPaint()
 		.gradient(p.surfaceRaised, MenuMix(p.surface, p.outline, 0.45f))
-		.stroke(2.0f, p.chromeDark)
+		.stroke(marked ? 3.5f : 2.0f, marked ? p.accent : p.chromeDark)
 		.shadow(6.0f, MenuRGBA(0, 0, 0, 110), 0.0f, 2.0f);
 
 	GuiPaint lit = GuiPaint()
@@ -298,6 +299,53 @@ static inline GuiShapeStyle MenuBarButtonStyle()
 		.stroke(2.0f, p.outlineStrong);
 
 	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
+//!A tab that is showing: a pressed-in gray face, so it reads as "this page" and not as the highlight
+static inline GuiShapeStyle MenuTabActiveStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiShapeStyle s = MenuBarButtonStyle();
+	s.normal = GuiPaint()
+		.gradient(MenuMix(p.outlineStrong, p.chromeDark, 0.15f), p.outlineStrong)
+		.stroke(2.0f, p.chromeDark);
+	return s;
+}
+
+//!The one card behind a page's content: opaque, so the game picture never shows through the controls
+static inline GuiShapeStyle MenuPageCardStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	return GuiShapeStyle(GuiPaint()
+		.gradient(p.surfaceRaised, p.surface)
+		.stroke(1.5f, p.outline)
+		.shadow(14.0f, MenuRGBA(0, 0, 0, 140), 0.0f, 4.0f));
+}
+
+//!A flat tinted area that groups things on a card (a player, a section of buttons)
+static inline GuiShapeStyle MenuSectionStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	return GuiShapeStyle(GuiPaint().color(MenuMix(p.surface, p.outline, 0.5f)));
+}
+
+//!A light tile on a section that can be selected (outline when highlighted)
+static inline GuiShapeStyle MenuTileStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiPaint rest = GuiPaint().color(p.surfaceRaised).stroke(1.5f, p.outline);
+	GuiPaint lit = GuiPaint().color(p.surfaceRaised).stroke(3.0f, p.accent).glow(8.0f, p.glow, 0.6f);
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.accentTint, p.surfaceRaised, 0.5f)).stroke(3.0f, p.accent);
+	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
+//!A selectable row on a section: no look at rest, an accent outline over a light fill when highlighted
+static inline GuiShapeStyle MenuRowHighlightStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiPaint lit = GuiPaint().color(p.surfaceRaised).stroke(2.5f, p.accent);
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.accentTint, p.surfaceRaised, 0.5f)).stroke(2.5f, p.accent);
+	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
 }
 
 //!Text on the chrome bars (the page title and the hint line)

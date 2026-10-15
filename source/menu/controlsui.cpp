@@ -89,7 +89,6 @@ void UiBatteryBar::draw()
 
 namespace {
 
-// An icon from the asset list, optionally faded
 GuiImage& iconImage(UiScope& ui, const unsigned char * png)
 {
 	GuiImageData& data = ui.own<GuiImageData>(png);
@@ -113,7 +112,7 @@ const unsigned char * padIcon(PadType t)
 // The art of whichever controller is in a slot: one icon per kind, shown while the slot holds that kind
 GuiLayout& padArt(UiScope& ui, int n)
 {
-	GuiLayout& art = ui.overlay().size(48, 48);
+	GuiLayout& art = ui.overlay().size(40, 40);
 	static const PadType kinds[] = { PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMECUBE, PadType::GAMEPAD };
 	for(size_t i = 0; i < sizeof(kinds) / sizeof(kinds[0]); i++)
 	{
@@ -129,28 +128,24 @@ GuiLayout& padArt(UiScope& ui, int n)
 GuiLayout& emulatedArt(UiScope& ui, int n)
 {
 	GuiChip& number = ui.chip().bind([n]{ return GuiFormat("%d", Controls().player(n).joystick); });
-	GuiLayout& joystick = ui.overlay().size(48, 48).add(iconImage(ui, icon_joystick_png)).add(number, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
+	GuiLayout& joystick = ui.overlay().size(40, 40).add(iconImage(ui, icon_joystick_png)).add(number, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
 	ui.visibleWhen(joystick, [n]{ return Controls().player(n).emulated == Emulated::JOYSTICK; });
 
-	GuiLayout& keysMouse = ui.row().gap(2).add(iconImage(ui, icon_keyboard_png)).add(iconImage(ui, icon_mouse_png));
+	GuiLayout& keysMouse = ui.row().gap(4).add(iconImage(ui, icon_keyboard_png)).add(iconImage(ui, icon_mouse_png));
 	ui.visibleWhen(keysMouse, [n]{ return Controls().player(n).emulated == Emulated::KEYS_MOUSE; });
 
-	return ui.row().add(joystick).add(keysMouse);
+	return ui.row().size(100, 0).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(joystick).add(keysMouse);
 }
 
-} // namespace
-
-// ---- hub
-
-// A small tile in the header for one shared device: its icon, faded while it is not there, with a dot
-GuiCard& ControlsHubView::deviceChip(const unsigned char * png, std::function<std::string()> tip, std::function<bool()> present)
+// A keyboard or mouse mark for the header: its icon, faded while it is not there, with a status dot
+GuiLayout& deviceMark(UiScope& ui, const unsigned char * png, std::function<bool()> present)
 {
 	GuiImage& img = iconImage(ui, png);
-	img.setScale(0.667f);
+	img.setScale(0.8f);
 	GuiShape& dot = ui.make<GuiShape>(9, 9);
 	dot.setShape(SHAPE::ELLIPSE);
 	GuiLayout& art = ui.overlay().size(34, 34);
-	art.add(img).add(dot, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
+	art.add(img, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE)).add(dot, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
 
 	int last = -1;
 	ui.bind([&img, &dot, present, last]() mutable {
@@ -162,13 +157,28 @@ GuiCard& ControlsHubView::deviceChip(const unsigned char * png, std::function<st
 			dot.setPaint(GuiPaint().color(s ? GuiTheme::current().good : GuiTheme::current().outlineStrong).stroke(1.5f, GuiTheme::current().surfaceRaised));
 		}
 	});
-
-	return ui.card().pad(5).corners(GuiCorners(10.0f))
-		.onFocus([this, tip]{ status = tip(); })
-		.add(art);
+	return art;
 }
 
-GuiCard& ControlsHubView::playerCard(int n)
+const int kZoneW = 300;		// the controller half of a player's row
+const int kDosW = 116;		// the DOS half
+const int kHeroH = 104;		// a row when there is only one player
+const int kCompactH = 50;	// a row when there are several
+
+} // namespace
+
+// ---- hub
+
+// What the DOS mode button says it does, for the hint line
+std::string ControlsHubView::modeHint() const
+{
+	const ControlsModel& m = Controls();
+	const std::vector<EmulatedMode> modes = m.emulatedModes();
+	const EmulatedMode& cur = modes[(size_t)m.currentEmulated()];
+	return GuiFormat("%s: %s.  A changes it", cur.name.c_str(), cur.description.c_str());
+}
+
+GuiCard& ControlsHubView::playerRow(int n)
 {
 	UiBatteryBar& battery = ui.make<UiBatteryBar>(56, 10);
 	ui.bind([&battery, n]{
@@ -184,52 +194,48 @@ GuiCard& ControlsHubView::playerCard(int n)
 	GuiLabel& name = ui.label().fontSize(UI_FONT_HEADING).bind([n]{ return Controls().player(n).device; });
 	GuiLayout& who = ui.column().gap(4).add(name).add(battery);
 	ui.visibleWhen(who, connected);
+	GuiLabel& waiting = ui.label("Press a button on a controller").fontSize(UI_FONT_BODY).muted().visibleWhen(absent);
 
-	GuiArrow& arrow = ui.make<GuiArrow>(ARROW::RIGHT, 16, 24, t.outlineStrong, t.outlineStrong);
-	ui.visibleWhen(arrow, connected);
-
-	GuiCard& dos = ui.card().selectable(false).style(t.panelStyle()).pad(10, 2).visibleWhen(connected).add(emulatedArt(ui, n));
-
-	GuiLabel& waiting = ui.label("Press a button on a controller").fontSize(UI_FONT_BODY + 2).muted().visibleWhen(absent);
-
-	// the controller on the left and what DOS sees on the right, with the arrow in the same place on every card
-	GuiLayout& hardware = ui.row().size(318, 0).gap(14).align(LAYOUT_ALIGN::CENTRE)
+	// left: the controller. A opens its button setup
+	GuiLayout& hardware = ui.row().size(kZoneW - 20, 0).gap(12).align(LAYOUT_ALIGN::CENTRE)
 		.add(ui.label(GuiFormat("P%d", n + 1).c_str()).fontSize(UI_FONT_HEADING).accent().visibleWhen(connected))
 		.add(padArt(ui, n))
 		.add(who)
 		.add(waiting);
-	GuiLayout& content = ui.row().size(MENU_PAGE_BODY_W - 32, 0).align(LAYOUT_ALIGN::CENTRE)
-		.add(hardware)
-		.add(arrow)
-		.addSpace()
-		.add(dos);
-
-	GuiCard& card = ui.card().size(MENU_PAGE_BODY_W, 0).pad(16, 2)
+	hw[n] = &ui.card().style(MenuRowHighlightStyle()).corners(GuiCorners(10.0f)).pad(10, 2).size(kZoneW, 0)
 		.onFocus([this, n]{
 			const PlayerInfo p = Controls().player(n);
-			if(!p.connected)
-			{
-				status = "Press a button on a controller to connect it";
-				return;
-			}
-			status = GuiFormat("P%d  %s plays as %s.  A sets up its buttons", n + 1, p.device.c_str(), p.role.c_str());
+			status = p.connected ? GuiFormat("P%d  %s.  A: set up buttons", n + 1, p.device.c_str())
+				: std::string("Press a button on a controller to connect it");
 		})
 		.onClick([this, n]{ if(Controls().player(n).connected) request = n; })
-		.add(content);
-	return card;
+		.add(hardware);
+
+	// right: what DOS sees it as. Joystick n is player n; how many joysticks there are comes from the DOS mode
+	// above, so this is only shown
+	GuiArrow& arrow = ui.make<GuiArrow>(ARROW::RIGHT, 16, 24, t.outlineStrong, t.outlineStrong);
+	ui.visibleWhen(arrow, connected);
+	dos[n] = &ui.card().selectable(false).style(MenuTileStyle()).corners(GuiCorners(8.0f)).pad(8, 2).size(kDosW, 0).visibleWhen(connected)
+		.add(emulatedArt(ui, n));
+
+	GuiLayout& line = ui.row().size(MENU_PAGE_CONTENT_W - 16, 0).align(LAYOUT_ALIGN::CENTRE)
+		.add(*hw[n]).addSpace().add(arrow).addSpace().add(*dos[n]);
+	return MenuPage_Section(ui, MENU_PAGE_CONTENT_W).add(line);
 }
 
 ControlsHubView::ControlsHubView(GuiSound * soundOver) :
-	request(-1), status("Controllers on the left, what DOS sees on the right"), backBtn(nullptr), heroMode(true)
+	request(-1), status("A controller's buttons on the left, what DOS sees it as on the right"), backBtn(nullptr), heroMode(true)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
+	const GuiTheme& t = ui.theme();
 
 	MenuPageFrame f = MenuPage_Build(ui, *this, "Controllers", [this]{ return status; });
 
-	// the shared devices and the preset, which apply to every player
-	GuiTextButton& presetBtn = ui.button("").size(204, 38).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
+	// beside the title: the preset, which applies to every player. At the right: the keyboard and mouse,
+	// which need no setup, in one capsule
+	GuiTextButton& presetBtn = ui.button("").size(196, 38).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
 		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str()); })
 		.onClick([this]{
 			ControlsModel& m = Controls();
@@ -237,53 +243,70 @@ ControlsHubView::ControlsHubView(GuiSound * soundOver) :
 			status = GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str());
 		})
 		.onFocus([this]{ status = "A changes the preset for every player"; });
+	GuiLayout& marks = ui.row().gap(8).align(LAYOUT_ALIGN::CENTRE)
+		.add(deviceMark(ui, icon_keyboard_png, []{ return Controls().devices().keyboard; }))
+		.add(deviceMark(ui, icon_mouse_png, []{ return Controls().devices().mouse; }));
+	GuiCard& capsule = ui.card().selectable(false).style(GuiShapeStyle(GuiPaint().color(t.surfaceRaised).stroke(1.5f, t.outline)))
+		.corners(GuiCorners(19.0f)).pad(12, 6).add(marks);
+	f.headerRight->add(capsule);
+	f.headerLeft->add(presetBtn);
 
-	f.headerRight->add(deviceChip(icon_keyboard_png,
-		[]{ return Controls().devices().keyboard ? "USB keyboard: typing goes to DOS" : "USB keyboard: not connected"; },
-		[]{ return Controls().devices().keyboard; }));
-	f.headerRight->add(deviceChip(icon_mouse_png,
-		[]{ return Controls().devices().mouse ? "USB mouse: moves the DOS mouse" : "USB mouse: not connected"; },
-		[]{ return Controls().devices().mouse; }));
-	f.headerRight->add(deviceChip(icon_pointer_png,
-		[]{ return Controls().devices().wiimoteIr ? "Wiimote pointer: moves the DOS mouse" : "Wiimote pointer: not pointing at the screen"; },
-		[]{ return Controls().devices().wiimoteIr; }));
-	f.headerRight->add(presetBtn);
+	// column headings, then a row for each player. The DOS heading carries the mode button: how many joysticks DOS
+	// has (player n drives joystick n), or none
+	GuiTextButton& modeBtn = ui.button("").size(150, 26).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
+		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
+		.onClick([this]{
+			ControlsModel& m = Controls();
+			m.setEmulated((m.currentEmulated() + 1) % (int)m.emulatedModes().size());
+			status = modeHint();
+		})
+		.onFocus([this]{ status = modeHint(); });
+	GuiLayout& heads = ui.row().size(MENU_PAGE_CONTENT_W, 0).pad(18, 0, 8, 0).gap(8).align(LAYOUT_ALIGN::CENTRE)
+		.add(ui.label("Controller").fontSize(UI_FONT_SMALL).muted())
+		.addSpace()
+		.add(ui.label("In DOS:").fontSize(UI_FONT_SMALL).muted())
+		.add(modeBtn);
+	f.content->gap(4);
+	f.content->add(heads);
 
-	// A slot that has nothing in it takes no room (the first one always shows, to say what to do), and the cards
-	// are roomier when there is only one player, which is the usual case. This runs before the cards' own
+	// A slot that has nothing in it takes no room (the first one always shows, to say what to do), and the rows
+	// are roomier when there is only one player, which is the usual case. This runs before the rows' own
 	// bindings: showing a window shows everything inside it, and those bindings then hide what should be hidden.
 	for(int n = 0; n < 4; n++)
-		cards[n] = nullptr;
+		rows[n] = nullptr;
 	ui.bind([this]{
-		if(!cards[3])
+		if(!rows[3])
 			return;
 		int shown = 0;
 		for(int n = 0; n < 4; n++)
 		{
 			const bool v = n == 0 || Controls().player(n).connected;
-			if(cards[n]->isVisible() != v)
-				cards[n]->setVisible(v);
+			if(rows[n]->isVisible() != v)
+				rows[n]->setVisible(v);
 			shown += v ? 1 : 0;
 		}
 		const bool hero = shown <= 1;
-		if(hero != heroMode || cards[0]->getHeight() == 0)
+		if(hero != heroMode || rows[0]->getHeight() == 0)
 		{
 			heroMode = hero;
 			for(int n = 0; n < 4; n++)
-				cards[n]->setFixedSize(MENU_PAGE_BODY_W, hero ? 112 : 56);
+			{
+				rows[n]->setFixedSize(MENU_PAGE_CONTENT_W, hero ? kHeroH : kCompactH);
+				hw[n]->setFixedSize(kZoneW, hero ? kHeroH - 12 : kCompactH - 8);
+				dos[n]->setFixedSize(kDosW, hero ? kHeroH - 12 : kCompactH - 8);
+			}
 		}
 	});
-
-	f.body->gap(6);
 	for(int n = 0; n < 4; n++)
 	{
-		cards[n] = &playerCard(n);
-		f.body->add(*cards[n]);
+		rows[n] = &playerRow(n);
+		f.content->add(*rows[n]);
 	}
 	ui.runBindings();
+
 	// When the page takes focus its window moves the selection one step down from whatever is selected (or to the
 	// first thing in reading order when nothing is). Starting from the preset button, which is just above the first
-	// card, lands that step on the first player rather than on the header.
+	// controller, lands that step on the first player rather than on the header.
 	presetBtn.setState(STATE::SELECTED);
 
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
@@ -315,7 +338,6 @@ bool ControllerConfigView::takeRequest(ProfileRow& row)
 // highlighted, along with a line drawn to the control on the picture. Clicking asks to change it.
 GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int width)
 {
-	const GuiTheme& t = ui.theme();
 	const int pl = playerSlot;
 	const int id = r.binding;
 	const char * fixed = r.fixed;
@@ -333,7 +355,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		content.add(icon).add(target);
 
 	GuiCard& row = ui.card();
-	row.size(width, 0).style(t.rowStyle()).pad(6, 1);
+	row.size(width, 0).style(MenuRowHighlightStyle()).pad(6, 1);
 	row.corners(GuiCorners(6.0f));
 	const int control = r.control;
 	row.onFocus([this, &row, control, side, name, pl, id, fixed]{
@@ -365,7 +387,6 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
-	const GuiTheme& t = ui.theme();
 
 	const PlayerInfo info = Controls().player(player);
 	const ControllerProfile& profile = Controllers_Profile(padType);
@@ -373,7 +394,8 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	f.headerRight->add(ui.chip().bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; }));
 
 	view = &ui.controllerView(*profile.layout, profile.scale);
-	const int sideW = 168, groupW = 152;
+	const int sideW = 168;
+	const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
 
 	GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
 	for(size_t i = 0; i < profile.left.size(); i++)
@@ -382,18 +404,18 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	for(size_t i = 0; i < profile.right.size(); i++)
 		right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
 
-	GuiLayout& groups = ui.row().gap(8);
+	GuiLayout& groups = ui.row().gap(6);
 	for(size_t g = 0; g < profile.groups.size(); g++)
 	{
-		GuiLayout& column = ui.column().gap(1).pad(0, 0, 0, 0).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted());
+		GuiLayout& column = ui.column().gap(1).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted());
 		for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
-			column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupW));
-		groups.add(ui.card().selectable(false).style(t.panelStyle()).pad(8, 5).add(column));
+			column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 16));
+		groups.add(MenuPage_Section(ui, groupSectionW).pad(8, 4).add(column));
 	}
 
-	f.body->gap(6);
-	f.body->add(ui.card().selectable(false).style(t.panelStyle()).pad(8, 6).add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right)));
-	f.body->add(groups);
+	f.content->gap(6);
+	f.content->add(MenuPage_Section(ui, MENU_PAGE_CONTENT_W).pad(8, 4).add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right)));
+	f.content->add(groups);
 
 	const int pl = playerSlot;
 	GuiTextButton& reset = MenuPage_Button(ui, "Reset")
@@ -414,20 +436,13 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 
 void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, int w, int h, int fontPx)
 {
-	const GuiTheme& t = ui.theme();
 	const std::vector<std::string>& names = Catalog_Names(kind);
 	for(size_t i = 0; i < names.size(); i++)
 	{
 		// the longest key names do not fit a key
 		const char * shown = names[i] == "Backspace" ? "Bksp" : names[i].c_str();
-		GuiTextButton& b = ui.button(shown).size(w, h).fontSize(fontPx);
-		if(current.kind == kind && current.code == (int)i)
-		{
-			// what the control does now, marked with an accent outline
-			GuiShapeStyle s = t.buttonStyle();
-			s.normal.stroke(3.0f, t.accent);
-			b.style(s);
-		}
+		const bool now = current.kind == kind && current.code == (int)i;
+		GuiTextButton& b = ui.button(shown).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(now));
 		const int code = (int)i;
 		b.onClick([this, kind, code]{
 			picked = BindingTarget(kind, code);
@@ -437,54 +452,70 @@ void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, int w, int h
 	}
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& now, GuiSound * soundOver) :
-	current(now), shown(0), done(false), backBtn(nullptr), hintText(stickMode ? "A picks what the stick does" : "Move over a category, then pick a choice")
+TargetChooserView::TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
+	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText(stickMode ? "A picks what the stick does" : "Pick a kind on the left, then what it does")
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
-	const GuiTheme& t = ui.theme();
 
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("What should %s do?", controlName).c_str(), [this]{ return hintText; });
 	f.headerRight->add(ui.chip(GuiFormat("Now: %s", now.describe().c_str()).c_str()));
 
 	if(stickMode)
 	{
-		GuiLayout& modes = ui.grid(1).gap(0, 8);
-		optionButtons(modes, TARGET::STICK_MODE, 300, 40, UI_FONT_BODY + 2);
-		f.body->add(ui.card().selectable(false).style(t.panelStyle()).pad(14, 10).add(modes));
+		GuiLayout& modes = ui.column().gap(6);
+		for(size_t i = 0; i < Catalog_Names(TARGET::STICK_MODE).size(); i++)
+		{
+			GuiTextButton& b = ui.button(Catalog_Names(TARGET::STICK_MODE)[i].c_str()).size(300, 38).fontSize(UI_FONT_BODY + 2)
+				.style(MenuBarButtonStyle(now.kind == TARGET::STICK_MODE && now.code == (int)i));
+			const int code = (int)i;
+			b.onClick([this, code]{ picked = BindingTarget(TARGET::STICK_MODE, code); done = true; });
+			modes.add(b);
+		}
+		f.content->add(MenuPage_Section(ui, MENU_PAGE_CONTENT_W).pad(8, 10).add(ui.column().align(LAYOUT_ALIGN::CENTRE).add(modes)));
 	}
 	else
 	{
-		// categories on the left; moving over one shows its choices on the right
+		// kinds down the left; a click shows that kind's choices on the right
 		static const char * const categories[5] = { "Key", "Joystick", "Mouse", "DOSBox", "None" };
+		static const char * const headings[5] = { "Keyboard keys", "Joystick buttons", "Mouse", "DOSBox functions", "Nothing" };
 		static const TARGET kinds[4] = { TARGET::KEY, TARGET::JOYSTICK, TARGET::MOUSE, TARGET::HOTKEY };
 		for(int k = 0; k < 4; k++)
 			if(now.kind == kinds[k])
 				shown = k;
-		if(now.kind == TARGET::NONE)
-			shown = 0;
 
+		GuiTextButton * tabs[5];
 		GuiLayout& list = ui.column().gap(4);
 		for(int k = 0; k < 5; k++)
 		{
-			GuiCard& entry = ui.card();
-			entry.size(100, 0).style(t.rowStyle()).pad(8, 8);
-			entry.corners(GuiCorners(6.0f));
-			entry.onFocus([this, k]{ shown = k; });
-			entry.add(ui.label(categories[k]).fontSize(UI_FONT_BODY));
-			list.add(entry);
+			tabs[k] = &ui.button(categories[k]).size(104, 34).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle());
+			tabs[k]->onClick([this, k]{ shown = k; });
+			list.add(*tabs[k]);
 		}
+		// the tab that is showing looks pressed in, apart from the highlight
+		int styled = -1;
+		ui.bind([tabs, styled, this]() mutable {
+			if(styled == shown)
+				return;
+			styled = shown;
+			for(int k = 0; k < 5; k++)
+				tabs[k]->style(k == shown ? MenuTabActiveStyle() : MenuBarButtonStyle());
+		});
 
-		GuiLayout& keys = ui.grid(9).size(420, 0).gap(3, 3);
-		optionButtons(keys, TARGET::KEY, 44, 26, UI_FONT_SMALL);
-		GuiLayout& joystick = ui.grid(2).size(424, 0).gap(8, 8);
-		optionButtons(joystick, TARGET::JOYSTICK, 208, 34, UI_FONT_BODY);
-		GuiLayout& mouse = ui.grid(2).size(424, 0).gap(8, 8);
-		optionButtons(mouse, TARGET::MOUSE, 208, 34, UI_FONT_BODY);
-		GuiLayout& hotkeys = ui.grid(2).size(424, 0).gap(8, 8);
-		optionButtons(hotkeys, TARGET::HOTKEY, 208, 34, UI_FONT_BODY);
-		GuiTextButton& clear = ui.button("Leave unassigned").size(208, 34).fontSize(UI_FONT_BODY)
+		const int choicesW = MENU_PAGE_CONTENT_W - 120 - 6;
+		const int inner = choicesW - 16;
+		GuiLayout& keys = ui.grid(9).gap(2, 2);
+		optionButtons(keys, TARGET::KEY, 41, 24, UI_FONT_SMALL);
+		const int wide = (inner - 6) / 2;
+		GuiLayout& joystick = ui.grid(2).gap(6, 6);
+		optionButtons(joystick, TARGET::JOYSTICK, wide, 30, UI_FONT_BODY);
+		GuiLayout& mouse = ui.grid(2).gap(6, 6);
+		optionButtons(mouse, TARGET::MOUSE, wide, 30, UI_FONT_BODY);
+		GuiLayout& hotkeys = ui.grid(2).gap(6, 6);
+		optionButtons(hotkeys, TARGET::HOTKEY, wide, 30, UI_FONT_BODY);
+		GuiTextButton& clear = ui.button("Leave unassigned").size(wide, 30).fontSize(UI_FONT_BODY)
+			.style(MenuBarButtonStyle(now.kind == TARGET::NONE))
 			.onClick([this]{
 				picked = BindingTarget();
 				done = true;
@@ -500,15 +531,24 @@ TargetChooserView::TargetChooserView(const char * controlName, bool stickMode, c
 			stack.add(*panels[k], GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
 			ui.visibleWhen(*panels[k], [this, k]{ return shown == k; });
 		}
+		GuiLabel& heading = ui.label().fontSize(UI_FONT_SMALL - 1).muted().bind([this]{ return std::string(headings[shown]); });
 
-		f.body->add(ui.row().gap(4).align(LAYOUT_ALIGN::START).add(ui.card().selectable(false).style(t.panelStyle()).pad(6, 6).add(list))
-			.add(ui.card().selectable(false).style(t.panelStyle()).size(436, 256).pad(8, 8).add(stack)));
+		f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
+			.add(MenuPage_Section(ui, 120).pad(8, 8).add(list))
+			.add(MenuPage_Section(ui, choicesW).pad(8, 6).add(ui.column().gap(4).add(heading).add(stack))));
 	}
 
+	// the control's own default, from the current preset
+	GuiTextButton& useDefault = MenuPage_Button(ui, "Default")
+		.onClick([this, defaultTarget]{
+			picked = defaultTarget;
+			done = true;
+		})
+		.onFocus([this, defaultTarget]{ hintText = GuiFormat("A picks the preset's default: %s", defaultTarget.describe().c_str()); });
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
 	back.setTrigger(1, &cancel);
 	backBtn = &back;
-	f.footerRight->add(back);
+	f.footerRight->add(useDefault).add(back);
 
 	ui.attachTo(*this);
 }
@@ -551,10 +591,10 @@ class ScreenWindow
 		bool shown;
 };
 
-bool ChooserScreen(const char * name, bool stickMode, BindingTarget& target)
+bool ChooserScreen(const char * name, bool stickMode, BindingTarget& target, const BindingTarget& defaultTarget)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	TargetChooserView view(name, stickMode, target, &over);
+	TargetChooserView view(name, stickMode, target, defaultTarget, &over);
 	ScreenWindow screen(view);
 
 	while(true)
@@ -586,7 +626,7 @@ void ConfigScreen(int player)
 		{
 			screen.hide();
 			BindingTarget target = Controls().binding(view.player(), row.binding);
-			if(ChooserScreen(row.name, row.stickMode, target))
+			if(ChooserScreen(row.name, row.stickMode, target, Controls().defaultBinding(row.binding)))
 				Controls().setBinding(view.player(), row.binding, target);
 			screen.show();
 		}

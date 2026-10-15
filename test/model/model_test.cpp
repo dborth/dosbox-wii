@@ -333,6 +333,7 @@ static void testHeldAndInstall()
 		BindingTarget binding(int, int) const override { return BindingTarget(); }
 		void setBinding(int, int, const BindingTarget&) override {}
 		void resetBindings(int) override {}
+		BindingTarget defaultBinding(int) const override { return BindingTarget(); }
 		std::vector<SetupInfo> setups() const override { return {}; }
 		bool saveSetup(const std::string&, const std::string&) override { return false; }
 		bool loadSetup(int) override { return false; }

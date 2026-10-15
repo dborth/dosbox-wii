@@ -33,8 +33,10 @@
 
 /** The parts of a page that the caller fills. All are owned by the UiScope. */
 struct MenuPageFrame {
+	GuiLayout * headerLeft;		/**< Right after the title */
 	GuiLayout * headerRight;	/**< Right end of the header: page-wide controls */
 	GuiLayout * body;			/**< The area between the bars; children are centered */
+	GuiLayout * content;		/**< Inside the one card that sits on the body: a column of sections */
 	GuiLayout * footerRight;	/**< Right end of the footer: Back and friends */
 	GuiLabel * title;			/**< The page title, white on the header */
 	GuiLabel * hint;			/**< Left end of the footer; bound to `hint` */
@@ -50,7 +52,14 @@ struct MenuPageFrame {
  */
 MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint);
 
-/** A button for the bars: Back, Reset. */
+/** Width of the content inside the page card. */
+#define MENU_PAGE_CONTENT_W	(MENU_PAGE_BODY_W - 2 * MENU_PAGE_CARD_PAD)
+#define MENU_PAGE_CARD_PAD	8
+
+/** A flat tinted section for the page card (a player, a group of buttons): `w` wide, as tall as its content. */
+GuiCard& MenuPage_Section(UiScope& ui, int w);
+
+/** A button for the bars and the pages: Back, Reset. */
 GuiTextButton& MenuPage_Button(UiScope& ui, const char * text, int width = 104);
 
 #endif

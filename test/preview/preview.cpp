@@ -75,7 +75,19 @@ struct SceneModel : ControlsModel
 		dev.keyboard = true; dev.mouse = false; dev.wiimoteIr = true; dev.gamepadPresent = false; dev.gamepadTouch = false;
 	}
 	int playerCount() const override { return 4; }
-	PlayerInfo player(int i) const override { return players[i]; }
+	PlayerInfo player(int i) const override
+	{
+		PlayerInfo p = players[i];
+		if(p.connected)
+		{
+			// as the real model does: joystick n is player n; players past the joysticks use keys and mouse
+			const int joysticks = emulatedModes()[(size_t)mode].joysticks;
+			p.emulated = i < joysticks ? Emulated::JOYSTICK : Emulated::KEYS_MOUSE;
+			p.joystick = i < joysticks ? i + 1 : 0;
+			p.role = i < joysticks ? (i == 0 ? "Joystick 1" : "Joystick 2") : "Keys + mouse";
+		}
+		return p;
+	}
 	DeviceStatus devices() const override { return dev; }
 	uint32_t held(int) const override { return 0; }
 	std::vector<EmulatedMode> emulatedModes() const override
@@ -93,6 +105,7 @@ struct SceneModel : ControlsModel
 	bool supported(int) const override { return true; }
 	BindingTarget binding(int, int) const override { return BindingTarget(TARGET::KEY, 5); }
 	void setBinding(int, int, const BindingTarget&) override {}
+	BindingTarget defaultBinding(int) const override { return BindingTarget(TARGET::KEY, 4); }
 	void resetBindings(int) override {}
 	std::vector<SetupInfo> setups() const override { return {}; }
 	bool saveSetup(const std::string&, const std::string&) override { return false; }
@@ -125,6 +138,7 @@ int main(int argc, char ** argv)
 	}
 	{
 		SceneModel four(4);
+		four.mode = 1;
 		Controls_SetModel(&four);
 		Screen s;
 		ControlsHubView view(nullptr);
@@ -152,7 +166,7 @@ int main(int argc, char ** argv)
 		SceneModel one(1);
 		Controls_SetModel(&one);
 		Screen s;
-		TargetChooserView view("A Button", false, BindingTarget(TARGET::KEY, 5), nullptr);
+		TargetChooserView view("A Button", false, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
 		s.page.append(&view);
 		snap("chooser", s.root);
 	}
@@ -160,7 +174,7 @@ int main(int argc, char ** argv)
 		SceneModel one(1);
 		Controls_SetModel(&one);
 		Screen s;
-		TargetChooserView view("L Stick", true, BindingTarget(TARGET::STICK_MODE, 1), nullptr);
+		TargetChooserView view("L Stick", true, BindingTarget(TARGET::STICK_MODE, 1), BindingTarget(TARGET::STICK_MODE, 1), nullptr);
 		s.page.append(&view);
 		snap("chooser_stick", s.root);
 	}

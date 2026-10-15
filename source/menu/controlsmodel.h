@@ -150,6 +150,8 @@ class ControlsModel
 		virtual bool supported(int control) const = 0;
 		virtual BindingTarget binding(int player, int control) const = 0;
 		virtual void setBinding(int player, int control, const BindingTarget& target) = 0;
+		/** What the current preset gives a control (the chooser's Default). */
+		virtual BindingTarget defaultBinding(int control) const = 0;
 		/** Puts every control of a player back to the current preset's defaults. */
 		virtual void resetBindings(int player) = 0;
 		/** What a control does, in words, saying so when the target would do nothing ("Joystick button 3 (no such button)"). */
