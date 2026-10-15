@@ -35,7 +35,6 @@
 #include "icon_keyboard_png.h"
 #include "icon_mouse_png.h"
 #include "icon_wiimote_png.h"
-#include "icon_pointer_png.h"
 #include "icon_wiimote_nunchuk_png.h"
 #include "icon_classic_png.h"
 #include "icon_wiiu_pro_png.h"
