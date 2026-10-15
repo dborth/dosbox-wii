@@ -155,6 +155,10 @@ class ControlsModel
 		virtual int currentPreset() const = 0;
 		/** Starts every player's buttons over from a preset. */
 		virtual void applyPreset(int index) = 0;
+		/** What a preset gives a control (for showing a preset before choosing it). */
+		virtual BindingTarget presetBinding(int preset, int control) const = 0;
+		/** Whether any button differs from the current preset's (applying a preset would throw those changes away). */
+		virtual bool modified() const = 0;
 
 		// ---- buttons. A binding belongs to a player slot, as in the mapper's per-pad groups.
 		/** Whether a control can be set at all (it has a source in the mapper). `control` is a control id, plus BIND_STICK_CLICK for a stick's click. */
@@ -167,6 +171,8 @@ class ControlsModel
 		virtual void resetBindings(int player) = 0;
 		/** What a control does, in short words; when the target would do nothing it says why instead ("Joystick off", "No button 3"). */
 		std::string describe(int player, int control) const;
+		/** The same for a target that is not set yet ("Key: Ctrl", or why it would do nothing for this player). */
+		std::string describeTarget(int player, const BindingTarget& target) const;
 
 		// ---- what the chooser offers
 		/** The kinds of target a player can be given now, in display order: no Joystick kind when the player has no joystick. */

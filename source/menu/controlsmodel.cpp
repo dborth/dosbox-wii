@@ -164,7 +164,11 @@ bool ControlsModel::usable(int player, const BindingTarget& target) const
 
 std::string ControlsModel::describe(int player, int control) const
 {
-	const BindingTarget t = binding(player, control);
+	return describeTarget(player, binding(player, control));
+}
+
+std::string ControlsModel::describeTarget(int player, const BindingTarget& t) const
+{
 	std::string text = t.describe();
 	// say what is wrong instead of the target: the row is too narrow to show both
 	if(t.kind == TARGET::JOYSTICK && text != "Not assigned" && !usable(player, t))
@@ -395,6 +399,12 @@ class SampleControlsModel : public ControlsModel
 				return it->second;
 			return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget();
 		}
+		BindingTarget presetBinding(int p, int control) const override
+		{
+			return p >= 0 && p < PRESET_COUNT && mapperHasSource(control) ? presetDefault(p, control) : BindingTarget();
+		}
+		bool modified() const override { return !edits.empty(); }
+
 		BindingTarget defaultBinding(int control) const override { return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget(); }
 		void setBinding(int player, int control, const BindingTarget& t) override
 		{

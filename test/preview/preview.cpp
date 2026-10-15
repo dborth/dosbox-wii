@@ -102,6 +102,8 @@ struct SceneModel : ControlsModel
 	}
 	int currentPreset() const override { return preset; }
 	void applyPreset(int i) override { preset = i; }
+	BindingTarget presetBinding(int, int) const override { return BindingTarget(); }
+	bool modified() const override { return false; }
 	bool supported(int) const override { return true; }
 	BindingTarget binding(int, int) const override { return BindingTarget(TARGET::KEY, 5); }
 	void setBinding(int, int, const BindingTarget&) override {}
@@ -195,6 +197,34 @@ int main(int argc, char ** argv)
 		snap(choosers[i].name, s.root);
 	}
 
+	// the pickers on the sample model
+	{
+		struct PickerScene { const char * name; int mode; int preset; bool edited; bool presets; };
+		const PickerScene pickers[] = {
+			{ "picker_preset", 0, 1, true, true },			// edited buttons: choosing asks first
+			{ "picker_preset_two", 1, 0, false, true },		// two joysticks: Compatible shows what it cannot do
+			{ "picker_preset_nojoy", 2, 1, false, true },	// no joystick: Compatible is not offered
+			{ "picker_emulated", 1, 1, false, false },
+		};
+		for(size_t i = 0; i < sizeof(pickers) / sizeof(pickers[0]); i++)
+		{
+			Controls_SetModel(nullptr);
+			Controls().setEmulated(pickers[i].mode);
+			Controls().applyPreset(pickers[i].preset);
+			if(pickers[i].edited)
+				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+			std::vector<int> index;
+			const std::vector<PickerItem> items = pickers[i].presets ? Picker_PresetItems(0, index) : Picker_EmulatedItems();
+			Screen s;
+			PickerView view(pickers[i].presets ? "Choose a preset" : "What does DOS see?", items, nullptr);
+			s.page.append(&view);
+			snap(pickers[i].name, s.root);
+		}
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		Controls().applyPreset(1);
+	}
+
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
@@ -242,6 +272,86 @@ int main(int argc, char ** argv)
 		s.page.append(&view);
 		EXPECT(view.categoryCount() == 5);
 		Controls().setEmulated(0);
+	}
+	{
+		// a picker: items that ask for confirmation need a second press, others do not
+		std::vector<PickerItem> items(3);
+		items[0].name = "One"; items[0].current = true;
+		items[1].name = "Two"; items[1].confirm = "Really?";
+		items[2].name = "Three"; items[2].confirm = "Really?";
+		Screen s;
+		PickerView view("Pick", items, nullptr);
+		s.page.append(&view);
+		EXPECT(view.focused() == 0);							// opens on the one in use
+		view.choose(1);
+		EXPECT(view.armed() && !view.chosen());
+		view.focusItem(2);										// moving away drops the confirmation
+		EXPECT(!view.armed() && view.focused() == 2);
+		view.choose(1);
+		view.choose(2);											// a different item re-arms rather than choosing
+		EXPECT(view.armed() && !view.chosen());
+		view.choose(2);
+		EXPECT(view.chosen() && view.result() == 2);
+
+		PickerView plain("Pick", items, nullptr);
+		s.page.append(&plain);
+		plain.choose(0);										// no confirmation asked: chosen at once
+		EXPECT(plain.chosen() && plain.result() == 0);
+		PickerView bad("Pick", items, nullptr);
+		bad.choose(-1);
+		bad.choose(9);
+		EXPECT(!bad.chosen());
+	}
+	{
+		// what the preset list offers
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		Controls().applyPreset(1);
+		std::vector<int> index;
+		std::vector<PickerItem> items = Picker_PresetItems(0, index);
+		EXPECT(items.size() == 5 && index.size() == 5);
+		EXPECT(items[1].current && !items[0].current);
+		EXPECT(items[0].confirm.empty());						// nothing changed, nothing to lose
+		EXPECT(items[0].rows.size() == 7 && items[0].rows[0].label == "A Button" && items[0].rows[0].value == "Joystick 1");
+		EXPECT(items[1].rows[0].value == "Key: Ctrl");
+
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+		items = Picker_PresetItems(0, index);
+		for(size_t i = 0; i < items.size(); i++)
+			EXPECT(!items[i].confirm.empty());					// every choice would throw the change away
+
+		Controls().applyPreset(1);
+		Controls().setEmulated(2);								// no joystick: the joystick preset is not offered
+		items = Picker_PresetItems(0, index);
+		EXPECT(items.size() == 4 && index[0] == 1);
+		Controls().applyPreset(0);								// ...unless it is the one in use
+		items = Picker_PresetItems(0, index);
+		EXPECT(items.size() == 5 && items[0].current);
+		Controls().setEmulated(1);								// two buttons: what Compatible gives X cannot happen
+		Controls().applyPreset(1);
+		items = Picker_PresetItems(0, index);
+		EXPECT(items[0].rows[2].label == "X Button" && items[0].rows[2].value == "No button 3");
+
+		// the emulated list: only connected players are listed
+		Controls().setEmulated(0);
+		std::vector<PickerItem> modes = Picker_EmulatedItems();
+		EXPECT(modes.size() == 3 && modes[0].current);
+		EXPECT(modes[0].rows.size() == 3 && modes[0].rows[0].value == "Joystick 1" && modes[0].rows[1].value == "Keys + mouse");
+		EXPECT(modes[1].rows[1].value == "Joystick 2" && modes[1].rows[2].value == "Keys + mouse");
+		EXPECT(modes[2].rows[0].value == "Keys + mouse");
+		// every line fits the pane (it cannot wrap), and at most four are shown
+		for(size_t i = 0; i < modes.size(); i++)
+		{
+			EXPECT(modes[i].lines.size() <= 4);
+			for(size_t k = 0; k < modes[i].lines.size(); k++)
+				EXPECT(modes[i].lines[k].size() <= 44);
+		}
+		for(size_t i = 0; i < items.size(); i++)
+		{
+			EXPECT(items[i].lines.size() <= 4);
+			for(size_t k = 0; k < items[i].lines.size(); k++)
+				EXPECT(items[i].lines[k].size() <= 44);
+		}
 	}
 	if(failures)
 		return 1;

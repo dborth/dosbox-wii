@@ -88,6 +88,9 @@ class ControllerConfigView : public GuiOverlay
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether a row was clicked since the last call; fills `row` with it. */
 		bool takeRequest(ProfileRow& row);
+		/** Which list the user asked to open from the header, if any (then it is forgotten). */
+		enum class Pick { NONE, EMULATED, PRESET };
+		Pick takePick() { const Pick p = pickRequest; pickRequest = Pick::NONE; return p; }
 		/** The control highlighted on the drawing (0 = none). */
 		int highlighted() const;
 		PadType type() const { return padType; }
@@ -105,7 +108,60 @@ class ControllerConfigView : public GuiOverlay
 		std::string status;
 		bool hasRequest;
 		ProfileRow request;
+		Pick pickRequest;
 		GuiTextButton * backBtn;
+};
+
+/** One line of a picker's detail pane: what a button does under that choice. */
+struct PickerRow {
+	std::string label;	/**< "A Button" */
+	std::string value;	/**< "Key: Ctrl" */
+};
+
+/** A choice in a picker. */
+struct PickerItem {
+	std::string name;					/**< "Arrow keys" */
+	std::vector<std::string> lines;		/**< What it is, a few short lines (at most three are shown) */
+	std::vector<PickerRow> rows;		/**< What it does for the buttons (at most seven are shown) */
+	bool current;						/**< The one in use now */
+	std::string confirm;				/**< When not empty, choosing needs a second press, and this is what the hint line says meanwhile */
+};
+
+/** The choices for what DOS sees, as picker items. */
+std::vector<PickerItem> Picker_EmulatedItems();
+/**
+ * The presets a player can choose, as picker items. `index` receives, for each item, the preset it stands for
+ * (a preset that needs a joystick is left out when the player has none, unless it is the one in use).
+ */
+std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index);
+
+/** A list of choices on the left, and what the one under the cursor means on the right. */
+class PickerView : public GuiOverlay
+{
+	public:
+		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver);
+		GuiButton& backButton() { return *backBtn; }
+		/** Whether a choice was made (after any confirmation). */
+		bool chosen() const { return done; }
+		/** The index of the item chosen. */
+		int result() const { return picked; }
+		/** The item the right pane describes. */
+		int focused() const { return focus; }
+		/** Whether an item is waiting for its second press. */
+		bool armed() const { return armedIdx >= 0; }
+		/** What A does on an item; the first press only arms an item that asks for confirmation. */
+		void choose(int index);
+		/** The cursor moved to an item (a pending confirmation is dropped). */
+		void focusItem(int index);
+	private:
+		UiScope ui;
+		std::vector<PickerItem> items;
+		int picked;
+		bool done;
+		int focus;
+		int armedIdx;
+		GuiTextButton * backBtn;
+		std::string hintText;
 };
 
 /** The screen for choosing what a control does. */

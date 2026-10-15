@@ -395,7 +395,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 }
 
 ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
-	playerSlot(player), padType(Controls().player(player).type), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), backBtn(nullptr)
+	playerSlot(player), padType(Controls().player(player).type), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), backBtn(nullptr)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -404,17 +404,17 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	const PlayerInfo info = Controls().player(player);
 	const ControllerProfile& profile = Controllers_Profile(padType);
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; });
-	// what DOS sees (changes at once; a list of the choices comes with the pickers) and the preset the buttons started from
+	// what DOS sees, and the preset the buttons started from: each opens a list of the choices
 	GuiTextButton& emulatedBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
 		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
-		.onClick([this]{
-			ControlsModel& m = Controls();
-			m.setEmulated((m.currentEmulated() + 1) % (int)m.emulatedModes().size());
-			status = GuiFormat("DOS sees: %s", m.emulatedModes()[(size_t)m.currentEmulated()].name.c_str());
-		})
-		.onFocus([this]{ status = "A changes what DOS sees"; });
+		.onClick([this]{ pickRequest = Pick::EMULATED; })
+		.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none"; });
+	GuiTextButton& presetBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
+		.bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; })
+		.onClick([this]{ pickRequest = Pick::PRESET; })
+		.onFocus([this]{ status = "A chooses a preset for the buttons"; });
 	f.headerRight->add(emulatedBtn);
-	f.headerRight->add(ui.chip().bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; }));
+	f.headerRight->add(presetBtn);
 
 	view = &ui.controllerView(*profile.layout, profile.scale);
 	// lit while held, so pressing a button on the controller shows which control it is
@@ -682,6 +682,187 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	ui.attachTo(*this);
 }
 
+// ---- list pickers
+
+void PickerView::choose(int index)
+{
+	if(index < 0 || (size_t)index >= items.size())
+		return;
+	if(!items[(size_t)index].confirm.empty() && armedIdx != index)
+	{
+		armedIdx = index;
+		hintText = items[(size_t)index].confirm;
+		return;
+	}
+	picked = index;
+	done = true;
+}
+
+void PickerView::focusItem(int index)
+{
+	if(index < 0 || (size_t)index >= items.size())
+		return;
+	focus = index;
+	if(armedIdx != index)
+		armedIdx = -1;
+	hintText = "A chooses, B goes back";
+}
+
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, GuiSound * soundOver) :
+	items(itemList), picked(-1), done(false), focus(0), armedIdx(-1), backBtn(nullptr), hintText("A chooses, B goes back")
+{
+	ui.setSounds(soundOver, nullptr);
+	GuiTrigger& cancel = ui.own<GuiTrigger>();
+	cancel.setSecondaryTrigger();
+
+	MenuPageFrame f = MenuPage_Build(ui, *this, title, [this]{ return hintText; });
+
+	int current = 0;
+	for(size_t i = 0; i < items.size(); i++)
+		if(items[i].current)
+			current = (int)i;
+	focus = current;
+
+	const int listW = 176;
+	const int paneW = MENU_PAGE_CONTENT_W - listW - 6;
+
+	std::vector<GuiTextButton*>& buttons = ui.own<std::vector<GuiTextButton*>>();
+	GuiLayout& list = ui.column().gap(4);
+	for(size_t i = 0; i < items.size(); i++)
+	{
+		const int idx = (int)i;
+		GuiTextButton& b = ui.button(items[i].name.c_str()).size(listW - 16, 34).fontSize(UI_FONT_BODY)
+			.style(MenuBarButtonStyle(items[i].current))
+			.onClick([this, idx]{ choose(idx); })
+			.onFocus([this, idx]{ focusItem(idx); });
+		buttons.push_back(&b);
+		list.add(b);
+	}
+
+	// the right pane follows the cursor
+	GuiLabel& heading = ui.label().fontSize(UI_FONT_BODY + 2).bind([this]{
+		return items.empty() ? std::string() : items[(size_t)focus].name + (items[(size_t)focus].current ? "  (in use)" : "");
+	});
+	GuiLayout& pane = ui.column().gap(5).align(LAYOUT_ALIGN::START).add(heading);
+	for(size_t k = 0; k < 4; k++)
+	{
+		GuiLabel& line = ui.label().fontSize(UI_FONT_SMALL).muted()
+			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].lines.size() ? std::string() : items[(size_t)focus].lines[k]; })
+			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].lines.size(); });
+		pane.add(line); // (a label does not wrap: Picker_* split sentences into lines that fit)
+	}
+	GuiLayout& rows = ui.grid(2).gap(14, 7);
+	for(size_t k = 0; k < 7; k++)
+	{
+		rows.add(ui.label().fontSize(UI_FONT_SMALL).muted()
+			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[k].label; })
+			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].rows.size(); }));
+		rows.add(ui.label().fontSize(UI_FONT_SMALL + 1)
+			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[k].value; })
+			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].rows.size(); }));
+	}
+	pane.add(rows);
+
+	f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
+		.add(MenuPage_Section(ui, listW).pad(8, 8).add(list))
+		.add(MenuPage_Section(ui, paneW).pad(12, 10).add(pane)));
+
+	GuiTextButton& back = MenuPage_Button(ui, "Back");
+	back.setTrigger(1, &cancel);
+	backBtn = &back;
+	f.footerRight->add(back);
+
+	ui.attachTo(*this);
+	// a window steps the selection down from what is selected, or goes to the first control when nothing is: start
+	// just above the item in use so the step lands on it
+	if(current > 0)
+		buttons[(size_t)current - 1]->setState(STATE::SELECTED);
+}
+
+// Splits a sentence into lines of at most `max` characters, at spaces, so it fits a pane that cannot wrap text.
+static void addWrapped(std::vector<std::string>& lines, const std::string& text, size_t max)
+{
+	size_t start = 0;
+	while(start < text.size())
+	{
+		size_t end = start + max;
+		if(end >= text.size())
+			end = text.size();
+		else
+		{
+			const size_t space = text.rfind(' ', end);
+			if(space != std::string::npos && space > start)
+				end = space;
+		}
+		lines.push_back(text.substr(start, end - start));
+		start = end < text.size() && text[end] == ' ' ? end + 1 : end;
+	}
+}
+
+std::vector<PickerItem> Picker_EmulatedItems()
+{
+	ControlsModel& m = Controls();
+	const std::vector<EmulatedMode> modes = m.emulatedModes();
+	std::vector<PickerItem> items;
+	for(size_t i = 0; i < modes.size(); i++)
+	{
+		PickerItem it;
+		it.name = modes[i].name;
+		it.current = (int)i == m.currentEmulated();
+		addWrapped(it.lines, modes[i].description, 44);
+		if(modes[i].joysticks > 0)
+			it.lines.push_back(GuiFormat("%d buttons, %d axes each.", modes[i].buttons, modes[i].axes));
+		it.lines.push_back(modes[i].joysticks > 0 ? "Players without one use keys and the mouse." : "Keyboard and mouse stay available.");
+		for(int p = 0; p < m.playerCount(); p++)
+		{
+			if(!m.player(p).connected)
+				continue;
+			PickerRow r;
+			r.label = GuiFormat("Player %d", p + 1);
+			r.value = p < modes[i].joysticks ? GuiFormat("Joystick %d", p + 1) : std::string("Keys + mouse");
+			it.rows.push_back(r);
+		}
+		items.push_back(it);
+	}
+	return items;
+}
+
+std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
+{
+	ControlsModel& m = Controls();
+	const std::vector<PresetInfo> presets = m.presets();
+	static const struct { int control; const char * name; } shown[] = {
+		{ INPUT_BTN_A, "A Button" }, { INPUT_BTN_B, "B Button" }, { INPUT_BTN_X, "X Button" }, { INPUT_BTN_Y, "Y Button" },
+		{ INPUT_BTN_UP, "D-pad Up" }, { INPUT_BTN_PLUS, "Plus" }, { INPUT_BTN_MINUS, "Minus" } };
+
+	std::vector<PickerItem> items;
+	index.clear();
+	for(size_t i = 0; i < presets.size(); i++)
+	{
+		const bool inUse = (int)i == m.currentPreset();
+		// a preset that fires the joystick means nothing without one (unless it is the one in use, which must stay visible)
+		if(presets[i].needsJoystick && m.joystickButtons(player) == 0 && !inUse)
+			continue;
+		PickerItem it;
+		it.name = presets[i].name;
+		it.current = inUse;
+		addWrapped(it.lines, presets[i].description, 44);
+		it.lines.push_back("Sets the buttons of every player.");
+		for(size_t c = 0; c < sizeof(shown) / sizeof(shown[0]); c++)
+		{
+			PickerRow r;
+			r.label = shown[c].name;
+			r.value = m.describeTarget(player, m.presetBinding((int)i, shown[c].control));
+			it.rows.push_back(r);
+		}
+		if(m.modified())
+			it.confirm = "This replaces your changes.  Press A again to confirm";
+		items.push_back(it);
+		index.push_back((int)i);
+	}
+	return items;
+}
+
 // ---- running the screens on the menu's main window
 
 namespace {
@@ -744,6 +925,38 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 	}
 }
 
+// Runs a picker; the index chosen, or -1 on Back.
+int PickerScreen(const char * title, const std::vector<PickerItem>& items)
+{
+	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
+	PickerView view(title, items, &over);
+	ScreenWindow screen(view);
+
+	while(true)
+	{
+		UpdateGui();
+		if(view.chosen())
+			return view.result();
+		if(view.backButton().getState() == STATE::CLICKED)
+			return -1;
+	}
+}
+
+void EmulatedPicker()
+{
+	const int chosen = PickerScreen("What does DOS see?", Picker_EmulatedItems());
+	if(chosen >= 0)
+		Controls().setEmulated(chosen);
+}
+
+void PresetPicker(int player)
+{
+	std::vector<int> index;
+	const int chosen = PickerScreen("Choose a preset", Picker_PresetItems(player, index));
+	if(chosen >= 0)
+		Controls().applyPreset(index[(size_t)chosen]);
+}
+
 void ConfigScreen(int player)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
@@ -762,6 +975,16 @@ void ConfigScreen(int player)
 			BindingTarget target = Controls().binding(view.player(), row.binding);
 			if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(row.binding)))
 				Controls().setBinding(view.player(), row.binding, target);
+			screen.show();
+		}
+		const ControllerConfigView::Pick pick = view.takePick();
+		if(pick != ControllerConfigView::Pick::NONE)
+		{
+			screen.hide();
+			if(pick == ControllerConfigView::Pick::EMULATED)
+				EmulatedPicker();
+			else
+				PresetPicker(view.player());
 			screen.show();
 		}
 	}

@@ -442,6 +442,51 @@ static void testCapture()
 	CHECK(!m.pollCapture(e));
 }
 
+static void testPresetPreview()
+{
+	ControlsModel& m = fresh();
+	// what a preset gives a control, before it is applied, agrees with what applying it does
+	for(int preset = 0; preset < (int)m.presets().size(); preset++)
+	{
+		m.applyPreset(preset);
+		const int controls[] = { INPUT_BTN_A, INPUT_BTN_B, INPUT_BTN_X, INPUT_BTN_Y, INPUT_BTN_UP, INPUT_BTN_PLUS, INPUT_BTN_MINUS, INPUT_TRIGGER_L };
+		for(size_t c = 0; c < sizeof(controls) / sizeof(controls[0]); c++)
+		{
+			CHECK(m.presetBinding(preset, controls[c]) == m.binding(0, controls[c]));
+			CHECK(m.presetBinding(preset, controls[c]) == m.defaultBinding(controls[c]));
+		}
+	}
+	CHECK(m.presetBinding(-1, INPUT_BTN_A).kind == TARGET::NONE);
+	CHECK(m.presetBinding(99, INPUT_BTN_A).kind == TARGET::NONE);
+	CHECK(m.presetBinding(0, GUI_CTL_CAPTURE).kind == TARGET::NONE);
+
+	// describing a target that is not set yet says what it would do for that player
+	m.setEmulated(1);
+	CHECK_EQ(m.describeTarget(0, BindingTarget(TARGET::JOYSTICK, 1)), "Joystick 2");
+	CHECK_EQ(m.describeTarget(0, BindingTarget(TARGET::JOYSTICK, 2)), "No button 3");
+	CHECK_EQ(m.describeTarget(2, BindingTarget(TARGET::JOYSTICK, 0)), "Joystick off"); // player 3 has no joystick
+	CHECK_EQ(m.describeTarget(0, BindingTarget()), "Not assigned");
+	CHECK_EQ(m.describeTarget(0, key("Esc")), "Key: Esc");
+	m.setEmulated(0);
+}
+
+static void testModified()
+{
+	ControlsModel& m = fresh();
+	CHECK(!m.modified());
+	m.setBinding(1, INPUT_BTN_A, key("F2"));
+	CHECK(m.modified());					// any player's change counts
+	m.resetBindings(1);
+	CHECK(!m.modified());
+	m.setBinding(0, INPUT_BTN_B, key("F2"));
+	m.applyPreset(2);						// applying a preset throws the change away
+	CHECK(!m.modified());
+	m.setEmulated(2);						// the emulated mode is not a button edit
+	CHECK(!m.modified());
+	m.setEmulated(0);
+	m.applyPreset(1);
+}
+
 static void testSetups()
 {
 	ControlsModel& m = fresh();
@@ -502,6 +547,8 @@ static void testHeldAndInstall()
 		std::vector<PresetInfo> presets() const override { return {}; }
 		int currentPreset() const override { return 0; }
 		void applyPreset(int) override {}
+		BindingTarget presetBinding(int, int) const override { return BindingTarget(); }
+		bool modified() const override { return false; }
 		bool supported(int) const override { return false; }
 		BindingTarget binding(int, int) const override { return BindingTarget(); }
 		void setBinding(int, int, const BindingTarget&) override {}
@@ -540,6 +587,8 @@ int main()
 	testKindsAndChoices();
 	testSuggestions();
 	testCapture();
+	testPresetPreview();
+	testModified();
 	testSetups();
 	testHeldAndInstall();
 	printf("%d checks, %d failed\n", checks, failures);
