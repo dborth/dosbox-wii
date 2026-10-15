@@ -13,15 +13,15 @@ static ProfileRow row(int control, GLYPH glyph, const char * letter, const char 
 	r.glyph = glyph;
 	r.letter = letter;
 	r.name = name;
-	r.stickMode = false;
+	r.stick = 0;
 	r.fixed = nullptr;
 	return r;
 }
 
-static ProfileRow stickRow(int control, const char * letter, const char * name)
+static ProfileRow stickRow(int control, int which, const char * letter, const char * name)
 {
 	ProfileRow r = row(control, GLYPH::STICK, letter, name);
-	r.stickMode = true;
+	r.stick = which;
 	return r;
 }
 
@@ -51,7 +51,6 @@ static ControllerProfile buildPro()
 	p.left.push_back(row(INPUT_TRIGGER_L, GLYPH::BUMPER, "L", "Left Bumper"));
 	p.left.push_back(row(INPUT_TRIGGER_ZL, GLYPH::BUMPER, "ZL", "Left Trigger"));
 	p.left.push_back(row(INPUT_BTN_MINUS, GLYPH::MINUS, "", "Select"));
-	p.left.push_back(row(GUI_CTL_CAPTURE, GLYPH::CAPTURE, "", "Capture"));
 
 	p.right.push_back(row(INPUT_TRIGGER_R, GLYPH::BUMPER, "R", "Right Bumper"));
 	p.right.push_back(row(INPUT_TRIGGER_ZR, GLYPH::BUMPER, "ZR", "Right Trigger"));
@@ -60,9 +59,9 @@ static ControllerProfile buildPro()
 
 	ProfileGroup sticks;
 	sticks.title = "STICKS";
-	sticks.rows.push_back(stickRow(INPUT_THUMB_L, "L", "L Stick"));
+	sticks.rows.push_back(stickRow(INPUT_THUMB_L, 1, "L", "L Stick"));
 	sticks.rows.push_back(clickRow(INPUT_THUMB_L, "L3", "L Click"));
-	sticks.rows.push_back(stickRow(INPUT_THUMB_R, "R", "R Stick"));
+	sticks.rows.push_back(stickRow(INPUT_THUMB_R, 2, "R", "R Stick"));
 	sticks.rows.push_back(clickRow(INPUT_THUMB_R, "R3", "R Click"));
 	p.groups.push_back(sticks);
 

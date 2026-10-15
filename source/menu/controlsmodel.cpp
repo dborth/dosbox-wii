@@ -50,14 +50,12 @@ const std::vector<std::string>& Catalog_Names(TARGET kind)
 	static const std::vector<std::string> joystick = { "button 1", "button 2", "button 3", "button 4" };
 	static const std::vector<std::string> mouse = { "left button", "right button", "middle button" };
 	static const std::vector<std::string> hotkeys = { "Cycles up", "Cycles down", "Frameskip up", "Frameskip down", "Swap disk image", "Fast forward (hold)" };
-	static const std::vector<std::string> modes = { "Joystick", "Arrow keys", "Mouse", "Off" };
 	switch(kind)
 	{
 		case TARGET::KEY: return keys;
 		case TARGET::JOYSTICK: return joystick;
 		case TARGET::MOUSE: return mouse;
 		case TARGET::HOTKEY: return hotkeys;
-		case TARGET::STICK_MODE: return modes;
 		default: return none;
 	}
 }
@@ -79,10 +77,10 @@ std::string BindingTarget::describe() const
 	switch(kind)
 	{
 		case TARGET::KEY: return "Key: " + names[(size_t)code];
-		case TARGET::JOYSTICK: return "Joystick " + names[(size_t)code];
-		case TARGET::MOUSE: return "Mouse " + names[(size_t)code];
-		case TARGET::HOTKEY: return "Hotkey: " + names[(size_t)code];
-		case TARGET::STICK_MODE: return names[(size_t)code];
+		// short, because the rows that show these are narrow ("button 1" -> "Joystick 1", "left button" -> "Mouse left")
+		case TARGET::JOYSTICK: return "Joystick " + names[(size_t)code].substr(names[(size_t)code].rfind(' ') + 1);
+		case TARGET::MOUSE: return "Mouse " + names[(size_t)code].substr(0, names[(size_t)code].find(" button"));
+		case TARGET::HOTKEY: return "DOS: " + names[(size_t)code];
 		default: return "Not assigned";
 	}
 }
@@ -98,6 +96,15 @@ int ControlsModel::joystickButtons(int player) const
 	return modes[(size_t)cur].buttons;
 }
 
+int ControlsModel::joystickAxes(int player) const
+{
+	const std::vector<EmulatedMode> modes = emulatedModes();
+	const int cur = currentEmulated();
+	if(cur < 0 || (size_t)cur >= modes.size() || player < 0 || player >= modes[(size_t)cur].joysticks)
+		return 0;
+	return modes[(size_t)cur].axes;
+}
+
 bool ControlsModel::usable(int player, const BindingTarget& target) const
 {
 	if(target.kind == TARGET::JOYSTICK)
@@ -109,8 +116,9 @@ std::string ControlsModel::describe(int player, int control) const
 {
 	const BindingTarget t = binding(player, control);
 	std::string text = t.describe();
-	if(t.kind == TARGET::JOYSTICK && !usable(player, t))
-		text += joystickButtons(player) ? " (no such button)" : " (joystick off)";
+	// say what is wrong instead of the target: the row is too narrow to show both
+	if(t.kind == TARGET::JOYSTICK && text != "Not assigned" && !usable(player, t))
+		text = joystickButtons(player) ? "No button " + std::string(1, (char)('1' + t.code)) : "Joystick off";
 	return text;
 }
 
@@ -209,9 +217,9 @@ BindingTarget presetDefault(int preset, int control)
 
 const EmulatedMode kModes[3] =
 {
-	{ "Joystick", "One joystick with four buttons, for player 1", 1, 4 },
-	{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2 },
-	{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0 },
+	{ "Joystick", "One joystick with four buttons, for player 1", 1, 4, 4 },
+	{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2, 2 },
+	{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0, 0 },
 };
 
 // the controls the mapper has a source for: every button, the D-pad and the two stick clicks.
@@ -412,4 +420,10 @@ ControlsModel& Controls()
 void Controls_SetModel(ControlsModel * model)
 {
 	installed = model;
+}
+
+void SampleControls_SetHeld(uint32_t bits)
+{
+	if(!installed)
+		sampleModel()->setHeld(bits);
 }

@@ -38,9 +38,8 @@ enum class TARGET {
 	NONE,		/**< Nothing */
 	KEY,		/**< A keyboard key */
 	JOYSTICK,	/**< A button on the DOS joystick */
-	MOUSE,		/**< A mouse button or a pointer movement */
-	HOTKEY,		/**< A DOSBox function (cycles, frameskip, screenshot, ...) */
-	STICK_MODE	/**< What an analog stick does as a whole (joystick, arrow keys, mouse, off) */
+	MOUSE,		/**< A mouse button */
+	HOTKEY		/**< A DOSBox function (cycles, frameskip, swap disk image, ...) */
 };
 
 /** The choices for a kind of target, in display order; a target's `code` indexes this list. */
@@ -108,6 +107,7 @@ struct EmulatedMode {
 	std::string description;
 	int joysticks;				/**< How many DOS joysticks exist: players 1..n each get one */
 	int buttons;				/**< Buttons on each of them */
+	int axes;					/**< Axes on each: 2 (one stick) or 4 (two sticks, or a stick and a throttle) */
 };
 
 /** A saved setup: a name and, optionally, the program it loads for. */
@@ -136,6 +136,8 @@ class ControlsModel
 
 		/** Buttons on the DOS joystick a player drives; 0 when that player has none. */
 		int joystickButtons(int player) const;
+		/** Axes on it: 4 when both sticks count, 2 for the left stick only, 0 with no joystick. */
+		int joystickAxes(int player) const;
 		/** Whether a target does anything for a player under the current emulated mode (a joystick button the joystick lacks does not). */
 		bool usable(int player, const BindingTarget& target) const;
 
@@ -154,7 +156,7 @@ class ControlsModel
 		virtual BindingTarget defaultBinding(int control) const = 0;
 		/** Puts every control of a player back to the current preset's defaults. */
 		virtual void resetBindings(int player) = 0;
-		/** What a control does, in words, saying so when the target would do nothing ("Joystick button 3 (no such button)"). */
+		/** What a control does, in short words; when the target would do nothing it says why instead ("Joystick off", "No button 3"). */
 		std::string describe(int player, int control) const;
 
 		// ---- setups: a named, saved configuration, optionally tied to a program
@@ -171,5 +173,8 @@ ControlsModel& Controls();
 
 /** Installs a model; null goes back to the sample data. The model must outlive its use. */
 void Controls_SetModel(ControlsModel * model);
+
+/** Sets what the sample model reports as held (for tests and previews; does nothing once another model is installed). */
+void SampleControls_SetHeld(uint32_t bits);
 
 #endif

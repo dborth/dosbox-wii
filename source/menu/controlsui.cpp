@@ -340,12 +340,23 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 {
 	const int pl = playerSlot;
 	const int id = r.binding;
-	const char * fixed = r.fixed;
-	const char * name = r.name;
+	const int stick = r.stick;
+	// a GameCube pad has no Home button: the menu is the L + R + Start combo (the same combo works on any pad)
+	const bool gcMenu = r.binding == INPUT_BTN_HOME && padType == PadType::GAMECUBE;
+	const char * fixed = gcMenu ? "Hold L + R + Start" : r.fixed;
+	const char * name = gcMenu ? "Menu" : r.name;
+	const bool info = fixed || stick; // shown, not changed
+
+	// what the row says: a button's target, or for a stick what the DOS side does with it
+	const std::function<std::string()> text = [pl, id, fixed, stick]() -> std::string {
+		if(stick)
+			return Controls().joystickAxes(pl) >= (stick == 1 ? 2 : 4) ? "Joystick axes" : "Not used";
+		return fixed ? std::string(fixed) : Controls().describe(pl, id);
+	};
 
 	GuiLabel& target = ui.label().fontSize(UI_FONT_SMALL + 1);
 	target.setMaxWidth(width - 12 - 22 - 8); // long choices are cut rather than spilling out of the row
-	target.bind([pl, id, fixed]{ return fixed ? std::string(fixed) : Controls().describe(pl, id); });
+	target.bind(text);
 
 	GuiLayout& content = ui.row().size(width - 12, 0).gap(8).align(LAYOUT_ALIGN::CENTRE);
 	GuiGlyph& icon = ui.glyph(r.glyph, r.letter);
@@ -358,7 +369,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	row.size(width, 0).style(MenuRowHighlightStyle()).pad(6, 1);
 	row.corners(GuiCorners(6.0f));
 	const int control = r.control;
-	row.onFocus([this, &row, control, side, name, pl, id, fixed]{
+	row.onFocus([this, &row, control, side, name, info, text]{
 		view->setHighlight(control);
 		const float midY = (float)(row.getTop() + row.getHeight() / 2);
 		if(side == Side::LEFT)
@@ -367,9 +378,11 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 			view->setLeader(true, (float)row.getLeft(), midY);
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
-		status = fixed ? GuiFormat("%s: %s", name, fixed) : GuiFormat("%s: %s.  A changes it", name, Controls().describe(pl, id).c_str());
+		// the hint line holds about 40 characters: the reminder goes when the target is long
+		const std::string line = GuiFormat("%s: %s", name, text().c_str());
+		status = info || line.size() > 24 ? line : line + ".  A changes it";
 	});
-	if(!fixed)
+	if(!info)
 	{
 		const ProfileRow copy = r;
 		row.onClick([this, copy]{
@@ -390,14 +403,30 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 
 	const PlayerInfo info = Controls().player(player);
 	const ControllerProfile& profile = Controllers_Profile(padType);
-	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("P%d  %s", player + 1, info.device.c_str()).c_str(), [this]{ return status; });
+	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; });
+	// what DOS sees (changes at once; a list of the choices comes with the pickers) and the preset the buttons started from
+	GuiTextButton& emulatedBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
+		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
+		.onClick([this]{
+			ControlsModel& m = Controls();
+			m.setEmulated((m.currentEmulated() + 1) % (int)m.emulatedModes().size());
+			status = GuiFormat("DOS sees: %s", m.emulatedModes()[(size_t)m.currentEmulated()].name.c_str());
+		})
+		.onFocus([this]{ status = "A changes what DOS sees"; });
+	f.headerRight->add(emulatedBtn);
 	f.headerRight->add(ui.chip().bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; }));
 
 	view = &ui.controllerView(*profile.layout, profile.scale);
+	// lit while held, so pressing a button on the controller shows which control it is
+	view->setLit([pl = player](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
 	const int sideW = 168;
 	const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
 
 	GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
+	// which controller this is (the title has room for the player only, beside the two controls)
+	GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
+	deviceName.setMaxWidth(sideW);
+	left.add(deviceName);
 	for(size_t i = 0; i < profile.left.size(); i++)
 		left.add(bindingRow(profile.left[i], Side::LEFT, sideW));
 	GuiLayout& right = ui.column().gap(2);
@@ -430,6 +459,9 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	f.footerRight->add(reset).add(back);
 
 	ui.attachTo(*this);
+	// When the page takes focus its window steps the selection down from whatever is selected, or goes to the first
+	// thing in reading order when nothing is, which would be this header button. Starting from it steps onto a control.
+	emulatedBtn.setState(STATE::SELECTED);
 }
 
 // ---- target chooser
@@ -452,8 +484,8 @@ void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, int w, int h
 	}
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
-	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText(stickMode ? "A picks what the stick does" : "Pick a kind on the left, then what it does")
+TargetChooserView::TargetChooserView(const char * controlName, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
+	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Pick a kind on the left, then what it does")
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -462,20 +494,6 @@ TargetChooserView::TargetChooserView(const char * controlName, bool stickMode, c
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("What should %s do?", controlName).c_str(), [this]{ return hintText; });
 	f.headerRight->add(ui.chip(GuiFormat("Now: %s", now.describe().c_str()).c_str()));
 
-	if(stickMode)
-	{
-		GuiLayout& modes = ui.column().gap(6);
-		for(size_t i = 0; i < Catalog_Names(TARGET::STICK_MODE).size(); i++)
-		{
-			GuiTextButton& b = ui.button(Catalog_Names(TARGET::STICK_MODE)[i].c_str()).size(300, 38).fontSize(UI_FONT_BODY + 2)
-				.style(MenuBarButtonStyle(now.kind == TARGET::STICK_MODE && now.code == (int)i));
-			const int code = (int)i;
-			b.onClick([this, code]{ picked = BindingTarget(TARGET::STICK_MODE, code); done = true; });
-			modes.add(b);
-		}
-		f.content->add(MenuPage_Section(ui, MENU_PAGE_CONTENT_W).pad(8, 10).add(ui.column().align(LAYOUT_ALIGN::CENTRE).add(modes)));
-	}
-	else
 	{
 		// kinds down the left; a click shows that kind's choices on the right
 		static const char * const categories[5] = { "Key", "Joystick", "Mouse", "DOSBox", "None" };
@@ -591,10 +609,10 @@ class ScreenWindow
 		bool shown;
 };
 
-bool ChooserScreen(const char * name, bool stickMode, BindingTarget& target, const BindingTarget& defaultTarget)
+bool ChooserScreen(const char * name, BindingTarget& target, const BindingTarget& defaultTarget)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	TargetChooserView view(name, stickMode, target, defaultTarget, &over);
+	TargetChooserView view(name, target, defaultTarget, &over);
 	ScreenWindow screen(view);
 
 	while(true)
@@ -626,7 +644,7 @@ void ConfigScreen(int player)
 		{
 			screen.hide();
 			BindingTarget target = Controls().binding(view.player(), row.binding);
-			if(ChooserScreen(row.name, row.stickMode, target, Controls().defaultBinding(row.binding)))
+			if(ChooserScreen(row.name, target, Controls().defaultBinding(row.binding)))
 				Controls().setBinding(view.player(), row.binding, target);
 			screen.show();
 		}

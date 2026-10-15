@@ -114,11 +114,10 @@ class TargetChooserView : public GuiOverlay
 	public:
 		/**
 		 * @param controlName Name of the control being set ("Y Button")
-		 * @param stickMode Choose a stick's mode instead of a button action
 		 * @param current What the control does now
 		 * @param defaultTarget What the scheme makes it do (the Default button)
 		 */
-		TargetChooserView(const char * controlName, bool stickMode, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
+		TargetChooserView(const char * controlName, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether the user picked something. */
 		bool chosen() const { return done; }

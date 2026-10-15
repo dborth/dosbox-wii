@@ -66,6 +66,30 @@ static void testEmulatedModes()
 	m.setEmulated(0);
 }
 
+static void testJoystickAxes()
+{
+	ControlsModel& m = fresh();
+	// "Joystick" has four axes (both sticks count), two joysticks have two each, and none has none
+	m.setEmulated(0);
+	CHECK(m.joystickAxes(0) == 4 && m.joystickAxes(1) == 0);
+	m.setEmulated(1);
+	CHECK(m.joystickAxes(0) == 2 && m.joystickAxes(1) == 2 && m.joystickAxes(2) == 0);
+	m.setEmulated(2);
+	CHECK(m.joystickAxes(0) == 0);
+	CHECK(m.joystickAxes(-1) == 0);
+	m.setEmulated(0);
+}
+
+static void testSampleHeld()
+{
+	ControlsModel& m = fresh();
+	SampleControls_SetHeld(INPUT_BTN_A | INPUT_TRIGGER_L);
+	CHECK(m.held(0) == (INPUT_BTN_A | INPUT_TRIGGER_L));
+	CHECK(m.held(1) == 0); // only player 1 is "pressing" in the sample
+	SampleControls_SetHeld(0);
+	CHECK(m.held(0) == 0);
+}
+
 static void testUsable()
 {
 	ControlsModel& m = fresh();
@@ -97,16 +121,16 @@ static void testDescribe()
 	ControlsModel& m = fresh();
 	m.applyPreset(0); // Compatible: A -> joystick button 1, X -> button 3
 	m.setEmulated(0);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick button 1");
-	CHECK_EQ(m.describe(0, INPUT_BTN_X), "Joystick button 3");
-	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Joystick button 1 (joystick off)"); // player 2 has none under "Joystick"
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick 1");
+	CHECK_EQ(m.describe(0, INPUT_BTN_X), "Joystick 3");
+	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Joystick off"); // player 2 has none under "Joystick"
 
 	m.setEmulated(1);
-	CHECK_EQ(m.describe(0, INPUT_BTN_X), "Joystick button 3 (no such button)");
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick button 1");
+	CHECK_EQ(m.describe(0, INPUT_BTN_X), "No button 3");
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick 1");
 
 	m.setEmulated(2);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick button 1 (joystick off)");
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick off");
 
 	m.applyPreset(1);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: Ctrl");
@@ -133,7 +157,7 @@ static void testSupported()
 	// an unsupported control cannot be set, and reads as nothing
 	m.setBinding(0, GUI_CTL_CAPTURE, key("Esc"));
 	CHECK(m.binding(0, GUI_CTL_CAPTURE).kind == TARGET::NONE);
-	m.setBinding(0, INPUT_THUMB_L, BindingTarget(TARGET::STICK_MODE, 1));
+	m.setBinding(0, INPUT_THUMB_L, key("Esc")); // a stick's movement is the joystick's axes, not a mapping
 	CHECK(m.binding(0, INPUT_THUMB_L).kind == TARGET::NONE);
 }
 
@@ -175,8 +199,8 @@ static void testPresets()
 	CHECK(m.binding(0, INPUT_BTN_UP).kind == TARGET::NONE); // the D-pad is the joystick's hat there
 	m.applyPreset(3); // Point and click
 	CHECK(m.binding(0, INPUT_BTN_A).kind == TARGET::MOUSE);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Mouse left button");
-	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Mouse right button");
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Mouse left");
+	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Mouse right");
 
 	// applying a preset throws away edits, for every player
 	m.setBinding(0, INPUT_BTN_A, key("F1"));
@@ -200,7 +224,7 @@ static void testPerPlayerBindings()
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F1");
 	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: Ctrl"); // another player is untouched
 	m.setBinding(1, INPUT_BTN_A, BindingTarget(TARGET::MOUSE, 1));
-	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right button");
+	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right");
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F1");
 
 	// a "not assigned" edit is an edit, not a return to the default
@@ -210,7 +234,7 @@ static void testPerPlayerBindings()
 	m.resetBindings(0);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: Ctrl");
 	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Key: Alt");
-	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right button"); // player 2's edit survives player 1's reset
+	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right"); // player 2's edit survives player 1's reset
 	m.resetBindings(1);
 	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: Ctrl");
 
@@ -231,7 +255,7 @@ static void testCatalogs()
 	CHECK(Catalog_Find(TARGET::HOTKEY, "Pause") < 0 && Catalog_Find(TARGET::HOTKEY, "Screenshot") < 0);
 
 	// every name finds itself, and names are unique within a list
-	const TARGET kinds[] = { TARGET::KEY, TARGET::JOYSTICK, TARGET::MOUSE, TARGET::HOTKEY, TARGET::STICK_MODE };
+	const TARGET kinds[] = { TARGET::KEY, TARGET::JOYSTICK, TARGET::MOUSE, TARGET::HOTKEY };
 	for(size_t k = 0; k < sizeof(kinds) / sizeof(kinds[0]); k++)
 	{
 		const std::vector<std::string>& v = Catalog_Names(kinds[k]);
@@ -240,6 +264,8 @@ static void testCatalogs()
 	}
 
 	// out-of-range codes describe as nothing rather than reading past the list
+	CHECK_EQ(BindingTarget(TARGET::JOYSTICK, 2).describe(), "Joystick 3");
+	CHECK_EQ(BindingTarget(TARGET::HOTKEY, 0).describe(), "DOS: Cycles up");
 	CHECK_EQ(BindingTarget(TARGET::KEY, 9999).describe(), "Not assigned");
 	CHECK_EQ(BindingTarget(TARGET::KEY, -1).describe(), "Not assigned");
 	CHECK(BindingTarget() == BindingTarget(TARGET::NONE, 5)); // "nothing" equals nothing whatever the code
@@ -353,6 +379,8 @@ int main()
 	testEmulatedModes();
 	testUsable();
 	testDescribe();
+	testJoystickAxes();
+	testSampleHeld();
 	testSupported();
 	testPresets();
 	testPerPlayerBindings();

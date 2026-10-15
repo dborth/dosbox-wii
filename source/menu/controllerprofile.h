@@ -22,7 +22,7 @@ struct ProfileRow {
 	GLYPH glyph;			/**< Icon beside the name. */
 	const char * letter;	/**< Letter on the icon ("L", "ZL", ""). */
 	const char * name;		/**< "Left Bumper" */
-	bool stickMode;			/**< The target is a stick's mode, not a button action. */
+	int stick;				/**< 1 or 2 for a stick's movement (left, right): shown, not changed; it is the DOS joystick's axes. */
 	const char * fixed;		/**< If set, the control cannot be changed and this is shown instead. */
 };
 

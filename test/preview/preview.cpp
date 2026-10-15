@@ -92,7 +92,7 @@ struct SceneModel : ControlsModel
 	uint32_t held(int) const override { return 0; }
 	std::vector<EmulatedMode> emulatedModes() const override
 	{
-		return { { "Joystick", "", 1, 4 }, { "Two joysticks", "", 2, 2 }, { "Keyboard + mouse", "", 0, 0 } };
+		return { { "Joystick", "", 1, 4, 4 }, { "Two joysticks", "", 2, 2, 2 }, { "Keyboard + mouse", "", 0, 0, 0 } };
 	}
 	int currentEmulated() const override { return mode; }
 	void setEmulated(int i) override { mode = i; }
@@ -154,29 +154,33 @@ int main(int argc, char ** argv)
 		s.page.append(&view);
 		snap("hub_none", s.root);
 	}
+	// the setup screen on the sample model, so rows show real targets: (player, emulated mode, preset, held buttons)
+	struct SampleScene { const char * name; int player, mode, preset; uint32_t held; };
+	const SampleScene scenes[] = {
+		{ "config", 0, 0, 1, 0 },
+		{ "config_pressed", 0, 0, 1, INPUT_BTN_A | INPUT_TRIGGER_ZL | INPUT_BTN_UP },
+		{ "config_twojoy", 0, 1, 0, 0 },
+		{ "config_keys_mouse", 0, 2, 0, 0 },
+		{ "config_gamecube", 2, 0, 1, 0 },
+	};
+	for(size_t i = 0; i < sizeof(scenes) / sizeof(scenes[0]); i++)
 	{
-		SceneModel one(1);
-		Controls_SetModel(&one);
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(scenes[i].mode);
+		Controls().applyPreset(scenes[i].preset);
+		SampleControls_SetHeld(scenes[i].held);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(scenes[i].player, nullptr);
 		s.page.append(&view);
-		snap("config", s.root, 1);
+		snap(scenes[i].name, s.root, 0, 0, 0);
 	}
 	{
 		SceneModel one(1);
 		Controls_SetModel(&one);
 		Screen s;
-		TargetChooserView view("A Button", false, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
+		TargetChooserView view("A Button", BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
 		s.page.append(&view);
 		snap("chooser", s.root);
-	}
-	{
-		SceneModel one(1);
-		Controls_SetModel(&one);
-		Screen s;
-		TargetChooserView view("L Stick", true, BindingTarget(TARGET::STICK_MODE, 1), BindingTarget(TARGET::STICK_MODE, 1), nullptr);
-		s.page.append(&view);
-		snap("chooser_stick", s.root);
 	}
 	return 0;
 }
