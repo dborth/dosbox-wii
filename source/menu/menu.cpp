@@ -602,7 +602,7 @@ void HomeMenu ()
 	MenuButtonShape closeBtnImg(MenuButtonShape::SMALL);
 	GuiButton closeBtn(MENU_BTN_SMALL_W, MENU_BTN_SMALL_H);
 	closeBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::TOP);
-	closeBtn.setPosition(-50, 35);
+	closeBtn.setPosition(-50, 29);
 	closeBtn.setLabel(&closeBtnTxt);
 	closeBtn.setImage(&closeBtnImg);
 	closeBtn.setSoundOver(&btnSoundOver);

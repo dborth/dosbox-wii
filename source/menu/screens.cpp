@@ -29,10 +29,6 @@
 #include "buttons.h"
 #include "memmanager.h"
 
-static const PixelColor kWhite = {255, 255, 255, 255};
-static const PixelColor kGrey = {200, 200, 200, 255};
-static const PixelColor kBlack = {0, 0, 0, 255};
-
 /****************************************************************************
  * ListBrowser
  *
@@ -56,10 +52,11 @@ class ListBrowser : public GuiOptionBrowser
 /****************************************************************************
  * ListScreen
  *
- * A title, a list of rows (a name and a value), a help line under it, a hint
- * in the corner and Go Back, which is A or B; optionally one more button
- * beside Go Back. run() puts it up in place of whatever is on the main
- * window and returns when Go Back is clicked.
+ * A title, a list of rows (a name and a value), and the same header and footer
+ * as every other page (menupage.h): what the highlighted row does at the left of
+ * the footer, the key hints at the right of the header, Back (A or B) at the
+ * right of the footer; optionally one more button beside Back. run() puts it up in place of whatever is on the main
+ * window and returns when Back is clicked.
  *
  * A subclass supplies the rows and what a click on one does. The help line
  * follows the highlight (rowHelp), or shows a message until the highlight
@@ -77,7 +74,7 @@ class ListScreen
 		void run();
 
 	protected:
-		//! extraLabel: a second button beside Go Back, or NULL for none.
+		//! extraLabel: a second button beside Back, or NULL for none.
 		//! helpLine: whether there is a help line (a screen that has neither
 		//! row help nor messages does without).
 		ListScreen(const char * title, const char * hint, const char * extraLabel = NULL, bool helpLine = true);
@@ -139,19 +136,16 @@ class ListScreen
 		bool done;
 
 		// In the order they depend on each other
-		GuiText titleTxt;
-		GuiText helpTxt;
-		GuiText hintTxt;
 		GuiSound btnSoundOver;
 		GuiSound btnSoundClick;
-		GuiTrigger trigA;
-		GuiTrigger trigB;
-		GuiText backBtnTxt;
-		MenuButtonShape backBtnImg;
-		GuiButton backBtn;
-		GuiText extraBtnTxt;
-		MenuButtonShape extraBtnImg;
-		GuiButton extraBtn;
+		UiScope ui;
+		GuiOverlay chromePage;
+		MenuPageFrame chrome;
+		std::string helpStr;			//!< what the highlighted row does (or a message), left of the footer
+		std::string hintStr;			//!< the keys, right of the header
+		GuiTextButton * backBtn;
+		GuiTextButton * extraBtn;
+		bool extraClicked;
 		bool hasExtra;
 		bool hasHelpLine;
 		GuiWindow w;
@@ -163,58 +157,39 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	  helpRow(-1),
 	  messageShown(false),
 	  done(false),
-	  titleTxt(title, 28, kWhite),
-	  helpTxt("", 18, kWhite),
-	  hintTxt(hint, 16, kGrey),
 	  btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM),
 	  btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM),
-	  backBtnTxt("Go Back", 22, kBlack),
-	  backBtnImg(MenuButtonShape::NORMAL),
-	  backBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H),
-	  extraBtnTxt(extraLabel ? extraLabel : "", 22, kBlack),
-	  extraBtnImg(MenuButtonShape::NORMAL),
-	  extraBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H),
+	  chrome(),
+	  hintStr(hint ? hint : ""),
+	  backBtn(NULL),
+	  extraBtn(NULL),
+	  extraClicked(false),
 	  hasExtra(extraLabel != NULL),
 	  hasHelpLine(helpLine),
 	  w(platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight())
 {
-	titleTxt.setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
-	titleTxt.setPosition(MENU_PAGE_MARGIN, 32);	// on the header bar
+	ui.setSounds(&btnSoundOver, &btnSoundClick);
+	GuiTrigger& cancel = ui.own<GuiTrigger>();
+	cancel.setSecondaryTrigger();
 
-	helpTxt.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	helpTxt.setPosition(0, 374);	// the top of the footer bar
-	helpTxt.setMaxWidth(540);
-	helpTxt.setScroll(SCROLL::HORIZONTAL);
+	// Footer, left: what the highlighted row does. A screen with no help line shows its key hints there instead,
+	// and one that has a help line shows them at the right of the header.
+	chrome = MenuPage_BuildBars(ui, chromePage, title, [this]{ return hasHelpLine ? helpStr : hintStr; });
+	if(hasHelpLine && !hintStr.empty())
+		chrome.headerRight->add(ui.label(hintStr.c_str()).fontSize(14).textColor(MenuChromeTextMuted()));
 
-	hintTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
-	hintTxt.setPosition(-50, -50);
-
-	trigA.setPrimaryTrigger();
-	trigB.setSecondaryTrigger();
-
-	backBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
-	backBtn.setPosition(100, -35);
-	backBtn.setLabel(&backBtnTxt);
-	backBtn.setImage(&backBtnImg);
-	backBtn.setSoundOver(&btnSoundOver);
-	backBtn.setSoundClick(&btnSoundClick);
-	backBtn.setTrigger(&trigA);
-	backBtn.setTrigger(&trigB);
-	backBtn.setEffectGrow();
-
-	// beside Go Back, and A only
-	extraBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
-	extraBtn.setPosition(100 + MENU_BTN_NORMAL_W + 24, -35);
-	extraBtn.setLabel(&extraBtnTxt);
-	extraBtn.setImage(&extraBtnImg);
-	extraBtn.setSoundOver(&btnSoundOver);
-	extraBtn.setSoundClick(&btnSoundClick);
-	extraBtn.setTrigger(&trigA);
-	extraBtn.setEffectGrow();
-
-	w.append(&backBtn);
+	GuiTextButton& back = MenuPage_Button(ui, "Back");
+	back.setTrigger(1, &cancel);
+	backBtn = &back;
 	if(hasExtra)
-		w.append(&extraBtn);
+	{
+		extraBtn = &MenuPage_Button(ui, extraLabel).onClick([this]{ extraClicked = true; });
+		chrome.footerRight->add(*extraBtn);
+	}
+	chrome.footerRight->add(back);
+
+	ui.attachTo(chromePage);
+	w.append(&chromePage);
 }
 
 //! Reads every row from the subclass.
@@ -244,20 +219,12 @@ void ListScreen::attach()
 	// the browser first: it is what takes focus
 	mainWindow->append(browser);
 	mainWindow->append(&w);
-	mainWindow->append(&titleTxt);
-	if(hasHelpLine)
-		mainWindow->append(&helpTxt);
-	mainWindow->append(&hintTxt);
 }
 
 void ListScreen::detach()
 {
 	mainWindow->remove(browser);
 	mainWindow->remove(&w);
-	mainWindow->remove(&titleTxt);
-	if(hasHelpLine)
-		mainWindow->remove(&helpTxt);
-	mainWindow->remove(&hintTxt);
 }
 
 //! The rows have changed: read them again, and the help for the highlighted one.
@@ -284,7 +251,7 @@ void ListScreen::rereadRows()
 
 void ListScreen::showMessage(const char * text)
 {
-	helpTxt.setText(text);
+	helpStr = text;
 	messageShown = true;
 	helpRow = browser->getSelectedOption();
 }
@@ -311,9 +278,9 @@ void ListScreen::run()
 		bool changed = onFrame();
 		const int clicked = browser->getClickedOption();
 
-		if(hasExtra && extraBtn.getState() == STATE::CLICKED)
+		if(extraClicked)
 		{
-			extraBtn.resetState();
+			extraClicked = false;
 			onExtraButton();
 		}
 		else if(clicked >= 0 && clicked < options->length)
@@ -346,13 +313,13 @@ void ListScreen::run()
 			char help[320];
 
 			if(rowHelp(selected, help, sizeof(help)))
-				helpTxt.setText(help);
+				helpStr = help;
 
 			helpRow = selected;
 			messageShown = false;
 		}
 
-		if(backBtn.getState() == STATE::CLICKED)
+		if(backBtn->getState() == STATE::CLICKED)
 			done = true;
 	}
 
@@ -495,7 +462,7 @@ class StatusScreen : public ListScreen
  * ChooserScreen
  *
  * One of the Buttons page's lists (what to do, which key, which hotkey):
- * a click chooses the row, and Go Back or B chooses nothing.
+ * a click chooses the row, and Back or B chooses nothing.
  ***************************************************************************/
 class ChooserScreen : public ListScreen
 {
@@ -526,7 +493,7 @@ class ChooserScreen : public ListScreen
 		int chosenItem;
 };
 
-//! Returns the item chosen, or -1 if the list was left with B or Go Back.
+//! Returns the item chosen, or -1 if the list was left with B or Back.
 static int ChooseFromList(const char * title, int list)
 {
 	ChooserScreen screen(title, list);

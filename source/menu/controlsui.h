@@ -105,6 +105,7 @@ class ControllerConfigView : public GuiOverlay
 		int playerSlot;
 		PadType padType;
 		GuiControllerView * view;
+		std::vector<GuiCard*> rowCards;
 		std::string status;
 		bool hasRequest;
 		ProfileRow request;

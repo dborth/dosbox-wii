@@ -17,7 +17,7 @@ GuiGlyph::GuiGlyph(GLYPH k, const char * letter) : kind(k), text(nullptr), meshF
 	if(takesLetter && letter && *letter)
 	{
 		const int px = (int)strlen(letter) > 1 ? 11 : 14;
-		text = new GuiText(letter, px, GuiTheme::current().background);
+		text = new GuiText(letter, px, GuiTheme::current().textOnAccent);
 		text->setParent(this);
 		text->setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	}

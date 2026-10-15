@@ -92,7 +92,11 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 		edge = mixToWhite(theme.good, 0.35f);
 	}
 	if(hl)
-		edge = theme.accent;
+	{
+		edge = theme.mark;
+		if(!lit)
+			fill = spot.shape == CTL_SHAPE::STICK ? fill : mixToWhite(theme.mark, 0.78f);
+	}
 
 	const float edgeWidth = hl ? stroke * 1.8f : stroke;
 	const bool outline = !spot.path.empty() && (spot.shape == CTL_SHAPE::PATH || spot.shape == CTL_SHAPE::STICK);
@@ -109,12 +113,12 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 			const uint8_t alphas[3] = { 26, 44, 70 };
 			for(size_t k = 0; k < contours.size(); k++)
 				for(int g = 0; g < 3; g++)
-					mesh.strokePolygon(contours[k], widths[g] * std::max(scale, 0.8f), STROKE::OUTSIDE, GuiFill::solid(withAlpha(theme.accent, alphas[g])));
+					mesh.strokePolygon(contours[k], widths[g] * std::max(scale, 0.8f), STROKE::OUTSIDE, GuiFill::solid(withAlpha(theme.mark, alphas[g])));
 		}
 		else
 		{
 			const float blur = 8.0f * std::max(scale, 0.8f);
-			mesh.addShadow(r, spot.shape == CTL_SHAPE::ROUNDRECT ? GuiCorners(spot.radius * scale) : GuiCorners(10000.0f), blur, 1.0f, 0.0f, 0.0f, withAlpha(theme.accent, 110));
+			mesh.addShadow(r, spot.shape == CTL_SHAPE::ROUNDRECT ? GuiCorners(spot.radius * scale) : GuiCorners(10000.0f), blur, 1.0f, 0.0f, 0.0f, withAlpha(theme.mark, 110));
 		}
 	}
 

@@ -22,8 +22,8 @@
 #define MENU_BTN_LONG_H		52
 #define MENU_BTN_LARGE_W	164
 #define MENU_BTN_LARGE_H	92
-#define MENU_BAR_TOP_H		96
-#define MENU_BAR_BOTTOM_H	112
+#define MENU_BAR_TOP_H		84
+#define MENU_BAR_BOTTOM_H	100
 // shapes that touch the screen edge are drawn this much larger than the screen,
 // so their outline and feathered edge are never visible
 #define MENU_BAR_BLEED		6
@@ -110,6 +110,7 @@ struct MenuPalette {
 	// highlight: focused outline, selected-row outline, scrollbar thumb when grabbed
 	PixelColor accent, accentDark;
 	PixelColor accentTint;		// selected-row fill
+	PixelColor mark;			// the one hue in the UI: what is being edited (the control on the picture, its row, the line between)
 	PixelColor glow;			// halo around a focused button; must read on the chrome
 	// the gray secondary: cards, outlines, resting controls
 	PixelColor surface, surfaceRaised, outline, outlineStrong;
@@ -128,6 +129,7 @@ static inline MenuPalette MenuPaletteDefault()
 	p.accent         = MenuRGBA(64, 64, 64);
 	p.accentDark     = MenuRGBA(34, 34, 34);
 	p.accentTint     = MenuRGBA(224, 224, 224);
+	p.mark           = MenuRGBA(236, 128, 12);
 	p.glow           = MenuRGBA(255, 255, 255, 170);
 	p.surface        = MenuRGBA(246, 246, 246);
 	p.surfaceRaised  = MenuRGBA(255, 255, 255);
@@ -164,6 +166,7 @@ static inline void MenuApplyTheme()
 	t.textMuted = p.textMuted;
 	t.textOnAccent = p.textOnAccent;
 	t.highlight = p.accentTint;
+	t.mark = p.mark;
 	t.shadow = MenuRGBA(0, 0, 0, 64);
 	t.radius = 14.0f;
 	t.strokeWidth = 1.5f;
@@ -343,8 +346,8 @@ static inline GuiShapeStyle MenuTileStyle()
 static inline GuiShapeStyle MenuRowHighlightStyle()
 {
 	const MenuPalette& p = MenuPaletteCurrent();
-	GuiPaint lit = GuiPaint().color(p.surfaceRaised).stroke(2.5f, p.accent);
-	GuiPaint pressed = GuiPaint().color(MenuMix(p.accentTint, p.surfaceRaised, 0.5f)).stroke(2.5f, p.accent);
+	GuiPaint lit = GuiPaint().color(p.surfaceRaised).stroke(2.5f, p.mark);
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.mark, p.surfaceRaised, 0.85f)).stroke(2.5f, p.mark);
 	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
 }
 

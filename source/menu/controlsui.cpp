@@ -341,6 +341,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	const int pl = playerSlot;
 	const int id = r.binding;
 	const int stick = r.stick;
+	const int padX = 10;	// room between the highlight box and what is in it
 	// a GameCube pad has no Home button: the menu is the L + R + Start combo (the same combo works on any pad)
 	const bool gcMenu = r.binding == INPUT_BTN_HOME && padType == PadType::GAMECUBE;
 	const char * fixed = gcMenu ? "Hold L + R + Start" : r.fixed;
@@ -355,10 +356,10 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	};
 
 	GuiLabel& target = ui.label().fontSize(UI_FONT_SMALL + 1);
-	target.setMaxWidth(width - 12 - 22 - 8); // long choices are cut rather than spilling out of the row
+	target.setMaxWidth(width - 2 * padX - 22 - 8); // long choices are cut rather than spilling out of the row
 	target.bind(text);
 
-	GuiLayout& content = ui.row().size(width - 12, 0).gap(8).align(LAYOUT_ALIGN::CENTRE);
+	GuiLayout& content = ui.row().size(width - 2 * padX, 0).gap(8).align(LAYOUT_ALIGN::CENTRE);
 	GuiGlyph& icon = ui.glyph(r.glyph, r.letter);
 	if(side == Side::LEFT)
 		content.addSpace().add(target).add(icon);
@@ -366,8 +367,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		content.add(icon).add(target);
 
 	GuiCard& row = ui.card();
-	row.size(width, 0).style(MenuRowHighlightStyle()).pad(6, 1);
-	row.corners(GuiCorners(6.0f));
+	row.size(width, 0).style(MenuRowHighlightStyle()).pad(padX, 2);
+	row.corners(GuiCorners(9.0f));
 	const int control = r.control;
 	row.onFocus([this, &row, control, side, name, info, text]{
 		view->setHighlight(control);
@@ -391,6 +392,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		});
 	}
 	row.add(content);
+	rowCards.push_back(&row);
 	return row;
 }
 
@@ -417,6 +419,8 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	f.headerRight->add(presetBtn);
 
 	view = &ui.controllerView(*profile.layout, profile.scale);
+	// the shoulder buttons are too small to carry legible text; their rows name them
+	view->setLabelFilter([](int id){ return id != INPUT_TRIGGER_L && id != INPUT_TRIGGER_R && id != INPUT_TRIGGER_ZL && id != INPUT_TRIGGER_ZR; });
 	// lit while held, so pressing a button on the controller shows which control it is
 	view->setLit([pl = player](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
 	const int sideW = 168;
@@ -433,17 +437,32 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	for(size_t i = 0; i < profile.right.size(); i++)
 		right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
 
+	// The picture and the groups sit straight on the page card: no tinted boxes behind them. A heading is just
+	// small muted capitals, lined up with the text of the rows under it.
 	GuiLayout& groups = ui.row().gap(6);
 	for(size_t g = 0; g < profile.groups.size(); g++)
 	{
-		GuiLayout& column = ui.column().gap(1).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted());
+		GuiLayout& column = ui.column().gap(2).size(groupSectionW, 0);
+		column.add(ui.row().size(groupSectionW, 0).pad(10, 0, 0, 2).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted()));
 		for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
-			column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 16));
-		groups.add(MenuPage_Section(ui, groupSectionW).pad(8, 4).add(column));
+			column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 8));
+		groups.add(column);
 	}
 
+	// the picture marks a control, and draws the line to it, only while its row has the selection
+	ui.bind([this]{
+		for(size_t i = 0; i < rowCards.size(); i++)
+			if(rowCards[i]->isSelected())
+				return;
+		if(!view->getHighlight().empty())
+		{
+			view->setHighlight(0);
+			view->setLeader(false);
+		}
+	});
+
 	f.content->gap(6);
-	f.content->add(MenuPage_Section(ui, MENU_PAGE_CONTENT_W).pad(8, 4).add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right)));
+	f.content->add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right));
 	f.content->add(groups);
 
 	const int pl = playerSlot;
@@ -723,11 +742,17 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 			current = (int)i;
 	focus = current;
 
+	// Both panels are one fixed size whatever is chosen, and everything in the right one has a slot of its own
+	// (an empty slot keeps its height), so moving the cursor changes the words and nothing else
 	const int listW = 176;
 	const int paneW = MENU_PAGE_CONTENT_W - listW - 6;
+	const int panelH = 240;
+	const int innerW = paneW - 24;
+	const int headingH = 24, lineH = 17, rowH = 17, labelW = 112;
+	const int maxLines = 4, maxRows = 7;
 
 	std::vector<GuiTextButton*>& buttons = ui.own<std::vector<GuiTextButton*>>();
-	GuiLayout& list = ui.column().gap(4);
+	GuiLayout& list = ui.column().gap(4).size(listW - 16, panelH - 16);
 	for(size_t i = 0; i < items.size(); i++)
 	{
 		const int idx = (int)i;
@@ -740,32 +765,31 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	}
 
 	// the right pane follows the cursor
+	// a slot: a label in a box of fixed height, so the line's height never depends on the letters in it
+	auto slot = [&](GuiLabel& l, int w, int h) -> GuiLayout& { return ui.row().size(w, h).align(LAYOUT_ALIGN::CENTRE).add(l); };
 	GuiLabel& heading = ui.label().fontSize(UI_FONT_BODY + 2).bind([this]{
 		return items.empty() ? std::string() : items[(size_t)focus].name + (items[(size_t)focus].current ? "  (in use)" : "");
 	});
-	GuiLayout& pane = ui.column().gap(5).align(LAYOUT_ALIGN::START).add(heading);
-	for(size_t k = 0; k < 4; k++)
+	GuiLayout& pane = ui.column().size(innerW, panelH - 20).add(slot(heading, innerW, headingH));
+	for(int k = 0; k < maxLines; k++)
 	{
 		GuiLabel& line = ui.label().fontSize(UI_FONT_SMALL).muted()
-			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].lines.size() ? std::string() : items[(size_t)focus].lines[k]; })
-			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].lines.size(); });
-		pane.add(line); // (a label does not wrap: Picker_* split sentences into lines that fit)
+			.bind([this, k]{ return items.empty() || (size_t)k >= items[(size_t)focus].lines.size() ? std::string() : items[(size_t)focus].lines[(size_t)k]; });
+		pane.add(slot(line, innerW, lineH)); // (a label does not wrap: Picker_* split sentences into lines that fit)
 	}
-	GuiLayout& rows = ui.grid(2).gap(14, 7);
-	for(size_t k = 0; k < 7; k++)
+	pane.addGap(8);
+	for(int k = 0; k < maxRows; k++)
 	{
-		rows.add(ui.label().fontSize(UI_FONT_SMALL).muted()
-			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[k].label; })
-			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].rows.size(); }));
-		rows.add(ui.label().fontSize(UI_FONT_SMALL + 1)
-			.bind([this, k]{ return items.empty() || k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[k].value; })
-			.visibleWhen([this, k]{ return !items.empty() && k < items[(size_t)focus].rows.size(); }));
+		GuiLabel& name = ui.label().fontSize(UI_FONT_SMALL).muted()
+			.bind([this, k]{ return items.empty() || (size_t)k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[(size_t)k].label; });
+		GuiLabel& value = ui.label().fontSize(UI_FONT_SMALL + 1)
+			.bind([this, k]{ return items.empty() || (size_t)k >= items[(size_t)focus].rows.size() ? std::string() : items[(size_t)focus].rows[(size_t)k].value; });
+		pane.add(ui.row().size(innerW, rowH).align(LAYOUT_ALIGN::CENTRE).add(slot(name, labelW, rowH)).add(slot(value, innerW - labelW, rowH)));
 	}
-	pane.add(rows);
 
 	f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
-		.add(MenuPage_Section(ui, listW).pad(8, 8).add(list))
-		.add(MenuPage_Section(ui, paneW).pad(12, 10).add(pane)));
+		.add(MenuPage_Section(ui, listW).pad(8, 8).size(listW, panelH).add(list))
+		.add(MenuPage_Section(ui, paneW).pad(12, 10).size(paneW, panelH).add(pane)));
 
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
 	back.setTrigger(1, &cancel);

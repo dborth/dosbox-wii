@@ -72,7 +72,7 @@ inline void GuiGlyph::build(GuiMesh& mesh, GLYPH kind, float w, float h)
 {
 	const GuiTheme& theme = GuiTheme::current();
 	const GuiFill light = GuiFill::solid(theme.text);
-	const GuiFill dark = GuiFill::solid(theme.background);
+	const GuiFill dark = GuiFill::solid(theme.textOnAccent); // the symbol on the badge: the colour that reads on theme.text
 	const GuiRect box = { 0.0f, 0.0f, w, h };
 	const float cx = w * 0.5f, cy = h * 0.5f, u = std::min(w, h) / 22.0f; // u = size relative to a 22-pixel glyph
 

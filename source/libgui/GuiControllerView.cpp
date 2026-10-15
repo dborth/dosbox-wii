@@ -55,9 +55,9 @@ void GuiControllerView::rebuild()
 	{
 		const GuiControlSpot& s = layout->spots[i];
 		GuiText * t = nullptr;
-		if(s.label)
+		if(s.label && (!labelFilter || labelFilter(s.id)))
 		{
-			t = new GuiText(s.label, (int)(15.0f * std::max(scale, 0.7f)), theme.textMuted);
+			t = new GuiText(s.label, (int)(15.0f * std::max(scale, 0.7f)), theme.text);
 			t->setParent(this);
 			t->setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 			const float cx = (s.x + s.w * 0.5f) * scale - width * 0.5f;
@@ -190,7 +190,7 @@ void GuiControllerView::draw()
 
 				if(labels[i] && labelLit[i] != isLit)
 				{
-					labels[i]->setColor(isLit ? GuiTheme::current().textOnAccent : GuiTheme::current().textMuted);
+					labels[i]->setColor(isLit ? GuiTheme::current().textOnAccent : GuiTheme::current().text);
 					labelLit[i] = isLit;
 				}
 			}
@@ -215,9 +215,9 @@ void GuiControllerView::draw()
 			{
 				const GuiTheme& theme = GuiTheme::current();
 				GuiMesh line(feather);
-				line.addLine({ leaderX, leaderY }, { tx, ty }, 1.6f, GuiFill::solid(withAlpha(theme.accent, 200)));
-				GuiRect dot = { tx - 3.5f, ty - 3.5f, 7.0f, 7.0f };
-				line.addEllipse(dot, GuiFill::solid(theme.accent));
+				line.addLine({ leaderX, leaderY }, { tx, ty }, 2.0f, GuiFill::solid(withAlpha(theme.mark, 220)));
+				GuiRect dot = { tx - 4.0f, ty - 4.0f, 8.0f, 8.0f };
+				line.addEllipse(dot, GuiFill::solid(theme.mark));
 				// the mesh is already in canvas coordinates: draw it as it is
 				const std::vector<MeshVertex>& src = line.vertices();
 				for(size_t i = 0; i < src.size(); i++)

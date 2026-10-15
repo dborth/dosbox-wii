@@ -32,6 +32,9 @@ class GuiControllerView : public GuiElement
 		//!Draws a line from a point (design-canvas coordinates, such as a list row's edge) to the first
 		//!highlighted control, or removes it
 		void setLeader(bool on, float fromX = 0.0f, float fromY = 0.0f);
+		//!Chooses which controls carry a text label (the default is all that have one). Small controls
+		//!such as the shoulder buttons are too small for legible text at the sizes a list page draws.
+		void setLabelFilter(std::function<bool(int)> fn) { labelFilter = fn; rebuild(); }
 		//!Sets which controls are drawn as pressed; asked every frame (null for none)
 		void setLit(std::function<bool(int)> fn) { lit = fn; }
 		//!Sets an analog stick's position (-1 to 1 each)
@@ -56,6 +59,7 @@ class GuiControllerView : public GuiElement
 		bool leader;
 		float leaderX, leaderY;
 		std::function<bool(int)> lit;
+		std::function<bool(int)> labelFilter;
 		std::vector<float> stickX, stickY;		//!< Per spot (only used by sticks)
 		GuiMesh body;
 		std::vector<SpotCache> spots;
