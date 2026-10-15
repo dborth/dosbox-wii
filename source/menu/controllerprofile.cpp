@@ -40,12 +40,12 @@ static ProfileRow fixedRow(int control, GLYPH glyph, const char * name, const ch
 	return r;
 }
 
-// A Pro-style pad: Switch Pro, Wii U Pro and, until it has a drawing of its own, the Classic Controller.
+// A Pro-style pad: Wii U Pro and the Classic Controller
 static ControllerProfile buildPro()
 {
 	ControllerProfile p;
-	p.name = "Pro Controller";
-	p.layout = &GuiProControllerLayout();
+	p.name = "Wii U Pro Controller";
+	p.layout = &GuiWiiUProControllerLayout();
 	p.scale = 0.4f;
 
 	p.left.push_back(row(INPUT_TRIGGER_L, GLYPH::BUMPER, "L", "Left Bumper"));

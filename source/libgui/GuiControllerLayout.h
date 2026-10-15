@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <vector>
 #include "../drivers/InputData.h"
+#include "GuiGeometry.h"
 
 //!A control with no input bit of its own on any supported hardware (the Switch Pro / Wii U capture button).
 //!\ingroup grp_controller
@@ -25,7 +26,14 @@ enum { GUI_CTL_CAPTURE = (1 << 24) };
 enum class CTL_SHAPE {
 	CIRCLE,		//!< A round button
 	ROUNDRECT,	//!< A rounded rectangle: bumpers, triggers, D-pad arms, small square buttons
-	STICK		//!< An analog stick: an outer ring with a cap that can move
+	STICK,		//!< An analog stick: an outer ring with a cap that can move. The ring is an ellipse, or the spot's path (a hexagonal or octagonal gate)
+	PATH		//!< Any outline, given as the spot's path (a D-pad, a trigger cut to the body's edge, a Nunchuk button)
+};
+
+//!Flags for GuiControlSpot::flags.
+//!\ingroup grp_controller
+enum {
+	CTL_GHOST = 1	//!< Drawn only when pressed or highlighted: the control's resting look is part of a shape drawn elsewhere (a D-pad's arms inside its cross)
 };
 
 //!One control on a controller drawing. Coordinates are in the layout's own units.
@@ -34,8 +42,10 @@ struct GuiControlSpot {
 	int id;				/*!< Input bit this control stands for; 0 for decoration (never lit or highlighted). */
 	CTL_SHAPE shape;
 	float x, y, w, h;	/*!< Bounding box. */
-	float radius;		/*!< Corner radius for ROUNDRECT. */
+	float radius;		/*!< Corner radius for ROUNDRECT. For STICK, the diameter of the cap when it is above 0 (the default is 0.56 of the ring, with a second ring drawn inside). */
 	const char * label;	/*!< Text drawn on the control ("A", "ZL", "+"), or null. */
+	GuiPath path;		/*!< The outline of a PATH spot, or a STICK's ring if not empty. x, y, w and h still give its bounding box. */
+	unsigned flags;		/*!< CTL_* flags. */
 };
 
 //!One rounded rectangle of the silhouette (the pieces are merged into one outline).
@@ -51,6 +61,7 @@ struct GuiBodyPiece {
 struct GuiControllerLayout {
 	float width, height;
 	std::vector<GuiBodyPiece> body;
+	std::vector<GuiPath> bodyPaths;	//!< Outlines that are not rounded rectangles; merged into the silhouette with the pieces
 	std::vector<GuiControlSpot> spots;
 
 	//!Finds a control by id (null if the layout has none)
@@ -61,3 +72,17 @@ struct GuiControllerLayout {
 //!(Switch Pro, Wii U Pro, and a good stand-in for the Classic Controller Pro).
 //!\ingroup grp_controller
 const GuiControllerLayout& GuiProControllerLayout();
+
+//!Control ids match universal input: a Wii U Pro, GamePad or Classic has the Pro set; the GameCube pad's Start is
+//!INPUT_BTN_PLUS and its Z is INPUT_TRIGGER_ZL; the Nunchuk's C is INPUT_TRIGGER_L and its Z is
+//!INPUT_TRIGGER_ZL; a stick spot's id is its click bit (INPUT_THUMB_L / INPUT_THUMB_R) whether or not the
+//!hardware has a click. A D-pad is one drawn cross plus four ghost arms (INPUT_BTN_UP ...) that light up.
+//!\ingroup grp_controller
+const GuiControllerLayout& GuiWiiUProControllerLayout();
+const GuiControllerLayout& GuiGamePadControllerLayout();		//!< Wii U GamePad
+const GuiControllerLayout& GuiGameCubeControllerLayout();
+const GuiControllerLayout& GuiClassicControllerLayout();
+const GuiControllerLayout& GuiWiimoteControllerLayout();		//!< Held upright (pointer style)
+const GuiControllerLayout& GuiWiimoteSidewaysControllerLayout();	//!< Held sideways (D-pad on the left)
+const GuiControllerLayout& GuiNunchukControllerLayout();
+const GuiControllerLayout& GuiWiimoteNunchukControllerLayout();	//!< Nunchuk on the left, Wiimote on the right

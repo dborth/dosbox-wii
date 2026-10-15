@@ -42,6 +42,13 @@ void GuiBuildControllerBody(GuiMesh& mesh, const GuiControllerLayout& layout, fl
 		GuiRect r = { b.x * scale, b.y * scale, b.w * scale, b.h * scale };
 		pieces.push_back(GuiRoundRectPolygon(r, b.radius * scale, b.angle));
 	}
+	// outlines that are not rounded rectangles (concave is fine)
+	for(size_t i = 0; i < layout.bodyPaths.size(); i++)
+	{
+		std::vector<std::vector<GuiPoint> > contours = GuiFlattenPath(layout.bodyPaths[i], scale, mesh.getTolerance() * 0.5f);
+		for(size_t k = 0; k < contours.size(); k++)
+			pieces.push_back(contours[k]);
+	}
 
 	// outlines first, fills after: where pieces overlap, the fill of one covers the outline of the other
 	for(size_t i = 0; i < pieces.size(); i++)
@@ -58,11 +65,21 @@ void GuiBuildControllerBody(GuiMesh& mesh, const GuiControllerLayout& layout, fl
 			GuiBuildControllerSpot(mesh, layout.spots[i], CTL_STATE::NORMAL, scale);
 }
 
+// the polygons of a spot's path, in drawing units
+static std::vector<std::vector<GuiPoint> > spotContours(const GuiMesh& mesh, const GuiControlSpot& spot, float scale)
+{
+	return GuiFlattenPath(spot.path, scale, mesh.getTolerance() * 0.5f);
+}
+
 void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE state, float scale)
 {
 	const GuiTheme& theme = GuiTheme::current();
 	const bool lit = state == CTL_STATE::LIT || state == CTL_STATE::LIT_HIGHLIGHT;
 	const bool hl = state == CTL_STATE::HIGHLIGHT || state == CTL_STATE::LIT_HIGHLIGHT;
+
+	// a ghost control is part of a shape drawn elsewhere, so it shows only when it has something to say
+	if((spot.flags & CTL_GHOST) && !lit && !hl)
+		return;
 
 	const float stroke = std::max(1.2f, 1.5f * scale);
 	GuiRect r = { spot.x * scale, spot.y * scale, spot.w * scale, spot.h * scale };
@@ -78,10 +95,37 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 		edge = theme.accent;
 
 	const float edgeWidth = hl ? stroke * 1.8f : stroke;
+	const bool outline = !spot.path.empty() && (spot.shape == CTL_SHAPE::PATH || spot.shape == CTL_SHAPE::STICK);
+	std::vector<std::vector<GuiPoint> > contours;
+	if(outline)
+		contours = spotContours(mesh, spot, scale);
+
 	if(hl)
 	{
-		const float blur = 8.0f * std::max(scale, 0.8f);
-		mesh.addShadow(r, spot.shape == CTL_SHAPE::ROUNDRECT ? GuiCorners(spot.radius * scale) : GuiCorners(10000.0f), blur, 1.0f, 0.0f, 0.0f, withAlpha(theme.accent, 110));
+		if(outline)
+		{
+			// a glow that follows the outline: three soft bands growing outward
+			const float widths[3] = { 6.0f, 4.0f, 2.0f };
+			const uint8_t alphas[3] = { 26, 44, 70 };
+			for(size_t k = 0; k < contours.size(); k++)
+				for(int g = 0; g < 3; g++)
+					mesh.strokePolygon(contours[k], widths[g] * std::max(scale, 0.8f), STROKE::OUTSIDE, GuiFill::solid(withAlpha(theme.accent, alphas[g])));
+		}
+		else
+		{
+			const float blur = 8.0f * std::max(scale, 0.8f);
+			mesh.addShadow(r, spot.shape == CTL_SHAPE::ROUNDRECT ? GuiCorners(spot.radius * scale) : GuiCorners(10000.0f), blur, 1.0f, 0.0f, 0.0f, withAlpha(theme.accent, 110));
+		}
+	}
+
+	if(outline)
+	{
+		for(size_t k = 0; k < contours.size(); k++)
+		{
+			mesh.addPolygon(contours[k], GuiFill::solid(fill));
+			mesh.strokePolygon(contours[k], edgeWidth, STROKE::INSIDE, GuiFill::solid(edge));
+		}
+		return;
 	}
 
 	if(spot.shape == CTL_SHAPE::ROUNDRECT)
@@ -93,7 +137,7 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 	{
 		mesh.addEllipse(r, GuiFill::solid(fill));
 		mesh.strokeEllipse(r, edgeWidth, STROKE::INSIDE, GuiFill::solid(edge));
-		if(spot.shape == CTL_SHAPE::STICK)
+		if(spot.shape == CTL_SHAPE::STICK && spot.radius <= 0.0f)
 		{
 			// a second ring inside, as on the real stick's gate
 			const float inset = r.w * 0.11f;
@@ -106,7 +150,7 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 void GuiBuildControllerStickCap(GuiMesh& mesh, const GuiControlSpot& spot, float x, float y, bool lit, float scale)
 {
 	const GuiTheme& theme = GuiTheme::current();
-	const float d = spot.w * scale * 0.56f;
+	const float d = spot.radius > 0.0f ? spot.radius * scale : spot.w * scale * 0.56f;
 	const float travel = (spot.w * scale - d) * 0.5f * 0.85f;
 	// keep the cap inside the ring when the stick is pushed diagonally
 	float dx = x, dy = y;
@@ -124,4 +168,44 @@ void GuiBuildControllerStickCap(GuiMesh& mesh, const GuiControlSpot& spot, float
 	const PixelColor edge = lit ? mixToWhite(theme.good, 0.35f) : theme.outlineStrong;
 	mesh.addEllipse(r, GuiFill::linear(mixToWhite(fill, 0.12f), fill, 90));
 	mesh.strokeEllipse(r, std::max(1.2f, 1.5f * scale), STROKE::INSIDE, GuiFill::solid(edge));
+}
+
+void GuiBuildControllerOutline(GuiMesh& mesh, const GuiControllerLayout& layout, float scale, float width, PixelColor color)
+{
+	const GuiFill fill = GuiFill::solid(color);
+	const float tol = mesh.getTolerance() * 0.5f;
+	auto strokeAll = [&](const GuiPath& path) {
+		std::vector<std::vector<GuiPoint> > contours = GuiFlattenPath(path, scale, tol);
+		for(size_t k = 0; k < contours.size(); k++)
+			mesh.strokePolygon(contours[k], width, STROKE::CENTRE, fill);
+	};
+
+	for(size_t i = 0; i < layout.body.size(); i++)
+	{
+		const GuiBodyPiece& b = layout.body[i];
+		GuiRect r = { b.x * scale, b.y * scale, b.w * scale, b.h * scale };
+		mesh.strokePolygon(GuiRoundRectPolygon(r, b.radius * scale, b.angle), width, STROKE::CENTRE, fill);
+	}
+	for(size_t i = 0; i < layout.bodyPaths.size(); i++)
+		strokeAll(layout.bodyPaths[i]);
+
+	for(size_t i = 0; i < layout.spots.size(); i++)
+	{
+		const GuiControlSpot& s = layout.spots[i];
+		if(s.flags & CTL_GHOST)
+			continue;
+		GuiRect r = { s.x * scale, s.y * scale, s.w * scale, s.h * scale };
+		if(!s.path.empty() && (s.shape == CTL_SHAPE::PATH || s.shape == CTL_SHAPE::STICK))
+			strokeAll(s.path);
+		else if(s.shape == CTL_SHAPE::ROUNDRECT)
+			mesh.strokeRoundRect(r, GuiCorners(s.radius * scale), width, STROKE::CENTRE, fill);
+		else
+			mesh.strokeEllipse(r, width, STROKE::CENTRE, fill);
+		if(s.shape == CTL_SHAPE::STICK)
+		{
+			const float d = (s.radius > 0.0f ? s.radius : s.w * 0.56f) * scale;
+			GuiRect cap = { r.x + (r.w - d) * 0.5f, r.y + (r.h - d) * 0.5f, d, d };
+			mesh.strokeEllipse(cap, width, STROKE::CENTRE, fill);
+		}
+	}
 }

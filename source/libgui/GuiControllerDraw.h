@@ -33,3 +33,9 @@ void GuiBuildControllerSpot(GuiMesh& mesh, const GuiControlSpot& spot, CTL_STATE
 //!Builds an analog stick's cap, displaced by (x, y) (each -1 to 1) from the middle of its ring.
 //!\ingroup grp_controller
 void GuiBuildControllerStickCap(GuiMesh& mesh, const GuiControlSpot& spot, float x, float y, bool lit, float scale);
+
+//!Builds the whole controller as thin lines only, no fills and no theme: the silhouette and every control
+//!(a stick with its cap at rest) stroked centered on the outline in one color.
+//!\param width Line width in drawing units (not multiplied by `scale`)
+//!\ingroup grp_controller
+void GuiBuildControllerOutline(GuiMesh& mesh, const GuiControllerLayout& layout, float scale, float width, PixelColor color);
