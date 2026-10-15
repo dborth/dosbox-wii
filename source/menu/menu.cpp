@@ -627,6 +627,7 @@ void HomeMenu ()
 	{
 		UpdateGui();
 
+		keyboard->refresh();	// nothing polls it here, so hot-plug would otherwise go unseen
 		controllerStatus.update();
 
 		if(closeBtn.getState() == STATE::CLICKED)

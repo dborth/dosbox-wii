@@ -250,6 +250,7 @@ class OskKeyboardMux : public KeyboardDriver
 		void init() override { physical->init(); }
 		void shutdown() override { physical->shutdown(); }
 		bool isConnected() const override { return physical->isConnected(); }
+		void refresh() override { physical->refresh(); }
 
 		bool poll(KeyEvent & out) override
 		{

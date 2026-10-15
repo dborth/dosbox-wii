@@ -7,7 +7,9 @@
  * The controller strip at the bottom left of the home menu: an icon for what
  * is connected on each of the four channels, with its battery below, and the
  * GamePad on its own at the far left: always on Wii U, and on Wii only while a
- * GamePad is connected (the other columns close up when it isn't).
+ * GamePad is connected (the other columns close up when it isn't). After a
+ * divider at the right come a USB keyboard and a USB mouse, each shown dimmed
+ * until one is attached.
  *
  *   ControllerStatus status(trigA, &btnSoundOver, &btnSoundClick);
  *   status.appendTo(window);
@@ -24,6 +26,9 @@
 
 #include <stdio.h>
 
+#include "drivers/KeyboardDriver.h"
+#include "drivers/MouseDriver.h"
+
 class ControllerStatus
 {
 	public:
@@ -37,10 +42,13 @@ class ControllerStatus
 			iconPro(controller_wiiupro_png),
 			iconGameCube(controller_gamecube_png),
 			iconCharging(controller_charging_png),
+			iconKeyboard(controller_keyboard_png),
+			iconMouse(controller_mouse_png),
 			screenW(platform->getVideo()->getScreenWidth()),
 			numBadges(0),
 			drcColumn(DRC_ALWAYS),
-			divider(nullptr)
+			divider(nullptr),
+			divider2(nullptr)
 		{
 			// badge[0] is the GamePad, badge[1..4] are P1-P4
 			badge[numBadges++] = new Badge(0, nullptr, screenW, trig, soundOver, soundClick);
@@ -53,10 +61,18 @@ class ControllerStatus
 			divider = new GuiShape(1, DIVIDER_H);
 			divider->setPaint(GuiPaint().color(MenuRGBA(255, 255, 255, 80)));
 			divider->setAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
+			divider2 = new GuiShape(1, DIVIDER_H);
+			divider2->setPaint(GuiPaint().color(MenuRGBA(255, 255, 255, 80)));
+			divider2->setAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
+
+			usb[0].icon.setImage(&iconKeyboard);
+			usb[1].icon.setImage(&iconMouse);
 
 			layout(drcColumn);
 			for(int i = 0; i < numBadges; i++)
 				apply(*badge[i], NONE, -1, false);
+			for(int i = 0; i < USB_BADGES; i++)
+				usb[i].apply(false);
 			if(!drcColumn)
 				hide(*badge[0]);
 		}
@@ -66,6 +82,7 @@ class ControllerStatus
 			for(int i = 0; i < numBadges; i++)
 				delete badge[i];
 			delete divider;
+			delete divider2;
 		}
 		ControllerStatus(const ControllerStatus&) = delete;
 		ControllerStatus& operator=(const ControllerStatus&) = delete;
@@ -73,16 +90,22 @@ class ControllerStatus
 		void appendTo(GuiWindow& w)
 		{
 			w.append(divider);
+			w.append(divider2);
 			for(int i = 0; i < numBadges; i++)
 				badge[i]->appendTo(w);
+			for(int i = 0; i < USB_BADGES; i++)
+				w.append(&usb[i].icon);
 		}
 
 		//!Applies an effect (slide in/out) to every part
 		void setEffect(int effect, int amount)
 		{
 			divider->setEffect(effect, amount);
+			divider2->setEffect(effect, amount);
 			for(int i = 0; i < numBadges; i++)
 				badge[i]->setEffect(effect, amount);
+			for(int i = 0; i < USB_BADGES; i++)
+				usb[i].icon.setEffect(effect, amount);
 		}
 
 		//!Reads the controllers and updates what is shown. Cheap when nothing changed.
@@ -114,6 +137,9 @@ class ControllerStatus
 				bool hasBattery = (kind != NONE && kind != GAMECUBE);
 				apply(*badge[b++], kind, hasBattery ? Segments(pad.hw_battery_level[INPUT_HW_WIIMOTE]) : -1, false);
 			}
+
+			usb[0].apply(keyboard->isConnected());
+			usb[1].apply(usbMouse->isConnected());
 		}
 
 		//!The channel whose badge was clicked, or -1 (and forgets the click). The GamePad belongs to channel 0.
@@ -144,6 +170,8 @@ class ControllerStatus
 		static const int LABEL_BOTTOM = 20;
 		static const int DIVIDER_H = 64;
 		static const int DIVIDER_BOTTOM = 22;
+		static const int USB_BADGES = 2;		// keyboard, mouse
+		static const int USB_ABSENT_ALPHA = 90;	// an icon of something that isn't attached
 
 		// Battery, drawn on whole pixels so nothing is anti-aliased into mush at this size. The casing is a 1px
 		// outline, with a 1px gap before the bars, so the bars sit exactly 2px in from the casing's outer edge:
@@ -265,6 +293,30 @@ class ControllerStatus
 			}
 		};
 
+		//!A USB device (keyboard or mouse): just its icon, dimmed until it is attached. Not clickable.
+		struct UsbBadge
+		{
+			UsbBadge() : shown(-1) {}
+
+			//!Centered on the divider's middle, so the pair reads as its own group
+			void setCenter(int cx, int screenW)
+			{
+				icon.setAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
+				icon.setPosition(cx - screenW / 2, -(DIVIDER_BOTTOM + (DIVIDER_H - icon.getHeight()) / 2));
+			}
+
+			void apply(bool connected)
+			{
+				if(shown == (connected ? 1 : 0))
+					return;
+				shown = connected ? 1 : 0;
+				icon.setAlpha(connected ? 255 : USB_ABSENT_ALPHA);
+			}
+
+			GuiImage icon;
+			int shown;	// -1 = not applied yet, else 0/1
+		};
+
 		//!Lays the columns out, with or without the GamePad column at the left
 		void layout(bool drc)
 		{
@@ -277,6 +329,15 @@ class ControllerStatus
 				badge[1 + i]->setCenter(x + PITCH / 2 + i * PITCH);
 			divider->setVisible(drc);
 			divider->setPosition(x - GAP / 2 - screenW / 2, -DIVIDER_BOTTOM);
+
+			// the USB devices follow the players, past a divider of their own
+			const int usbX = x + SLOTS * PITCH + GAP;
+			divider2->setPosition(usbX - GAP / 2 - screenW / 2, -DIVIDER_BOTTOM);
+			for(int i = 0; i < USB_BADGES; i++)
+			{
+				usb[i].setCenter(usbX + PITCH / 2 + i * PITCH, screenW);
+				usb[i].shown = -1;
+			}
 			for(int i = 0; i < numBadges; i++)	// everything moved: have apply() redo it all
 				badge[i]->key = -1;
 		}
@@ -358,12 +419,14 @@ class ControllerStatus
 			}
 		}
 
-		GuiImageData iconGamepad, iconWiimote, iconNunchuk, iconClassic, iconPro, iconGameCube, iconCharging;
+		GuiImageData iconGamepad, iconWiimote, iconNunchuk, iconClassic, iconPro, iconGameCube, iconCharging, iconKeyboard, iconMouse;
 		int screenW;
 		int numBadges;
 		bool drcColumn;				// whether the GamePad column is laid out
 		Badge * badge[SLOTS + 1];	// the GamePad first, then P1-P4
 		GuiShape * divider;
+		GuiShape * divider2;		// between the players and the USB devices
+		UsbBadge usb[USB_BADGES];	// keyboard, mouse
 };
 
 #endif

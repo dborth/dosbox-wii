@@ -27,6 +27,7 @@ void OgcKeyboardDriver::init()
 	// hotplug arrives there as KEYBOARD_CONNECTED/DISCONNECTED events.
 	initialized = (KEYBOARD_Init(NULL) >= 0);
 	connected = 0;
+	heldHead = heldCount = 0;
 	#endif
 }
 
@@ -38,6 +39,7 @@ void OgcKeyboardDriver::shutdown()
 	#endif
 	initialized = false;
 	connected = 0;
+	heldHead = heldCount = 0;
 }
 
 #ifdef HW_RVL
@@ -58,7 +60,7 @@ static uint16_t MapModifiers(uint16_t m)
 }
 #endif
 
-bool OgcKeyboardDriver::poll(KeyEvent & out)
+bool OgcKeyboardDriver::fetch(KeyEvent & out)
 {
 	#ifdef HW_RVL
 	if (!initialized)
@@ -88,4 +90,29 @@ bool OgcKeyboardDriver::poll(KeyEvent & out)
 	(void)out;
 	#endif
 	return false;
+}
+
+bool OgcKeyboardDriver::poll(KeyEvent & out)
+{
+	if (heldCount > 0) {
+		out = held[heldHead];
+		heldHead = (heldHead + 1) % kHeldSize;
+		heldCount--;
+		return true;
+	}
+
+	return fetch(out);
+}
+
+// libwiikeyboard only reports attach/detach through the same queue as keys, so
+// the count is only as current as the last drain. Nothing polls in the menu:
+// drain here, and hold on to the keys so they still reach the next poll().
+void OgcKeyboardDriver::refresh()
+{
+	KeyEvent ke;
+
+	while (heldCount < kHeldSize && fetch(ke)) {
+		held[(heldHead + heldCount) % kHeldSize] = ke;
+		heldCount++;
+	}
 }

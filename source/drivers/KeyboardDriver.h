@@ -75,6 +75,10 @@ class KeyboardDriver
 		//! Pops the next pending event into `out`. Returns false when the
 		//! queue is empty. Call from the main thread, once per frame.
 		virtual bool poll(KeyEvent & out) = 0;
+
+		//! Lets isConnected() follow hot-plug while nothing is polling (in the
+		//! menu). Keeps pending key events for the next poll(). Main thread.
+		virtual void refresh() {}
 };
 
 //! The app-owned keyboard instance (defined in wiihardware.cpp)
