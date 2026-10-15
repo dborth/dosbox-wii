@@ -29,6 +29,8 @@
 #include "controller_wiiupro_png.h"
 #include "controller_gamecube_png.h"
 #include "controller_charging_png.h"
+#include "controller_keyboard_png.h"
+#include "controller_mouse_png.h"
 
 #include "player1_point_png.h"
 #include "player2_point_png.h"
