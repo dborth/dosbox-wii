@@ -466,94 +466,205 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 
 // ---- target chooser
 
-void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, int w, int h, int fontPx)
+void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, const std::vector<int>& codes, int w, int h, int fontPx)
 {
 	const std::vector<std::string>& names = Catalog_Names(kind);
-	for(size_t i = 0; i < names.size(); i++)
+	for(size_t i = 0; i < codes.size(); i++)
 	{
-		// the longest key names do not fit a key
-		const char * shown = names[i] == "Backspace" ? "Bksp" : names[i].c_str();
-		const bool now = current.kind == kind && current.code == (int)i;
+		const int code = codes[i];
+		// the longest names do not fit a key: draw the symbol, and name it on the hint line when it is selected
+		const std::string& full = names[(size_t)code];
+		const char * shown = full.c_str();
+		if(kind == TARGET::KEY)
+		{
+			static const char * const caps[][2] = { { "Backspace", "Bksp" }, { "Minus", "-" }, { "Equals", "=" }, { "Comma", "," },
+				{ "Period", "." }, { "Slash", "/" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Backslash", "\\" }, { "Grave", "`" } };
+			for(size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++)
+				if(full == caps[c][0])
+					shown = caps[c][1];
+		}
+		const bool now = current.kind == kind && current.code == code;
 		GuiTextButton& b = ui.button(shown).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(now));
-		const int code = (int)i;
 		b.onClick([this, kind, code]{
 			picked = BindingTarget(kind, code);
+			done = true;
+		});
+		if(kind == TARGET::KEY)
+			b.onFocus([this, full]{ if(!listen) hintText = GuiFormat("Key: %s", full.c_str()); });
+		grid.add(b);
+	}
+}
+
+void TargetChooserView::targetButtons(GuiLayout& grid, const std::vector<BindingTarget>& targets, int w, int h, int fontPx)
+{
+	for(size_t i = 0; i < targets.size(); i++)
+	{
+		const BindingTarget t = targets[i];
+		GuiTextButton& b = ui.button(t.describe().c_str()).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(t == current));
+		b.onClick([this, t]{
+			picked = t;
 			done = true;
 		});
 		grid.add(b);
 	}
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
-	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Pick a kind on the left, then what it does")
+void TargetChooserView::startListening(TARGET kind)
+{
+	Controls().beginCapture();
+	listen = true;
+	listenKind = kind;
+	hintText = kind == TARGET::KEY ? "Press a key on the keyboard.  B cancels" : "Click a mouse button.  B cancels";
+}
+
+void TargetChooserView::stopListening()
+{
+	listen = false;
+	hintText = "Pick a kind on the left, then what it does";
+}
+
+TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
+	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Pick a kind on the left, then what it does"),
+	listen(false), listenKind(TARGET::KEY), kinds(0)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("What should %s do?", controlName).c_str(), [this]{ return hintText; });
-	f.headerRight->add(ui.chip(GuiFormat("Now: %s", now.describe().c_str()).c_str()));
+	f.headerRight->add(ui.chip(GuiFormat("Now: %s", Controls().describe(player, control).c_str()).c_str()));
 
 	{
-		// kinds down the left; a click shows that kind's choices on the right
-		static const char * const categories[5] = { "Key", "Joystick", "Mouse", "DOSBox", "None" };
-		static const char * const headings[5] = { "Keyboard keys", "Joystick buttons", "Mouse", "DOSBox functions", "Nothing" };
-		static const TARGET kinds[4] = { TARGET::KEY, TARGET::JOYSTICK, TARGET::MOUSE, TARGET::HOTKEY };
-		for(int k = 0; k < 4; k++)
-			if(now.kind == kinds[k])
-				shown = k;
-
-		GuiTextButton * tabs[5];
-		GuiLayout& list = ui.column().gap(4);
-		for(int k = 0; k < 5; k++)
-		{
-			tabs[k] = &ui.button(categories[k]).size(104, 34).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle());
-			tabs[k]->onClick([this, k]{ shown = k; });
-			list.add(*tabs[k]);
-		}
-		// the tab that is showing looks pressed in, apart from the highlight
-		int styled = -1;
-		ui.bind([tabs, styled, this]() mutable {
-			if(styled == shown)
-				return;
-			styled = shown;
-			for(int k = 0; k < 5; k++)
-				tabs[k]->style(k == shown ? MenuTabActiveStyle() : MenuBarButtonStyle());
-		});
+		ControlsModel& m = Controls();
+		const std::vector<BindingTarget> suggested = m.suggestions(player, control);
 
 		const int choicesW = MENU_PAGE_CONTENT_W - 120 - 6;
 		const int inner = choicesW - 16;
-		GuiLayout& keys = ui.grid(9).gap(2, 2);
-		optionButtons(keys, TARGET::KEY, 41, 24, UI_FONT_SMALL);
 		const int wide = (inner - 6) / 2;
-		GuiLayout& joystick = ui.grid(2).gap(6, 6);
-		optionButtons(joystick, TARGET::JOYSTICK, wide, 30, UI_FONT_BODY);
-		GuiLayout& mouse = ui.grid(2).gap(6, 6);
-		optionButtons(mouse, TARGET::MOUSE, wide, 30, UI_FONT_BODY);
-		GuiLayout& hotkeys = ui.grid(2).gap(6, 6);
-		optionButtons(hotkeys, TARGET::HOTKEY, wide, 30, UI_FONT_BODY);
-		GuiTextButton& clear = ui.button("Leave unassigned").size(wide, 30).fontSize(UI_FONT_BODY)
-			.style(MenuBarButtonStyle(now.kind == TARGET::NONE))
-			.onClick([this]{
-				picked = BindingTarget();
-				done = true;
+		const int keyW = (inner - 9 * 2) / 10; // ten keys across
+
+		// the kinds down the left (a joystick only when the player has one), each with the panel it shows
+		struct Panel { const char * tab; const char * heading; GuiLayout * layout; TARGET kind; };
+		std::vector<Panel> panels;
+
+		if(!suggested.empty())
+		{
+			GuiLayout& g = ui.grid(2).gap(6, 6);
+			targetButtons(g, suggested, wide, 30, UI_FONT_BODY);
+			panels.push_back({ "Suggested", "Common choices for this button", &g, TARGET::NONE });
+		}
+
+		// Key: a button that waits for a real key press, above the keys for a pad-only user
+		{
+			GuiLayout& keys = ui.grid(10).gap(2, 2);
+			optionButtons(keys, TARGET::KEY, m.choices(player, TARGET::KEY), keyW, 24, UI_FONT_SMALL);
+			GuiTextButton& press = ui.button("").size(wide, 24).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
+				.bind([this]{ return listen && listenKind == TARGET::KEY ? std::string("Press a key...") : std::string("Press a key on the keyboard"); })
+				.visibleWhen([]{ return Controls().devices().keyboard; })
+				.onClick([this]{ startListening(TARGET::KEY); });
+			panels.push_back({ "Key", "Keyboard keys", &ui.column().gap(4).add(press).add(keys), TARGET::KEY });
+		}
+
+		if(m.joystickButtons(player) > 0)
+		{
+			GuiLayout& g = ui.grid(2).gap(6, 6);
+			optionButtons(g, TARGET::JOYSTICK, m.choices(player, TARGET::JOYSTICK), wide, 30, UI_FONT_BODY);
+			panels.push_back({ "Joystick", "Joystick buttons", &g, TARGET::JOYSTICK });
+		}
+
+		{
+			GuiLayout& g = ui.grid(2).gap(6, 6);
+			optionButtons(g, TARGET::MOUSE, m.choices(player, TARGET::MOUSE), wide, 30, UI_FONT_BODY);
+			GuiTextButton& click = ui.button("").size(wide, 30).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
+				.bind([this]{ return listen && listenKind == TARGET::MOUSE ? std::string("Click a button...") : std::string("Click a mouse button"); })
+				.visibleWhen([]{ return Controls().devices().mouse; })
+				.onClick([this]{ startListening(TARGET::MOUSE); });
+			panels.push_back({ "Mouse", "Mouse buttons", &ui.column().gap(6).add(click).add(g), TARGET::MOUSE });
+		}
+
+		{
+			GuiLayout& g = ui.grid(2).gap(6, 6);
+			optionButtons(g, TARGET::HOTKEY, m.choices(player, TARGET::HOTKEY), wide, 30, UI_FONT_BODY);
+			panels.push_back({ "DOSBox", "DOSBox functions", &g, TARGET::HOTKEY });
+		}
+
+		{
+			GuiTextButton& clear = ui.button("Leave unassigned").size(wide, 30).fontSize(UI_FONT_BODY)
+				.style(MenuBarButtonStyle(now.kind == TARGET::NONE))
+				.onClick([this]{
+					picked = BindingTarget();
+					done = true;
+				});
+			panels.push_back({ "None", "Nothing", &ui.column().gap(8)
+				.add(ui.label("This control will do nothing.").fontSize(UI_FONT_BODY).muted())
+				.add(clear), TARGET::NONE });
+		}
+
+		// open on the kind the control uses now; failing that, the suggestions (the first panel) when there are any
+		shown = 0;
+		for(size_t i = 0; i < panels.size(); i++)
+			if(now.kind != TARGET::NONE && panels[i].kind == now.kind)
+				shown = (int)i;
+
+		kinds = (int)panels.size();
+		std::vector<GuiTextButton*>& tabs = ui.own<std::vector<GuiTextButton*>>();
+		std::vector<const char *>& headings = ui.own<std::vector<const char *>>();
+		GuiLayout& list = ui.column().gap(4);
+		for(size_t i = 0; i < panels.size(); i++)
+		{
+			GuiTextButton& tab = ui.button(panels[i].tab).size(104, 34).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle());
+			const int idx = (int)i;
+			tab.onClick([this, idx]{
+				stopListening();
+				shown = idx;
 			});
-		GuiLayout& nothing = ui.column().gap(8)
-			.add(ui.label("This control will do nothing.").fontSize(UI_FONT_BODY).muted())
-			.add(clear);
+			tabs.push_back(&tab);
+			headings.push_back(panels[i].heading);
+			list.add(tab);
+		}
+		// the tab that is showing looks pressed in, apart from the highlight
+		int styled = -1;
+		ui.bind([&tabs, styled, this]() mutable {
+			if(styled == shown)
+				return;
+			styled = shown;
+			for(size_t k = 0; k < tabs.size(); k++)
+				tabs[k]->style((int)k == shown ? MenuTabActiveStyle() : MenuBarButtonStyle());
+		});
 
 		GuiLayout& stack = ui.overlay();
-		GuiLayout * panels[5] = { &keys, &joystick, &mouse, &hotkeys, &nothing };
-		for(int k = 0; k < 5; k++)
+		for(size_t i = 0; i < panels.size(); i++)
 		{
-			stack.add(*panels[k], GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
-			ui.visibleWhen(*panels[k], [this, k]{ return shown == k; });
+			stack.add(*panels[i].layout, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
+			const int idx = (int)i;
+			ui.visibleWhen(*panels[i].layout, [this, idx]{ return shown == idx; });
 		}
-		GuiLabel& heading = ui.label().fontSize(UI_FONT_SMALL - 1).muted().bind([this]{ return std::string(headings[shown]); });
+		GuiLabel& heading = ui.label().fontSize(UI_FONT_SMALL - 1).muted().bind([this, &headings]{ return std::string(headings[(size_t)shown]); });
 
 		f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
 			.add(MenuPage_Section(ui, 120).pad(8, 8).add(list))
 			.add(MenuPage_Section(ui, choicesW).pad(8, 6).add(ui.column().gap(4).add(heading).add(stack))));
+
+		// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
+		ui.bind([this, player]{
+			if(!listen)
+				return;
+			CaptureEvent e;
+			while(Controls().pollCapture(e))
+			{
+				if(e.kind != listenKind)
+					continue;
+				if(e.code < 0 || !Controls().usable(player, BindingTarget(e.kind, e.code)))
+				{
+					hintText = "That one can't be used here.  Press another, or B";
+					continue;
+				}
+				picked = BindingTarget(e.kind, e.code);
+				done = true;
+				listen = false;
+				return;
+			}
+		});
 	}
 
 	// the control's own default, from the current preset
@@ -609,10 +720,10 @@ class ScreenWindow
 		bool shown;
 };
 
-bool ChooserScreen(const char * name, BindingTarget& target, const BindingTarget& defaultTarget)
+bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	TargetChooserView view(name, target, defaultTarget, &over);
+	TargetChooserView view(name, player, control, target, defaultTarget, &over);
 	ScreenWindow screen(view);
 
 	while(true)
@@ -624,7 +735,12 @@ bool ChooserScreen(const char * name, BindingTarget& target, const BindingTarget
 			return true;
 		}
 		if(view.backButton().getState() == STATE::CLICKED)
-			return false;
+		{
+			if(!view.listening())
+				return false;
+			view.stopListening(); // B while waiting for a key only stops waiting
+			view.backButton().setState(STATE::DEFAULT);
+		}
 	}
 }
 
@@ -644,7 +760,7 @@ void ConfigScreen(int player)
 		{
 			screen.hide();
 			BindingTarget target = Controls().binding(view.player(), row.binding);
-			if(ChooserScreen(row.name, target, Controls().defaultBinding(row.binding)))
+			if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(row.binding)))
 				Controls().setBinding(view.player(), row.binding, target);
 			screen.show();
 		}

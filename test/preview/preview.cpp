@@ -111,6 +111,9 @@ struct SceneModel : ControlsModel
 	bool saveSetup(const std::string&, const std::string&) override { return false; }
 	bool loadSetup(int) override { return false; }
 	std::string runningProgram() const override { return ""; }
+	std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
+	void beginCapture() override {}
+	bool pollCapture(CaptureEvent&) override { return false; }
 };
 
 int main(int argc, char ** argv)
@@ -174,13 +177,74 @@ int main(int argc, char ** argv)
 		s.page.append(&view);
 		snap(scenes[i].name, s.root, 0, 0, 0);
 	}
+	// the chooser on the sample model: (name, player, emulated mode, control, what it does now)
+	struct ChooserScene { const char * name; int mode; int preset; int control; BindingTarget now; };
+	const ChooserScene choosers[] = {
+		{ "chooser", 0, 1, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5) },					// opens on the key it uses
+		{ "chooser_suggested", 0, 1, INPUT_TRIGGER_ZR, BindingTarget() },				// nothing yet: the suggestions
+		{ "chooser_keys_mouse", 2, 0, INPUT_BTN_A, BindingTarget(TARGET::JOYSTICK, 0) },	// no joystick, so no Joystick kind
+	};
+	for(size_t i = 0; i < sizeof(choosers) / sizeof(choosers[0]); i++)
 	{
-		SceneModel one(1);
-		Controls_SetModel(&one);
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(choosers[i].mode);
+		Controls().applyPreset(choosers[i].preset);
 		Screen s;
-		TargetChooserView view("A Button", BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
+		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), nullptr);
 		s.page.append(&view);
-		snap("chooser", s.root);
+		snap(choosers[i].name, s.root);
 	}
+
+	// ---- behaviour checks (a failure prints and makes the run fail)
+	int failures = 0;
+	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
+	{
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		Controls().applyPreset(1);
+		Screen s;
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
+		s.page.append(&view);
+		const int withJoystick = view.categoryCount();
+		EXPECT(withJoystick == 6);	// Suggested, Key, Joystick, Mouse, DOSBox, None
+
+		EXPECT(!view.listening() && !view.chosen());
+		view.startListening(TARGET::KEY);
+		EXPECT(view.listening());
+		SampleControls_PushCapture({ TARGET::MOUSE, 0 });		// the wrong kind of press is ignored
+		SampleControls_PushCapture({ TARGET::KEY, -1 });		// a key with no target is refused
+		s.root.update(nullptr);
+		EXPECT(!view.chosen() && view.listening());
+		SampleControls_PushCapture({ TARGET::KEY, Catalog_Find(TARGET::KEY, "Z") });
+		s.root.update(nullptr);
+		EXPECT(view.chosen() && !view.listening());
+		EXPECT(view.result() == BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "Z")));
+	}
+	{
+		// a key pressed before listening began does not count
+		Controls_SetModel(nullptr);
+		Screen s;
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget(), nullptr);
+		s.page.append(&view);
+		SampleControls_PushCapture({ TARGET::KEY, Catalog_Find(TARGET::KEY, "Q") });
+		view.startListening(TARGET::KEY);
+		s.root.update(nullptr);
+		EXPECT(!view.chosen());
+		view.stopListening();
+		EXPECT(!view.listening());
+	}
+	{
+		// no joystick, no Joystick kind; and a joystick button a two-button joystick lacks is never offered
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(2);
+		Screen s;
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget(), nullptr);
+		s.page.append(&view);
+		EXPECT(view.categoryCount() == 5);
+		Controls().setEmulated(0);
+	}
+	if(failures)
+		return 1;
+	printf("behaviour checks passed\n");
 	return 0;
 }

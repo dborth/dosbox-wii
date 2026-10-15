@@ -116,6 +116,15 @@ struct SetupInfo {
 	std::string program;		/**< "KEEN4E.EXE", or empty */
 };
 
+/** A key or mouse button the user just pressed while the chooser was listening. */
+struct CaptureEvent {
+	TARGET kind;	/**< KEY or MOUSE */
+	int code;		/**< Index in that kind's catalog, or -1 when the press has no target (a key the mapper cannot bind) */
+};
+
+/** The catalog index of the key a USB HID usage (keyboard page) stands for, or -1. Left and right Ctrl, Shift and Alt are one key each. */
+int Catalog_KeyFromHid(unsigned hidUsage);
+
 /** Everything the controller screens read and write. */
 class ControlsModel
 {
@@ -159,6 +168,20 @@ class ControlsModel
 		/** What a control does, in short words; when the target would do nothing it says why instead ("Joystick off", "No button 3"). */
 		std::string describe(int player, int control) const;
 
+		// ---- what the chooser offers
+		/** The kinds of target a player can be given now, in display order: no Joystick kind when the player has no joystick. */
+		std::vector<TARGET> kindsOffered(int player) const;
+		/** The catalog indexes of a kind a player can use: joystick buttons the joystick has, everything else. */
+		std::vector<int> choices(int player, TARGET kind) const;
+		/** Likely targets for a control: what each preset gives it, that the player can use (no duplicates, nothing unassigned). */
+		virtual std::vector<BindingTarget> suggestions(int player, int control) const = 0;
+
+		// ---- press to choose
+		/** Starts listening for a pressed key or mouse button, dropping anything pressed before. */
+		virtual void beginCapture() = 0;
+		/** The next key or mouse button pressed since beginCapture(); false when there is none. */
+		virtual bool pollCapture(CaptureEvent& event) = 0;
+
 		// ---- setups: a named, saved configuration, optionally tied to a program
 		virtual std::vector<SetupInfo> setups() const = 0;
 		/** Saves the current configuration under a name (replacing one of the same name). */
@@ -176,5 +199,7 @@ void Controls_SetModel(ControlsModel * model);
 
 /** Sets what the sample model reports as held (for tests and previews; does nothing once another model is installed). */
 void SampleControls_SetHeld(uint32_t bits);
+/** Queues a press for the sample model's pollCapture() (tests and previews). */
+void SampleControls_PushCapture(const CaptureEvent& event);
 
 #endif

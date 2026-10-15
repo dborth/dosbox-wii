@@ -5,6 +5,7 @@
  ***************************************************************************/
 #include "controlsmodel.h"
 #include "libgui/GuiControllerLayout.h"
+#include <deque>
 #include <map>
 #include <stdint.h>
 #include <stdio.h>
@@ -40,6 +41,10 @@ static std::vector<std::string> makeKeys()
 		v.push_back(std::string(1, c));
 	for(char c = 'A'; c <= 'Z'; c++)
 		v.push_back(std::string(1, c));
+	// the punctuation keys the mapper binds, by name (the key buttons draw the symbol)
+	const char * punctuation[] = { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon", "Quote", "[", "]", "Backslash", "Grave" };
+	for(size_t i = 0; i < sizeof(punctuation) / sizeof(punctuation[0]); i++)
+		v.push_back(punctuation[i]);
 	return v;
 }
 
@@ -58,6 +63,51 @@ const std::vector<std::string>& Catalog_Names(TARGET kind)
 		case TARGET::HOTKEY: return hotkeys;
 		default: return none;
 	}
+}
+
+int Catalog_KeyFromHid(unsigned hid)
+{
+	const char * name = nullptr;
+	char single[2] = { 0, 0 };
+	char fkey[8];
+	if(hid >= 4 && hid <= 29) { single[0] = (char)('A' + (hid - 4)); name = single; }
+	else if(hid >= 30 && hid <= 38) { single[0] = (char)('1' + (hid - 30)); name = single; }
+	else if(hid == 39) name = "0";
+	else if(hid >= 58 && hid <= 69) { snprintf(fkey, sizeof(fkey), "F%u", hid - 57); name = fkey; }
+	else switch(hid)
+	{
+		case 40: name = "Enter"; break;
+		case 41: name = "Esc"; break;
+		case 42: name = "Backspace"; break;
+		case 43: name = "Tab"; break;
+		case 44: name = "Space"; break;
+		case 45: name = "Minus"; break;
+		case 46: name = "Equals"; break;
+		case 47: name = "["; break;
+		case 48: name = "]"; break;
+		case 49: name = "Backslash"; break;
+		case 51: name = "Semicolon"; break;
+		case 52: name = "Quote"; break;
+		case 53: name = "Grave"; break;
+		case 54: name = "Comma"; break;
+		case 55: name = "Period"; break;
+		case 56: name = "Slash"; break;
+		case 73: name = "Ins"; break;
+		case 74: name = "Home"; break;
+		case 75: name = "PgUp"; break;
+		case 76: name = "Del"; break;
+		case 77: name = "End"; break;
+		case 78: name = "PgDn"; break;
+		case 79: name = "Right"; break;
+		case 80: name = "Left"; break;
+		case 81: name = "Down"; break;
+		case 82: name = "Up"; break;
+		case 224: case 228: name = "Ctrl"; break;
+		case 225: case 229: name = "Shift"; break;
+		case 226: case 230: name = "Alt"; break;
+		default: break;
+	}
+	return name ? Catalog_Find(TARGET::KEY, name) : -1;
 }
 
 int Catalog_Find(TARGET kind, const char * name)
@@ -120,6 +170,28 @@ std::string ControlsModel::describe(int player, int control) const
 	if(t.kind == TARGET::JOYSTICK && text != "Not assigned" && !usable(player, t))
 		text = joystickButtons(player) ? "No button " + std::string(1, (char)('1' + t.code)) : "Joystick off";
 	return text;
+}
+
+std::vector<TARGET> ControlsModel::kindsOffered(int player) const
+{
+	std::vector<TARGET> kinds;
+	kinds.push_back(TARGET::KEY);
+	if(joystickButtons(player) > 0)
+		kinds.push_back(TARGET::JOYSTICK);
+	kinds.push_back(TARGET::MOUSE);
+	kinds.push_back(TARGET::HOTKEY);
+	return kinds;
+}
+
+std::vector<int> ControlsModel::choices(int player, TARGET kind) const
+{
+	std::vector<int> codes;
+	int count = (int)Catalog_Names(kind).size();
+	if(kind == TARGET::JOYSTICK)
+		count = joystickButtons(player) < count ? joystickButtons(player) : count;
+	for(int i = 0; i < count; i++)
+		codes.push_back(i);
+	return codes;
 }
 
 // ---- sample data
@@ -384,6 +456,36 @@ class SampleControlsModel : public ControlsModel
 		}
 		std::string runningProgram() const override { return "KEEN4E.EXE"; }
 
+		std::vector<BindingTarget> suggestions(int player, int control) const override
+		{
+			std::vector<BindingTarget> out;
+			if(!mapperHasSource(control))
+				return out;
+			for(int p = 0; p < PRESET_COUNT; p++)
+			{
+				const BindingTarget t = presetDefault(p, control);
+				if(t.kind == TARGET::NONE || !usable(player, t))
+					continue;
+				bool seen = false;
+				for(size_t i = 0; i < out.size(); i++)
+					seen = seen || out[i] == t;
+				if(!seen)
+					out.push_back(t);
+			}
+			return out;
+		}
+
+		void beginCapture() override { pending.clear(); }
+		bool pollCapture(CaptureEvent& e) override
+		{
+			if(pending.empty())
+				return false;
+			e = pending.front();
+			pending.pop_front();
+			return true;
+		}
+		void pushCapture(const CaptureEvent& e) { pending.push_back(e); }
+
 	private:
 		struct Setup
 		{
@@ -400,6 +502,7 @@ class SampleControlsModel : public ControlsModel
 		uint32_t heldBits;
 		std::map<int64_t, BindingTarget> edits;
 		std::vector<Setup> saved;
+		std::deque<CaptureEvent> pending;
 };
 
 SampleControlsModel * sampleModel()
@@ -426,4 +529,10 @@ void SampleControls_SetHeld(uint32_t bits)
 {
 	if(!installed)
 		sampleModel()->setHeld(bits);
+}
+
+void SampleControls_PushCapture(const CaptureEvent& event)
+{
+	if(!installed)
+		sampleModel()->pushCapture(event);
 }

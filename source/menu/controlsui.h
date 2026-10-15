@@ -114,18 +114,27 @@ class TargetChooserView : public GuiOverlay
 	public:
 		/**
 		 * @param controlName Name of the control being set ("Y Button")
+		 * @param player Whose control it is (what DOS gives that player decides what is offered)
+		 * @param control The control's id (for the suggestions)
 		 * @param current What the control does now
 		 * @param defaultTarget What the scheme makes it do (the Default button)
 		 */
-		TargetChooserView(const char * controlName, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
+		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether the user picked something. */
 		bool chosen() const { return done; }
 		BindingTarget result() const { return picked; }
-		/** The category whose choices are showing (0 key, 1 joystick, 2 mouse, 3 DOSBox function, 4 nothing). */
+		/** The kind whose choices are showing: an index into the kinds listed down the left (Suggested first when there are suggestions). */
 		int category() const { return shown; }
+		/** How many kinds are listed down the left. */
+		int categoryCount() const { return kinds; }
+		/** Waiting for a key or mouse button to be pressed. */
+		bool listening() const { return listen; }
+		void startListening(TARGET kind);
+		void stopListening();
 	private:
-		void optionButtons(GuiLayout& grid, TARGET kind, int w, int h, int fontPx);
+		void optionButtons(GuiLayout& grid, TARGET kind, const std::vector<int>& codes, int w, int h, int fontPx);
+		void targetButtons(GuiLayout& grid, const std::vector<BindingTarget>& targets, int w, int h, int fontPx);
 
 		UiScope ui;
 		BindingTarget current;
@@ -134,6 +143,9 @@ class TargetChooserView : public GuiOverlay
 		bool done;
 		GuiTextButton * backBtn;
 		std::string hintText;
+		bool listen;
+		TARGET listenKind;
+		int kinds;
 };
 
 #endif

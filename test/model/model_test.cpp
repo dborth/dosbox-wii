@@ -295,6 +295,153 @@ static void testMatchesButtonsCpp()
 		CHECK(text.find("\"Joystick " + Catalog_Names(TARGET::JOYSTICK)[i] + "\"") != std::string::npos);
 }
 
+static void testHidKeys()
+{
+	// letters, digits, function keys
+	for(unsigned i = 0; i < 26; i++)
+		CHECK(Catalog_KeyFromHid(4 + i) == Catalog_Find(TARGET::KEY, std::string(1, (char)('A' + i)).c_str()));
+	for(unsigned i = 0; i < 9; i++)
+		CHECK(Catalog_KeyFromHid(30 + i) == Catalog_Find(TARGET::KEY, std::string(1, (char)('1' + i)).c_str()));
+	CHECK(Catalog_KeyFromHid(39) == Catalog_Find(TARGET::KEY, "0"));
+	CHECK(Catalog_KeyFromHid(58) == Catalog_Find(TARGET::KEY, "F1"));
+	CHECK(Catalog_KeyFromHid(69) == Catalog_Find(TARGET::KEY, "F12"));
+
+	// the named keys
+	struct { unsigned hid; const char * name; } named[] = {
+		{ 40, "Enter" }, { 41, "Esc" }, { 42, "Backspace" }, { 43, "Tab" }, { 44, "Space" }, { 73, "Ins" }, { 74, "Home" },
+		{ 75, "PgUp" }, { 76, "Del" }, { 77, "End" }, { 78, "PgDn" }, { 79, "Right" }, { 80, "Left" }, { 81, "Down" }, { 82, "Up" },
+		{ 45, "Minus" }, { 46, "Equals" }, { 47, "[" }, { 48, "]" }, { 49, "Backslash" }, { 51, "Semicolon" }, { 52, "Quote" },
+		{ 53, "Grave" }, { 54, "Comma" }, { 55, "Period" }, { 56, "Slash" },
+	};
+	for(size_t i = 0; i < sizeof(named) / sizeof(named[0]); i++)
+	{
+		const int code = Catalog_Find(TARGET::KEY, named[i].name);
+		CHECK(code >= 0);
+		CHECK(Catalog_KeyFromHid(named[i].hid) == code);
+	}
+
+	// left and right modifiers are the same key to us
+	CHECK(Catalog_KeyFromHid(224) == Catalog_Find(TARGET::KEY, "Ctrl") && Catalog_KeyFromHid(228) == Catalog_KeyFromHid(224));
+	CHECK(Catalog_KeyFromHid(225) == Catalog_Find(TARGET::KEY, "Shift") && Catalog_KeyFromHid(229) == Catalog_KeyFromHid(225));
+	CHECK(Catalog_KeyFromHid(226) == Catalog_Find(TARGET::KEY, "Alt") && Catalog_KeyFromHid(230) == Catalog_KeyFromHid(226));
+
+	// keys the mapper cannot bind here are refused rather than guessed
+	CHECK(Catalog_KeyFromHid(0) == -1);		// no key
+	CHECK(Catalog_KeyFromHid(57) == -1);	// caps lock
+	CHECK(Catalog_KeyFromHid(83) == -1);	// num lock
+	CHECK(Catalog_KeyFromHid(89) == -1);	// keypad
+	CHECK(Catalog_KeyFromHid(227) == -1);	// the GUI key opens the menu
+	CHECK(Catalog_KeyFromHid(1000) == -1);
+
+	// every key in the catalog can be pressed (except nothing is unreachable by a USB keyboard)
+	const std::vector<std::string>& keys = Catalog_Names(TARGET::KEY);
+	CHECK(keys.size() == 77);
+	std::vector<bool> reached(keys.size(), false);
+	for(unsigned hid = 0; hid < 232; hid++)
+	{
+		const int code = Catalog_KeyFromHid(hid);
+		if(code >= 0)
+			reached[(size_t)code] = true;
+	}
+	for(size_t i = 0; i < keys.size(); i++)
+	{
+		if(!reached[i])
+			printf("      no USB key for catalog key %s\n", keys[i].c_str());
+		CHECK(reached[i]);
+	}
+}
+
+static void testKindsAndChoices()
+{
+	ControlsModel& m = fresh();
+	// "Joystick": player 1 has one, the others do not
+	m.setEmulated(0);
+	CHECK(m.kindsOffered(0).size() == 4 && m.kindsOffered(0)[1] == TARGET::JOYSTICK);
+	CHECK(m.kindsOffered(1).size() == 3);
+	for(size_t i = 0; i < m.kindsOffered(1).size(); i++)
+		CHECK(m.kindsOffered(1)[i] != TARGET::JOYSTICK);
+	CHECK(m.choices(0, TARGET::JOYSTICK).size() == 4);
+	CHECK(m.choices(1, TARGET::JOYSTICK).empty());
+
+	// two joysticks with two buttons each
+	m.setEmulated(1);
+	CHECK(m.kindsOffered(1).size() == 4);
+	CHECK(m.choices(0, TARGET::JOYSTICK).size() == 2 && m.choices(1, TARGET::JOYSTICK).size() == 2);
+	CHECK(m.choices(2, TARGET::JOYSTICK).empty());
+	CHECK(m.choices(0, TARGET::JOYSTICK)[1] == 1);
+
+	// keyboard + mouse: no joystick kind for anyone
+	m.setEmulated(2);
+	CHECK(m.kindsOffered(0).size() == 3);
+	CHECK(m.choices(0, TARGET::JOYSTICK).empty());
+
+	// keys, mouse buttons and DOS functions are always all there
+	CHECK(m.choices(0, TARGET::KEY).size() == Catalog_Names(TARGET::KEY).size());
+	CHECK(m.choices(3, TARGET::MOUSE).size() == 3);
+	CHECK(m.choices(0, TARGET::HOTKEY).size() == Catalog_Names(TARGET::HOTKEY).size());
+	const std::vector<int> hot = m.choices(0, TARGET::HOTKEY);
+	for(size_t i = 0; i < hot.size(); i++)
+		CHECK(hot[i] == (int)i);
+	m.setEmulated(0);
+}
+
+static void testSuggestions()
+{
+	ControlsModel& m = fresh();
+	m.setEmulated(0);
+	const std::vector<BindingTarget> a = m.suggestions(0, INPUT_BTN_A);
+	CHECK(a.size() >= 3);
+	bool hasJoystick = false, hasMouse = false, hasKey = false;
+	for(size_t i = 0; i < a.size(); i++)
+	{
+		CHECK(a[i].kind != TARGET::NONE);
+		CHECK(m.usable(0, a[i]));
+		hasJoystick = hasJoystick || a[i].kind == TARGET::JOYSTICK;
+		hasMouse = hasMouse || a[i].kind == TARGET::MOUSE;
+		hasKey = hasKey || a[i].kind == TARGET::KEY;
+		for(size_t j = i + 1; j < a.size(); j++)
+			CHECK(a[i] != a[j]); // no duplicates
+	}
+	CHECK(hasJoystick && hasMouse && hasKey);
+
+	// a control no preset uses has nothing to suggest, and neither does one the mapper has no source for
+	CHECK(m.suggestions(0, INPUT_TRIGGER_ZR).empty());
+	CHECK(m.suggestions(0, INPUT_BTN_HOME).empty());
+	CHECK(m.suggestions(0, GUI_CTL_CAPTURE).empty());
+
+	// no joystick, no joystick suggestions; a joystick without the button, none for that button
+	m.setEmulated(2);
+	const std::vector<BindingTarget> k = m.suggestions(0, INPUT_BTN_A);
+	for(size_t i = 0; i < k.size(); i++)
+		CHECK(k[i].kind != TARGET::JOYSTICK);
+	CHECK(!k.empty());
+	m.setEmulated(1); // two buttons: X is Compatible's joystick button 3
+	const std::vector<BindingTarget> x = m.suggestions(0, INPUT_BTN_X);
+	for(size_t i = 0; i < x.size(); i++)
+		CHECK(!(x[i].kind == TARGET::JOYSTICK && x[i].code >= 2));
+	m.setEmulated(0);
+}
+
+static void testCapture()
+{
+	ControlsModel& m = fresh();
+	CaptureEvent e;
+	m.beginCapture();
+	CHECK(!m.pollCapture(e)); // nothing pressed
+
+	// presses come out in order, once each
+	SampleControls_PushCapture({ TARGET::KEY, Catalog_Find(TARGET::KEY, "Z") });
+	SampleControls_PushCapture({ TARGET::MOUSE, 1 });
+	CHECK(m.pollCapture(e) && e.kind == TARGET::KEY && e.code == Catalog_Find(TARGET::KEY, "Z"));
+	CHECK(m.pollCapture(e) && e.kind == TARGET::MOUSE && e.code == 1);
+	CHECK(!m.pollCapture(e));
+
+	// starting again drops what was pressed before
+	SampleControls_PushCapture({ TARGET::KEY, 0 });
+	m.beginCapture();
+	CHECK(!m.pollCapture(e));
+}
+
 static void testSetups()
 {
 	ControlsModel& m = fresh();
@@ -364,6 +511,9 @@ static void testHeldAndInstall()
 		bool saveSetup(const std::string&, const std::string&) override { return false; }
 		bool loadSetup(int) override { return false; }
 		std::string runningProgram() const override { return ""; }
+		std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
+		void beginCapture() override {}
+		bool pollCapture(CaptureEvent&) override { return false; }
 	} other;
 	Controls_SetModel(&other);
 	CHECK(&Controls() == &other);
@@ -386,6 +536,10 @@ int main()
 	testPerPlayerBindings();
 	testCatalogs();
 	testMatchesButtonsCpp();
+	testHidKeys();
+	testKindsAndChoices();
+	testSuggestions();
+	testCapture();
 	testSetups();
 	testHeldAndInstall();
 	printf("%d checks, %d failed\n", checks, failures);
