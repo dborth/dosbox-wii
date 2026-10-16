@@ -24,7 +24,27 @@ GuiControllerView::GuiControllerView(const GuiControllerLayout& l, float s) :
 
 GuiControllerView::~GuiControllerView()
 {
+	freeAllBaked();
 	clearLabels();
+}
+
+void GuiControllerView::freeBaked(Baked& b)
+{
+	if(b.handle)
+	{
+		VideoDriver * video = platform ? platform->getVideo() : nullptr;
+		if(video && video->getImageRenderer())
+			video->getImageRenderer()->destroyMesh(b.handle);
+	}
+	b = Baked();
+}
+
+void GuiControllerView::freeAllBaked()
+{
+	freeBaked(bodyBaked);
+	for(size_t i = 0; i < spots.size(); i++)
+		for(int k = 0; k < 4; k++)
+			freeBaked(spots[i].baked[k]);
 }
 
 void GuiControllerView::clearLabels()
@@ -41,6 +61,7 @@ void GuiControllerView::rebuild()
 	width = (int)ceilf(layout->width * scale - 0.01f);
 	height = (int)ceilf(layout->height * scale - 0.01f);
 
+	freeAllBaked();
 	spots.assign(layout->spots.size(), SpotCache());
 	for(size_t i = 0; i < spots.size(); i++)
 		for(int k = 0; k < 4; k++)
@@ -124,6 +145,41 @@ bool GuiControllerView::getSpotCentre(int id, float& x, float& y) const
 	return true;
 }
 
+void GuiControllerView::flushScratch()
+{
+	if(!scratch.empty())
+	{
+		platform->getVideo()->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
+		scratch.clear();
+	}
+}
+
+void GuiControllerView::drawStatic(const GuiMesh& m, Baked& baked)
+{
+	const std::vector<MeshVertex>& src = m.vertices();
+	if(src.empty())
+		return;
+
+	ImageRenderer * images = platform->getVideo()->getImageRenderer();
+	baked.uses++;
+	if(!baked.handle && !baked.noHandle && baked.uses >= 2)
+	{
+		baked.handle = images->createMesh(src.data(), src.size());
+		if(!baked.handle)
+			baked.noHandle = true;
+	}
+
+	// The backend's copy has its colors baked in, so only a fully opaque draw can use it; a fading
+	// view goes through emit(), which rewrites the alpha
+	if(baked.handle && alpha == 255)
+	{
+		flushScratch();	// what was collected so far is underneath this
+		images->drawMeshInstance(baked.handle, originX, originY, 1.0f, 1.0f);
+		return;
+	}
+	emit(m);
+}
+
 void GuiControllerView::emit(const GuiMesh& m)
 {
 	const std::vector<MeshVertex>& src = m.vertices();
@@ -151,6 +207,7 @@ void GuiControllerView::draw()
 		const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
 		if(dirty || feather != meshFeather)
 		{
+			freeAllBaked();
 			body = GuiMesh(feather);
 			GuiBuildControllerBody(body, *layout, scale);
 			for(size_t i = 0; i < spots.size(); i++)
@@ -166,7 +223,7 @@ void GuiControllerView::draw()
 		originX = (float)this->getLeft();
 		originY = (float)this->getTop();
 		scratch.clear();
-		emit(body);
+		drawStatic(body, bodyBaked);
 
 		// resting controls first, highlighted ones on top so their glow is not painted over
 		for(int pass = 0; pass < 2; pass++)
@@ -186,7 +243,7 @@ void GuiControllerView::draw()
 					GuiBuildControllerSpot(spots[i].mesh[k], s, (CTL_STATE)k, scale);
 					spots[i].built[k] = true;
 				}
-				emit(spots[i].mesh[k]);
+				drawStatic(spots[i].mesh[k], spots[i].baked[k]);
 
 				if(labels[i] && labelLit[i] != isLit)
 				{
@@ -230,8 +287,7 @@ void GuiControllerView::draw()
 			}
 		}
 
-		if(!scratch.empty())
-			video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
+		flushScratch();
 
 		for(size_t i = 0; i < labels.size(); i++)
 			if(labels[i])

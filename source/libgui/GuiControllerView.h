@@ -44,14 +44,30 @@ class GuiControllerView : public GuiElement
 
 		void draw() override;
 	private:
+		//!A mesh's ready-to-draw form in the video backend (see ImageRenderer::createMesh()), made once
+		//!the mesh has been drawn a second time and kept until the mesh is rebuilt
+		struct Baked {
+			void * handle;
+			bool noHandle;			//!< The backend can't make one; don't ask again
+			uint32_t uses;
+			Baked() : handle(nullptr), noHandle(false), uses(0) {}
+		};
+
 		struct SpotCache {
 			GuiMesh mesh[4];
 			bool built[4];
+			Baked baked[4];
 		};
 
 		void rebuild();
 		void clearLabels();
 		void emit(const GuiMesh& m);
+		//!Draws a mesh that doesn't change, from its backend copy when it has one. Order against the
+		//!meshes emit() collects is kept by sending those first.
+		void drawStatic(const GuiMesh& m, Baked& baked);
+		void flushScratch();
+		void freeBaked(Baked& b);
+		void freeAllBaked();
 
 		const GuiControllerLayout * layout;
 		float scale;
@@ -62,6 +78,7 @@ class GuiControllerView : public GuiElement
 		std::function<bool(int)> labelFilter;
 		std::vector<float> stickX, stickY;		//!< Per spot (only used by sticks)
 		GuiMesh body;
+		Baked bodyBaked;
 		std::vector<SpotCache> spots;
 		std::vector<GuiText *> labels;			//!< Per spot, null where there is no label
 		std::vector<bool> labelLit;
