@@ -68,13 +68,8 @@ struct GuiControllerLayout {
 	const GuiControlSpot * find(int id) const;
 };
 
-//!A Pro-style gamepad: two sticks, D-pad, ABXY, L/R/ZL/ZR, plus, minus, home and capture
-//!(Switch Pro, Wii U Pro, and a good stand-in for the Classic Controller Pro).
-//!\ingroup grp_controller
-const GuiControllerLayout& GuiProControllerLayout();
-
 //!Control ids match universal input: a Wii U Pro, GamePad or Classic has the Pro set; the GameCube pad's Start is
-//!INPUT_BTN_PLUS and its Z is INPUT_TRIGGER_ZL; the Nunchuk's C is INPUT_TRIGGER_L and its Z is
+//!INPUT_BTN_PLUS and its Z is INPUT_TRIGGER_ZR; the Nunchuk's C is INPUT_TRIGGER_L and its Z is
 //!INPUT_TRIGGER_ZL; a stick spot's id is its click bit (INPUT_THUMB_L / INPUT_THUMB_R) whether or not the
 //!hardware has a click. A D-pad is one drawn cross plus four ghost arms (INPUT_BTN_UP ...) that light up.
 //!\ingroup grp_controller
@@ -84,5 +79,4 @@ const GuiControllerLayout& GuiGameCubeControllerLayout();
 const GuiControllerLayout& GuiClassicControllerLayout();
 const GuiControllerLayout& GuiWiimoteControllerLayout();		//!< Held upright (pointer style)
 const GuiControllerLayout& GuiWiimoteSidewaysControllerLayout();	//!< Held sideways (D-pad on the left)
-const GuiControllerLayout& GuiNunchukControllerLayout();
 const GuiControllerLayout& GuiWiimoteNunchukControllerLayout();	//!< Nunchuk on the left, Wiimote on the right
