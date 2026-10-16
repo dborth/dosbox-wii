@@ -365,7 +365,11 @@ bool mapperHasSource(int control)
 class SampleControlsModel : public ControlsModel
 {
 	public:
-		SampleControlsModel() : mode(0), preset(PRESET_ARROWS), heldBits(0) {}
+		SampleControlsModel() : mode(0), heldBits(0), dirty(false)
+		{
+			for(int i = 0; i < 4; i++)
+				preset[i] = PRESET_ARROWS;
+		}
 
 		void setHardware(int player, PadType type, bool sideways, bool stickClicks)
 		{
@@ -410,7 +414,7 @@ class SampleControlsModel : public ControlsModel
 			if(p.connected)
 			{
 				p.device = PadType_Name(p.type);
-				p.preset = kPresets[preset].name;
+				p.preset = kPresets[preset[i]].name;
 				// joystick n is player n (the mapper's stick n); players past the joysticks that exist use keys and mouse
 				if(i < kModes[mode].joysticks)
 				{
@@ -445,18 +449,22 @@ class SampleControlsModel : public ControlsModel
 		int currentEmulated() const override { return mode; }
 		void setEmulated(int index) override
 		{
-			if(index >= 0 && index < 3)
+			if(index >= 0 && index < 3 && index != mode)
+			{
 				mode = index;
+				dirty = true;
+			}
 		}
 
 		std::vector<PresetInfo> presets() const override { return std::vector<PresetInfo>(kPresets, kPresets + PRESET_COUNT); }
-		int currentPreset() const override { return preset; }
-		void applyPreset(int index) override
+		int currentPreset(int player) const override { return validPlayer(player) ? preset[player] : 0; }
+		void applyPreset(int player, int index) override
 		{
-			if(index < 0 || index >= PRESET_COUNT)
+			if(!validPlayer(player) || index < 0 || index >= PRESET_COUNT)
 				return;
-			preset = index;
-			edits.clear(); // a preset brings its own defaults
+			preset[player] = index;
+			dropEdits(player); // a preset brings its own defaults, for this player only
+			dirty = true;
 		}
 
 		bool supported(int control) const override { return mapperHasSource(control); }
@@ -466,28 +474,34 @@ class SampleControlsModel : public ControlsModel
 			const std::map<int64_t, BindingTarget>::const_iterator it = edits.find(editKey(player, control));
 			if(it != edits.end())
 				return it->second;
-			return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget();
+			return mapperHasSource(control) ? presetDefault(validPlayer(player) ? preset[player] : 0, control) : BindingTarget();
 		}
 		BindingTarget presetBinding(int p, int control) const override
 		{
 			return p >= 0 && p < PRESET_COUNT && mapperHasSource(control) ? presetDefault(p, control) : BindingTarget();
 		}
-		bool modified() const override { return !edits.empty(); }
+		bool modified(int player) const override
+		{
+			for(std::map<int64_t, BindingTarget>::const_iterator it = edits.begin(); it != edits.end(); ++it)
+				if(it->first / kStride == (int64_t)player)
+					return true;
+			return false;
+		}
 
-		BindingTarget defaultBinding(int control) const override { return mapperHasSource(control) ? presetDefault(preset, control) : BindingTarget(); }
+		BindingTarget defaultBinding(int player, int control) const override { return mapperHasSource(control) ? presetDefault(validPlayer(player) ? preset[player] : 0, control) : BindingTarget(); }
 		void setBinding(int player, int control, const BindingTarget& t) override
 		{
-			if(mapperHasSource(control))
-				edits[editKey(player, control)] = t;
+			if(!mapperHasSource(control) || binding(player, control) == t)
+				return;
+			edits[editKey(player, control)] = t;
+			dirty = true;
 		}
 		void resetBindings(int player) override
 		{
-			for(std::map<int64_t, BindingTarget>::iterator it = edits.begin(); it != edits.end();)
+			if(modified(player))
 			{
-				if(it->first / kStride == (int64_t)player)
-					edits.erase(it++);
-				else
-					++it;
+				dropEdits(player);
+				dirty = true;
 			}
 		}
 
@@ -500,7 +514,7 @@ class SampleControlsModel : public ControlsModel
 				s.name = saved[i].name;
 				s.program = saved[i].program;
 				s.emulated = kModes[saved[i].mode].name;
-				s.preset = kPresets[saved[i].preset].name;
+				s.preset = presetSummary(saved[i].preset);
 				v.push_back(s);
 			}
 			return v;
@@ -513,8 +527,11 @@ class SampleControlsModel : public ControlsModel
 			s.name = name;
 			s.program = program;
 			s.mode = mode;
-			s.preset = preset;
+			for(int i = 0; i < 4; i++)
+				s.preset[i] = preset[i];
 			s.edits = edits;
+			current = name;
+			dirty = false;
 			for(size_t i = 0; i < saved.size(); i++)
 			{
 				if(saved[i].name == name)
@@ -531,11 +548,16 @@ class SampleControlsModel : public ControlsModel
 			if(index < 0 || (size_t)index >= saved.size())
 				return false;
 			mode = saved[(size_t)index].mode;
-			preset = saved[(size_t)index].preset;
+			for(int i = 0; i < 4; i++)
+				preset[i] = saved[(size_t)index].preset[i];
 			edits = saved[(size_t)index].edits;
+			current = saved[(size_t)index].name;
+			dirty = false;
 			return true;
 		}
 		std::string runningProgram() const override { return "KEEN4E.EXE"; }
+		std::string setupName() const override { return current; }
+		bool setupModified() const override { return dirty; }
 
 		std::vector<BindingTarget> suggestions(int player, int control) const override
 		{
@@ -571,9 +593,39 @@ class SampleControlsModel : public ControlsModel
 		struct Setup
 		{
 			std::string name, program;
-			int mode, preset;
+			int mode;
+			int preset[4];
 			std::map<int64_t, BindingTarget> edits;
 		};
+
+		static bool validPlayer(int player) { return player >= 0 && player < 4; }
+
+		void dropEdits(int player)
+		{
+			for(std::map<int64_t, BindingTarget>::iterator it = edits.begin(); it != edits.end();)
+			{
+				if(it->first / kStride == (int64_t)player)
+					edits.erase(it++);
+				else
+					++it;
+			}
+		}
+
+		// the preset every connected player started from, or "Mixed" when they differ
+		std::string presetSummary(const int (&p)[4]) const
+		{
+			int first = -1;
+			for(int i = 0; i < 4; i++)
+			{
+				if(!player(i).connected)
+					continue;
+				if(first < 0)
+					first = p[i];
+				else if(p[i] != first)
+					return "Mixed";
+			}
+			return kPresets[first < 0 ? p[0] : first].name;
+		}
 
 		static const int64_t kStride = (int64_t)1 << 32;
 		static int64_t editKey(int player, int control) { return (int64_t)player * kStride + (int64_t)(uint32_t)control; }
@@ -583,8 +635,10 @@ class SampleControlsModel : public ControlsModel
 		Hardware hardware[4];
 
 		int mode;
-		int preset;
+		int preset[4];
 		uint32_t heldBits;
+		bool dirty;
+		std::string current;
 		std::map<int64_t, BindingTarget> edits;
 		std::vector<Setup> saved;
 		std::deque<CaptureEvent> pending;

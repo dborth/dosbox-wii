@@ -5,11 +5,11 @@
  *
  * The controller screens, built from shapes with libgui's builder layer:
  *
- *   Controllers hub    a row per player: the controller, then what DOS sees it as (set by the DOS
- *                      mode: player n drives joystick n); the preset
- *   Controller setup   a controller drawing with its controls listed around it,
- *                      each showing what it does; the selected row is highlighted
- *                      on the drawing
+ *   Controller setup   where Controllers opens: a controller drawing with its controls listed
+ *                      around it, each showing what it does; the selected row is highlighted
+ *                      on the drawing. Arrows in the header switch between connected players.
+ *                      Header: Preset (this player) and In DOS (the whole game); footer: Setup
+ *                      (load or save, the whole game) and Back
  *   Target chooser     pick what a control does: key, joystick button, mouse,
  *                      DOSBox function, or nothing
  *
@@ -25,8 +25,8 @@
 #include "controllerprofile.h"
 #include "menupage.h"
 
-/** Opens the Controllers screens from the home menu. Blocks until the user backs out. With a player (0-3), goes
-    straight to that player's controller setup instead of the hub. */
+/** Opens the controller setup from the home menu. Blocks until the user backs out. Opens on the given player (0-3),
+    or on the first connected one when there is none given. */
 void Controls_Menu(GuiWindow * home, int player = -1);
 
 /** Font sizes used by the controller screens. */
@@ -57,45 +57,28 @@ class UiBatteryBar : public GuiElement
 		std::vector<MeshVertex> scratch;
 };
 
-/** The Controllers hub: one card per controller (what is connected, then what DOS sees it as), the shared devices on the header. */
-class ControlsHubView : public GuiOverlay
-{
-	public:
-		ControlsHubView(GuiSound * soundOver);
-		GuiButton& backButton() { return *backBtn; }
-		/** The player whose card was clicked since the last call, or -1. */
-		int takeRequest() { const int r = request; request = -1; return r; }
-		const std::string& statusText() const { return status; }
-	private:
-		GuiCard& playerRow(int n);
-		std::string modeHint() const;
-
-		UiScope ui;
-		int request;
-		std::string status;
-		GuiTextButton * backBtn;
-		GuiCard * rows[4];
-		GuiCard * hw[4];
-		GuiCard * dos[4];
-		bool heroMode;
-};
-
 /** The controller setup screen for one player. */
 class ControllerConfigView : public GuiOverlay
 {
 	public:
 		ControllerConfigView(int player, GuiSound * soundOver);
 		GuiButton& backButton() { return *backBtn; }
+		/** Which way the player switcher was clicked since the last call (-1 previous, +1 next, 0 neither). */
+		int takeSwitch() { const int r = switchRequest; switchRequest = 0; return r; }
+		/** Whether the screen needs building again: the controller in the slot came or went, changed kind, or the number of connected players changed. */
+		bool outOfDate() const;
 		/** Whether a row was clicked since the last call; fills `row` with it. */
 		bool takeRequest(ProfileRow& row);
 		/** Which list the user asked to open from the header, if any (then it is forgotten). */
-		enum class Pick { NONE, EMULATED, PRESET, SAVE, LOAD };
+		enum class Pick { NONE, EMULATED, PRESET, SETUP };
 		Pick takePick() { const Pick p = pickRequest; pickRequest = Pick::NONE; return p; }
 		/** Says something on the hint line (what a Save or Load did). */
 		void setStatus(const std::string& text) { status = text; }
 		/** The control highlighted on the drawing (0 = none). */
 		int highlighted() const;
 		PadType type() const { return padType; }
+		/** Whether the slot has no controller (the screen then says so, and offers only what DOS sees and Setup). */
+		bool isEmpty() const { return padType == PadType::NONE; }
 		/** The player slot being set up (0-3). */
 		int player() const { return playerSlot; }
 		const std::string& statusText() const { return status; }
@@ -106,12 +89,15 @@ class ControllerConfigView : public GuiOverlay
 		UiScope ui;
 		int playerSlot;
 		PadType padType;
+		bool sideways;
 		GuiControllerView * view;
 		std::vector<GuiCard*> rowCards;
 		std::string status;
 		bool hasRequest;
 		ProfileRow request;
 		Pick pickRequest;
+		int switchRequest;
+		int shownPlayers;
 		GuiTextButton * backBtn;
 };
 
@@ -134,9 +120,15 @@ struct PickerItem {
 std::vector<PickerItem> Picker_EmulatedItems();
 /**
  * The presets a player can choose, as picker items. `index` receives, for each item, the preset it stands for
- * (a preset that needs a joystick is left out when the player has none, unless it is the one in use).
+ * (a preset that needs a joystick is left out when the player has none, unless it is the one in use). When the
+ * player has changed buttons, the first item is "Undo my changes" and stands for -1.
  */
 std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index);
+
+/** What the Setup button can do. */
+enum class SetupAction { LOAD, SAVE_CURRENT, SAVE_NEW };
+/** The choices behind the Setup button; `kinds` receives each item's action. Saving over the current setup is offered only when there is one. */
+std::vector<PickerItem> Picker_SetupMenuItems(std::vector<SetupAction>& kinds);
 
 /** The saved setups, as picker items for Load; `index` receives each item's index in the model's list. */
 std::vector<PickerItem> Picker_SetupItems(std::vector<int>& index);

@@ -13,12 +13,19 @@ static int failures = 0, checks = 0;
 #define CHECK(cond) do { checks++; if(!(cond)) { failures++; printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while(0)
 #define CHECK_EQ(a, b) do { checks++; const std::string x = (a), y = (b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n      got  \"%s\"\n      want \"%s\"\n", __FILE__, __LINE__, #a, x.c_str(), y.c_str()); } } while(0)
 
+// every player starts from the same preset (what a single global preset used to mean)
+static void applyAll(ControlsModel& m, int preset)
+{
+	for(int p = 0; p < m.playerCount(); p++)
+		m.applyPreset(p, preset);
+}
+
 static ControlsModel& fresh()
 {
 	// the sample model is a singleton: put it back to its starting state
 	ControlsModel& m = Controls();
 	m.setEmulated(0);
-	m.applyPreset(1);
+	applyAll(m, 1);
 	return m;
 }
 
@@ -121,7 +128,7 @@ static void testUsable()
 static void testDescribe()
 {
 	ControlsModel& m = fresh();
-	m.applyPreset(0); // Compatible: A -> joystick button 1, X -> button 3
+	applyAll(m, 0); // Compatible: A -> joystick button 1, X -> button 3
 	m.setEmulated(0);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick 1");
 	CHECK_EQ(m.describe(0, INPUT_BTN_X), "Joystick 3");
@@ -134,7 +141,7 @@ static void testDescribe()
 	m.setEmulated(2);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick off");
 
-	m.applyPreset(1);
+	applyAll(m, 1);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: Ctrl");
 	CHECK_EQ(m.describe(0, INPUT_BTN_UP), "Key: Up");
 	CHECK_EQ(m.describe(0, INPUT_TRIGGER_ZL), "Not assigned");
@@ -182,24 +189,24 @@ static void testPresets()
 		for(size_t b = a + 1; b < ps.size(); b++)
 		{
 			bool differs = false;
-			m.applyPreset((int)a);
+			applyAll(m, (int)a);
 			BindingTarget ta[4];
 			for(int c = 0; c < 4; c++) ta[c] = m.binding(0, controls[c]);
-			m.applyPreset((int)b);
+			applyAll(m, (int)b);
 			for(int c = 0; c < 4; c++) differs = differs || ta[c] != m.binding(0, controls[c]);
 			if(!differs) { // Arrow keys and Menu keys share a D-pad; compare more than the face buttons
-				m.applyPreset((int)a); const BindingTarget l = m.binding(0, INPUT_TRIGGER_L); m.applyPreset((int)b);
+				applyAll(m, (int)a); const BindingTarget l = m.binding(0, INPUT_TRIGGER_L); applyAll(m, (int)b);
 				differs = l != m.binding(0, INPUT_TRIGGER_L);
 			}
 			CHECK(differs);
 		}
 	}
 
-	m.applyPreset(0);
-	CHECK(m.currentPreset() == 0);
+	applyAll(m, 0);
+	CHECK(m.currentPreset(0) == 0);
 	CHECK(m.binding(0, INPUT_BTN_A) == BindingTarget(TARGET::JOYSTICK, 0));
 	CHECK(m.binding(0, INPUT_BTN_UP).kind == TARGET::NONE); // the D-pad is the joystick's hat there
-	m.applyPreset(3); // Point and click
+	applyAll(m, 3); // Point and click
 	CHECK(m.binding(0, INPUT_BTN_A).kind == TARGET::MOUSE);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Mouse left");
 	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Mouse right");
@@ -207,16 +214,16 @@ static void testPresets()
 	// applying a preset throws away edits, for every player
 	m.setBinding(0, INPUT_BTN_A, key("F1"));
 	m.setBinding(2, INPUT_BTN_B, key("F2"));
-	m.applyPreset(3);
+	applyAll(m, 3);
 	CHECK(m.binding(0, INPUT_BTN_A).kind == TARGET::MOUSE && m.binding(2, INPUT_BTN_B).kind == TARGET::MOUSE);
 
 	// bad indexes are ignored
-	m.applyPreset(99);
-	CHECK(m.currentPreset() == 3);
-	m.applyPreset(-1);
-	CHECK(m.currentPreset() == 3);
+	applyAll(m, 99);
+	CHECK(m.currentPreset(0) == 3);
+	applyAll(m, -1);
+	CHECK(m.currentPreset(0) == 3);
 	CHECK_EQ(m.player(0).preset, "Point and click");
-	m.applyPreset(1);
+	applyAll(m, 1);
 }
 
 static void testPerPlayerBindings()
@@ -450,12 +457,12 @@ static void testPresetPreview()
 	// what a preset gives a control, before it is applied, agrees with what applying it does
 	for(int preset = 0; preset < (int)m.presets().size(); preset++)
 	{
-		m.applyPreset(preset);
+		applyAll(m, preset);
 		const int controls[] = { INPUT_BTN_A, INPUT_BTN_B, INPUT_BTN_X, INPUT_BTN_Y, INPUT_BTN_UP, INPUT_BTN_PLUS, INPUT_BTN_MINUS, INPUT_TRIGGER_L };
 		for(size_t c = 0; c < sizeof(controls) / sizeof(controls[0]); c++)
 		{
 			CHECK(m.presetBinding(preset, controls[c]) == m.binding(0, controls[c]));
-			CHECK(m.presetBinding(preset, controls[c]) == m.defaultBinding(controls[c]));
+			CHECK(m.presetBinding(preset, controls[c]) == m.defaultBinding(0, controls[c]));
 		}
 	}
 	CHECK(m.presetBinding(-1, INPUT_BTN_A).kind == TARGET::NONE);
@@ -475,18 +482,85 @@ static void testPresetPreview()
 static void testModified()
 {
 	ControlsModel& m = fresh();
-	CHECK(!m.modified());
+	CHECK(!m.modified(0) && !m.modified(1));
 	m.setBinding(1, INPUT_BTN_A, key("F2"));
-	CHECK(m.modified());					// any player's change counts
+	CHECK(m.modified(1));
+	CHECK(!m.modified(0));					// one player's change is theirs alone
 	m.resetBindings(1);
-	CHECK(!m.modified());
+	CHECK(!m.modified(1));
 	m.setBinding(0, INPUT_BTN_B, key("F2"));
-	m.applyPreset(2);						// applying a preset throws the change away
-	CHECK(!m.modified());
+	applyAll(m, 2);							// applying a preset throws the change away
+	CHECK(!m.modified(0));
 	m.setEmulated(2);						// the emulated mode is not a button edit
-	CHECK(!m.modified());
+	CHECK(!m.modified(0));
 	m.setEmulated(0);
-	m.applyPreset(1);
+	applyAll(m, 1);
+}
+
+static void testPerPlayerPresets()
+{
+	ControlsModel& m = fresh();
+	applyAll(m, 1);								// Arrow keys for everyone
+	m.setBinding(0, INPUT_BTN_B, key("F2"));
+	const BindingTarget p0b = m.binding(0, INPUT_BTN_B);
+	m.applyPreset(1, 4);						// Menu keys for player 2 only
+	CHECK(m.currentPreset(1) == 4);
+	CHECK(m.currentPreset(0) == 1 && m.currentPreset(2) == 1);
+	CHECK(m.modified(0));						// player 1's edit survives
+	CHECK(m.binding(0, INPUT_BTN_B) == p0b);
+	CHECK(m.binding(1, INPUT_BTN_A) == m.presetBinding(4, INPUT_BTN_A));
+	CHECK(m.binding(0, INPUT_BTN_A) == m.presetBinding(1, INPUT_BTN_A));
+	CHECK(m.defaultBinding(1, INPUT_BTN_A) == m.presetBinding(4, INPUT_BTN_A));
+	CHECK(m.defaultBinding(0, INPUT_BTN_A) == m.presetBinding(1, INPUT_BTN_A));
+	CHECK_EQ(m.player(1).preset, "Menu keys");
+	CHECK_EQ(m.player(0).preset, "Arrow keys");
+	m.setBinding(1, INPUT_BTN_A, key("F3"));
+	m.applyPreset(1, 0);						// starting player 2 over leaves player 1 alone
+	CHECK(!m.modified(1) && m.modified(0));
+	m.applyPreset(7, 0);						// no such player: nothing happens
+	m.applyPreset(-1, 0);
+	CHECK(m.currentPreset(7) == 0);
+	m.resetBindings(0);
+	CHECK(!m.modified(0));
+	applyAll(m, 1);
+}
+
+static int setupIndex(ControlsModel& m, const char * name)
+{
+	const std::vector<SetupInfo> v = m.setups();
+	for(size_t i = 0; i < v.size(); i++)
+		if(v[i].name == name)
+			return (int)i;
+	return -1;
+}
+
+// Last: it saves setups, and the sample model keeps what it is given.
+static void testSetupState()
+{
+	ControlsModel& m = fresh();
+	applyAll(m, 1);
+	CHECK(m.saveSetup("Keen", "KEEN4E.EXE"));
+	CHECK_EQ(m.setupName(), "Keen");
+	CHECK(!m.setupModified());					// just saved
+	m.setBinding(0, INPUT_BTN_A, key("F2"));
+	CHECK(m.setupModified());					// changed since
+	CHECK(m.saveSetup("Keen", "KEEN4E.EXE"));
+	CHECK(!m.setupModified());
+	m.setBinding(0, INPUT_BTN_A, key("F2"));
+	CHECK(!m.setupModified());					// the same value again is not a change
+	m.setEmulated(2);
+	CHECK(m.setupModified());
+	m.setEmulated(0);							// back where it was: still counts (it is not compared with the file)
+	CHECK(m.setupModified());
+	CHECK(m.loadSetup(setupIndex(m, "Keen")));
+	CHECK(!m.setupModified());
+	CHECK_EQ(m.setupName(), "Keen");
+	CHECK_EQ(m.setups()[(size_t)setupIndex(m, "Keen")].preset, "Arrow keys");
+	m.applyPreset(1, 3);
+	CHECK(m.setupModified());
+	m.saveSetup("Mix", "");
+	CHECK_EQ(m.setups()[(size_t)setupIndex(m, "Mix")].preset, "Mixed");	// the players started from different presets
+	applyAll(m, 1);
 }
 
 static void testSetupNames()
@@ -529,7 +603,7 @@ static void testSetups()
 	CHECK_EQ(m.runningProgram(), "KEEN4E.EXE");
 
 	m.setEmulated(1);
-	m.applyPreset(2);
+	applyAll(m, 2);
 	m.setBinding(0, INPUT_BTN_A, key("F5"));
 	CHECK(m.saveSetup("Keen", m.runningProgram()));
 	CHECK(m.setups().size() == 1);
@@ -540,10 +614,10 @@ static void testSetups()
 
 	// change everything, load, and it all comes back
 	m.setEmulated(0);
-	m.applyPreset(4);
+	applyAll(m, 4);
 	CHECK(m.loadSetup(0));
 	CHECK(m.currentEmulated() == 1);
-	CHECK(m.currentPreset() == 2);
+	CHECK(m.currentPreset(0) == 2);
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F5");
 	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Key: Space"); // the preset's own default
 
@@ -553,13 +627,13 @@ static void testSetups()
 	CHECK(m.setups().size() == 1 && m.setups()[0].program.empty());
 	CHECK(m.saveSetup("Doom", "DOOM.EXE"));
 	CHECK(m.setups().size() == 2);
-	m.applyPreset(0);
+	applyAll(m, 0);
 	CHECK(m.loadSetup(0));
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F6");
 
 	CHECK(!m.loadSetup(-1) && !m.loadSetup(2));
 	m.setEmulated(0);
-	m.applyPreset(1);
+	applyAll(m, 1);
 	m.resetBindings(0);
 }
 
@@ -580,19 +654,21 @@ static void testHeldAndInstall()
 		int currentEmulated() const override { return 0; }
 		void setEmulated(int) override {}
 		std::vector<PresetInfo> presets() const override { return {}; }
-		int currentPreset() const override { return 0; }
-		void applyPreset(int) override {}
+		int currentPreset(int) const override { return 0; }
+		void applyPreset(int, int) override {}
 		BindingTarget presetBinding(int, int) const override { return BindingTarget(); }
-		bool modified() const override { return false; }
+		bool modified(int) const override { return false; }
 		bool supported(int) const override { return false; }
 		BindingTarget binding(int, int) const override { return BindingTarget(); }
 		void setBinding(int, int, const BindingTarget&) override {}
 		void resetBindings(int) override {}
-		BindingTarget defaultBinding(int) const override { return BindingTarget(); }
+		BindingTarget defaultBinding(int, int) const override { return BindingTarget(); }
 		std::vector<SetupInfo> setups() const override { return {}; }
 		bool saveSetup(const std::string&, const std::string&) override { return false; }
 		bool loadSetup(int) override { return false; }
 		std::string runningProgram() const override { return ""; }
+		std::string setupName() const override { return ""; }
+		bool setupModified() const override { return false; }
 		std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
 		void beginCapture() override {}
 		bool pollCapture(CaptureEvent&) override { return false; }
@@ -824,11 +900,13 @@ int main()
 	testCapture();
 	testPresetPreview();
 	testModified();
+	testPerPlayerPresets();
 	testSetupNames();
 	testSetups();
 	testHeldAndInstall();
 	testProfilesAreConsistent();
 	testProfilesPerHardware();
+	testSetupState();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

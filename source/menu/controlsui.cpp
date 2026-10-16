@@ -7,6 +7,7 @@
 #include "menu.h"
 #include "menupage.h"
 #include "menustyle.h"
+#include "menuart.h"
 #include "filelist.h"
 
 static PixelColor rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
@@ -85,242 +86,57 @@ void UiBatteryBar::draw()
 	this->updateEffects();
 }
 
-// ---- icons
+// ---- helpers
 
 namespace {
 
-GuiImage& iconImage(UiScope& ui, const unsigned char * png)
+// How many controllers are connected
+int ConnectedCount()
 {
-	GuiImageData& data = ui.own<GuiImageData>(png);
-	return ui.make<GuiImage>(&data);
+	int n = 0;
+	for(int i = 0; i < Controls().playerCount(); i++)
+		n += Controls().player(i).connected ? 1 : 0;
+	return n;
 }
 
-const unsigned char * padIcon(PadType t)
+// The next connected player after `from`, going `dir` (+1 or -1) and wrapping; `from` when there is no other
+int NextPlayer(int from, int dir)
 {
-	switch(t)
+	const int count = Controls().playerCount();
+	for(int step = 1; step < count; step++)
 	{
-		case PadType::WIIMOTE: return icon_wiimote_png;
-		case PadType::WIIMOTE_NUNCHUK: return icon_wiimote_nunchuk_png;
-		case PadType::CLASSIC: return icon_classic_png;
-		case PadType::WIIU_PRO: return icon_wiiu_pro_png;
-		case PadType::GAMECUBE: return icon_gamecube_png;
-		case PadType::GAMEPAD: return icon_gamepad_png;
-		default: return nullptr;
+		const int n = ((from + dir * step) % count + count) % count;
+		if(Controls().player(n).connected)
+			return n;
 	}
+	return from;
 }
 
-// The art of whichever controller is in a slot: one icon per kind, shown while the slot holds that kind
-GuiLayout& padArt(UiScope& ui, int n)
+// The player to show for a slot: itself when a controller is in it, else the first connected one (the slot itself when none is)
+int ResolvePlayer(int slot)
 {
-	GuiLayout& art = ui.overlay().size(40, 40);
-	static const PadType kinds[] = { PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMECUBE, PadType::GAMEPAD };
-	for(size_t i = 0; i < sizeof(kinds) / sizeof(kinds[0]); i++)
-	{
-		GuiImage& img = iconImage(ui, padIcon(kinds[i]));
-		const PadType kind = kinds[i];
-		ui.visibleWhen(img, [n, kind]{ return Controls().player(n).connected && Controls().player(n).type == kind; });
-		art.add(img);
-	}
-	return art;
+	if(slot >= 0 && slot < Controls().playerCount() && Controls().player(slot).connected)
+		return slot;
+	for(int i = 0; i < Controls().playerCount(); i++)
+		if(Controls().player(i).connected)
+			return i;
+	return slot < 0 ? 0 : slot;
 }
 
-// What DOS sees: a joystick (with its number) or a keyboard and mouse
-GuiLayout& emulatedArt(UiScope& ui, int n)
+// A name as it fits on a button: long ones are cut
+std::string ClipName(const std::string& name, size_t most)
 {
-	GuiChip& number = ui.chip().bind([n]{ return GuiFormat("%d", Controls().player(n).joystick); });
-	GuiLayout& joystick = ui.overlay().size(40, 40).add(iconImage(ui, icon_joystick_png)).add(number, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
-	ui.visibleWhen(joystick, [n]{ return Controls().player(n).emulated == Emulated::JOYSTICK; });
-
-	GuiLayout& keysMouse = ui.row().gap(4).add(iconImage(ui, icon_keyboard_png)).add(iconImage(ui, icon_mouse_png));
-	ui.visibleWhen(keysMouse, [n]{ return Controls().player(n).emulated == Emulated::KEYS_MOUSE; });
-
-	return ui.row().size(100, 0).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(joystick).add(keysMouse);
+	return name.size() <= most ? name : name.substr(0, most - 2) + "..";
 }
-
-// A keyboard or mouse mark for the header: its icon, faded while it is not there, with a status dot
-GuiLayout& deviceMark(UiScope& ui, const unsigned char * png, std::function<bool()> present)
-{
-	GuiImage& img = iconImage(ui, png);
-	img.setScale(0.8f);
-	GuiShape& dot = ui.make<GuiShape>(9, 9);
-	dot.setShape(SHAPE::ELLIPSE);
-	GuiLayout& art = ui.overlay().size(34, 34);
-	art.add(img, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE)).add(dot, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::END));
-
-	int last = -1;
-	ui.bind([&img, &dot, present, last]() mutable {
-		const int s = present() ? 1 : 0;
-		if(s != last)
-		{
-			last = s;
-			img.setAlpha(s ? 255 : 90);
-			dot.setPaint(GuiPaint().color(s ? GuiTheme::current().good : GuiTheme::current().outlineStrong).stroke(1.5f, GuiTheme::current().surfaceRaised));
-		}
-	});
-	return art;
-}
-
-const int kZoneW = 300;		// the controller half of a player's row
-const int kDosW = 116;		// the DOS half
-const int kHeroH = 104;		// a row when there is only one player
-const int kCompactH = 50;	// a row when there are several
 
 } // namespace
-
-// ---- hub
-
-// What the DOS mode button says it does, for the hint line
-std::string ControlsHubView::modeHint() const
-{
-	const ControlsModel& m = Controls();
-	const std::vector<EmulatedMode> modes = m.emulatedModes();
-	const EmulatedMode& cur = modes[(size_t)m.currentEmulated()];
-	return GuiFormat("%s: %s.  A changes it", cur.name.c_str(), cur.description.c_str());
-}
-
-GuiCard& ControlsHubView::playerRow(int n)
-{
-	UiBatteryBar& battery = ui.make<UiBatteryBar>(56, 10);
-	ui.bind([&battery, n]{
-		const int b = Controls().player(n).battery;
-		battery.setLevel(b);
-		battery.setVisible(b >= 0 && Controls().player(n).connected);
-	});
-
-	const std::function<bool()> connected = [n]{ return Controls().player(n).connected; };
-	const std::function<bool()> absent = [n]{ return !Controls().player(n).connected; };
-	const GuiTheme& t = ui.theme();
-
-	GuiLabel& name = ui.label().fontSize(UI_FONT_HEADING).bind([n]{ return Controls().player(n).device; });
-	GuiLayout& who = ui.column().gap(4).add(name).add(battery);
-	ui.visibleWhen(who, connected);
-	GuiLabel& waiting = ui.label("Press a button on a controller").fontSize(UI_FONT_BODY).muted().visibleWhen(absent);
-
-	// left: the controller. A opens its button setup
-	GuiLayout& hardware = ui.row().size(kZoneW - 20, 0).gap(12).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.label(GuiFormat("P%d", n + 1).c_str()).fontSize(UI_FONT_HEADING).accent().visibleWhen(connected))
-		.add(padArt(ui, n))
-		.add(who)
-		.add(waiting);
-	hw[n] = &ui.card().style(MenuRowHighlightStyle()).corners(GuiCorners(10.0f)).pad(10, 2).size(kZoneW, 0)
-		.onFocus([this, n]{
-			const PlayerInfo p = Controls().player(n);
-			status = p.connected ? GuiFormat("P%d  %s.  A: set up buttons", n + 1, p.device.c_str())
-				: std::string("Press a button on a controller to connect it");
-		})
-		.onClick([this, n]{ if(Controls().player(n).connected) request = n; })
-		.add(hardware);
-
-	// right: what DOS sees it as. Joystick n is player n; how many joysticks there are comes from the DOS mode
-	// above, so this is only shown
-	GuiArrow& arrow = ui.make<GuiArrow>(ARROW::RIGHT, 16, 24, t.outlineStrong, t.outlineStrong);
-	ui.visibleWhen(arrow, connected);
-	dos[n] = &ui.card().selectable(false).style(MenuTileStyle()).corners(GuiCorners(8.0f)).pad(8, 2).size(kDosW, 0).visibleWhen(connected)
-		.add(emulatedArt(ui, n));
-
-	GuiLayout& line = ui.row().size(MENU_PAGE_CONTENT_W - 16, 0).align(LAYOUT_ALIGN::CENTRE)
-		.add(*hw[n]).addSpace().add(arrow).addSpace().add(*dos[n]);
-	return MenuPage_Section(ui, MENU_PAGE_CONTENT_W).add(line);
-}
-
-ControlsHubView::ControlsHubView(GuiSound * soundOver) :
-	request(-1), status("A controller's buttons on the left, what DOS sees it as on the right"), backBtn(nullptr), heroMode(true)
-{
-	ui.setSounds(soundOver, nullptr);
-	GuiTrigger& cancel = ui.own<GuiTrigger>();
-	cancel.setSecondaryTrigger();
-	const GuiTheme& t = ui.theme();
-
-	MenuPageFrame f = MenuPage_Build(ui, *this, "Controllers", [this]{ return status; });
-
-	// beside the title: the preset, which applies to every player. At the right: the keyboard and mouse,
-	// which need no setup, in one capsule
-	GuiTextButton& presetBtn = ui.button("").size(196, 38).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str()); })
-		.onClick([this]{
-			ControlsModel& m = Controls();
-			m.applyPreset((m.currentPreset() + 1) % (int)m.presets().size());
-			status = GuiFormat("Preset: %s", m.presets()[(size_t)m.currentPreset()].name.c_str());
-		})
-		.onFocus([this]{ status = "A changes the preset for every player"; });
-	GuiLayout& marks = ui.row().gap(8).align(LAYOUT_ALIGN::CENTRE)
-		.add(deviceMark(ui, icon_keyboard_png, []{ return Controls().devices().keyboard; }))
-		.add(deviceMark(ui, icon_mouse_png, []{ return Controls().devices().mouse; }));
-	GuiCard& capsule = ui.card().selectable(false).style(GuiShapeStyle(GuiPaint().color(t.surfaceRaised).stroke(1.5f, t.outline)))
-		.corners(GuiCorners(19.0f)).pad(12, 6).add(marks);
-	f.headerRight->add(capsule);
-	f.headerLeft->add(presetBtn);
-
-	// column headings, then a row for each player. The DOS heading carries the mode button: how many joysticks DOS
-	// has (player n drives joystick n), or none
-	GuiTextButton& modeBtn = ui.button("").size(150, 26).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
-		.onClick([this]{
-			ControlsModel& m = Controls();
-			m.setEmulated((m.currentEmulated() + 1) % (int)m.emulatedModes().size());
-			status = modeHint();
-		})
-		.onFocus([this]{ status = modeHint(); });
-	GuiLayout& heads = ui.row().size(MENU_PAGE_CONTENT_W, 0).pad(18, 0, 8, 0).gap(8).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.label("Controller").fontSize(UI_FONT_SMALL).muted())
-		.addSpace()
-		.add(ui.label("In DOS:").fontSize(UI_FONT_SMALL).muted())
-		.add(modeBtn);
-	f.content->gap(4);
-	f.content->add(heads);
-
-	// A slot that has nothing in it takes no room (the first one always shows, to say what to do), and the rows
-	// are roomier when there is only one player, which is the usual case. This runs before the rows' own
-	// bindings: showing a window shows everything inside it, and those bindings then hide what should be hidden.
-	for(int n = 0; n < 4; n++)
-		rows[n] = nullptr;
-	ui.bind([this]{
-		if(!rows[3])
-			return;
-		int shown = 0;
-		for(int n = 0; n < 4; n++)
-		{
-			const bool v = n == 0 || Controls().player(n).connected;
-			if(rows[n]->isVisible() != v)
-				rows[n]->setVisible(v);
-			shown += v ? 1 : 0;
-		}
-		const bool hero = shown <= 1;
-		if(hero != heroMode || rows[0]->getHeight() == 0)
-		{
-			heroMode = hero;
-			for(int n = 0; n < 4; n++)
-			{
-				rows[n]->setFixedSize(MENU_PAGE_CONTENT_W, hero ? kHeroH : kCompactH);
-				hw[n]->setFixedSize(kZoneW, hero ? kHeroH - 12 : kCompactH - 8);
-				dos[n]->setFixedSize(kDosW, hero ? kHeroH - 12 : kCompactH - 8);
-			}
-		}
-	});
-	for(int n = 0; n < 4; n++)
-	{
-		rows[n] = &playerRow(n);
-		f.content->add(*rows[n]);
-	}
-	ui.runBindings();
-
-	// When the page takes focus its window moves the selection one step down from whatever is selected (or to the
-	// first thing in reading order when nothing is). Starting from the preset button, which is just above the first
-	// controller, lands that step on the first player rather than on the header.
-	presetBtn.setState(STATE::SELECTED);
-
-	GuiTextButton& back = MenuPage_Button(ui, "Back");
-	back.setTrigger(1, &cancel);
-	backBtn = &back;
-	f.footerRight->add(back);
-
-	ui.attachTo(*this);
-}
 
 // ---- controller setup
 
 int ControllerConfigView::highlighted() const
 {
+	if(!view)
+		return 0;
 	const std::vector<int>& h = view->getHighlight();
 	return h.empty() ? 0 : h[0];
 }
@@ -332,6 +148,13 @@ bool ControllerConfigView::takeRequest(ProfileRow& row)
 	row = request;
 	hasRequest = false;
 	return true;
+}
+
+bool ControllerConfigView::outOfDate() const
+{
+	const PlayerInfo now = Controls().player(playerSlot);
+	// a different controller, a Wiimote turned on its side (another drawing), or a different number of players (the switcher)
+	return (now.connected ? now.type : PadType::NONE) != padType || (now.connected && now.sideways) != sideways || ConnectedCount() != shownPlayers;
 }
 
 // A list row: the control's icon and what it does. The control's name is on the hint line while the row is
@@ -377,7 +200,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 			view->setLeader(true, (float)row.getLeft(), midY);
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
-		// the hint holds about 26 characters beside the four footer buttons (it scrolls when longer), so just the facts
+		// the hint holds about 30 characters beside the footer buttons (it scrolls when longer), so just the facts
 		status = GuiFormat("%s: %s", name, text().c_str());
 	});
 	if(!info)
@@ -394,102 +217,148 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 }
 
 ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
-	playerSlot(player), padType(Controls().player(player).type), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), backBtn(nullptr)
+	playerSlot(player), padType(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
 	const PlayerInfo info = Controls().player(player);
-	const ControllerProfile profile = Controllers_Profile(info);
-	// four buttons in the footer leave the hint about 220 wide (it scrolls when longer)
-	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; }, 214);
-	// what DOS sees, and the preset the buttons started from: each opens a list of the choices
-	GuiTextButton& emulatedBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
-		.onClick([this]{ pickRequest = Pick::EMULATED; })
-		.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none"; });
-	GuiTextButton& presetBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset()].name; })
-		.onClick([this]{ pickRequest = Pick::PRESET; })
-		.onFocus([this]{ status = "A chooses a preset for the buttons"; });
-	f.headerRight->add(emulatedBtn);
-	f.headerRight->add(presetBtn);
+	padType = info.connected ? info.type : PadType::NONE;
+	sideways = info.connected && info.sideways;
+	const bool empty = padType == PadType::NONE;
+	const bool several = shownPlayers >= 2;
+	if(empty)
+		status = "Press a button on a controller to connect it";
 
-	view = &ui.controllerView(*profile.layout, profile.scale);
-	// the shoulder buttons are too small to carry legible text; their rows name them
-	view->setLabelFilter([](int id){ return id != INPUT_TRIGGER_L && id != INPUT_TRIGGER_R && id != INPUT_TRIGGER_ZL && id != INPUT_TRIGGER_ZR; });
-	// lit while held, so pressing a button on the controller shows which control it is
-	view->setLit([pl = player](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
-	const int sideW = 168;
-	const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
-
-	GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
-	// which controller this is (the title has room for the player only, beside the two controls)
-	GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
-	deviceName.setMaxWidth(sideW);
-	left.add(deviceName);
-	for(size_t i = 0; i < profile.left.size(); i++)
-		left.add(bindingRow(profile.left[i], Side::LEFT, sideW));
-	GuiLayout& right = ui.column().gap(2);
-	for(size_t i = 0; i < profile.right.size(); i++)
-		right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
-
-	// The picture and the groups sit straight on the page card: no tinted boxes behind them. A heading is just
-	// small muted capitals, lined up with the text of the rows under it.
-	GuiLayout& groups = ui.row().gap(6);
-	for(size_t g = 0; g < profile.groups.size(); g++)
+	// Header: who (this player: the switcher, only with two or more controllers; else just the page name), then what
+	// the buttons start from (Preset: this player) and what DOS sees (In DOS: the whole game). The footer has Setup
+	// (whole game) and Back. Left of the middle is about the player, right of it about the game.
+	MenuPageFrame f = MenuPage_Build(ui, *this, "Controls", [this]{ return status; }, 250);
+	if(several)
 	{
-		GuiLayout& column = ui.column().gap(2).size(groupSectionW, 0);
-		column.add(ui.row().size(groupSectionW, 0).pad(10, 0, 0, 2).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted()));
-		for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
-			column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 8));
-		groups.add(column);
+		f.title->setVisible(false);
+		// a small page-turning arrow, centred in its button
+		const auto arrowIcon = [this](ARROW dir) -> GuiArrow& {
+			GuiArrow& a = ui.own<GuiArrow>(dir, 9, 13, MenuArrowRest(), MenuArrowLit());
+			a.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
+			return a;
+		};
+		// drawn arrows: the font has no clean < and >
+		GuiTextButton& prev = ui.button("").size(30, 30).style(MenuBarButtonStyle())
+			.onClick([this]{ switchRequest = -1; })
+			.onFocus([this]{ status = "A shows the previous controller"; });
+		prev.setIcon(&arrowIcon(ARROW::LEFT));
+		GuiTextButton& next = ui.button("").size(30, 30).style(MenuBarButtonStyle())
+			.onClick([this]{ switchRequest = 1; })
+			.onFocus([this]{ status = "A shows the next controller"; });
+		next.setIcon(&arrowIcon(ARROW::RIGHT));
+		GuiLabel& who = ui.label(GuiFormat("Player %d", player + 1).c_str()).fontSize(UI_FONT_HEADING).textColor(MenuChromeText());
+		f.headerLeft->gap(8).add(prev).add(who).add(next);
 	}
 
-	// the picture marks a control, and draws the line to it, only while its row has the selection
-	ui.bind([this]{
-		for(size_t i = 0; i < rowCards.size(); i++)
-			if(rowCards[i]->isSelected())
-				return;
-		if(!view->getHighlight().empty())
-		{
-			view->setHighlight(0);
-			view->setLeader(false);
-		}
-	});
-
-	f.content->gap(6);
-	f.content->add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right));
-	f.content->add(groups);
-
 	const int pl = playerSlot;
-	// Load and Save hold whole setups (names, a program to load for); Reset puts this player's buttons back
-	GuiTextButton& load = MenuPage_Button(ui, "Load", 76)
-		.onClick([this]{
-			if(Controls().setups().empty())
-				status = "No saved setups yet.  Use Save first";
-			else
-				pickRequest = Pick::LOAD;
+	GuiTextButton& emulatedBtn = ui.button("").size(174, 32).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
+		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("In DOS: %s", m.emulatedModes()[(size_t)m.currentEmulated()].name.c_str()); })
+		.onClick([this]{ pickRequest = Pick::EMULATED; })
+		.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none (the whole game)"; });
+	if(!empty)
+	{
+		GuiTextButton& presetBtn = ui.button("").size(178, 32).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
+			.bind([pl]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s%s", m.presets()[(size_t)m.currentPreset(pl)].name.c_str(), m.modified(pl) ? "*" : ""); })
+			.onClick([this]{ pickRequest = Pick::PRESET; })
+			.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
+		f.headerRight->add(presetBtn);
+	}
+	f.headerRight->add(emulatedBtn);
+
+	if(empty)
+	{
+		// nothing to set up yet: say so, and what to do
+		GuiLayout& message = ui.column().size(MENU_PAGE_CONTENT_W, 220).gap(6).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE)
+			.add(ui.label("No controller connected").fontSize(UI_FONT_HEADING))
+			.add(ui.label("Press a button on a Wiimote, Classic, GameCube or Wii U controller.").fontSize(UI_FONT_SMALL).muted())
+			.add(ui.label("The keyboard and mouse keep working.").fontSize(UI_FONT_SMALL).muted());
+		f.content->add(message);
+	}
+	else
+	{
+		const ControllerProfile profile = Controllers_Profile(info);
+		view = &ui.controllerView(*profile.layout, profile.scale);
+		// the shoulder buttons are too small to carry legible text; their rows name them
+		view->setLabelFilter([](int id){ return id != INPUT_TRIGGER_L && id != INPUT_TRIGGER_R && id != INPUT_TRIGGER_ZL && id != INPUT_TRIGGER_ZR; });
+		// lit while held, so pressing a button on the controller shows which control it is
+		view->setLit([pl](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
+		const int sideW = 168;
+		const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
+
+		GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
+		// which controller this is, and what it does in DOS (with its battery, when it reports one)
+		GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
+		deviceName.setMaxWidth(sideW);
+		left.add(deviceName);
+		UiBatteryBar& battery = ui.make<UiBatteryBar>(36, 8);
+		ui.bind([&battery, pl]{
+			const PlayerInfo p = Controls().player(pl);
+			battery.setLevel(p.battery);
+			battery.setVisible(p.connected && p.battery >= 0);
+		});
+		GuiLabel& role = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).accent().bind([pl]{ return Controls().player(pl).role; });
+		role.setMaxWidth(sideW - 50);
+		left.add(ui.row().size(sideW, 0).gap(8).align(LAYOUT_ALIGN::CENTRE).addSpace().add(battery).add(role));
+		for(size_t i = 0; i < profile.left.size(); i++)
+			left.add(bindingRow(profile.left[i], Side::LEFT, sideW));
+		GuiLayout& right = ui.column().gap(2);
+		for(size_t i = 0; i < profile.right.size(); i++)
+			right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
+
+		// The picture and the groups sit straight on the page card: no tinted boxes behind them. A heading is just
+		// small muted capitals, lined up with the text of the rows under it.
+		GuiLayout& groups = ui.row().gap(6);
+		for(size_t g = 0; g < profile.groups.size(); g++)
+		{
+			GuiLayout& column = ui.column().gap(2).size(groupSectionW, 0);
+			column.add(ui.row().size(groupSectionW, 0).pad(10, 0, 0, 2).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted()));
+			for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
+				column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 8));
+			groups.add(column);
+		}
+
+		// the picture marks a control, and draws the line to it, only while its row has the selection
+		ui.bind([this]{
+			for(size_t i = 0; i < rowCards.size(); i++)
+				if(rowCards[i]->isSelected())
+					return;
+			if(!view->getHighlight().empty())
+			{
+				view->setHighlight(0);
+				view->setLeader(false);
+			}
+		});
+
+		f.content->gap(6);
+		f.content->add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right));
+		f.content->add(groups);
+	}
+
+	// Footer: Setup is the whole game (every player's buttons and what DOS sees), so it sits under In DOS; Back is last.
+	// The pill says which setup is loaded, and marks changes not saved yet.
+	GuiTextButton& setupBtn = MenuPage_Button(ui, "", 190).fontSize(UI_FONT_BODY)
+		.bind([]{
+			ControlsModel& m = Controls();
+			return GuiFormat("Setup: %s%s", m.setupName().empty() ? "none" : ClipName(m.setupName(), 14).c_str(), m.setupModified() ? "*" : "");
 		})
-		.onFocus([this]{ status = "A loads a saved setup"; });
-	GuiTextButton& save = MenuPage_Button(ui, "Save", 76)
-		.onClick([this]{ pickRequest = Pick::SAVE; })
-		.onFocus([this]{ status = "A saves this setup under a name"; });
-	GuiTextButton& reset = MenuPage_Button(ui, "Reset", 76)
-		.onClick([this, pl]{
-			Controls().resetBindings(pl);
-			status = "Buttons restored to the preset's defaults";
-		})
-		.onFocus([this]{ status = "A restores every button to the preset's defaults"; });
+		.onClick([this]{ pickRequest = Pick::SETUP; })
+		.onFocus([this]{ status = "A loads or saves a setup: every player's buttons and what DOS sees"; });
 	GuiTextButton& back = MenuPage_Button(ui, "Back", 76);
 	back.setTrigger(1, &cancel);
 	backBtn = &back;
-	f.footerRight->add(load).add(save).add(reset).add(back);
+	f.footerRight->add(setupBtn).add(back);
 
 	ui.attachTo(*this);
 	// When the page takes focus its window steps the selection down from whatever is selected, or goes to the first
-	// thing in reading order when nothing is, which would be this header button. Starting from it steps onto a control.
+	// thing in reading order when nothing is, which would be a header button. Starting from the In DOS button, which
+	// sits over the right-hand column, steps onto a control.
 	emulatedBtn.setState(STATE::SELECTED);
 }
 
@@ -869,12 +738,38 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 	static const struct { int control; const char * name; } shown[] = {
 		{ INPUT_BTN_A, "A Button" }, { INPUT_BTN_B, "B Button" }, { INPUT_BTN_X, "X Button" }, { INPUT_BTN_Y, "Y Button" },
 		{ INPUT_BTN_UP, "D-pad Up" }, { INPUT_BTN_PLUS, "Plus" }, { INPUT_BTN_MINUS, "Minus" } };
+	const int now = m.currentPreset(player);
+	const bool edited = m.modified(player);
+
+	// what a preset gives the buttons that matter most, for the right-hand pane
+	const auto describe = [&](PickerItem& it, int preset){
+		for(size_t c = 0; c < sizeof(shown) / sizeof(shown[0]); c++)
+		{
+			PickerRow r;
+			r.label = shown[c].name;
+			r.value = m.describeTarget(player, m.presetBinding(preset, shown[c].control));
+			it.rows.push_back(r);
+		}
+	};
 
 	std::vector<PickerItem> items;
 	index.clear();
+	// first, when this player has changed buttons: go back to the preset they started from. This is what Reset was.
+	if(edited && now >= 0 && now < (int)presets.size())
+	{
+		PickerItem it;
+		it.name = "Undo my changes";
+		it.current = false;
+		it.lines.push_back(GuiFormat("Back to %s.", presets[(size_t)now].name.c_str()));
+		it.lines.push_back("Only this player's buttons change.");
+		describe(it, now);
+		it.confirm = "This discards your changes.  Press A again to confirm";
+		items.push_back(it);
+		index.push_back(-1);
+	}
 	for(size_t i = 0; i < presets.size(); i++)
 	{
-		const bool inUse = (int)i == m.currentPreset();
+		const bool inUse = (int)i == now;
 		// a preset that fires the joystick means nothing without one (unless it is the one in use, which must stay visible)
 		if(presets[i].needsJoystick && m.joystickButtons(player) == 0 && !inUse)
 			continue;
@@ -882,18 +777,51 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 		it.name = presets[i].name;
 		it.current = inUse;
 		addWrapped(it.lines, presets[i].description, 44);
-		it.lines.push_back("Sets the buttons of every player.");
-		for(size_t c = 0; c < sizeof(shown) / sizeof(shown[0]); c++)
-		{
-			PickerRow r;
-			r.label = shown[c].name;
-			r.value = m.describeTarget(player, m.presetBinding((int)i, shown[c].control));
-			it.rows.push_back(r);
-		}
-		if(m.modified())
+		it.lines.push_back("Only this player's buttons change.");
+		describe(it, (int)i);
+		if(edited)
 			it.confirm = "This replaces your changes.  Press A again to confirm";
 		items.push_back(it);
 		index.push_back((int)i);
+	}
+	return items;
+}
+
+std::vector<PickerItem> Picker_SetupMenuItems(std::vector<SetupAction>& kinds)
+{
+	ControlsModel& m = Controls();
+	std::vector<PickerItem> items;
+	kinds.clear();
+	const size_t saved = m.setups().size();
+	{
+		PickerItem it;
+		it.name = "Load a setup...";
+		it.current = false;
+		it.lines.push_back(saved == 0 ? std::string("No saved setups yet.") : saved == 1 ? std::string("1 setup saved.") : GuiFormat("%d setups saved.", (int)saved));
+		it.lines.push_back("Replaces every player's buttons");
+		it.lines.push_back("and what DOS sees.");
+		items.push_back(it);
+		kinds.push_back(SetupAction::LOAD);
+	}
+	if(!m.setupName().empty())
+	{
+		PickerItem it;
+		it.name = GuiFormat("Save as %s", ClipName(m.setupName(), 16).c_str());
+		it.current = false;
+		it.lines.push_back("Saves every player's buttons and what");
+		it.lines.push_back("DOS sees, replacing what was saved.");
+		items.push_back(it);
+		kinds.push_back(SetupAction::SAVE_CURRENT);
+	}
+	{
+		PickerItem it;
+		it.name = "Save as a new setup...";
+		it.current = false;
+		it.lines.push_back("Asks for a name, then the program it");
+		it.lines.push_back("loads for. Saves every player's buttons");
+		it.lines.push_back("and what DOS sees.");
+		items.push_back(it);
+		kinds.push_back(SetupAction::SAVE_NEW);
 	}
 	return items;
 }
@@ -914,8 +842,8 @@ std::vector<PickerItem> Picker_SetupItems(std::vector<int>& index)
 		PickerRow preset; preset.label = "Preset"; preset.value = setups[i].preset;
 		it.rows.push_back(dos);
 		it.rows.push_back(preset);
-		if(m.modified())
-			it.confirm = "This replaces your buttons.  Press A again to confirm";
+		if(m.setupModified())
+			it.confirm = "This replaces your changes.  Press A again to confirm";
 		items.push_back(it);
 		index.push_back((int)i);
 	}
@@ -1040,12 +968,23 @@ void EmulatedPicker()
 		Controls().setEmulated(chosen);
 }
 
-void PresetPicker(int player)
+// What the hint line should say after.
+std::string PresetPicker(int player)
 {
 	std::vector<int> index;
-	const int chosen = PickerScreen("Choose a preset", Picker_PresetItems(player, index));
-	if(chosen >= 0)
-		Controls().applyPreset(index[(size_t)chosen]);
+	const std::string title = ConnectedCount() >= 2 ? GuiFormat("Preset for Player %d", player + 1) : std::string("Choose a preset");
+	const int chosen = PickerScreen(title.c_str(), Picker_PresetItems(player, index));
+	if(chosen < 0)
+		return std::string();
+	ControlsModel& m = Controls();
+	const std::vector<PresetInfo> presets = m.presets();
+	if(index[(size_t)chosen] < 0)
+	{
+		m.resetBindings(player);
+		return GuiFormat("Buttons back to %s", presets[(size_t)m.currentPreset(player)].name.c_str());
+	}
+	m.applyPreset(player, index[(size_t)chosen]);
+	return GuiFormat("Preset: %s", presets[(size_t)index[(size_t)chosen]].name.c_str());
 }
 
 // Asks something with a few answers; the index chosen, or -1.
@@ -1121,63 +1060,92 @@ std::string SaveFlow()
 	return m.saveSetup(name, program) ? "Saved " + name : std::string("Could not save the setup");
 }
 
-void ConfigScreen(int player)
+// Saves over the setup that is loaded: no questions, it is the same name and the same program.
+std::string SaveCurrentFlow()
 {
-	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	ControllerConfigView view(player, &over);
-	ScreenWindow screen(view);
+	ControlsModel& m = Controls();
+	const std::string name = m.setupName();
+	std::string program;
+	const std::vector<SetupInfo> existing = m.setups();
+	for(size_t i = 0; i < existing.size(); i++)
+		if(existing[i].name == name)
+			program = existing[i].program;
+	return m.saveSetup(name, program) ? "Saved " + name : std::string("Could not save the setup");
+}
 
-	ProfileRow row;
-	while(true)
+// The Setup button: load a setup, or save this one. What the hint line should say after.
+std::string SetupFlow()
+{
+	std::vector<SetupAction> kinds;
+	const int chosen = PickerScreen("Load or save a setup", Picker_SetupMenuItems(kinds));
+	if(chosen < 0)
+		return std::string();
+	switch(kinds[(size_t)chosen])
 	{
-		UpdateGui();
-		if(view.backButton().getState() == STATE::CLICKED)
-			return;
-		if(view.takeRequest(row))
-		{
-			screen.hide();
-			BindingTarget target = Controls().binding(view.player(), row.binding);
-			if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(row.binding)))
-				Controls().setBinding(view.player(), row.binding, target);
-			screen.show();
-		}
-		const ControllerConfigView::Pick pick = view.takePick();
-		if(pick != ControllerConfigView::Pick::NONE)
-		{
-			screen.hide();
-			std::string said;
-			if(pick == ControllerConfigView::Pick::EMULATED)
-				EmulatedPicker();
-			else if(pick == ControllerConfigView::Pick::PRESET)
-				PresetPicker(view.player());
-			else if(pick == ControllerConfigView::Pick::SAVE)
-				said = SaveFlow();
-			else
-				said = LoadFlow();
-			screen.show();
-			if(!said.empty())
-				view.setStatus(said);
-		}
+		case SetupAction::LOAD:
+			return Controls().setups().empty() ? std::string("No saved setups yet.  Save one first") : LoadFlow();
+		case SetupAction::SAVE_CURRENT:
+			return SaveCurrentFlow();
+		default:
+			return SaveFlow();
 	}
 }
 
-void HubScreen()
+void ConfigScreen(int player)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	ControlsHubView view(&over);
-	ScreenWindow screen(view);
+	player = ResolvePlayer(player);
+	bool leave = false;
 
-	while(true)
+	// The screen is built for one controller. When the player is switched, or a controller comes or goes, it is built again.
+	while(!leave)
 	{
-		UpdateGui();
-		if(view.backButton().getState() == STATE::CLICKED)
-			return;
-		const int player = view.takeRequest();
-		if(player >= 0)
+		ControllerConfigView view(player, &over);
+		ScreenWindow screen(view);
+
+		ProfileRow row;
+		while(true)
 		{
-			screen.hide();
-			ConfigScreen(player);
-			screen.show();
+			UpdateGui();
+			if(view.backButton().getState() == STATE::CLICKED)
+			{
+				leave = true;
+				break;
+			}
+			const int sw = view.takeSwitch();
+			if(sw != 0)
+			{
+				player = NextPlayer(view.player(), sw);
+				break;
+			}
+			if(view.outOfDate())
+			{
+				player = ResolvePlayer(view.player());
+				break;
+			}
+			if(view.takeRequest(row))
+			{
+				screen.hide();
+				BindingTarget target = Controls().binding(view.player(), row.binding);
+				if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(view.player(), row.binding)))
+					Controls().setBinding(view.player(), row.binding, target);
+				screen.show();
+			}
+			const ControllerConfigView::Pick pick = view.takePick();
+			if(pick != ControllerConfigView::Pick::NONE)
+			{
+				screen.hide();
+				std::string said;
+				if(pick == ControllerConfigView::Pick::EMULATED)
+					EmulatedPicker();
+				else if(pick == ControllerConfigView::Pick::PRESET)
+					said = PresetPicker(view.player());
+				else
+					said = SetupFlow();
+				screen.show();
+				if(!said.empty())
+					view.setStatus(said);
+			}
 		}
 	}
 }
@@ -1187,9 +1155,6 @@ void HubScreen()
 void Controls_Menu(GuiWindow * home, int player)
 {
 	mainWindow->remove(home);
-	if(player >= 0)
-		ConfigScreen(player);
-	else
-		HubScreen();
+	ConfigScreen(player);
 	mainWindow->append(home);
 }

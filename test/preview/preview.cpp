@@ -14,6 +14,13 @@
 
 static std::string outDir = "out";
 
+// Starts every player from a preset (the sample scenes show one player at a time but share one look)
+static void ApplyAll(int preset)
+{
+	for(int p = 0; p < Controls().playerCount(); p++)
+		Controls().applyPreset(p, preset);
+}
+
 // The main window as HomeMenu builds it: the header and footer bars, with a page on top
 struct Screen
 {
@@ -52,7 +59,10 @@ struct SceneModel : ControlsModel
 {
 	PlayerInfo players[4];
 	DeviceStatus dev;
-	int preset = 1;
+	int presetOf[4] = { 1, 1, 1, 1 };
+	bool edited[4] = { false, false, false, false };
+	std::string setup;
+	bool dirty = false;
 	int mode = 0;
 	SceneModel(int count)
 	{
@@ -78,6 +88,7 @@ struct SceneModel : ControlsModel
 	PlayerInfo player(int i) const override
 	{
 		PlayerInfo p = players[i];
+		p.preset = presets()[(size_t)presetOf[i]].name;
 		if(p.connected)
 		{
 			// as the real model does: joystick n is player n; players past the joysticks use keys and mouse
@@ -100,19 +111,21 @@ struct SceneModel : ControlsModel
 	{
 		return { { "Compatible", "", true }, { "Arrow keys", "", false }, { "Arrows + shooter", "", false }, { "Point and click", "", false }, { "Menu keys", "", false } };
 	}
-	int currentPreset() const override { return preset; }
-	void applyPreset(int i) override { preset = i; }
+	int currentPreset(int p) const override { return presetOf[p]; }
+	void applyPreset(int p, int i) override { presetOf[p] = i; edited[p] = false; dirty = true; }
 	BindingTarget presetBinding(int, int) const override { return BindingTarget(); }
-	bool modified() const override { return false; }
+	bool modified(int p) const override { return edited[p]; }
 	bool supported(int) const override { return true; }
 	BindingTarget binding(int, int) const override { return BindingTarget(TARGET::KEY, 5); }
 	void setBinding(int, int, const BindingTarget&) override {}
-	BindingTarget defaultBinding(int) const override { return BindingTarget(TARGET::KEY, 4); }
-	void resetBindings(int) override {}
+	BindingTarget defaultBinding(int, int) const override { return BindingTarget(TARGET::KEY, 4); }
+	void resetBindings(int p) override { edited[p] = false; dirty = true; }
 	std::vector<SetupInfo> setups() const override { return {}; }
 	bool saveSetup(const std::string&, const std::string&) override { return false; }
 	bool loadSetup(int) override { return false; }
 	std::string runningProgram() const override { return ""; }
+	std::string setupName() const override { return setup; }
+	bool setupModified() const override { return dirty; }
 	std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
 	void beginCapture() override {}
 	bool pollCapture(CaptureEvent&) override { return false; }
@@ -125,39 +138,51 @@ int main(int argc, char ** argv)
 	HostInit(640, 480, scale);
 	MenuApplyTheme();
 
+	// the setup screen as the model shows it for a given set of controllers
 	{
 		SceneModel one(1);
 		Controls_SetModel(&one);
 		Screen s;
-		ControlsHubView view(nullptr);
+		ControllerConfigView view(0, nullptr);
 		s.page.append(&view);
-		snap("hub_1player", s.root);
+		snap("config_one", s.root);					// no switcher: the title says Controls
 	}
 	{
-		SceneModel one(1);
-		Controls_SetModel(&one);
+		SceneModel two(2);
+		two.edited[0] = true; two.dirty = true; two.setup = "KEEN4E";
+		Controls_SetModel(&two);
 		Screen s;
-		ControlsHubView view(nullptr);
+		ControllerConfigView view(0, nullptr);
 		s.page.append(&view);
-		snap("hub_1player_device", s.root, 0, 0, 1);
+		snap("config_two", s.root);					// the switcher, a preset marked edited, an unsaved setup
 	}
 	{
+		SceneModel two(2);
+		two.mode = 1;
+		Controls_SetModel(&two);
+		Screen s;
+		ControllerConfigView view(1, nullptr);
+		s.page.append(&view);
+		snap("config_two_p2", s.root);
+	}
+	{
+		// the longest strings the header and footer carry: four players, the longest preset and mode, a long setup name
 		SceneModel four(4);
-		four.mode = 1;
+		four.presetOf[3] = 2; four.edited[3] = true; four.mode = 2; four.dirty = true;
+		four.setup = "abcdefghijklmnopqrstuvwx";
 		Controls_SetModel(&four);
 		Screen s;
-		ControlsHubView view(nullptr);
+		ControllerConfigView view(3, nullptr);
 		s.page.append(&view);
-		snap("hub_4players", s.root, 1);
+		snap("config_worst", s.root);
 	}
 	{
 		SceneModel none(0);
-		none.dev.keyboard = true; none.dev.mouse = true;
 		Controls_SetModel(&none);
 		Screen s;
-		ControlsHubView view(nullptr);
+		ControllerConfigView view(0, nullptr);
 		s.page.append(&view);
-		snap("hub_none", s.root);
+		snap("config_empty", s.root);
 	}
 	// the setup screen on the sample model, so rows show real targets: (player, emulated mode, preset, held buttons),
 	// and for the per-hardware scenes what the player is (hw -1 keeps the sample's own hardware)
@@ -191,7 +216,7 @@ int main(int argc, char ** argv)
 		if(scenes[i].hw != NOHW)
 			SampleControls_SetHardware(scenes[i].player, (PadType)scenes[i].hw, scenes[i].sideways, scenes[i].clicks);
 		Controls().setEmulated(scenes[i].mode);
-		Controls().applyPreset(scenes[i].preset);
+		ApplyAll(scenes[i].preset);
 		SampleControls_SetHeld(scenes[i].held);
 		Screen s;
 		ControllerConfigView view(scenes[i].player, nullptr);
@@ -211,7 +236,7 @@ int main(int argc, char ** argv)
 	{
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(choosers[i].mode);
-		Controls().applyPreset(choosers[i].preset);
+		ApplyAll(choosers[i].preset);
 		Screen s;
 		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), nullptr);
 		s.page.append(&view);
@@ -231,9 +256,9 @@ int main(int argc, char ** argv)
 		{
 			Controls_SetModel(nullptr);
 			Controls().setEmulated(pickers[i].mode);
-			Controls().applyPreset(pickers[i].preset);
+			ApplyAll(pickers[i].preset);
 			if(pickers[i].edited)
-				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 			std::vector<int> index;
 			const std::vector<PickerItem> items = pickers[i].presets ? Picker_PresetItems(0, index) : Picker_EmulatedItems();
 			Screen s;
@@ -243,17 +268,30 @@ int main(int argc, char ** argv)
 		}
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
-		Controls().applyPreset(1);
+		ApplyAll(1);
+	}
+	// the Setup button's menu, with and without a setup to save over
+	{
+		std::vector<SetupAction> kinds;
+		Controls_SetModel(nullptr);
+		ApplyAll(1);
+		Controls().saveSetup("Plain", "");
+		{
+			Screen s;
+			PickerView view("Load or save a setup", Picker_SetupMenuItems(kinds), nullptr);
+			s.page.append(&view);
+			snap("picker_setup", s.root);
+		}
 	}
 
 	// Load and the attach choices, on the sample model with two saved setups
 	{
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(1);
-		Controls().applyPreset(2);
+		ApplyAll(2);
 		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
 		Controls().setEmulated(0);
-		Controls().applyPreset(3);
+		ApplyAll(3);
 		Controls().saveSetup("Adventure night", "");
 		Controls().saveSetup("abcdefghijklmnopqrstuvwx", "LONGNAME.EXE");
 		std::vector<int> index;
@@ -278,7 +316,7 @@ int main(int argc, char ** argv)
 	{
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
-		Controls().applyPreset(1);
+		ApplyAll(1);
 		Screen s;
 		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
 		s.page.append(&view);
@@ -353,7 +391,7 @@ int main(int argc, char ** argv)
 		// what the preset list offers
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
-		Controls().applyPreset(1);
+		ApplyAll(1);
 		std::vector<int> index;
 		std::vector<PickerItem> items = Picker_PresetItems(0, index);
 		EXPECT(items.size() == 5 && index.size() == 5);
@@ -362,20 +400,20 @@ int main(int argc, char ** argv)
 		EXPECT(items[0].rows.size() == 7 && items[0].rows[0].label == "A Button" && items[0].rows[0].value == "Joystick 1");
 		EXPECT(items[1].rows[0].value == "Key: Ctrl");
 
-		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_PresetItems(0, index);
 		for(size_t i = 0; i < items.size(); i++)
 			EXPECT(!items[i].confirm.empty());					// every choice would throw the change away
 
-		Controls().applyPreset(1);
+		ApplyAll(1);
 		Controls().setEmulated(2);								// no joystick: the joystick preset is not offered
 		items = Picker_PresetItems(0, index);
 		EXPECT(items.size() == 4 && index[0] == 1);
-		Controls().applyPreset(0);								// ...unless it is the one in use
+		ApplyAll(0);								// ...unless it is the one in use
 		items = Picker_PresetItems(0, index);
 		EXPECT(items.size() == 5 && items[0].current);
 		Controls().setEmulated(1);								// two buttons: what Compatible gives X cannot happen
-		Controls().applyPreset(1);
+		ApplyAll(1);
 		items = Picker_PresetItems(0, index);
 		EXPECT(items[0].rows[2].label == "X Button" && items[0].rows[2].value == "No button 3");
 
@@ -404,7 +442,7 @@ int main(int argc, char ** argv)
 		// the Load list shows what each setup holds, and asks before replacing edited buttons
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
-		Controls().applyPreset(1);
+		ApplyAll(1);
 		std::vector<int> index;
 		EXPECT(Picker_SetupItems(index).empty() || true);
 		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
@@ -421,10 +459,10 @@ int main(int argc, char ** argv)
 		EXPECT(items[plain].lines[0] == "Not tied to a program.");
 		EXPECT(items[keen].rows.size() == 2 && items[keen].rows[0].value == "Joystick" && items[keen].rows[1].value == "Arrow keys");
 		EXPECT(items[keen].confirm.empty());										// nothing edited
-		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_SetupItems(index);
 		EXPECT(!items[0].confirm.empty());											// loading would throw the edit away
-		Controls().applyPreset(1);
+		ApplyAll(1);
 	}
 	{
 		// what a setup can be tied to
@@ -439,6 +477,72 @@ int main(int argc, char ** argv)
 		for(size_t i = 0; i < items.size(); i++)
 			for(size_t k = 0; k < items[i].lines.size(); k++)
 				EXPECT(items[i].lines[k].size() <= 44);
+	}
+	{
+		// the preset list for a player who changed buttons starts with Undo, and the preset is that player's own
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		ApplyAll(1);
+		Controls().setBinding(1, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
+		std::vector<int> index;
+		std::vector<PickerItem> items = Picker_PresetItems(0, index);
+		EXPECT(items[0].name != "Undo my changes");						// player 1 has no changes
+		items = Picker_PresetItems(1, index);
+		EXPECT(items[0].name == "Undo my changes" && index[0] == -1 && !items[0].current && !items[0].confirm.empty());
+		EXPECT(items.size() == index.size() && items.size() == 5);		// Undo, and the presets (no joystick here, so no Compatible)
+		EXPECT(items[0].lines[0] == "Back to Arrow keys.");
+		Controls().applyPreset(2, 4);									// a preset for player 3 leaves player 2's change alone
+		EXPECT(Controls().modified(1) && Controls().currentPreset(1) == 1 && Controls().currentPreset(2) == 4);
+		Controls().resetBindings(1);
+		EXPECT(!Controls().modified(1));
+		ApplyAll(1);
+
+		// the Setup button: loading always, saving over the current one only when there is one
+		std::vector<SetupAction> kinds;
+		Controls_SetModel(nullptr);
+		ApplyAll(1);
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
+		items = Picker_SetupMenuItems(kinds);
+		EXPECT(kinds.size() == items.size() && kinds[0] == SetupAction::LOAD);
+		EXPECT(kinds.back() == SetupAction::SAVE_NEW);
+		Controls().saveSetup("PLAIN", "");
+		items = Picker_SetupMenuItems(kinds);
+		EXPECT(kinds.size() == 3 && kinds[1] == SetupAction::SAVE_CURRENT && items[1].name == "Save as PLAIN");
+		for(size_t i = 0; i < items.size(); i++)
+			for(size_t k = 0; k < items[i].lines.size(); k++)
+				EXPECT(items[i].lines[k].size() <= 44);
+		ApplyAll(1);
+	}
+	{
+		// the screen notices when it was built for something that changed
+		SceneModel two(2);
+		Controls_SetModel(&two);
+		Screen s;
+		ControllerConfigView view(0, nullptr);
+		s.page.append(&view);
+		EXPECT(!view.outOfDate() && !view.isEmpty());
+		two.players[1].connected = false;								// the other controller goes: no switcher any more
+		EXPECT(view.outOfDate());
+		two.players[1].connected = true;
+		EXPECT(!view.outOfDate());
+		two.players[0].type = PadType::CLASSIC;							// a different controller in the slot: a different drawing
+		EXPECT(view.outOfDate());
+		two.players[0].type = PadType::WIIMOTE_NUNCHUK;
+		two.players[0].connected = false;								// this one goes
+		EXPECT(view.outOfDate());
+		Controls_SetModel(nullptr);
+	}
+	{
+		// a screen with no controller says so, and nothing in it needs a profile
+		SceneModel none(0);
+		Controls_SetModel(&none);
+		Screen s;
+		ControllerConfigView view(0, nullptr);
+		s.page.append(&view);
+		EXPECT(view.isEmpty() && !view.outOfDate());
+		none.players[2].connected = true; none.players[2].type = PadType::GAMECUBE;	// one appears
+		EXPECT(view.outOfDate());
+		Controls_SetModel(nullptr);
 	}
 	if(failures)
 		return 1;

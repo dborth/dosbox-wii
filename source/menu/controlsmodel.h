@@ -79,7 +79,7 @@ struct PlayerInfo {
 	std::string role;		/**< What the player does in DOS, in words: "Joystick 1", "Keys + mouse" (for the hint line) */
 	Emulated emulated;		/**< The same, for the icons */
 	int joystick;			/**< Which DOS joystick (1 or 2) when emulated is JOYSTICK */
-	std::string preset;		/**< The preset the player's buttons started from */
+	std::string preset;		/**< The preset the player's buttons started from (each player has their own) */
 	bool sideways = false;		/**< A lone Wiimote held sideways: the setup screen draws it that way (the HAL's InputController::isSideways()) */
 	bool stickClicks = false;	/**< The driver reports L3 / R3 for this pad. The Wii U drivers do for the Pro and the GamePad, the Wii one never does; false leaves the click rows off */
 };
@@ -117,7 +117,7 @@ struct SetupInfo {
 	std::string name;
 	std::string program;		/**< "KEEN4E.EXE", or empty */
 	std::string emulated;		/**< What DOS sees in it ("Joystick"), for the list */
-	std::string preset;			/**< The preset it started from */
+	std::string preset;			/**< The preset it started from ("Mixed" when the players started from different ones) */
 };
 
 /**
@@ -166,22 +166,23 @@ class ControlsModel
 
 		// ---- presets
 		virtual std::vector<PresetInfo> presets() const = 0;
-		virtual int currentPreset() const = 0;
-		/** Starts every player's buttons over from a preset. */
-		virtual void applyPreset(int index) = 0;
+		/** The preset a player's buttons started from. Each player has their own. */
+		virtual int currentPreset(int player) const = 0;
+		/** Starts one player's buttons over from a preset; no other player changes. */
+		virtual void applyPreset(int player, int index) = 0;
 		/** What a preset gives a control (for showing a preset before choosing it). */
 		virtual BindingTarget presetBinding(int preset, int control) const = 0;
-		/** Whether any button differs from the current preset's (applying a preset would throw those changes away). */
-		virtual bool modified() const = 0;
+		/** Whether any of a player's buttons differs from their preset's (applying a preset would throw those changes away). */
+		virtual bool modified(int player) const = 0;
 
 		// ---- buttons. A binding belongs to a player slot, as in the mapper's per-pad groups.
 		/** Whether a control can be set at all (it has a source in the mapper). `control` is a control id, plus BIND_STICK_CLICK for a stick's click. */
 		virtual bool supported(int control) const = 0;
 		virtual BindingTarget binding(int player, int control) const = 0;
 		virtual void setBinding(int player, int control, const BindingTarget& target) = 0;
-		/** What the current preset gives a control (the chooser's Default). */
-		virtual BindingTarget defaultBinding(int control) const = 0;
-		/** Puts every control of a player back to the current preset's defaults. */
+		/** What a player's preset gives a control (the chooser's Default). */
+		virtual BindingTarget defaultBinding(int player, int control) const = 0;
+		/** Puts every control of a player back to their preset's defaults. */
 		virtual void resetBindings(int player) = 0;
 		/** What a control does, in short words; when the target would do nothing it says why instead ("Joystick off", "No button 3"). */
 		std::string describe(int player, int control) const;
@@ -209,6 +210,10 @@ class ControlsModel
 		virtual bool loadSetup(int index) = 0;
 		/** The DOS program running now ("" at the prompt or when unknown). */
 		virtual std::string runningProgram() const = 0;
+		/** The setup last loaded or saved (empty when there is none yet). */
+		virtual std::string setupName() const = 0;
+		/** Whether anything (a button, a preset, what DOS sees) changed since that setup was loaded or saved, or since the start when there is none. */
+		virtual bool setupModified() const = 0;
 };
 
 /** The model the screens use (sample data until a real one is installed). */
