@@ -367,6 +367,21 @@ class SampleControlsModel : public ControlsModel
 	public:
 		SampleControlsModel() : mode(0), preset(PRESET_ARROWS), heldBits(0) {}
 
+		void setHardware(int player, PadType type, bool sideways, bool stickClicks)
+		{
+			if(player < 0 || player >= 4)
+				return;
+			hardware[player].set = true;
+			hardware[player].type = type;
+			hardware[player].sideways = sideways;
+			hardware[player].stickClicks = stickClicks;
+		}
+		void resetHardware()
+		{
+			for(int i = 0; i < 4; i++)
+				hardware[i].set = false;
+		}
+
 		int playerCount() const override { return 4; }
 
 		PlayerInfo player(int i) const override
@@ -383,6 +398,14 @@ class SampleControlsModel : public ControlsModel
 				case 1: p.connected = true; p.type = PadType::CLASSIC; p.battery = 45; break;
 				case 2: p.connected = true; p.type = PadType::GAMECUBE; break;
 				default: break;
+			}
+			if(i >= 0 && i < 4 && hardware[i].set)
+			{
+				p.type = hardware[i].type;
+				p.connected = hardware[i].type != PadType::NONE;
+				p.battery = p.connected && p.type != PadType::GAMECUBE ? 80 : -1;
+				p.sideways = hardware[i].sideways;
+				p.stickClicks = hardware[i].stickClicks;
 			}
 			if(p.connected)
 			{
@@ -555,6 +578,10 @@ class SampleControlsModel : public ControlsModel
 		static const int64_t kStride = (int64_t)1 << 32;
 		static int64_t editKey(int player, int control) { return (int64_t)player * kStride + (int64_t)(uint32_t)control; }
 
+		// what a test or preview made a player: none of this is set in normal use
+		struct Hardware { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; };
+		Hardware hardware[4];
+
 		int mode;
 		int preset;
 		uint32_t heldBits;
@@ -593,4 +620,16 @@ void SampleControls_PushCapture(const CaptureEvent& event)
 {
 	if(!installed)
 		sampleModel()->pushCapture(event);
+}
+
+void SampleControls_SetHardware(int player, PadType type, bool sideways, bool stickClicks)
+{
+	if(!installed)
+		sampleModel()->setHardware(player, type, sideways, stickClicks);
+}
+
+void SampleControls_ResetHardware()
+{
+	if(!installed)
+		sampleModel()->resetHardware();
 }

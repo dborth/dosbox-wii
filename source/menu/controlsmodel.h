@@ -80,6 +80,8 @@ struct PlayerInfo {
 	Emulated emulated;		/**< The same, for the icons */
 	int joystick;			/**< Which DOS joystick (1 or 2) when emulated is JOYSTICK */
 	std::string preset;		/**< The preset the player's buttons started from */
+	bool sideways = false;		/**< A lone Wiimote held sideways: the setup screen draws it that way (the HAL's InputController::isSideways()) */
+	bool stickClicks = false;	/**< The driver reports L3 / R3 for this pad. The Wii U drivers do for the Pro and the GamePad, the Wii one never does; false leaves the click rows off */
 };
 
 /** Which shared input devices are present. */
@@ -219,5 +221,9 @@ void Controls_SetModel(ControlsModel * model);
 void SampleControls_SetHeld(uint32_t bits);
 /** Queues a press for the sample model's pollCapture() (tests and previews). */
 void SampleControls_PushCapture(const CaptureEvent& event);
+/** Makes a sample player a different kind of hardware (PadType::NONE: nothing connected) for tests and previews. */
+void SampleControls_SetHardware(int player, PadType type, bool sideways = false, bool stickClicks = false);
+/** Puts the sample players back to their usual hardware. */
+void SampleControls_ResetHardware();
 
 #endif

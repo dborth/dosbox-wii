@@ -159,18 +159,37 @@ int main(int argc, char ** argv)
 		s.page.append(&view);
 		snap("hub_none", s.root);
 	}
-	// the setup screen on the sample model, so rows show real targets: (player, emulated mode, preset, held buttons)
-	struct SampleScene { const char * name; int player, mode, preset; uint32_t held; };
+	// the setup screen on the sample model, so rows show real targets: (player, emulated mode, preset, held buttons),
+	// and for the per-hardware scenes what the player is (hw -1 keeps the sample's own hardware)
+	struct SampleScene { const char * name; int player, mode, preset; uint32_t held; int hw; bool sideways, clicks; };
+	const int NOHW = -1;
 	const SampleScene scenes[] = {
-		{ "config", 0, 0, 1, 0 },
-		{ "config_pressed", 0, 0, 1, INPUT_BTN_A | INPUT_TRIGGER_ZL | INPUT_BTN_UP },
-		{ "config_twojoy", 0, 1, 0, 0 },
-		{ "config_keys_mouse", 0, 2, 0, 0 },
-		{ "config_gamecube", 2, 0, 1, 0 },
+		{ "config", 0, 0, 1, 0, NOHW, false, false },
+		{ "config_pressed", 0, 0, 1, INPUT_BTN_A | INPUT_TRIGGER_ZL | INPUT_BTN_UP, NOHW, false, false },
+		{ "config_twojoy", 0, 1, 0, 0, NOHW, false, false },
+		{ "config_keys_mouse", 0, 2, 0, 0, NOHW, false, false },
+		{ "config_gamecube", 2, 0, 1, 0, NOHW, false, false },
+		// one per kind of hardware, as player 1
+		{ "hw_wiimote", 0, 0, 1, 0, (int)PadType::WIIMOTE, false, false },
+		{ "hw_wiimote_pressed", 0, 0, 1, INPUT_BTN_1 | INPUT_BTN_B | INPUT_BTN_LEFT, (int)PadType::WIIMOTE, false, false },
+		{ "hw_wiimote_sideways", 0, 0, 1, 0, (int)PadType::WIIMOTE, true, false },
+		{ "hw_wiimote_sideways_pressed", 0, 0, 1, INPUT_BTN_2 | INPUT_BTN_UP, (int)PadType::WIIMOTE, true, false },
+		{ "hw_nunchuk", 0, 0, 1, 0, (int)PadType::WIIMOTE_NUNCHUK, false, false },
+		{ "hw_nunchuk_pressed", 0, 0, 1, INPUT_TRIGGER_L | INPUT_TRIGGER_ZL | INPUT_BTN_A, (int)PadType::WIIMOTE_NUNCHUK, false, false },
+		{ "hw_gamecube_pressed", 0, 0, 1, INPUT_BTN_A | INPUT_TRIGGER_ZR | INPUT_THUMB_R | INPUT_BTN_PLUS, (int)PadType::GAMECUBE, false, false },
+		{ "hw_classic", 0, 0, 1, 0, (int)PadType::CLASSIC, false, false },
+		{ "hw_classic_pressed", 0, 0, 1, INPUT_TRIGGER_ZR | INPUT_BTN_X | INPUT_BTN_RIGHT, (int)PadType::CLASSIC, false, false },
+		{ "hw_wiiupro", 0, 0, 1, 0, (int)PadType::WIIU_PRO, false, false },		// on a Wii: no click rows
+		{ "hw_wiiupro_clicks", 0, 0, 1, INPUT_THUMB_L, (int)PadType::WIIU_PRO, false, true },	// on a Wii U
+		{ "hw_gamepad", 0, 0, 1, 0, (int)PadType::GAMEPAD, false, true },
+		{ "hw_gamepad_pressed", 0, 0, 1, INPUT_TRIGGER_L | INPUT_BTN_Y | INPUT_THUMB_R, (int)PadType::GAMEPAD, false, true },
 	};
 	for(size_t i = 0; i < sizeof(scenes) / sizeof(scenes[0]); i++)
 	{
 		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+		if(scenes[i].hw != NOHW)
+			SampleControls_SetHardware(scenes[i].player, (PadType)scenes[i].hw, scenes[i].sideways, scenes[i].clicks);
 		Controls().setEmulated(scenes[i].mode);
 		Controls().applyPreset(scenes[i].preset);
 		SampleControls_SetHeld(scenes[i].held);
@@ -179,6 +198,8 @@ int main(int argc, char ** argv)
 		s.page.append(&view);
 		snap(scenes[i].name, s.root, 0, 0, 0);
 	}
+	SampleControls_ResetHardware();
+	SampleControls_SetHeld(0);
 	// the chooser on the sample model: (name, player, emulated mode, control, what it does now)
 	struct ChooserScene { const char * name; int mode; int preset; int control; BindingTarget now; };
 	const ChooserScene choosers[] = {

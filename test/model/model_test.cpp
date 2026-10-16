@@ -1,6 +1,8 @@
 // Host tests for the controls model contract and the sample model behind it.
 #include "controlsmodel.h"
 #include "libgui/GuiControllerLayout.h"
+#include "controllerprofile.h"
+#include <set>
 #include <fstream>
 #include <sstream>
 #include <stdio.h>
@@ -604,6 +606,206 @@ static void testHeldAndInstall()
 	CHECK(&Controls() != &other);
 }
 
+// ---- profiles: one builder behind every kind of hardware
+
+static std::vector<const ProfileRow *> profileRows(const ControllerProfile& p)
+{
+	std::vector<const ProfileRow *> rows;
+	for(size_t i = 0; i < p.left.size(); i++) rows.push_back(&p.left[i]);
+	for(size_t i = 0; i < p.right.size(); i++) rows.push_back(&p.right[i]);
+	for(size_t g = 0; g < p.groups.size(); g++)
+		for(size_t i = 0; i < p.groups[g].rows.size(); i++)
+			rows.push_back(&p.groups[g].rows[i]);
+	return rows;
+}
+
+static const ProfileRow * rowFor(const ControllerProfile& p, int control)
+{
+	const std::vector<const ProfileRow *> rows = profileRows(p);
+	for(size_t i = 0; i < rows.size(); i++)
+		if(rows[i]->control == control && !(rows[i]->binding & BIND_STICK_CLICK))
+			return rows[i];
+	return nullptr;
+}
+
+static bool hasClickRows(const ControllerProfile& p)
+{
+	const std::vector<const ProfileRow *> rows = profileRows(p);
+	for(size_t i = 0; i < rows.size(); i++)
+		if(rows[i]->binding & BIND_STICK_CLICK)
+			return true;
+	return false;
+}
+
+static void testProfilesAreConsistent()
+{
+	ControlsModel& m = fresh();
+	const PadType kinds[] = { PadType::NONE, PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMECUBE, PadType::GAMEPAD };
+	for(size_t k = 0; k < sizeof(kinds) / sizeof(kinds[0]); k++)
+	for(int variant = 0; variant < 4; variant++)
+	{
+		const PadType kind = kinds[k];
+		ProfileOptions o;
+		o.sideways = (variant & 1) != 0;
+		o.stickClicks = (variant & 2) != 0;
+		const ControllerProfile p = Controllers_Profile(kind, o);
+		const std::vector<const ProfileRow *> rows = profileRows(p);
+
+		CHECK(p.layout != nullptr && p.scale > 0.0f && p.name != nullptr);
+		CHECK(!rows.empty());
+
+		std::set<int> bindings;
+		std::set<std::string> names;
+		for(size_t i = 0; i < rows.size(); i++)
+		{
+			const ProfileRow& r = *rows[i];
+			CHECK(r.name != nullptr && r.letter != nullptr && r.name[0] != 0);
+			CHECK(strcmp(r.name, "Control") != 0);		// a control with no name in any table
+			CHECK(strlen(r.letter) <= 2);
+			CHECK(bindings.insert(r.binding).second);	// no two rows edit the same thing
+			CHECK(names.insert(r.name).second);			// names are what the hint line and the chooser show
+
+			if(r.fixed)
+			{
+				CHECK(r.binding == INPUT_BTN_HOME);		// only the menu button cannot change
+				CHECK(r.control != 0 || kind == PadType::GAMECUBE);	// a pad with no Home on its drawing lights nothing
+			}
+			else if(r.stick)
+			{
+				CHECK(r.stick == 1 || r.stick == 2);
+				CHECK(r.control == (r.stick == 1 ? (int)INPUT_THUMB_L : (int)INPUT_THUMB_R));
+				CHECK(!m.supported(r.binding));			// movement is the joystick's axes, not a mapping
+			}
+			else
+			{
+				CHECK(m.supported(r.binding));			// something the engine can bind
+				CHECK(r.control != 0);
+			}
+			if(r.control != 0)
+				CHECK(p.layout->find(r.control) != nullptr);	// and the drawing has a control to light
+		}
+
+		// click rows only on hardware that has the click and a driver that reports it
+		const bool clickHardware = kind == PadType::NONE || kind == PadType::WIIU_PRO || kind == PadType::GAMEPAD;
+		CHECK(hasClickRows(p) == (clickHardware && o.stickClicks));
+
+		// the list covers the drawing: every control it shows has a row
+		for(size_t i = 0; i < p.layout->spots.size(); i++)
+		{
+			const int id = p.layout->spots[i].id;
+			if(id == 0)
+				continue;
+			bool listed = false;
+			for(size_t r = 0; r < rows.size(); r++)
+				listed = listed || rows[r]->control == id;
+			CHECK(listed);
+		}
+	}
+}
+
+static void testProfilesPerHardware()
+{
+	ProfileOptions up, side, clicks;
+	side.sideways = true;
+	clicks.stickClicks = true;
+
+	// each kind has its own drawing; an empty slot gets the Pro's
+	CHECK(Controllers_Profile(PadType::WIIU_PRO).layout == &GuiWiiUProControllerLayout());
+	CHECK(Controllers_Profile(PadType::NONE).layout == &GuiWiiUProControllerLayout());
+	CHECK(Controllers_Profile(PadType::GAMEPAD).layout == &GuiGamePadControllerLayout());
+	CHECK(Controllers_Profile(PadType::CLASSIC).layout == &GuiClassicControllerLayout());
+	CHECK(Controllers_Profile(PadType::GAMECUBE).layout == &GuiGameCubeControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE).layout == &GuiWiimoteControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE, side).layout == &GuiWiimoteSidewaysControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK).layout == &GuiWiimoteNunchukControllerLayout());
+
+	// orientation only matters to a lone Wiimote (a Nunchuk means it is held upright)
+	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK, side).layout == &GuiWiimoteNunchukControllerLayout());
+	CHECK(Controllers_Profile(PadType::CLASSIC, side).layout == &GuiClassicControllerLayout());
+	CHECK(profileRows(Controllers_Profile(PadType::GAMECUBE, side)).size() == profileRows(Controllers_Profile(PadType::GAMECUBE)).size());
+
+	// the Pro and the GamePad list the same controls; the Classic is the Pro without the clicks it does not have
+	CHECK(profileRows(Controllers_Profile(PadType::WIIU_PRO, clicks)).size() == profileRows(Controllers_Profile(PadType::GAMEPAD, clicks)).size());
+	CHECK(profileRows(Controllers_Profile(PadType::WIIU_PRO, clicks)).size() == profileRows(Controllers_Profile(PadType::CLASSIC, clicks)).size() + 2);
+	CHECK(profileRows(Controllers_Profile(PadType::WIIU_PRO, up)).size() == profileRows(Controllers_Profile(PadType::CLASSIC)).size());
+
+	// Wiimote: 1 and 2 are drawn as themselves but bind through the engine's X and Y sources
+	for(int sideways = 0; sideways < 2; sideways++)
+	{
+		ProfileOptions o;
+		o.sideways = sideways != 0;
+		const ControllerProfile w = Controllers_Profile(PadType::WIIMOTE, o);
+		CHECK(rowFor(w, INPUT_BTN_1) && rowFor(w, INPUT_BTN_1)->binding == INPUT_BTN_X);
+		CHECK(rowFor(w, INPUT_BTN_2) && rowFor(w, INPUT_BTN_2)->binding == INPUT_BTN_Y);
+		CHECK(rowFor(w, INPUT_BTN_X) == nullptr && rowFor(w, INPUT_BTN_Y) == nullptr);	// no X or Y to clash with
+		CHECK(rowFor(w, INPUT_THUMB_L) == nullptr);											// and no stick
+		CHECK(rowFor(w, INPUT_BTN_A) && rowFor(w, INPUT_BTN_B) && rowFor(w, INPUT_BTN_PLUS) && rowFor(w, INPUT_BTN_MINUS));
+		CHECK(rowFor(w, INPUT_BTN_UP) && rowFor(w, INPUT_BTN_DOWN) && rowFor(w, INPUT_BTN_LEFT) && rowFor(w, INPUT_BTN_RIGHT));
+		CHECK_EQ(rowFor(w, INPUT_BTN_MINUS)->name, "Minus");
+	}
+
+	// Nunchuk: its C and Z arrive as L and ZL, its stick is the joystick's first
+	const ControllerProfile n = Controllers_Profile(PadType::WIIMOTE_NUNCHUK);
+	CHECK(rowFor(n, INPUT_TRIGGER_L) && rowFor(n, INPUT_TRIGGER_L)->binding == INPUT_TRIGGER_L);
+	CHECK_EQ(rowFor(n, INPUT_TRIGGER_L)->name, "C Button");
+	CHECK_EQ(rowFor(n, INPUT_TRIGGER_ZL)->name, "Z Button");
+	CHECK(rowFor(n, INPUT_THUMB_L) && rowFor(n, INPUT_THUMB_L)->stick == 1);
+	CHECK(rowFor(n, INPUT_THUMB_R) == nullptr);
+	CHECK(rowFor(n, INPUT_BTN_1) && rowFor(n, INPUT_BTN_A));				// the Wiimote's own controls are there too
+	CHECK(!hasClickRows(Controllers_Profile(PadType::WIIMOTE_NUNCHUK, clicks)));
+
+	// GameCube: Start is Plus, Z is ZR, no Home but the combo, and no click on either stick
+	const ControllerProfile gc = Controllers_Profile(PadType::GAMECUBE, clicks);
+	CHECK_EQ(rowFor(gc, INPUT_BTN_PLUS)->name, "Start");
+	CHECK_EQ(rowFor(gc, INPUT_TRIGGER_ZR)->name, "Z Button");
+	CHECK(rowFor(gc, INPUT_BTN_MINUS) == nullptr && rowFor(gc, INPUT_TRIGGER_ZL) == nullptr);
+	CHECK(!hasClickRows(gc));
+	bool menu = false;
+	const std::vector<const ProfileRow *> gcRows = profileRows(gc);
+	for(size_t i = 0; i < gcRows.size(); i++)
+		if(gcRows[i]->binding == INPUT_BTN_HOME)
+		{
+			menu = true;
+			CHECK_EQ(gcRows[i]->name, "Menu");
+			CHECK_EQ(gcRows[i]->fixed, "Hold L + R + Start");
+		}
+	CHECK(menu);
+
+	// every other kind's Home opens the menu
+	const PadType homes[] = { PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMEPAD };
+	for(size_t i = 0; i < sizeof(homes) / sizeof(homes[0]); i++)
+	{
+		const ProfileRow * home = rowFor(Controllers_Profile(homes[i]), INPUT_BTN_HOME);
+		CHECK(home != nullptr && home->fixed != nullptr);
+		if(home && home->fixed)
+			CHECK_EQ(home->fixed, "Opens this menu");
+	}
+
+	// Classic names its triggers the way the pad does
+	CHECK_EQ(rowFor(Controllers_Profile(PadType::CLASSIC), INPUT_TRIGGER_L)->name, "L Trigger");
+	CHECK_EQ(rowFor(Controllers_Profile(PadType::WIIU_PRO), INPUT_TRIGGER_L)->name, "Left Bumper");
+
+	// the model's player drives the options
+	PlayerInfo pi;
+	pi.type = PadType::WIIMOTE;
+	CHECK(Controllers_Profile(pi).layout == &GuiWiimoteControllerLayout());
+	pi.sideways = true;
+	CHECK(Controllers_Profile(pi).layout == &GuiWiimoteSidewaysControllerLayout());
+	pi.type = PadType::WIIU_PRO;
+	CHECK(!hasClickRows(Controllers_Profile(pi)));
+	pi.stickClicks = true;
+	CHECK(hasClickRows(Controllers_Profile(pi)));
+
+	// the sample model reports the hardware a test sets, and goes back
+	SampleControls_SetHardware(0, PadType::WIIMOTE, true, false);
+	CHECK(Controls().player(0).type == PadType::WIIMOTE && Controls().player(0).sideways);
+	SampleControls_SetHardware(3, PadType::WIIU_PRO, false, true);
+	CHECK(Controls().player(3).connected && Controls().player(3).stickClicks);
+	SampleControls_ResetHardware();
+	CHECK(Controls().player(0).type == PadType::WIIMOTE_NUNCHUK && !Controls().player(0).sideways);
+	CHECK(!Controls().player(3).connected);
+}
+
 int main()
 {
 	testEmulatedModes();
@@ -625,6 +827,8 @@ int main()
 	testSetupNames();
 	testSetups();
 	testHeldAndInstall();
+	testProfilesAreConsistent();
+	testProfilesPerHardware();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

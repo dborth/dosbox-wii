@@ -342,10 +342,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	const int id = r.binding;
 	const int stick = r.stick;
 	const int padX = 10;	// room between the highlight box and what is in it
-	// a GameCube pad has no Home button: the menu is the L + R + Start combo (the same combo works on any pad)
-	const bool gcMenu = r.binding == INPUT_BTN_HOME && padType == PadType::GAMECUBE;
-	const char * fixed = gcMenu ? "Hold L + R + Start" : r.fixed;
-	const char * name = gcMenu ? "Menu" : r.name;
+	const char * fixed = r.fixed;
+	const char * name = r.name;
 	const bool info = fixed || stick; // shown, not changed
 
 	// what the row says: a button's target, or for a stick what the DOS side does with it
@@ -403,7 +401,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	cancel.setSecondaryTrigger();
 
 	const PlayerInfo info = Controls().player(player);
-	const ControllerProfile& profile = Controllers_Profile(padType);
+	const ControllerProfile profile = Controllers_Profile(info);
 	// four buttons in the footer leave the hint about 220 wide (it scrolls when longer)
 	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; }, 214);
 	// what DOS sees, and the preset the buttons started from: each opens a list of the choices

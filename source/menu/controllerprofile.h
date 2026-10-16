@@ -12,7 +12,8 @@
 #define _CONTROLLERPROFILE_H_
 
 #include <vector>
-#include "libgui/Gui.h"
+#include "libgui/GuiGlyph.h"
+#include "libgui/GuiControllerLayout.h"
 #include "controlsmodel.h"
 
 /** One row in a list on the configuration screen. */
@@ -42,7 +43,22 @@ struct ControllerProfile {
 	std::vector<ProfileGroup> groups;	/**< Listed underneath, left to right. */
 };
 
-/** The profile for a kind of hardware. Hardware without a profile of its own gets the Pro-style one. */
-const ControllerProfile& Controllers_Profile(PadType type);
+/** What differs between two players holding the same kind of hardware. */
+struct ProfileOptions {
+	bool sideways;		/**< A lone Wiimote held sideways: its own drawing, with the D-pad directions as the player holds it. Ignored by every other kind. */
+	bool stickClicks;	/**< The driver reports L3 / R3 for this pad (the Wii U drivers do for the Pro and the GamePad; the Wii one never does). Without it the click rows are left out rather than listed dead. */
+
+	ProfileOptions() : sideways(false), stickClicks(false) {}
+};
+
+/**
+ * The profile for a kind of hardware. Every profile comes from the same builder (controllerprofile.cpp): a kind is a
+ * layout, a size, the controls to list where, and any names that differ from the Wii U Pro's. A slot with nothing
+ * connected gets the Pro-style profile.
+ */
+ControllerProfile Controllers_Profile(PadType type, const ProfileOptions& options = ProfileOptions());
+
+/** The same for a player slot, taking the orientation and the click support from what the model reports. */
+ControllerProfile Controllers_Profile(const PlayerInfo& player);
 
 #endif
