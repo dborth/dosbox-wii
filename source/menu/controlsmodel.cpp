@@ -176,6 +176,52 @@ std::string ControlsModel::describeTarget(int player, const BindingTarget& t) co
 	return text;
 }
 
+std::string Setup_CleanName(const std::string& typed)
+{
+	std::string out;
+	for(size_t i = 0; i < typed.size(); i++)
+	{
+		const char c = typed[i];
+		if((unsigned char)c < 32 || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' || c == '.')
+			continue;
+		out += c;
+	}
+	const size_t first = out.find_first_not_of(' ');
+	if(first == std::string::npos)
+		return std::string();
+	out = out.substr(first, out.find_last_not_of(' ') - first + 1);
+	if(out.size() > 24)
+	{
+		out.resize(24);
+		const size_t last = out.find_last_not_of(' ');
+		out.resize(last + 1);
+	}
+	return out;
+}
+
+std::string Setup_CleanProgram(const std::string& typed)
+{
+	size_t start = typed.find_last_of("/\\:");
+	start = start == std::string::npos ? 0 : start + 1;
+	std::string out;
+	for(size_t i = start; i < typed.size(); i++)
+	{
+		const char c = typed[i];
+		if((unsigned char)c <= 32 || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+			continue;
+		out += (char)((c >= 'a' && c <= 'z') ? c - 'a' + 'A' : c);
+	}
+	return out;
+}
+
+std::string Setup_SuggestedName(const std::string& program)
+{
+	const std::string file = Setup_CleanProgram(program);
+	const size_t dot = file.rfind('.');
+	const std::string name = Setup_CleanName(dot == std::string::npos ? file : file.substr(0, dot));
+	return name.empty() ? "My setup" : name;
+}
+
 std::vector<TARGET> ControlsModel::kindsOffered(int player) const
 {
 	std::vector<TARGET> kinds;
@@ -430,6 +476,8 @@ class SampleControlsModel : public ControlsModel
 				SetupInfo s;
 				s.name = saved[i].name;
 				s.program = saved[i].program;
+				s.emulated = kModes[saved[i].mode].name;
+				s.preset = kPresets[saved[i].preset].name;
 				v.push_back(s);
 			}
 			return v;

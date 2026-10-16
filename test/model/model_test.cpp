@@ -487,6 +487,37 @@ static void testModified()
 	m.applyPreset(1);
 }
 
+static void testSetupNames()
+{
+	// a name becomes a file name: nothing a file system rejects, no dots, no padding, a sane length
+	CHECK_EQ(Setup_CleanName("Keen 4"), "Keen 4");
+	CHECK_EQ(Setup_CleanName("  Keen 4  "), "Keen 4");
+	CHECK_EQ(Setup_CleanName("a/b\\c:d*e?f\"g<h>i|j"), "abcdefghij");
+	CHECK_EQ(Setup_CleanName("keen4e.exe"), "keen4eexe");
+	CHECK_EQ(Setup_CleanName(""), "");
+	CHECK_EQ(Setup_CleanName("   "), "");
+	CHECK_EQ(Setup_CleanName("///"), "");
+	CHECK_EQ(Setup_CleanName("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwx");		// 24 characters
+	CHECK_EQ(Setup_CleanName("abcdefghijklmnopqrstuvw yz"), "abcdefghijklmnopqrstuvw");		// no trailing space left by the cut
+	CHECK_EQ(Setup_CleanName("Caf\x01x"), "Cafx");												// control characters go
+
+	// a program name: the file alone, upper case
+	CHECK_EQ(Setup_CleanProgram("keen4e.exe"), "KEEN4E.EXE");
+	CHECK_EQ(Setup_CleanProgram("c:\\games\\keen4\\keen4e.exe"), "KEEN4E.EXE");
+	CHECK_EQ(Setup_CleanProgram("/games/doom/doom.exe"), "DOOM.EXE");
+	CHECK_EQ(Setup_CleanProgram(" keen4e.exe "), "KEEN4E.EXE");
+	CHECK_EQ(Setup_CleanProgram("c:"), "");
+	CHECK_EQ(Setup_CleanProgram(""), "");
+	CHECK_EQ(Setup_CleanProgram("a b.exe"), "AB.EXE");
+
+	// the name offered when saving
+	CHECK_EQ(Setup_SuggestedName("KEEN4E.EXE"), "KEEN4E");
+	CHECK_EQ(Setup_SuggestedName("c:\\x\\doom.exe"), "DOOM");
+	CHECK_EQ(Setup_SuggestedName(""), "My setup");
+	CHECK_EQ(Setup_SuggestedName(".EXE"), "My setup");
+	CHECK_EQ(Setup_SuggestedName("GAME"), "GAME");
+}
+
 static void testSetups()
 {
 	ControlsModel& m = fresh();
@@ -502,6 +533,8 @@ static void testSetups()
 	CHECK(m.setups().size() == 1);
 	CHECK_EQ(m.setups()[0].name, "Keen");
 	CHECK_EQ(m.setups()[0].program, "KEEN4E.EXE");
+	CHECK_EQ(m.setups()[0].emulated, "Two joysticks");	// what it holds, for the list
+	CHECK_EQ(m.setups()[0].preset, "Arrows + shooter");
 
 	// change everything, load, and it all comes back
 	m.setEmulated(0);
@@ -589,6 +622,7 @@ int main()
 	testCapture();
 	testPresetPreview();
 	testModified();
+	testSetupNames();
 	testSetups();
 	testHeldAndInstall();
 	printf("%d checks, %d failed\n", checks, failures);

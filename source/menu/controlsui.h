@@ -89,8 +89,10 @@ class ControllerConfigView : public GuiOverlay
 		/** Whether a row was clicked since the last call; fills `row` with it. */
 		bool takeRequest(ProfileRow& row);
 		/** Which list the user asked to open from the header, if any (then it is forgotten). */
-		enum class Pick { NONE, EMULATED, PRESET };
+		enum class Pick { NONE, EMULATED, PRESET, SAVE, LOAD };
 		Pick takePick() { const Pick p = pickRequest; pickRequest = Pick::NONE; return p; }
+		/** Says something on the hint line (what a Save or Load did). */
+		void setStatus(const std::string& text) { status = text; }
 		/** The control highlighted on the drawing (0 = none). */
 		int highlighted() const;
 		PadType type() const { return padType; }
@@ -135,6 +137,17 @@ std::vector<PickerItem> Picker_EmulatedItems();
  * (a preset that needs a joystick is left out when the player has none, unless it is the one in use).
  */
 std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index);
+
+/** The saved setups, as picker items for Load; `index` receives each item's index in the model's list. */
+std::vector<PickerItem> Picker_SetupItems(std::vector<int>& index);
+
+/** What Save can tie a setup to. */
+enum class AttachChoice { RUNNING, NONE, TYPED };
+/**
+ * The choices for what program a new setup is for: the program running now (when there is one), none, or one typed.
+ * `kinds` receives each item's choice.
+ */
+std::vector<PickerItem> Picker_AttachItems(const std::string& runningProgram, std::vector<AttachChoice>& kinds);
 
 /** A list of choices on the left, and what the one under the cursor means on the right. */
 class PickerView : public GuiOverlay

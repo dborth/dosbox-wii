@@ -8,6 +8,8 @@
 #ifndef _MENUH_
 #define _MENUH_
 
+#include <stdint.h>
+
 /** The home menu. Blocks, stepping the GUI itself, until it is closed. */
 void HomeMenu();
 
@@ -21,6 +23,9 @@ extern GuiWindow * mainWindow;
 
 /** One GUI frame: input, draw, cursors, present. Whatever waits on the menu calls it in a loop. */
 void UpdateGui();
+
+/** Types text on the on-screen keyboard, starting from what `var` holds; false if cancelled (then `var` is unchanged). */
+bool OnScreenKeyboard(char * var, uint32_t maxlen);
 
 /** Opens the settings (and from there Buttons, Drives and Status) in place of the home screen's window. Returns when they are closed. */
 void SettingsMenu(GuiWindow * home);

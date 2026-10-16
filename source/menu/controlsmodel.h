@@ -114,7 +114,19 @@ struct EmulatedMode {
 struct SetupInfo {
 	std::string name;
 	std::string program;		/**< "KEEN4E.EXE", or empty */
+	std::string emulated;		/**< What DOS sees in it ("Joystick"), for the list */
+	std::string preset;			/**< The preset it started from */
 };
+
+/**
+ * A name for a setup as it will be written to a file (name.conf, name.map): surrounding spaces and characters a file
+ * name cannot hold are removed, and it is cut to 24 characters. Empty when nothing usable is left.
+ */
+std::string Setup_CleanName(const std::string& typed);
+/** A program name as typed ("c:\\games\\keen4e.exe"): the file name alone, upper case. Empty when there is none. */
+std::string Setup_CleanProgram(const std::string& typed);
+/** The name offered when saving: the running program without its extension ("KEEN4E"), or "My setup". */
+std::string Setup_SuggestedName(const std::string& program);
 
 /** A key or mouse button the user just pressed while the chooser was listening. */
 struct CaptureEvent {

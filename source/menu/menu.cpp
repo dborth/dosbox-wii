@@ -99,9 +99,10 @@ void UpdateGui()
  * OnScreenKeyboard
  *
  * Opens an on-screen keyboard window, with the data entered being stored
- * into the specified variable.
+ * into the specified variable. The text in the variable is what the keyboard
+ * starts with. Returns false when the user cancelled.
  ***************************************************************************/
-static void OnScreenKeyboard(char * var, uint32_t maxlen)
+bool OnScreenKeyboard(char * var, uint32_t maxlen)
 {
 	int save = -1;
 
@@ -165,6 +166,7 @@ static void OnScreenKeyboard(char * var, uint32_t maxlen)
 
 	mainWindow->remove(&kb);
 	mainWindow->setState(STATE::DEFAULT);
+	return save != 0;
 }
 
 /****************************************************************************

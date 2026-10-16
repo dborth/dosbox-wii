@@ -17,7 +17,7 @@ GuiCard& MenuPage_Section(UiScope& ui, int w)
 	return c;
 }
 
-static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, bool withBody)
+static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, bool withBody, int hintWidth)
 {
 	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
@@ -51,7 +51,7 @@ static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * titl
 
 	f.hint = &ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted());
 	f.hint->bind(hint);
-	f.hint->setMaxWidth(MENU_PAGE_BODY_W - 236);
+	f.hint->setMaxWidth(hintWidth); // the hint scrolls when longer; the rest of the footer is for buttons
 	f.hint->setScroll(SCROLL::HORIZONTAL);
 	f.footerRight = &ui.row().gap(10).align(LAYOUT_ALIGN::CENTRE);
 	GuiLayout& footer = ui.row().size(sw, MENU_BAR_BOTTOM_H).pad(MENU_PAGE_MARGIN, 0).align(LAYOUT_ALIGN::CENTRE)
@@ -66,12 +66,12 @@ static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * titl
 	return f;
 }
 
-MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint)
+MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, int hintWidth)
 {
-	return buildFrame(ui, page, title, hint, true);
+	return buildFrame(ui, page, title, hint, true, hintWidth);
 }
 
 MenuPageFrame MenuPage_BuildBars(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint)
 {
-	return buildFrame(ui, page, title, hint, false);
+	return buildFrame(ui, page, title, hint, false, MENU_PAGE_BODY_W - 236);
 }

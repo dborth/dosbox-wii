@@ -379,9 +379,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 			view->setLeader(true, (float)row.getLeft(), midY);
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
-		// the hint line holds about 40 characters: the reminder goes when the target is long
-		const std::string line = GuiFormat("%s: %s", name, text().c_str());
-		status = info || line.size() > 24 ? line : line + ".  A changes it";
+		// the hint holds about 26 characters beside the four footer buttons (it scrolls when longer), so just the facts
+		status = GuiFormat("%s: %s", name, text().c_str());
 	});
 	if(!info)
 	{
@@ -405,7 +404,8 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 
 	const PlayerInfo info = Controls().player(player);
 	const ControllerProfile& profile = Controllers_Profile(padType);
-	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; });
+	// four buttons in the footer leave the hint about 220 wide (it scrolls when longer)
+	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("Player %d", player + 1).c_str(), [this]{ return status; }, 214);
 	// what DOS sees, and the preset the buttons started from: each opens a list of the choices
 	GuiTextButton& emulatedBtn = ui.button("").size(150, 32).fontSize(UI_FONT_SMALL + 1).style(MenuBarButtonStyle())
 		.bind([]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; })
@@ -466,16 +466,28 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	f.content->add(groups);
 
 	const int pl = playerSlot;
-	GuiTextButton& reset = MenuPage_Button(ui, "Reset")
+	// Load and Save hold whole setups (names, a program to load for); Reset puts this player's buttons back
+	GuiTextButton& load = MenuPage_Button(ui, "Load", 76)
+		.onClick([this]{
+			if(Controls().setups().empty())
+				status = "No saved setups yet.  Use Save first";
+			else
+				pickRequest = Pick::LOAD;
+		})
+		.onFocus([this]{ status = "A loads a saved setup"; });
+	GuiTextButton& save = MenuPage_Button(ui, "Save", 76)
+		.onClick([this]{ pickRequest = Pick::SAVE; })
+		.onFocus([this]{ status = "A saves this setup under a name"; });
+	GuiTextButton& reset = MenuPage_Button(ui, "Reset", 76)
 		.onClick([this, pl]{
 			Controls().resetBindings(pl);
 			status = "Buttons restored to the preset's defaults";
 		})
 		.onFocus([this]{ status = "A restores every button to the preset's defaults"; });
-	GuiTextButton& back = MenuPage_Button(ui, "Back");
+	GuiTextButton& back = MenuPage_Button(ui, "Back", 76);
 	back.setTrigger(1, &cancel);
 	backBtn = &back;
-	f.footerRight->add(reset).add(back);
+	f.footerRight->add(load).add(save).add(reset).add(back);
 
 	ui.attachTo(*this);
 	// When the page takes focus its window steps the selection down from whatever is selected, or goes to the first
@@ -744,7 +756,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 
 	// Both panels are one fixed size whatever is chosen, and everything in the right one has a slot of its own
 	// (an empty slot keeps its height), so moving the cursor changes the words and nothing else
-	const int listW = 176;
+	const int listW = 200; // wide enough for a saved setup's name of 24 characters
 	const int paneW = MENU_PAGE_CONTENT_W - listW - 6;
 	const int panelH = 240;
 	const int innerW = paneW - 24;
@@ -756,7 +768,8 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	for(size_t i = 0; i < items.size(); i++)
 	{
 		const int idx = (int)i;
-		GuiTextButton& b = ui.button(items[i].name.c_str()).size(listW - 16, 34).fontSize(UI_FONT_BODY)
+		// a long name (a saved setup can have 24 characters) is set smaller to fit its button
+		GuiTextButton& b = ui.button(items[i].name.c_str()).size(listW - 16, 34).fontSize(items[i].name.size() > 14 ? UI_FONT_SMALL + 2 : UI_FONT_BODY)
 			.style(MenuBarButtonStyle(items[i].current))
 			.onClick([this, idx]{ choose(idx); })
 			.onFocus([this, idx]{ focusItem(idx); });
@@ -887,6 +900,62 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 	return items;
 }
 
+std::vector<PickerItem> Picker_SetupItems(std::vector<int>& index)
+{
+	ControlsModel& m = Controls();
+	const std::vector<SetupInfo> setups = m.setups();
+	std::vector<PickerItem> items;
+	index.clear();
+	for(size_t i = 0; i < setups.size(); i++)
+	{
+		PickerItem it;
+		it.name = setups[i].name;
+		it.current = false;
+		it.lines.push_back(setups[i].program.empty() ? std::string("Not tied to a program.") : "Loads for " + setups[i].program + ".");
+		PickerRow dos; dos.label = "DOS sees"; dos.value = setups[i].emulated;
+		PickerRow preset; preset.label = "Preset"; preset.value = setups[i].preset;
+		it.rows.push_back(dos);
+		it.rows.push_back(preset);
+		if(m.modified())
+			it.confirm = "This replaces your buttons.  Press A again to confirm";
+		items.push_back(it);
+		index.push_back((int)i);
+	}
+	return items;
+}
+
+std::vector<PickerItem> Picker_AttachItems(const std::string& running, std::vector<AttachChoice>& kinds)
+{
+	std::vector<PickerItem> items;
+	kinds.clear();
+	if(!running.empty())
+	{
+		PickerItem it;
+		it.name = running;
+		it.current = true;
+		addWrapped(it.lines, "These buttons load by themselves when " + running + " starts.", 44);
+		items.push_back(it);
+		kinds.push_back(AttachChoice::RUNNING);
+	}
+	{
+		PickerItem it;
+		it.name = "No program";
+		it.current = running.empty();
+		addWrapped(it.lines, "Load it yourself from the Load button.", 44);
+		items.push_back(it);
+		kinds.push_back(AttachChoice::NONE);
+	}
+	{
+		PickerItem it;
+		it.name = "Type a name";
+		it.current = false;
+		addWrapped(it.lines, "For a program that is not running now.", 44);
+		items.push_back(it);
+		kinds.push_back(AttachChoice::TYPED);
+	}
+	return items;
+}
+
 // ---- running the screens on the menu's main window
 
 namespace {
@@ -981,6 +1050,79 @@ void PresetPicker(int player)
 		Controls().applyPreset(index[(size_t)chosen]);
 }
 
+// Asks something with a few answers; the index chosen, or -1.
+int AskScreen(const char * title, const std::vector<std::string>& answers, const std::string& detail)
+{
+	std::vector<PickerItem> items;
+	for(size_t i = 0; i < answers.size(); i++)
+	{
+		PickerItem it;
+		it.name = answers[i];
+		it.current = false;
+		addWrapped(it.lines, detail, 44);
+		items.push_back(it);
+	}
+	return PickerScreen(title, items);
+}
+
+// Load: choose a saved setup. What the hint line should say after.
+std::string LoadFlow()
+{
+	std::vector<int> index;
+	const int chosen = PickerScreen("Load a setup", Picker_SetupItems(index));
+	if(chosen < 0)
+		return std::string();
+	const std::vector<SetupInfo> setups = Controls().setups();
+	if(!Controls().loadSetup(index[(size_t)chosen]))
+		return "That setup could not be loaded";
+	return "Loaded " + setups[(size_t)index[(size_t)chosen]].name;
+}
+
+// Save: a name, what program it is for, and a check before replacing one of the same name.
+std::string SaveFlow()
+{
+	ControlsModel& m = Controls();
+	const std::string running = Setup_CleanProgram(m.runningProgram());
+
+	char typed[64];
+	snprintf(typed, sizeof(typed), "%s", Setup_SuggestedName(running).c_str());
+	if(!OnScreenKeyboard(typed, sizeof(typed)))
+		return std::string();
+	const std::string name = Setup_CleanName(typed);
+	if(name.empty())
+		return "That name can't be used";
+
+	std::vector<AttachChoice> kinds;
+	const int attach = PickerScreen("Load these buttons for", Picker_AttachItems(running, kinds));
+	if(attach < 0)
+		return std::string();
+	std::string program;
+	if(kinds[(size_t)attach] == AttachChoice::RUNNING)
+		program = running;
+	else if(kinds[(size_t)attach] == AttachChoice::TYPED)
+	{
+		char prog[64] = { 0 };
+		if(!OnScreenKeyboard(prog, sizeof(prog)))
+			return std::string();
+		program = Setup_CleanProgram(prog);
+	}
+
+	const std::vector<SetupInfo> existing = m.setups();
+	for(size_t i = 0; i < existing.size(); i++)
+	{
+		if(existing[i].name == name)
+		{
+			std::vector<std::string> answers;
+			answers.push_back("Replace it");
+			answers.push_back("Cancel");
+			if(AskScreen(GuiFormat("%s already exists", name.c_str()).c_str(), answers, "Replacing it loses what was saved under that name.") != 0)
+				return std::string();
+			break;
+		}
+	}
+	return m.saveSetup(name, program) ? "Saved " + name : std::string("Could not save the setup");
+}
+
 void ConfigScreen(int player)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
@@ -1005,11 +1147,18 @@ void ConfigScreen(int player)
 		if(pick != ControllerConfigView::Pick::NONE)
 		{
 			screen.hide();
+			std::string said;
 			if(pick == ControllerConfigView::Pick::EMULATED)
 				EmulatedPicker();
-			else
+			else if(pick == ControllerConfigView::Pick::PRESET)
 				PresetPicker(view.player());
+			else if(pick == ControllerConfigView::Pick::SAVE)
+				said = SaveFlow();
+			else
+				said = LoadFlow();
 			screen.show();
+			if(!said.empty())
+				view.setStatus(said);
 		}
 	}
 }

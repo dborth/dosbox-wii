@@ -225,6 +225,32 @@ int main(int argc, char ** argv)
 		Controls().applyPreset(1);
 	}
 
+	// Load and the attach choices, on the sample model with two saved setups
+	{
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(1);
+		Controls().applyPreset(2);
+		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
+		Controls().setEmulated(0);
+		Controls().applyPreset(3);
+		Controls().saveSetup("Adventure night", "");
+		Controls().saveSetup("abcdefghijklmnopqrstuvwx", "LONGNAME.EXE");
+		std::vector<int> index;
+		{
+			Screen s;
+			PickerView view("Load a setup", Picker_SetupItems(index), nullptr);
+			s.page.append(&view);
+			snap("picker_load", s.root);
+		}
+		{
+			std::vector<AttachChoice> kinds;
+			Screen s;
+			PickerView view("Load these buttons for", Picker_AttachItems("KEEN4E.EXE", kinds), nullptr);
+			s.page.append(&view);
+			snap("picker_attach", s.root);
+		}
+	}
+
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
@@ -352,6 +378,46 @@ int main(int argc, char ** argv)
 			for(size_t k = 0; k < items[i].lines.size(); k++)
 				EXPECT(items[i].lines[k].size() <= 44);
 		}
+	}
+	{
+		// the Load list shows what each setup holds, and asks before replacing edited buttons
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		Controls().applyPreset(1);
+		std::vector<int> index;
+		EXPECT(Picker_SetupItems(index).empty() || true);
+		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
+		Controls().saveSetup("Plain", "");
+		std::vector<PickerItem> items = Picker_SetupItems(index);
+		EXPECT(items.size() >= 2 && index.size() == items.size());
+		size_t keen = 0, plain = 0;
+		for(size_t i = 0; i < items.size(); i++)
+		{
+			if(items[i].name == "KEEN4E") keen = i;
+			if(items[i].name == "Plain") plain = i;
+		}
+		EXPECT(items[keen].lines[0] == "Loads for KEEN4E.EXE.");
+		EXPECT(items[plain].lines[0] == "Not tied to a program.");
+		EXPECT(items[keen].rows.size() == 2 && items[keen].rows[0].value == "Joystick" && items[keen].rows[1].value == "Arrow keys");
+		EXPECT(items[keen].confirm.empty());										// nothing edited
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5));
+		items = Picker_SetupItems(index);
+		EXPECT(!items[0].confirm.empty());											// loading would throw the edit away
+		Controls().applyPreset(1);
+	}
+	{
+		// what a setup can be tied to
+		std::vector<AttachChoice> kinds;
+		std::vector<PickerItem> items = Picker_AttachItems("KEEN4E.EXE", kinds);
+		EXPECT(items.size() == 3 && kinds.size() == 3);
+		EXPECT(kinds[0] == AttachChoice::RUNNING && items[0].name == "KEEN4E.EXE" && items[0].current);
+		EXPECT(kinds[1] == AttachChoice::NONE && !items[1].current);
+		EXPECT(kinds[2] == AttachChoice::TYPED);
+		items = Picker_AttachItems("", kinds);									// at the prompt: nothing to offer but none or typed
+		EXPECT(items.size() == 2 && kinds[0] == AttachChoice::NONE && items[0].current && kinds[1] == AttachChoice::TYPED);
+		for(size_t i = 0; i < items.size(); i++)
+			for(size_t k = 0; k < items[i].lines.size(); k++)
+				EXPECT(items[i].lines[k].size() <= 44);
 	}
 	if(failures)
 		return 1;

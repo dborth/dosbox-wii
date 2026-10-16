@@ -29,6 +29,17 @@ const char * GuiTextTranslator::getText(const char * msgid) const { return msgid
 GuiWindow * mainWindow = nullptr;
 void UpdateGui() {}
 
+// the on-screen keyboard: the preview types what a test sets (nothing set means the user cancelled)
+static const char * hostKeyboardText = nullptr;
+void Host_SetKeyboardText(const char * text) { hostKeyboardText = text; }
+bool OnScreenKeyboard(char * var, uint32_t maxlen)
+{
+	if(!hostKeyboardText)
+		return false;
+	snprintf(var, maxlen, "%s", hostKeyboardText);
+	return true;
+}
+
 // ---- threads and memory: a single-threaded host needs none of it
 #include "drivers/Mutex.h"
 #include "memmanager.h"
