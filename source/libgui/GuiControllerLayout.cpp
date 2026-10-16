@@ -300,12 +300,6 @@ const GuiControllerLayout& GuiWiimoteSidewaysControllerLayout()
 	return layout;
 }
 
-const GuiControllerLayout& GuiNunchukControllerLayout()
-{
-	static const GuiControllerLayout layout = buildNunchuk();
-	return layout;
-}
-
 const GuiControllerLayout& GuiWiimoteNunchukControllerLayout()
 {
 	static const GuiControllerLayout layout = buildWiimoteNunchuk();
