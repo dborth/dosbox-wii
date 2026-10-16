@@ -2,6 +2,8 @@
 #include "controlsmodel.h"
 #include "libgui/GuiControllerLayout.h"
 #include "controllerprofile.h"
+#include "drivers/InputData.h"
+#include "inputlogic.h"
 #include <set>
 #include <fstream>
 #include <sstream>
@@ -882,6 +884,135 @@ static void testProfilesPerHardware()
 	CHECK(!Controls().player(3).connected);
 }
 
+// ---- the hardware seam: what the HAL reports becomes players
+
+static InputPadData padWith(std::initializer_list<int> hw)
+{
+	InputPadData pad;
+	for(int h : hw)
+		pad.hw_connected[h] = true;
+	return pad;
+}
+
+static void testPadTypeFromHal()
+{
+	CHECK(PadType_FromPad(InputPadData()) == PadType::NONE);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_WIIMOTE })) == PadType::WIIMOTE);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_NUNCHUK })) == PadType::WIIMOTE_NUNCHUK);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_CLASSIC })) == PadType::CLASSIC);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_WUPC })) == PadType::WIIU_PRO);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_GAMECUBE })) == PadType::GAMECUBE);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_DRC })) == PadType::GAMEPAD);
+	// a controller held alongside the GamePad is the one drawn
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_DRC, INPUT_HW_WUPC })) == PadType::WIIU_PRO);
+	CHECK(PadType_FromPad(padWith({ INPUT_HW_DRC, INPUT_HW_WIIMOTE })) == PadType::WIIMOTE);
+
+	InputPadData pad = padWith({ INPUT_HW_WIIMOTE, INPUT_HW_CLASSIC });
+	pad.hw_battery_level[INPUT_HW_WIIMOTE] = 55;
+	pad.hw_battery_level[INPUT_HW_DRC] = 30;
+	CHECK(PadBattery(pad, PadType::CLASSIC) == 55);	// rides on the Wiimote
+	CHECK(PadBattery(pad, PadType::WIIMOTE_NUNCHUK) == 55);
+	CHECK(PadBattery(pad, PadType::GAMEPAD) == 30);
+	CHECK(PadBattery(pad, PadType::GAMECUBE) == -1);
+	CHECK(PadBattery(pad, PadType::NONE) == -1);
+}
+
+static void testDpadForDos()
+{
+	const uint32_t dpad = INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT;
+	InputPadData wm = padWith({ INPUT_HW_WIIMOTE });
+	wm.buttons_h = INPUT_BTN_UP | INPUT_BTN_A;
+
+	CHECK(PadIsLoneWiimote(wm));
+	CHECK(PadIsLoneWiimote(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_NUNCHUK })));
+	CHECK(!PadIsLoneWiimote(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_CLASSIC })));
+	CHECK(!PadIsLoneWiimote(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_GAMECUBE })));
+
+	CHECK(PadButtonsForDos(wm, false) == (INPUT_BTN_UP | INPUT_BTN_A));		// held upright: untouched
+	CHECK(PadButtonsForDos(wm, true) == (INPUT_BTN_LEFT | INPUT_BTN_A));		// sideways: a quarter turn
+	// all four directions turn the same way, and other buttons never change
+	const uint32_t from[4] = { INPUT_BTN_UP, INPUT_BTN_DOWN, INPUT_BTN_LEFT, INPUT_BTN_RIGHT };
+	const uint32_t to[4] = { INPUT_BTN_LEFT, INPUT_BTN_RIGHT, INPUT_BTN_DOWN, INPUT_BTN_UP };
+	for(int i = 0; i < 4; i++)
+	{
+		wm.buttons_h = from[i] | INPUT_BTN_PLUS | INPUT_BTN_1;
+		CHECK(PadButtonsForDos(wm, true) == (to[i] | INPUT_BTN_PLUS | INPUT_BTN_1));
+	}
+	wm.buttons_h = dpad;
+	CHECK(PadButtonsForDos(wm, true) == dpad);									// a full cross turns into itself
+
+	// anything else on the channel keeps its D-pad, whatever the Wiimote's flag says
+	InputPadData both = padWith({ INPUT_HW_WIIMOTE, INPUT_HW_GAMECUBE });
+	both.buttons_h = INPUT_BTN_UP;
+	CHECK(PadButtonsForDos(both, true) == INPUT_BTN_UP);
+}
+
+class FakeHardware : public ControlsHardware
+{
+	public:
+		PlayerHardware player(int i) const override
+		{
+			PlayerHardware h;
+			if(i == 1)
+			{
+				h.connected = true;
+				h.type = PadType::WIIMOTE;
+				h.sideways = true;
+				h.battery = 25;
+			}
+			if(i == 2)
+			{
+				h.connected = true;
+				h.type = PadType::GAMEPAD;
+				h.stickClicks = true;
+			}
+			return h;
+		}
+		DeviceStatus devices() const override
+		{
+			DeviceStatus d;
+			d.keyboard = false;
+			d.mouse = true;
+			d.wiimoteIr = true;
+			d.gamepadPresent = true;
+			d.gamepadTouch = false;
+			return d;
+		}
+		uint32_t held(int i) const override { return i == 1 ? INPUT_BTN_2 : 0; }
+};
+
+static void testHardwareSeam()
+{
+	FakeHardware fake;
+	Controls_SetModel(nullptr);
+	Controls_SetHardware(&fake);
+
+	// the model reports what the hardware does, and adds only what DOS does with it
+	CHECK(!Controls().player(0).connected && Controls().player(0).type == PadType::NONE);
+	const PlayerInfo wm = Controls().player(1);
+	CHECK(wm.connected && wm.type == PadType::WIIMOTE && wm.sideways && !wm.stickClicks);
+	CHECK((wm.battery) == (25));
+	CHECK_EQ(wm.device, "Wiimote");;
+	CHECK(wm.emulated != Emulated::NONE && !wm.role.empty());
+	const PlayerInfo gp = Controls().player(2);
+	CHECK(gp.type == PadType::GAMEPAD && gp.stickClicks && !gp.sideways);
+	CHECK(Controls().player(0).role.empty());
+
+	CHECK(!Controls().devices().keyboard && Controls().devices().mouse && Controls().devices().wiimoteIr);
+	CHECK(Controls().devices().gamepadPresent);
+	CHECK((Controls().held(1)) == ((int)INPUT_BTN_2));
+	CHECK((Controls().held(0)) == (0));
+
+	// and the setup screen's profile follows the hardware, end to end
+	CHECK(Controllers_Profile(wm).layout == &GuiWiimoteSidewaysControllerLayout());
+	CHECK(hasClickRows(Controllers_Profile(gp)));
+
+	// pulling it out goes back to the sample players
+	Controls_SetHardware(nullptr);
+	CHECK(Controls().player(0).type == PadType::WIIMOTE_NUNCHUK);
+	CHECK(Controls().devices().keyboard);
+}
+
 int main()
 {
 	testEmulatedModes();
@@ -906,6 +1037,9 @@ int main()
 	testHeldAndInstall();
 	testProfilesAreConsistent();
 	testProfilesPerHardware();
+	testPadTypeFromHal();
+	testDpadForDos();
+	testHardwareSeam();
 	testSetupState();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

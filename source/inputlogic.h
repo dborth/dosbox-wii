@@ -23,6 +23,16 @@
 #include <stdint.h>
 #include "drivers/InputData.h"
 
+/* ---- Buttons as DOS sees them ---- */
+
+//! True when the channel holds a Wiimote and nothing else that has its own D-pad (a Nunchuk adds no D-pad).
+bool PadIsLoneWiimote(const InputPadData & pad);
+
+//! The channel's merged held buttons as the emulated machine gets them: a lone Wiimote held sideways has its
+//! D-pad turned a quarter turn, so the directions are the ones the player holds it by. The joystick the shim
+//! builds and the live highlight on the setup screen both read this, so they cannot disagree.
+uint32_t PadButtonsForDos(const InputPadData & pad, bool sideways);
+
 /* ---- Menu requests ---- */
 
 //! True while this channel holds HOME, or L + R + Plus/Start on a single device.

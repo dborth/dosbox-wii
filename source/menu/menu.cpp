@@ -26,6 +26,7 @@
 #include "osk.h"
 #include "menu.h"
 #include "controlsui.h"
+#include "controlshal.h"
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
@@ -612,6 +613,9 @@ void HomeMenu ()
 	closeBtn.setTrigger(0, &trigA);
 	closeBtn.setTrigger(1, &trigHome);
 	closeBtn.setEffectGrow();
+
+	// the controller screens read the real controllers, keyboard and mouse from here on
+	Controls_SetHardware(&Controls_Hal());
 
 	ControllerStatus controllerStatus(&trigA, &btnSoundOver, &btnSoundClick);
 	int controllerClicked;

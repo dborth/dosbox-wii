@@ -767,17 +767,6 @@ static inline Sint16 AxisValue(float v)
 
 static inline Uint8 Held(uint32_t buttons, uint32_t mask) { return (buttons & mask) ? 1 : 0; }
 
-// A Wiimote held on its side has its D-pad turned a quarter turn
-static inline uint32_t RotateDpad(uint32_t b)
-{
-	uint32_t r = b & ~(INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT);
-	if (b & INPUT_BTN_UP)    r |= INPUT_BTN_LEFT;
-	if (b & INPUT_BTN_DOWN)  r |= INPUT_BTN_RIGHT;
-	if (b & INPUT_BTN_LEFT)  r |= INPUT_BTN_DOWN;
-	if (b & INPUT_BTN_RIGHT) r |= INPUT_BTN_UP;
-	return r;
-}
-
 static inline Uint8 DpadToHat(uint32_t b)
 {
 	Uint8 hat = SDL_HAT_CENTERED;
@@ -807,13 +796,8 @@ static void ReadPlayer(int ch, SDL_Joystick & js)
 	memset(js.axes, 0, sizeof(js.axes));
 	js.hat = SDL_HAT_CENTERED;
 
-	uint32_t b = pad.buttons_h;
-
-	// Only a lone Wiimote is held sideways; other hardware on the channel keeps its D-pad
-	if (controller[ch]->isSideways() &&
-		!(pad.hw_connected[INPUT_HW_GAMECUBE] || pad.hw_connected[INPUT_HW_CLASSIC] ||
-		  pad.hw_connected[INPUT_HW_WUPC] || pad.hw_connected[INPUT_HW_DRC]))
-		b = RotateDpad(b);
+	// A lone Wiimote held sideways has its D-pad turned (shared with the setup screen: inputlogic.h)
+	const uint32_t b = PadButtonsForDos(pad, controller[ch]->isSideways());
 
 	js.buttons[0]  = Held(b, INPUT_BTN_A);
 	js.buttons[1]  = Held(b, INPUT_BTN_B);

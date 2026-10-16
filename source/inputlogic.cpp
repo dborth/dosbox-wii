@@ -11,6 +11,27 @@
 static const uint32_t MENU_COMBO =
 	INPUT_TRIGGER_L | INPUT_TRIGGER_R | INPUT_BTN_PLUS;
 
+bool PadIsLoneWiimote(const InputPadData & pad)
+{
+	return !(pad.hw_connected[INPUT_HW_GAMECUBE] || pad.hw_connected[INPUT_HW_CLASSIC] ||
+			 pad.hw_connected[INPUT_HW_WUPC] || pad.hw_connected[INPUT_HW_DRC]);
+}
+
+uint32_t PadButtonsForDos(const InputPadData & pad, bool sideways)
+{
+	const uint32_t b = pad.buttons_h;
+	if (!sideways || !PadIsLoneWiimote(pad))
+		return b;
+
+	const uint32_t dpad = INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT;
+	uint32_t r = b & ~dpad;
+	if (b & INPUT_BTN_UP)    r |= INPUT_BTN_LEFT;
+	if (b & INPUT_BTN_DOWN)  r |= INPUT_BTN_RIGHT;
+	if (b & INPUT_BTN_LEFT)  r |= INPUT_BTN_DOWN;
+	if (b & INPUT_BTN_RIGHT) r |= INPUT_BTN_UP;
+	return r;
+}
+
 bool MenuRequestFromPad(const InputPadData & pad)
 {
 	if (pad.buttons_h & INPUT_BTN_HOME)

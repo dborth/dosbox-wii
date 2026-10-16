@@ -27,6 +27,7 @@ class WutInputDriver : public InputDriver {
 		void setGameRumble(int channel, int frames) override;
 		void ensureGameRumble(int channel, int frames) override;
 		void setContinuousRumble(int channel, bool continuous) override;
+		bool reportsStickClick() const override { return true; }
 
 		void openHomeButtonOverlay();
 

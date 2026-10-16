@@ -5,7 +5,7 @@ CXXFLAGS ?= -std=c++14 -O1 -g -Wall -Wno-unused-parameter
 ROOT = ../..
 SRC = $(ROOT)/source
 
-model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/libgui/GuiControllerLayout.cpp
+model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/libgui/GuiControllerLayout.cpp $(SRC)/inputlogic.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
 check: model_test

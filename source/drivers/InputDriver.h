@@ -31,6 +31,9 @@ class InputDriver
 		virtual void ensureGameRumble(int channel, int frames) = 0;
 		virtual void setContinuousRumble(int channel, bool continuous) = 0;
 		
+		//! True when this driver reports the clicks of the sticks (INPUT_THUMB_L / INPUT_THUMB_R). The Wii driver never does.
+		virtual bool reportsStickClick() const { return false; }
+
 		void setRumbleEnabled(bool enabled) { rumbleEnabled = enabled; }
 		bool isRumbleEnabled() const { return rumbleEnabled; }
 		void setWiimoteOrientation(int orientation) { wiimoteOrientation = orientation; }

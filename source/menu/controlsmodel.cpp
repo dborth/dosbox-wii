@@ -5,6 +5,7 @@
  ***************************************************************************/
 #include "controlsmodel.h"
 #include "libgui/GuiControllerLayout.h"
+#include "drivers/InputData.h"
 #include <deque>
 #include <map>
 #include <stdint.h>
@@ -21,6 +22,42 @@ const char * PadType_Name(PadType t)
 		case PadType::GAMECUBE: return "GameCube Controller";
 		case PadType::GAMEPAD: return "Wii U GamePad";
 		default: return "";
+	}
+}
+
+// ---- what the HAL reports, as the screens name it
+
+PadType PadType_FromPad(const InputPadData& pad)
+{
+	// Same order as the home strip: the richest device on a channel names it. The GamePad is last so a
+	// controller held alongside it is the one drawn.
+	if(pad.hw_connected[INPUT_HW_WUPC])
+		return PadType::WIIU_PRO;
+	if(pad.hw_connected[INPUT_HW_CLASSIC])
+		return PadType::CLASSIC;
+	if(pad.hw_connected[INPUT_HW_NUNCHUK])
+		return PadType::WIIMOTE_NUNCHUK;
+	if(pad.hw_connected[INPUT_HW_WIIMOTE])
+		return PadType::WIIMOTE;
+	if(pad.hw_connected[INPUT_HW_GAMECUBE])
+		return PadType::GAMECUBE;
+	if(pad.hw_connected[INPUT_HW_DRC])
+		return PadType::GAMEPAD;
+	return PadType::NONE;
+}
+
+int PadBattery(const InputPadData& pad, PadType type)
+{
+	switch(type)
+	{
+		case PadType::NONE:
+		case PadType::GAMECUBE:
+			return -1;
+		case PadType::GAMEPAD:
+			return (int)pad.hw_battery_level[INPUT_HW_DRC];
+		default:
+			// every Wiimote-based controller reports the battery of the Wiimote it rides on
+			return (int)pad.hw_battery_level[INPUT_HW_WIIMOTE];
 	}
 }
 
@@ -362,28 +399,92 @@ bool mapperHasSource(int control)
 	}
 }
 
-class SampleControlsModel : public ControlsModel
+// ---- hardware: what the screens read from the console
+
+// Invented players for the host tests and previews, until the real hardware is installed. A test or preview
+// can make a player something else, and set what is held.
+class SampleHardware : public ControlsHardware
 {
 	public:
-		SampleControlsModel() : mode(0), heldBits(0), dirty(false)
+		SampleHardware() : heldBits(0) {}
+
+		PlayerHardware player(int i) const override
 		{
-			for(int i = 0; i < 4; i++)
-				preset[i] = PRESET_ARROWS;
+			PlayerHardware h;
+			if(i >= 0 && i < 4 && over[i].set)
+			{
+				h.type = over[i].type;
+				h.connected = h.type != PadType::NONE;
+				h.sideways = over[i].sideways;
+				h.stickClicks = over[i].stickClicks;
+				h.battery = h.connected && h.type != PadType::GAMECUBE ? 80 : -1;
+				return h;
+			}
+			switch(i)
+			{
+				case 0: h.connected = true; h.type = PadType::WIIMOTE_NUNCHUK; h.battery = 80; break;
+				case 1: h.connected = true; h.type = PadType::CLASSIC; h.battery = 45; break;
+				case 2: h.connected = true; h.type = PadType::GAMECUBE; break;
+				default: break;
+			}
+			return h;
 		}
 
+		DeviceStatus devices() const override
+		{
+			DeviceStatus d;
+			d.keyboard = true;
+			d.mouse = false;
+			d.wiimoteIr = false;
+			d.gamepadPresent = false;
+			d.gamepadTouch = false;
+			return d;
+		}
+
+		uint32_t held(int player) const override { return player == 0 ? heldBits : 0; }
+
+		void setHeld(uint32_t bits) { heldBits = bits; }
 		void setHardware(int player, PadType type, bool sideways, bool stickClicks)
 		{
 			if(player < 0 || player >= 4)
 				return;
-			hardware[player].set = true;
-			hardware[player].type = type;
-			hardware[player].sideways = sideways;
-			hardware[player].stickClicks = stickClicks;
+			over[player].set = true;
+			over[player].type = type;
+			over[player].sideways = sideways;
+			over[player].stickClicks = stickClicks;
 		}
 		void resetHardware()
 		{
 			for(int i = 0; i < 4; i++)
-				hardware[i].set = false;
+				over[i].set = false;
+		}
+
+	private:
+		struct Override { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; };
+		Override over[4];
+		uint32_t heldBits;
+};
+
+SampleHardware * sampleHardware()
+{
+	static SampleHardware h;
+	return &h;
+}
+
+ControlsHardware * hardwareInstalled = nullptr;
+
+const ControlsHardware& hardware()
+{
+	return hardwareInstalled ? *hardwareInstalled : *sampleHardware();
+}
+
+class SampleControlsModel : public ControlsModel
+{
+	public:
+		SampleControlsModel() : mode(0), dirty(false)
+		{
+			for(int i = 0; i < 4; i++)
+				preset[i] = PRESET_ARROWS;
 		}
 
 		int playerCount() const override { return 4; }
@@ -391,26 +492,14 @@ class SampleControlsModel : public ControlsModel
 		PlayerInfo player(int i) const override
 		{
 			PlayerInfo p;
-			p.connected = false;
-			p.type = PadType::NONE;
-			p.battery = -1;
+			const PlayerHardware h = hardware().player(i);
+			p.connected = h.connected;
+			p.type = h.type;
+			p.battery = h.battery;
+			p.sideways = h.sideways;
+			p.stickClicks = h.stickClicks;
 			p.emulated = Emulated::NONE;
 			p.joystick = 0;
-			switch(i)
-			{
-				case 0: p.connected = true; p.type = PadType::WIIMOTE_NUNCHUK; p.battery = 80; break;
-				case 1: p.connected = true; p.type = PadType::CLASSIC; p.battery = 45; break;
-				case 2: p.connected = true; p.type = PadType::GAMECUBE; break;
-				default: break;
-			}
-			if(i >= 0 && i < 4 && hardware[i].set)
-			{
-				p.type = hardware[i].type;
-				p.connected = hardware[i].type != PadType::NONE;
-				p.battery = p.connected && p.type != PadType::GAMECUBE ? 80 : -1;
-				p.sideways = hardware[i].sideways;
-				p.stickClicks = hardware[i].stickClicks;
-			}
 			if(p.connected)
 			{
 				p.device = PadType_Name(p.type);
@@ -431,19 +520,9 @@ class SampleControlsModel : public ControlsModel
 			return p;
 		}
 
-		DeviceStatus devices() const override
-		{
-			DeviceStatus d;
-			d.keyboard = true;
-			d.mouse = false;
-			d.wiimoteIr = false;
-			d.gamepadPresent = false;
-			d.gamepadTouch = false;
-			return d;
-		}
+		DeviceStatus devices() const override { return hardware().devices(); }
 
-		uint32_t held(int player) const override { return player == 0 ? heldBits : 0; }
-		void setHeld(uint32_t bits) { heldBits = bits; } // for tests and previews
+		uint32_t held(int player) const override { return hardware().held(player); }
 
 		std::vector<EmulatedMode> emulatedModes() const override { return std::vector<EmulatedMode>(kModes, kModes + 3); }
 		int currentEmulated() const override { return mode; }
@@ -630,13 +709,8 @@ class SampleControlsModel : public ControlsModel
 		static const int64_t kStride = (int64_t)1 << 32;
 		static int64_t editKey(int player, int control) { return (int64_t)player * kStride + (int64_t)(uint32_t)control; }
 
-		// what a test or preview made a player: none of this is set in normal use
-		struct Hardware { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; };
-		Hardware hardware[4];
-
 		int mode;
 		int preset[4];
-		uint32_t heldBits;
 		bool dirty;
 		std::string current;
 		std::map<int64_t, BindingTarget> edits;
@@ -664,10 +738,14 @@ void Controls_SetModel(ControlsModel * model)
 	installed = model;
 }
 
+void Controls_SetHardware(ControlsHardware * hardware)
+{
+	hardwareInstalled = hardware;
+}
+
 void SampleControls_SetHeld(uint32_t bits)
 {
-	if(!installed)
-		sampleModel()->setHeld(bits);
+	sampleHardware()->setHeld(bits);
 }
 
 void SampleControls_PushCapture(const CaptureEvent& event)
@@ -678,12 +756,10 @@ void SampleControls_PushCapture(const CaptureEvent& event)
 
 void SampleControls_SetHardware(int player, PadType type, bool sideways, bool stickClicks)
 {
-	if(!installed)
-		sampleModel()->setHardware(player, type, sideways, stickClicks);
+	sampleHardware()->setHardware(player, type, sideways, stickClicks);
 }
 
 void SampleControls_ResetHardware()
 {
-	if(!installed)
-		sampleModel()->resetHardware();
+	sampleHardware()->resetHardware();
 }

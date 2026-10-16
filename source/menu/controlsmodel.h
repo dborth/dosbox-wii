@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+struct InputPadData;
+
 /** Kinds of controller hardware. */
 enum class PadType {
 	NONE,
@@ -29,6 +31,11 @@ enum class PadType {
 
 /** Display name of a hardware type. */
 const char * PadType_Name(PadType t);
+
+/** The kind of controller a channel's pad data describes (NONE when nothing is connected). */
+PadType PadType_FromPad(const InputPadData& pad);
+/** Battery percent for the pad of that kind, or -1 when it has none to report (GameCube, nothing connected). */
+int PadBattery(const InputPadData& pad, PadType type);
 
 /** Added to a stick's control id to address its click rather than its movement. */
 enum { BIND_STICK_CLICK = 1 << 28 };
@@ -91,6 +98,29 @@ struct DeviceStatus {
 	bool wiimoteIr;
 	bool gamepadPresent;	/**< Wii U only: whether to show the GamePad line at all */
 	bool gamepadTouch;
+};
+
+/** One player slot as the console reports it, before the model adds what DOS does with it. */
+struct PlayerHardware {
+	bool connected = false;
+	PadType type = PadType::NONE;
+	int battery = -1;			/**< Percent; -1 for none to show */
+	bool sideways = false;		/**< A lone Wiimote held sideways */
+	bool stickClicks = false;	/**< The driver reports L3 / R3 */
+};
+
+/**
+ * Everything the model reads from the console, and nothing else: the one seam between the controller screens and
+ * the HAL. The app installs the HAL's (controlshal.cpp); tests and previews use the sample one.
+ */
+class ControlsHardware
+{
+	public:
+		virtual ~ControlsHardware() {}
+		virtual PlayerHardware player(int index) const = 0;
+		virtual DeviceStatus devices() const = 0;
+		/** The buttons held on a player's channel as DOS would get them (INPUT_* bits, a sideways Wiimote's D-pad already turned). */
+		virtual uint32_t held(int index) const = 0;
 };
 
 /** A built-in set of targets to start a player's buttons from. */
@@ -222,7 +252,10 @@ ControlsModel& Controls();
 /** Installs a model; null goes back to the sample data. The model must outlive its use. */
 void Controls_SetModel(ControlsModel * model);
 
-/** Sets what the sample model reports as held (for tests and previews; does nothing once another model is installed). */
+/** Installs where the model reads the console from; null goes back to the sample players. Must outlive its use. */
+void Controls_SetHardware(ControlsHardware * hardware);
+
+/** Sets what the sample hardware reports as held (for tests and previews; does nothing once another model is installed). */
 void SampleControls_SetHeld(uint32_t bits);
 /** Queues a press for the sample model's pollCapture() (tests and previews). */
 void SampleControls_PushCapture(const CaptureEvent& event);
