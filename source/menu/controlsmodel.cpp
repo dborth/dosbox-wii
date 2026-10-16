@@ -4,6 +4,7 @@
  * controlsmodel.cpp
  ***************************************************************************/
 #include "controlsmodel.h"
+#include "controlspresets.h"
 #include "libgui/GuiControllerLayout.h"
 #include "drivers/InputData.h"
 #include <deque>
@@ -174,6 +175,36 @@ std::string BindingTarget::describe() const
 
 // ---- derived answers every model gives the same way
 
+PlayerInfo Controls_ComposePlayer(const PlayerHardware& h, int index, const EmulatedMode& mode, const std::string& preset)
+{
+	PlayerInfo p;
+	p.connected = h.connected;
+	p.type = h.type;
+	p.battery = h.battery;
+	p.sideways = h.sideways;
+	p.stickClicks = h.stickClicks;
+	p.emulated = Emulated::NONE;
+	p.joystick = 0;
+	if(p.connected)
+	{
+		p.device = PadType_Name(p.type);
+		p.preset = preset;
+		// joystick n is player n (the mapper's stick n); players past the joysticks that exist use keys and mouse
+		if(index < mode.joysticks)
+		{
+			p.emulated = Emulated::JOYSTICK;
+			p.joystick = index + 1;
+			p.role = "Joystick " + std::string(1, (char)('0' + p.joystick));
+		}
+		else
+		{
+			p.emulated = Emulated::KEYS_MOUSE;
+			p.role = "Keys + mouse";
+		}
+	}
+	return p;
+}
+
 int ControlsModel::joystickButtons(int player) const
 {
 	const std::vector<EmulatedMode> modes = emulatedModes();
@@ -285,119 +316,7 @@ std::vector<int> ControlsModel::choices(int player, TARGET kind) const
 
 namespace {
 
-BindingTarget key(const char * name) { return BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, name)); }
-BindingTarget joy(int button) { return BindingTarget(TARGET::JOYSTICK, button); }
-BindingTarget mouseBtn(const char * name) { return BindingTarget(TARGET::MOUSE, Catalog_Find(TARGET::MOUSE, name)); }
-
-enum { PRESET_COMPATIBLE, PRESET_ARROWS, PRESET_SHOOTER, PRESET_POINT, PRESET_MENU, PRESET_COUNT };
-
-const PresetInfo kPresets[PRESET_COUNT] =
-{
-	{ "Compatible", "Buttons fire the DOS joystick, as DOSBox does on its own", true },
-	{ "Arrow keys", "D-pad and buttons as arrows, Ctrl, Alt and Space (platformers)", false },
-	{ "Arrows + shooter", "Arrows, with Ctrl to fire, Space to use, Alt to strafe (Doom-style)", false },
-	{ "Point and click", "A and B click, the D-pad moves between hot spots (adventures)", false },
-	{ "Menu keys", "D-pad, Enter and Esc, for installers and the DOS prompt", false },
-};
-
-// what a preset gives a control (a control with no entry does nothing)
-BindingTarget presetDefault(int preset, int control)
-{
-	const bool dpadArrows = preset != PRESET_COMPATIBLE;
-	switch(control)
-	{
-		case INPUT_BTN_UP: return dpadArrows ? key("Up") : BindingTarget();
-		case INPUT_BTN_DOWN: return dpadArrows ? key("Down") : BindingTarget();
-		case INPUT_BTN_LEFT: return dpadArrows ? key("Left") : BindingTarget();
-		case INPUT_BTN_RIGHT: return dpadArrows ? key("Right") : BindingTarget();
-		default: break;
-	}
-
-	switch(preset)
-	{
-		case PRESET_COMPATIBLE:
-			switch(control)
-			{
-				case INPUT_BTN_A: return joy(0);
-				case INPUT_BTN_B: return joy(1);
-				case INPUT_BTN_X: return joy(2);
-				case INPUT_BTN_Y: return joy(3);
-				default: return BindingTarget();
-			}
-		case PRESET_ARROWS:
-			switch(control)
-			{
-				case INPUT_BTN_A: return key("Ctrl");
-				case INPUT_BTN_B: return key("Alt");
-				case INPUT_BTN_X: return key("Space");
-				case INPUT_BTN_Y: return key("Enter");
-				case INPUT_BTN_PLUS: return key("Enter");
-				case INPUT_BTN_MINUS: return key("Esc");
-				case INPUT_TRIGGER_L: return key("PgUp");
-				case INPUT_TRIGGER_R: return key("PgDn");
-				default: return BindingTarget();
-			}
-		case PRESET_SHOOTER:
-			switch(control)
-			{
-				case INPUT_BTN_A: return key("Ctrl");
-				case INPUT_BTN_B: return key("Space");
-				case INPUT_BTN_X: return key("Alt");
-				case INPUT_BTN_Y: return key("Shift");
-				case INPUT_BTN_PLUS: return key("Enter");
-				case INPUT_BTN_MINUS: return key("Esc");
-				case INPUT_TRIGGER_L: return key("Z");
-				case INPUT_TRIGGER_R: return key("X");
-				default: return BindingTarget();
-			}
-		case PRESET_POINT:
-			switch(control)
-			{
-				case INPUT_BTN_A: return mouseBtn("left button");
-				case INPUT_BTN_B: return mouseBtn("right button");
-				case INPUT_BTN_PLUS: return key("Enter");
-				case INPUT_BTN_MINUS: return key("Esc");
-				default: return BindingTarget();
-			}
-		case PRESET_MENU:
-			switch(control)
-			{
-				case INPUT_BTN_A: return key("Enter");
-				case INPUT_BTN_B: return key("Esc");
-				case INPUT_BTN_X: return key("Y");
-				case INPUT_BTN_Y: return key("N");
-				case INPUT_BTN_PLUS: return key("Enter");
-				case INPUT_BTN_MINUS: return key("Esc");
-				default: return BindingTarget();
-			}
-		default: return BindingTarget();
-	}
-}
-
-const EmulatedMode kModes[3] =
-{
-	{ "Joystick", "One joystick with four buttons, for player 1", 1, 4, 4 },
-	{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2, 2 },
-	{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0, 0 },
-};
-
-// the controls the mapper has a source for: every button, the D-pad and the two stick clicks.
-// Not stick movement (it is the joystick's axes) and not Capture or Home.
-bool mapperHasSource(int control)
-{
-	switch(control)
-	{
-		case INPUT_BTN_A: case INPUT_BTN_B: case INPUT_BTN_X: case INPUT_BTN_Y:
-		case INPUT_TRIGGER_L: case INPUT_TRIGGER_R: case INPUT_TRIGGER_ZL: case INPUT_TRIGGER_ZR:
-		case INPUT_BTN_MINUS: case INPUT_BTN_PLUS:
-		case INPUT_BTN_UP: case INPUT_BTN_DOWN: case INPUT_BTN_LEFT: case INPUT_BTN_RIGHT:
-		case INPUT_THUMB_L | BIND_STICK_CLICK:
-		case INPUT_THUMB_R | BIND_STICK_CLICK:
-			return true;
-		default:
-			return false;
-	}
-}
+bool hasSource(int control) { return Pad_SourceOfControl(control) >= 0; }
 
 // ---- hardware: what the screens read from the console
 
@@ -491,51 +410,27 @@ class SampleControlsModel : public ControlsModel
 
 		PlayerInfo player(int i) const override
 		{
-			PlayerInfo p;
-			const PlayerHardware h = hardware().player(i);
-			p.connected = h.connected;
-			p.type = h.type;
-			p.battery = h.battery;
-			p.sideways = h.sideways;
-			p.stickClicks = h.stickClicks;
-			p.emulated = Emulated::NONE;
-			p.joystick = 0;
-			if(p.connected)
-			{
-				p.device = PadType_Name(p.type);
-				p.preset = kPresets[preset[i]].name;
-				// joystick n is player n (the mapper's stick n); players past the joysticks that exist use keys and mouse
-				if(i < kModes[mode].joysticks)
-				{
-					p.emulated = Emulated::JOYSTICK;
-					p.joystick = i + 1;
-					p.role = "Joystick " + std::string(1, (char)('0' + p.joystick));
-				}
-				else
-				{
-					p.emulated = Emulated::KEYS_MOUSE;
-					p.role = "Keys + mouse";
-				}
-			}
-			return p;
+			const bool ok = validPlayer(i);
+			return Controls_ComposePlayer(hardware().player(i), i, Emulated_Modes()[(size_t)mode],
+				ok ? Presets_All()[(size_t)preset[i]].name : std::string());
 		}
 
 		DeviceStatus devices() const override { return hardware().devices(); }
 
 		uint32_t held(int player) const override { return hardware().held(player); }
 
-		std::vector<EmulatedMode> emulatedModes() const override { return std::vector<EmulatedMode>(kModes, kModes + 3); }
+		std::vector<EmulatedMode> emulatedModes() const override { return Emulated_Modes(); }
 		int currentEmulated() const override { return mode; }
 		void setEmulated(int index) override
 		{
-			if(index >= 0 && index < 3 && index != mode)
+			if(index >= 0 && index < (int)Emulated_Modes().size() && index != mode)
 			{
 				mode = index;
 				dirty = true;
 			}
 		}
 
-		std::vector<PresetInfo> presets() const override { return std::vector<PresetInfo>(kPresets, kPresets + PRESET_COUNT); }
+		std::vector<PresetInfo> presets() const override { return Presets_All(); }
 		int currentPreset(int player) const override { return validPlayer(player) ? preset[player] : 0; }
 		void applyPreset(int player, int index) override
 		{
@@ -546,18 +441,18 @@ class SampleControlsModel : public ControlsModel
 			dirty = true;
 		}
 
-		bool supported(int control) const override { return mapperHasSource(control); }
+		bool supported(int control) const override { return hasSource(control); }
 
 		BindingTarget binding(int player, int control) const override
 		{
 			const std::map<int64_t, BindingTarget>::const_iterator it = edits.find(editKey(player, control));
 			if(it != edits.end())
 				return it->second;
-			return mapperHasSource(control) ? presetDefault(validPlayer(player) ? preset[player] : 0, control) : BindingTarget();
+			return hasSource(control) ? Presets_Target(validPlayer(player) ? preset[player] : 0, control) : BindingTarget();
 		}
 		BindingTarget presetBinding(int p, int control) const override
 		{
-			return p >= 0 && p < PRESET_COUNT && mapperHasSource(control) ? presetDefault(p, control) : BindingTarget();
+			return p >= 0 && p < PRESET_COUNT && hasSource(control) ? Presets_Target(p, control) : BindingTarget();
 		}
 		bool modified(int player) const override
 		{
@@ -567,10 +462,10 @@ class SampleControlsModel : public ControlsModel
 			return false;
 		}
 
-		BindingTarget defaultBinding(int player, int control) const override { return mapperHasSource(control) ? presetDefault(validPlayer(player) ? preset[player] : 0, control) : BindingTarget(); }
+		BindingTarget defaultBinding(int player, int control) const override { return hasSource(control) ? Presets_Target(validPlayer(player) ? preset[player] : 0, control) : BindingTarget(); }
 		void setBinding(int player, int control, const BindingTarget& t) override
 		{
-			if(!mapperHasSource(control) || binding(player, control) == t)
+			if(!hasSource(control) || binding(player, control) == t)
 				return;
 			edits[editKey(player, control)] = t;
 			dirty = true;
@@ -592,7 +487,7 @@ class SampleControlsModel : public ControlsModel
 				SetupInfo s;
 				s.name = saved[i].name;
 				s.program = saved[i].program;
-				s.emulated = kModes[saved[i].mode].name;
+				s.emulated = Emulated_Modes()[(size_t)saved[i].mode].name;
 				s.preset = presetSummary(saved[i].preset);
 				v.push_back(s);
 			}
@@ -638,24 +533,7 @@ class SampleControlsModel : public ControlsModel
 		std::string setupName() const override { return current; }
 		bool setupModified() const override { return dirty; }
 
-		std::vector<BindingTarget> suggestions(int player, int control) const override
-		{
-			std::vector<BindingTarget> out;
-			if(!mapperHasSource(control))
-				return out;
-			for(int p = 0; p < PRESET_COUNT; p++)
-			{
-				const BindingTarget t = presetDefault(p, control);
-				if(t.kind == TARGET::NONE || !usable(player, t))
-					continue;
-				bool seen = false;
-				for(size_t i = 0; i < out.size(); i++)
-					seen = seen || out[i] == t;
-				if(!seen)
-					out.push_back(t);
-			}
-			return out;
-		}
+		std::vector<BindingTarget> suggestions(int player, int control) const override { return Presets_Suggestions(*this, player, control); }
 
 		void beginCapture() override { pending.clear(); }
 		bool pollCapture(CaptureEvent& e) override
@@ -703,7 +581,7 @@ class SampleControlsModel : public ControlsModel
 				else if(p[i] != first)
 					return "Mixed";
 			}
-			return kPresets[first < 0 ? p[0] : first].name;
+			return Presets_All()[(size_t)(first < 0 ? p[0] : first)].name;
 		}
 
 		static const int64_t kStride = (int64_t)1 << 32;

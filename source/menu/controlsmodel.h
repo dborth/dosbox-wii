@@ -160,6 +160,14 @@ std::string Setup_CleanProgram(const std::string& typed);
 /** The name offered when saving: the running program without its extension ("KEEN4E"), or "My setup". */
 std::string Setup_SuggestedName(const std::string& program);
 
+/**
+ * A player slot as the screens show it: the console's hardware plus what DOS does with it under an emulated mode
+ * (joystick n is player n while n < mode.joysticks; everyone else is keys + mouse). Every model uses this, so the
+ * role wording is in one place. `preset` is the name shown for the player; the role and preset are empty when
+ * nothing is connected.
+ */
+PlayerInfo Controls_ComposePlayer(const PlayerHardware& hardware, int index, const EmulatedMode& mode, const std::string& preset);
+
 /** A key or mouse button the user just pressed while the chooser was listening. */
 struct CaptureEvent {
 	TARGET kind;	/**< KEY or MOUSE */

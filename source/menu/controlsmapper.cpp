@@ -1,0 +1,329 @@
+/****************************************************************************
+ * DOSBox Wii Home Menu
+ * Daryl Borth 2009-2026
+ * controlsmapper.cpp
+ ***************************************************************************/
+#include "controlsmapper.h"
+#include "controlspresets.h"
+#include <map>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+namespace {
+
+// The mapper's key events (key_<name>) for the catalog keys whose name is not simply the lower-cased one
+struct KeyName { const char * catalog; const char * event; };
+const KeyName kKeyNames[] =
+{
+	{ "Backspace", "bspace" }, { "Ctrl", "lctrl" }, { "Alt", "lalt" }, { "Shift", "lshift" },
+	{ "PgUp", "pageup" }, { "PgDn", "pagedown" }, { "Ins", "insert" }, { "Del", "delete" },
+	{ "[", "lbracket" }, { "]", "rbracket" },
+};
+
+// The catalog has one Ctrl, Alt and Shift; the mapper has a left and a right. Reading either gives the catalog key.
+const KeyName kKeyAliases[] = { { "Ctrl", "rctrl" }, { "Alt", "ralt" }, { "Shift", "rshift" } };
+
+// A catalog key's event name
+std::string keyEvent(const std::string& catalog)
+{
+	for(size_t i = 0; i < sizeof(kKeyNames) / sizeof(kKeyNames[0]); i++)
+		if(catalog == kKeyNames[i].catalog)
+			return std::string("key_") + kKeyNames[i].event;
+	std::string e = "key_";
+	for(size_t i = 0; i < catalog.size(); i++)
+		e += (char)((catalog[i] >= 'A' && catalog[i] <= 'Z') ? catalog[i] - 'A' + 'a' : catalog[i]);
+	return e;
+}
+
+// the event name -> catalog index of every key
+const std::map<std::string, int>& keyByEvent()
+{
+	static std::map<std::string, int> m;
+	if(m.empty())
+	{
+		const std::vector<std::string>& names = Catalog_Names(TARGET::KEY);
+		for(size_t i = 0; i < names.size(); i++)
+			m[keyEvent(names[i])] = (int)i;
+		for(size_t i = 0; i < sizeof(kKeyAliases) / sizeof(kKeyAliases[0]); i++)
+			m[std::string("key_") + kKeyAliases[i].event] = Catalog_Find(TARGET::KEY, kKeyAliases[i].catalog);
+	}
+	return m;
+}
+
+// Same order as Catalog_Names(): a target's `code` indexes it
+const char * const kMouseEvents[] = { "hand_mouseleft", "hand_mouseright", "hand_mousemid" };
+const char * const kHotkeyEvents[] = { "hand_cycleup", "hand_cycledown", "hand_incfskip", "hand_decfskip", "hand_swapimg", "hand_speedlock" };
+
+// Only the emulated joysticks 0 and 1 have buttons events (jbutton_<stick>_<button>), four buttons are offered
+const int kJoystickEventPlayers = 2;
+
+} // namespace
+
+bool Mapper_EventFor(int player, const BindingTarget& target, std::string& event)
+{
+	event.clear();
+	const std::vector<std::string>& names = Catalog_Names(target.kind);
+	switch(target.kind)
+	{
+		case TARGET::NONE:
+			return true;
+		case TARGET::KEY:
+			if(target.code < 0 || (size_t)target.code >= names.size())
+				return false;
+			event = keyEvent(names[(size_t)target.code]);
+			return true;
+		case TARGET::JOYSTICK:
+		{
+			if(player < 0 || player >= kJoystickEventPlayers || target.code < 0 || (size_t)target.code >= names.size())
+				return false;
+			char text[24];
+			snprintf(text, sizeof(text), "jbutton_%d_%d", player, target.code);
+			event = text;
+			return true;
+		}
+		case TARGET::MOUSE:
+			if(target.code < 0 || (size_t)target.code >= sizeof(kMouseEvents) / sizeof(kMouseEvents[0]))
+				return false;
+			event = kMouseEvents[target.code];
+			return true;
+		case TARGET::HOTKEY:
+			if(target.code < 0 || (size_t)target.code >= sizeof(kHotkeyEvents) / sizeof(kHotkeyEvents[0]))
+				return false;
+			event = kHotkeyEvents[target.code];
+			return true;
+	}
+	return false;
+}
+
+bool Mapper_TargetFor(int player, const std::string& event, BindingTarget& target)
+{
+	target = BindingTarget();
+	if(event.compare(0, 4, "key_") == 0)
+	{
+		const std::map<std::string, int>::const_iterator it = keyByEvent().find(event);
+		if(it == keyByEvent().end() || it->second < 0)
+			return false;
+		target = BindingTarget(TARGET::KEY, it->second);
+		return true;
+	}
+	if(event.compare(0, 8, "jbutton_") == 0)
+	{
+		int stick = -1, button = -1;
+		if(sscanf(event.c_str() + 8, "%d_%d", &stick, &button) != 2 || stick != player || button < 0 || (size_t)button >= Catalog_Names(TARGET::JOYSTICK).size())
+			return false;
+		target = BindingTarget(TARGET::JOYSTICK, button);
+		return true;
+	}
+	for(size_t i = 0; i < sizeof(kMouseEvents) / sizeof(kMouseEvents[0]); i++)
+		if(event == kMouseEvents[i])
+		{
+			target = BindingTarget(TARGET::MOUSE, (int)i);
+			return true;
+		}
+	for(size_t i = 0; i < sizeof(kHotkeyEvents) / sizeof(kHotkeyEvents[0]); i++)
+		if(event == kHotkeyEvents[i])
+		{
+			target = BindingTarget(TARGET::HOTKEY, (int)i);
+			return true;
+		}
+	return false;
+}
+
+MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& m)
+	: hw(hardware), mapper(m), dirty(false), failedSave(false)
+{
+	for(int i = 0; i < 4; i++)
+		presetOf[i] = -1;
+}
+
+// ---- players and devices
+
+PlayerInfo MapperControlsModel::player(int index) const
+{
+	const PlayerHardware h = hw.player(index);
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	return Controls_ComposePlayer(h, index, modes[(size_t)currentEmulated()],
+		h.connected && validPlayer(index) ? Presets_All()[(size_t)currentPreset(index)].name : std::string());
+}
+
+DeviceStatus MapperControlsModel::devices() const { return hw.devices(); }
+
+uint32_t MapperControlsModel::held(int player) const { return hw.held(player); }
+
+// ---- the emulated mode (read-only until D7c)
+
+std::vector<EmulatedMode> MapperControlsModel::emulatedModes() const { return Emulated_Modes(); }
+
+int MapperControlsModel::currentEmulated() const
+{
+	// 4axis is "Joystick" (also what 4axis_2, fcs and ch are shown as until D7c decides about them)
+	const std::string type = mapper.joystickType();
+	if(type == "none")
+		return 2;
+	if(type == "2axis")
+		return 1;
+	return 0;
+}
+
+void MapperControlsModel::setEmulated(int index) {}
+
+// ---- reading and writing a button
+
+BindingTarget MapperControlsModel::current(int player, int control) const
+{
+	const int source = Pad_SourceOfControl(control);
+	if(source < 0 || !validPlayer(player))
+		return BindingTarget();
+	const std::vector<std::string> events = mapper.events(player, source);
+	for(size_t i = 0; i < events.size(); i++)
+	{
+		BindingTarget t;
+		if(Mapper_TargetFor(player, events[i], t))
+			return t;
+	}
+	return BindingTarget();
+}
+
+BindingTarget MapperControlsModel::effective(int player, const BindingTarget& t) const
+{
+	return t.kind == TARGET::JOYSTICK && !usable(player, t) ? BindingTarget() : t;
+}
+
+bool MapperControlsModel::write(int player, int control, const BindingTarget& t)
+{
+	const int source = Pad_SourceOfControl(control);
+	std::string event;
+	if(source < 0 || !validPlayer(player) || !Mapper_EventFor(player, t, event))
+		return false;
+	if(!event.empty() && !mapper.eventExists(event.c_str()))
+		return false;
+	return mapper.setEvent(player, source, event.c_str());
+}
+
+void MapperControlsModel::saved()
+{
+	dirty = true;
+	failedSave = !mapper.save();
+}
+
+bool MapperControlsModel::supported(int control) const { return Pad_SourceOfControl(control) >= 0; }
+
+BindingTarget MapperControlsModel::binding(int player, int control) const { return current(player, control); }
+
+void MapperControlsModel::setBinding(int player, int control, const BindingTarget& t)
+{
+	if(!validPlayer(player) || !supported(control))
+		return;
+	// a joystick button the joystick does not have would do nothing: it is not offered, and not taken
+	if(t.kind == TARGET::JOYSTICK && !usable(player, t))
+		return;
+	if(effective(player, current(player, control)) == t)
+		return;
+	if(write(player, control, t))
+		saved();
+}
+
+// ---- presets
+
+std::vector<PresetInfo> MapperControlsModel::presets() const { return Presets_All(); }
+
+BindingTarget MapperControlsModel::presetBinding(int preset, int control) const { return Presets_Target(preset, control); }
+
+int MapperControlsModel::differences(int player, int preset) const
+{
+	int n = 0;
+	for(int s = 0; s < PAD_SOURCE_COUNT; s++)
+	{
+		const int control = Pad_ControlOfSource(s);
+		if(effective(player, current(player, control)) != effective(player, Presets_Target(preset, control)))
+			n++;
+	}
+	return n;
+}
+
+int MapperControlsModel::currentPreset(int player) const
+{
+	if(!validPlayer(player))
+		return 0;
+	if(presetOf[player] < 0)
+	{
+		// the mapper file does not record a preset: take the closest one the player can use
+		int best = -1, bestDiff = 0;
+		for(int p = 0; p < PRESET_COUNT; p++)
+		{
+			if(Presets_All()[(size_t)p].needsJoystick && joystickButtons(player) == 0)
+				continue;
+			const int d = differences(player, p);
+			if(best < 0 || d < bestDiff)
+			{
+				best = p;
+				bestDiff = d;
+			}
+		}
+		presetOf[player] = best < 0 ? PRESET_ARROWS : best;
+	}
+	return presetOf[player];
+}
+
+// Gives every button of a player what a preset gives it, limited to what the joystick has. True if any changed.
+bool MapperControlsModel::writePreset(int player, int preset)
+{
+	bool changed = false;
+	for(int s = 0; s < PAD_SOURCE_COUNT; s++)
+	{
+		const int control = Pad_ControlOfSource(s);
+		const BindingTarget want = effective(player, Presets_Target(preset, control));
+		if(effective(player, current(player, control)) != want && write(player, control, want))
+			changed = true;
+	}
+	return changed;
+}
+
+void MapperControlsModel::applyPreset(int player, int index)
+{
+	if(!validPlayer(player) || index < 0 || index >= PRESET_COUNT)
+		return;
+	const bool changed = writePreset(player, index);
+	presetOf[player] = index;
+	if(changed)
+		saved();
+	dirty = true;
+}
+
+bool MapperControlsModel::modified(int player) const
+{
+	return validPlayer(player) && differences(player, currentPreset(player)) > 0;
+}
+
+BindingTarget MapperControlsModel::defaultBinding(int player, int control) const
+{
+	if(!validPlayer(player) || !supported(control))
+		return BindingTarget();
+	return effective(player, Presets_Target(currentPreset(player), control));
+}
+
+void MapperControlsModel::resetBindings(int player)
+{
+	if(!modified(player))
+		return;
+	if(writePreset(player, currentPreset(player)))
+		saved();
+}
+
+std::vector<BindingTarget> MapperControlsModel::suggestions(int player, int control) const
+{
+	return Presets_Suggestions(*this, player, control);
+}
+
+// ---- stand-ins (D7d)
+
+void MapperControlsModel::beginCapture() {}
+bool MapperControlsModel::pollCapture(CaptureEvent& event) { return false; }
+
+std::vector<SetupInfo> MapperControlsModel::setups() const { return std::vector<SetupInfo>(); }
+bool MapperControlsModel::saveSetup(const std::string& name, const std::string& program) { return false; }
+bool MapperControlsModel::loadSetup(int index) { return false; }
+std::string MapperControlsModel::runningProgram() const { return std::string(); }
+std::string MapperControlsModel::setupName() const { return std::string(); }
+bool MapperControlsModel::setupModified() const { return dirty; }
