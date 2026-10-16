@@ -26,12 +26,15 @@ struct Ring {
 
 typedef std::function<Ring(float)> RingFn; //offset from the shape's edge (+ outward) -> ring
 
+const float kCurveMargin = 0.5f;
+
 //Number of segments for a quarter circle of radius r within the tolerance
 int arcCount(float radius, float tol)
 {
+	tol *= kCurveMargin;
 	if(radius <= tol)
 		return 1;
-	float ang = acosf(clampf(1.0f - tol / radius, -1.0f, 1.0f));
+	float ang = 2.0f * acosf(clampf(1.0f - tol / radius, -1.0f, 1.0f));
 	if(ang < 1e-4f)
 		return 24;
 	return (int)clampf(ceilf((kPi * 0.5f) / ang), 2.0f, 24.0f);
@@ -40,9 +43,10 @@ int arcCount(float radius, float tol)
 //Number of segments for a full circle/ellipse of the given largest radius
 int circleCount(float radius, float tol)
 {
+	tol *= kCurveMargin;
 	if(radius <= tol)
 		return 8;
-	float ang = acosf(clampf(1.0f - tol / radius, -1.0f, 1.0f));
+	float ang = 2.0f * acosf(clampf(1.0f - tol / radius, -1.0f, 1.0f));
 	if(ang < 1e-4f)
 		return 96;
 	return (int)clampf(ceilf((2.0f * kPi) / ang), 12.0f, 96.0f);
