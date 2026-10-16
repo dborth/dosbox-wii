@@ -34,6 +34,12 @@ const char * PadType_Name(PadType t);
 
 /** The kind of controller a channel's pad data describes (NONE when nothing is connected). */
 PadType PadType_FromPad(const InputPadData& pad);
+/**
+ * Every device on a channel, one entry per controller the player could be holding, the one PadType_FromPad names
+ * first. A Wiimote with a Nunchuk or Classic on it is one device (the extension), not two; a GameCube pad or the
+ * GamePad sharing the channel is another. Empty when nothing is connected.
+ */
+std::vector<PadType> PadDevices_FromPad(const InputPadData& pad);
 /** Battery percent for the pad of that kind, or -1 when it has none to report (GameCube, nothing connected). */
 int PadBattery(const InputPadData& pad, PadType type);
 
@@ -80,7 +86,8 @@ enum class Emulated {
 /** What the Controllers screen shows for one of the four player slots. A slot is a HAL channel: player n is controller[n]. */
 struct PlayerInfo {
 	bool connected;
-	PadType type;
+	PadType type;			/**< The primary device: the first of `devices` */
+	std::vector<PadType> devices;	/**< Every device on the channel, primary first. The setup screen draws a rail of them when there are two or more; empty when `connected` is false */
 	std::string device;		/**< "Wiimote + Nunchuk" */
 	int battery;			/**< Percent; -1 for wired or unknown */
 	std::string role;		/**< What the player does in DOS, in words: "Joystick 1", "Keys + mouse" (for the hint line) */
@@ -104,7 +111,8 @@ struct DeviceStatus {
 struct PlayerHardware {
 	bool connected = false;
 	PadType type = PadType::NONE;
-	int battery = -1;			/**< Percent; -1 for none to show */
+	std::vector<PadType> devices;	/**< Every device on the channel, primary (`type`) first; may be left empty when there is just the one */
+	int battery = -1;			/**< Percent; -1 for none to show (the primary device's) */
 	bool sideways = false;		/**< A lone Wiimote held sideways */
 	bool stickClicks = false;	/**< The driver reports L3 / R3 */
 };
@@ -271,5 +279,7 @@ void SampleControls_PushCapture(const CaptureEvent& event);
 void SampleControls_SetHardware(int player, PadType type, bool sideways = false, bool stickClicks = false);
 /** Puts the sample players back to their usual hardware. */
 void SampleControls_ResetHardware();
+/** Makes a sample player hold several devices on one channel (a Wiimote and a GameCube pad), primary first; the first sets the type. */
+void SampleControls_SetDevices(int player, const std::vector<PadType>& devices, bool sideways = false, bool stickClicks = false);
 
 #endif

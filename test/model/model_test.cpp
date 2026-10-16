@@ -917,6 +917,61 @@ static void testPadTypeFromHal()
 	CHECK(PadBattery(pad, PadType::NONE) == -1);
 }
 
+// the setup screen's device rail: the devices on a channel, primary first
+static void testDeviceList()
+{
+	typedef std::vector<PadType> List;
+	CHECK(PadDevices_FromPad(InputPadData()).empty());
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_WIIMOTE })) == List({ PadType::WIIMOTE }));
+	// an extension is the Wiimote it rides on, not a second device
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_NUNCHUK })) == List({ PadType::WIIMOTE_NUNCHUK }));
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_CLASSIC })) == List({ PadType::CLASSIC }));
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_GAMECUBE })) == List({ PadType::WIIMOTE, PadType::GAMECUBE }));
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_WIIMOTE, INPUT_HW_NUNCHUK, INPUT_HW_GAMECUBE })) == List({ PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE }));
+	CHECK(PadDevices_FromPad(padWith({ INPUT_HW_DRC, INPUT_HW_WIIMOTE })) == List({ PadType::WIIMOTE, PadType::GAMEPAD }));
+	// the first is always the one PadType_FromPad names
+	const int hws[] = { INPUT_HW_WIIMOTE, INPUT_HW_NUNCHUK, INPUT_HW_CLASSIC, INPUT_HW_WUPC, INPUT_HW_GAMECUBE, INPUT_HW_DRC };
+	for(int mask = 1; mask < (1 << 6); mask++)
+	{
+		std::vector<int> on;
+		for(int b = 0; b < 6; b++)
+			if(mask & (1 << b))
+				on.push_back(hws[b]);
+		InputPadData pad;
+		for(size_t i = 0; i < on.size(); i++)
+			pad.hw_connected[on[i]] = true;
+		const List list = PadDevices_FromPad(pad);
+		CHECK(!list.empty() && list[0] == PadType_FromPad(pad));
+		for(size_t i = 0; i < list.size(); i++)
+			for(size_t k = i + 1; k < list.size(); k++)
+				CHECK(list[i] != list[k]);
+	}
+
+	// the model hands the screen the list, and a lone controller lists itself
+	Controls_SetModel(nullptr);
+	SampleControls_ResetHardware();
+	ControlsModel& m = Controls();
+	CHECK(m.player(0).devices == List({ PadType::WIIMOTE_NUNCHUK }));
+	CHECK(m.player(3).devices.empty() && !m.player(3).connected);
+	SampleControls_SetDevices(0, { PadType::WIIMOTE, PadType::GAMECUBE });
+	const PlayerInfo p = m.player(0);
+	CHECK(p.connected && p.type == PadType::WIIMOTE && p.devices == List({ PadType::WIIMOTE, PadType::GAMECUBE }));
+	// each device gets its own drawing; one past the list falls back to the primary
+	CHECK(Controllers_Profile(p, 0).layout == &GuiWiimoteControllerLayout());
+	CHECK(Controllers_Profile(p, 1).layout != Controllers_Profile(p, 0).layout);
+	CHECK_EQ(Controllers_Profile(p, 1).name, PadType_Name(PadType::GAMECUBE));
+	CHECK(Controllers_Profile(p, -1).layout == Controllers_Profile(p, 0).layout);
+	CHECK(Controllers_Profile(p, 2).layout == Controllers_Profile(p, 0).layout);
+	// what is drawn never touches a binding: they belong to the player
+	const BindingTarget before = m.binding(0, INPUT_BTN_A);
+	(void)Controllers_Profile(p, 1);
+	CHECK(m.binding(0, INPUT_BTN_A) == before);
+	// plain hardware set afterwards drops the list
+	SampleControls_SetHardware(0, PadType::CLASSIC, false, false);
+	CHECK(m.player(0).devices == List({ PadType::CLASSIC }));
+	SampleControls_ResetHardware();
+}
+
 static void testDpadForDos()
 {
 	const uint32_t dpad = INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT;
@@ -1038,6 +1093,7 @@ int main()
 	testProfilesAreConsistent();
 	testProfilesPerHardware();
 	testPadTypeFromHal();
+	testDeviceList();
 	testDpadForDos();
 	testHardwareSeam();
 	testSetupState();

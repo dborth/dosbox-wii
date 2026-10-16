@@ -294,10 +294,11 @@ ControllerProfile Controllers_Profile(PadType type, const ProfileOptions& option
 	}
 }
 
-ControllerProfile Controllers_Profile(const PlayerInfo& player)
+ControllerProfile Controllers_Profile(const PlayerInfo& player, int shown)
 {
 	ProfileOptions options;
 	options.sideways = player.sideways;
 	options.stickClicks = player.stickClicks;
-	return Controllers_Profile(player.type, options);
+	const PadType type = shown >= 0 && (size_t)shown < player.devices.size() ? player.devices[(size_t)shown] : player.type;
+	return Controllers_Profile(type, options);
 }

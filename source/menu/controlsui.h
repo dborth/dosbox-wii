@@ -61,8 +61,18 @@ class UiBatteryBar : public GuiElement
 class ControllerConfigView : public GuiOverlay
 {
 	public:
-		ControllerConfigView(int player, GuiSound * soundOver);
+		/** `show` is the device to draw when the player holds several (PadType::NONE, or one that is not there: the primary one). */
+		ControllerConfigView(int player, GuiSound * soundOver, PadType show = PadType::NONE);
 		GuiButton& backButton() { return *backBtn; }
+		/**
+		 * The device the user chose on the rail since the last call (then forgotten), PadType::NONE if none. The screen
+		 * is built for one device, so the caller builds a new view that shows it.
+		 */
+		PadType takeFlip() { const PadType t = flipRequest; flipRequest = PadType::NONE; return t; }
+		/** The devices on the rail, primary first; fewer than two means no rail. */
+		const std::vector<PadType>& devices() const { return deviceList; }
+		/** The device drawn (the primary one unless another was chosen). */
+		PadType shownType() const { return deviceList.empty() ? padType : deviceList[shownIndex]; }
 		/** Which way the player switcher was clicked since the last call (-1 previous, +1 next, 0 neither). */
 		int takeSwitch() { const int r = switchRequest; switchRequest = 0; return r; }
 		/** Whether the screen needs building again: the controller in the slot came or went, changed kind, or the number of connected players changed. */
@@ -88,7 +98,10 @@ class ControllerConfigView : public GuiOverlay
 
 		UiScope ui;
 		int playerSlot;
-		PadType padType;
+		PadType padType;		// the slot's primary device (what outOfDate() compares), which is not always the one drawn
+		std::vector<PadType> deviceList;
+		size_t shownIndex;
+		PadType flipRequest;
 		bool sideways;
 		GuiControllerView * view;
 		std::vector<GuiCard*> rowCards;

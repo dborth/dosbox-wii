@@ -225,6 +225,32 @@ int main(int argc, char ** argv)
 	}
 	SampleControls_ResetHardware();
 	SampleControls_SetHeld(0);
+	// two devices on one channel: the rail of icons, with each of them drawn
+	{
+		struct RailScene { const char * name; PadType primary, second, show; bool clicks; uint32_t held; };
+		const RailScene rails[] = {
+			{ "rail_nunchuk_gamecube", PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE, PadType::NONE, false, 0 },
+			{ "rail_nunchuk_gamecube_flipped", PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE, PadType::GAMECUBE, false, INPUT_BTN_A | INPUT_TRIGGER_ZR },
+			{ "rail_wiimote_gamecube", PadType::WIIMOTE, PadType::GAMECUBE, PadType::NONE, false, 0 },
+			{ "rail_classic_wiimote_gc", PadType::CLASSIC, PadType::GAMECUBE, PadType::NONE, false, 0 },
+			{ "rail_gamepad_wiimote", PadType::GAMEPAD, PadType::WIIMOTE, PadType::NONE, true, 0 },
+		};
+		for(size_t i = 0; i < sizeof(rails) / sizeof(rails[0]); i++)
+		{
+			Controls_SetModel(nullptr);
+			SampleControls_ResetHardware();
+			SampleControls_SetDevices(0, { rails[i].primary, rails[i].second }, false, rails[i].clicks);
+			Controls().setEmulated(0);
+			Controls().applyPreset(0, 1);
+			SampleControls_SetHeld(rails[i].held);
+			Screen s;
+			ControllerConfigView view(0, nullptr, rails[i].show);
+			s.page.append(&view);
+			snap(rails[i].name, s.root, 0, 0, 0);
+		}
+		SampleControls_ResetHardware();
+		SampleControls_SetHeld(0);
+	}
 	// the chooser on the sample model: (name, player, emulated mode, control, what it does now)
 	struct ChooserScene { const char * name; int mode; int preset; int control; BindingTarget now; };
 	const ChooserScene choosers[] = {
@@ -543,6 +569,39 @@ int main(int argc, char ** argv)
 		none.players[2].connected = true; none.players[2].type = PadType::GAMECUBE;	// one appears
 		EXPECT(view.outOfDate());
 		Controls_SetModel(nullptr);
+	}
+	{
+		// the rail: which device is drawn, when it exists, and when the screen asks to be built again
+		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+		SampleControls_SetDevices(0, { PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE });
+		Screen s;
+		ControllerConfigView view(0, nullptr);
+		s.page.append(&view);
+		EXPECT(view.devices().size() == 2 && view.shownType() == PadType::WIIMOTE_NUNCHUK);	// the primary one by default
+		EXPECT(view.takeFlip() == PadType::NONE && !view.outOfDate());
+		{
+			ControllerConfigView gc(0, nullptr, PadType::GAMECUBE);
+			EXPECT(gc.shownType() == PadType::GAMECUBE);
+			EXPECT(!gc.outOfDate());															// drawing the second device is not a stale screen
+			ControllerConfigView gone(0, nullptr, PadType::CLASSIC);							// not on the channel: the primary one
+			EXPECT(gone.shownType() == PadType::WIIMOTE_NUNCHUK);
+		}
+		const PlayerInfo info = Controls().player(0);
+		EXPECT(std::string(Controllers_Profile(info, 0).name) == PadType_Name(PadType::WIIMOTE_NUNCHUK));
+		EXPECT(std::string(Controllers_Profile(info, 1).name) == PadType_Name(PadType::GAMECUBE));
+		EXPECT(std::string(Controllers_Profile(info, 9).name) == PadType_Name(PadType::WIIMOTE_NUNCHUK));	// past the list: the primary one
+		SampleControls_SetDevices(0, { PadType::WIIMOTE_NUNCHUK });								// the GameCube pad goes
+		EXPECT(view.outOfDate());
+		SampleControls_SetDevices(0, { PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE, PadType::GAMEPAD });	// one more arrives
+		EXPECT(view.outOfDate());
+		SampleControls_SetDevices(0, { PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE });
+		EXPECT(!view.outOfDate());
+		// one device: no rail
+		SampleControls_SetDevices(0, { PadType::CLASSIC });
+		ControllerConfigView single(0, nullptr);
+		EXPECT(single.devices().size() == 1 && single.shownType() == PadType::CLASSIC);
+		SampleControls_ResetHardware();
 	}
 	if(failures)
 		return 1;

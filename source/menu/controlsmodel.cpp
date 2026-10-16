@@ -47,6 +47,25 @@ PadType PadType_FromPad(const InputPadData& pad)
 	return PadType::NONE;
 }
 
+std::vector<PadType> PadDevices_FromPad(const InputPadData& pad)
+{
+	// the same order as PadType_FromPad, so the first entry is the one it names; the Wiimote family counts once
+	std::vector<PadType> list;
+	if(pad.hw_connected[INPUT_HW_WUPC])
+		list.push_back(PadType::WIIU_PRO);
+	if(pad.hw_connected[INPUT_HW_CLASSIC])
+		list.push_back(PadType::CLASSIC);
+	else if(pad.hw_connected[INPUT_HW_NUNCHUK])
+		list.push_back(PadType::WIIMOTE_NUNCHUK);
+	else if(pad.hw_connected[INPUT_HW_WIIMOTE])
+		list.push_back(PadType::WIIMOTE);
+	if(pad.hw_connected[INPUT_HW_GAMECUBE])
+		list.push_back(PadType::GAMECUBE);
+	if(pad.hw_connected[INPUT_HW_DRC])
+		list.push_back(PadType::GAMEPAD);
+	return list;
+}
+
 int PadBattery(const InputPadData& pad, PadType type)
 {
 	switch(type)
@@ -180,6 +199,12 @@ PlayerInfo Controls_ComposePlayer(const PlayerHardware& h, int index, const Emul
 	PlayerInfo p;
 	p.connected = h.connected;
 	p.type = h.type;
+	if(p.connected)
+	{
+		p.devices = h.devices;
+		if(p.devices.empty())
+			p.devices.push_back(h.type);
+	}
 	p.battery = h.battery;
 	p.sideways = h.sideways;
 	p.stickClicks = h.stickClicks;
@@ -333,6 +358,7 @@ class SampleHardware : public ControlsHardware
 			if(i >= 0 && i < 4 && over[i].set)
 			{
 				h.type = over[i].type;
+				h.devices = over[i].devices;
 				h.connected = h.type != PadType::NONE;
 				h.sideways = over[i].sideways;
 				h.stickClicks = over[i].stickClicks;
@@ -371,6 +397,14 @@ class SampleHardware : public ControlsHardware
 			over[player].type = type;
 			over[player].sideways = sideways;
 			over[player].stickClicks = stickClicks;
+			over[player].devices.clear();
+		}
+		void setDevices(int player, const std::vector<PadType>& list, bool sideways, bool stickClicks)
+		{
+			if(list.empty() || player < 0 || player >= 4)
+				return;
+			setHardware(player, list[0], sideways, stickClicks);
+			over[player].devices = list;
 		}
 		void resetHardware()
 		{
@@ -379,7 +413,7 @@ class SampleHardware : public ControlsHardware
 		}
 
 	private:
-		struct Override { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; };
+		struct Override { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; std::vector<PadType> devices; };
 		Override over[4];
 		uint32_t heldBits;
 };
@@ -635,6 +669,11 @@ void SampleControls_PushCapture(const CaptureEvent& event)
 void SampleControls_SetHardware(int player, PadType type, bool sideways, bool stickClicks)
 {
 	sampleHardware()->setHardware(player, type, sideways, stickClicks);
+}
+
+void SampleControls_SetDevices(int player, const std::vector<PadType>& devices, bool sideways, bool stickClicks)
+{
+	sampleHardware()->setDevices(player, devices, sideways, stickClicks);
 }
 
 void SampleControls_ResetHardware()

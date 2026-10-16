@@ -129,6 +129,29 @@ std::string ClipName(const std::string& name, size_t most)
 	return name.size() <= most ? name : name.substr(0, most - 2) + "..";
 }
 
+// ---- device icons for the rail
+
+GuiImage& iconImage(UiScope& ui, const unsigned char * png)
+{
+	GuiImageData& data = ui.own<GuiImageData>(png);
+	return ui.make<GuiImage>(&data);
+}
+
+const unsigned char * padIcon(PadType t)
+{
+	switch(t)
+	{
+		case PadType::WIIMOTE: return icon_wiimote_png;
+		case PadType::WIIMOTE_NUNCHUK: return icon_wiimote_nunchuk_png;
+		case PadType::CLASSIC: return icon_classic_png;
+		case PadType::WIIU_PRO: return icon_wiiu_pro_png;
+		case PadType::GAMECUBE: return icon_gamecube_png;
+		case PadType::GAMEPAD: return icon_gamepad_png;
+		default: return icon_wiiu_pro_png;
+	}
+}
+
+
 } // namespace
 
 // ---- controller setup
@@ -154,7 +177,9 @@ bool ControllerConfigView::outOfDate() const
 {
 	const PlayerInfo now = Controls().player(playerSlot);
 	// a different controller, a Wiimote turned on its side (another drawing), or a different number of players (the switcher)
-	return (now.connected ? now.type : PadType::NONE) != padType || (now.connected && now.sideways) != sideways || ConnectedCount() != shownPlayers;
+	// (a device joining or leaving the channel changes the rail, and a flipped-to device leaving the drawing)
+	return (now.connected ? now.type : PadType::NONE) != padType || (now.connected && now.sideways) != sideways || ConnectedCount() != shownPlayers ||
+		(now.connected ? now.devices : std::vector<PadType>()) != deviceList;
 }
 
 // A list row: the control's icon and what it does. The control's name is on the hint line while the row is
@@ -216,8 +241,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	return row;
 }
 
-ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
-	playerSlot(player), padType(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr)
+ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, PadType show) :
+	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -225,6 +250,11 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 
 	const PlayerInfo info = Controls().player(player);
 	padType = info.connected ? info.type : PadType::NONE;
+	if(info.connected)
+		deviceList = info.devices;
+	for(size_t i = 0; i < deviceList.size(); i++)
+		if(deviceList[i] == show)
+			shownIndex = i;
 	sideways = info.connected && info.sideways;
 	const bool empty = padType == PadType::NONE;
 	const bool several = shownPlayers >= 2;
@@ -283,31 +313,68 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 	}
 	else
 	{
-		const ControllerProfile profile = Controllers_Profile(info);
+		const ControllerProfile profile = Controllers_Profile(info, (int)shownIndex);
 		view = &ui.controllerView(*profile.layout, profile.scale);
 		// the shoulder buttons are too small to carry legible text; their rows name them
 		view->setLabelFilter([](int id){ return id != INPUT_TRIGGER_L && id != INPUT_TRIGGER_R && id != INPUT_TRIGGER_ZL && id != INPUT_TRIGGER_ZR; });
 		// lit while held, so pressing a button on the controller shows which control it is
 		view->setLit([pl](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
 		const int sideW = 168;
+		// Two or more devices on the channel (a Wiimote and a GameCube pad): a rail of their icons down the left, the
+		// one drawn lit, A on another draws that one. It takes room from the left rows only where the drawing leaves none.
+		const bool rail = deviceList.size() > 1;
+		const int railW = 46;
+		int leftW = sideW;
+		if(rail)
+		{
+			const int drawW = (int)(profile.layout->width * profile.scale);
+			const int over = railW + 4 + 2 * sideW + 8 + drawW - MENU_PAGE_CONTENT_W;
+			leftW = std::max(110, sideW - std::max(0, over));
+		}
 		const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
 
 		GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
-		// which controller this is, and what it does in DOS (with its battery, when it reports one)
-		GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
-		deviceName.setMaxWidth(sideW);
-		left.add(deviceName);
+		// which controller this is, and what it does in DOS (with its battery, when it reports one). With a rail the
+		// icons say which it is, and the hint line names the one drawn while the rail has the selection.
+		if(!rail)
+		{
+			GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
+			deviceName.setMaxWidth(sideW);
+			left.add(deviceName);
+		}
 		UiBatteryBar& battery = ui.make<UiBatteryBar>(36, 8);
-		ui.bind([&battery, pl]{
+		// the battery is the primary device's: not shown beside another device's drawing
+		const bool primaryDrawn = shownIndex == 0;
+		ui.bind([&battery, pl, primaryDrawn]{
 			const PlayerInfo p = Controls().player(pl);
 			battery.setLevel(p.battery);
-			battery.setVisible(p.connected && p.battery >= 0);
+			battery.setVisible(p.connected && p.battery >= 0 && primaryDrawn);
 		});
 		GuiLabel& role = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).accent().bind([pl]{ return Controls().player(pl).role; });
-		role.setMaxWidth(sideW - 50);
-		left.add(ui.row().size(sideW, 0).gap(8).align(LAYOUT_ALIGN::CENTRE).addSpace().add(battery).add(role));
+		role.setMaxWidth(leftW - 50);
+		left.add(ui.row().size(leftW, 0).gap(8).align(LAYOUT_ALIGN::CENTRE).addSpace().add(battery).add(role));
 		for(size_t i = 0; i < profile.left.size(); i++)
-			left.add(bindingRow(profile.left[i], Side::LEFT, sideW));
+			left.add(bindingRow(profile.left[i], Side::LEFT, leftW));
+		GuiLayout * railColumn = nullptr;
+		if(rail)
+		{
+			railColumn = &ui.column().gap(4);
+			for(size_t i = 0; i < deviceList.size(); i++)
+			{
+				const PadType type = deviceList[i];
+				const bool active = i == shownIndex;
+				GuiImage& img = iconImage(ui, padIcon(type));
+				if(!active)
+					img.setAlpha(110);
+				GuiCard& tile = ui.card();
+				tile.size(railW, railW).style(MenuBarButtonStyle(active)).corners(GuiCorners(9.0f)).pad(3, 3);
+				tile.onFocus([this, type, active]{ status = GuiFormat(active ? "Showing %s" : "A shows the %s", PadType_Name(type)); });
+				if(!active)
+					tile.onClick([this, type]{ flipRequest = type; });
+				tile.add(ui.overlay().size(40, 40).add(img));
+				railColumn->add(tile);
+			}
+		}
 		GuiLayout& right = ui.column().gap(2);
 		for(size_t i = 0; i < profile.right.size(); i++)
 			right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
@@ -337,7 +404,10 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver) :
 		});
 
 		f.content->gap(6);
-		f.content->add(ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE).add(left).add(*view).add(right));
+		GuiLayout& top = ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE);
+		if(railColumn)
+			top.add(*railColumn);
+		f.content->add(top.add(left).add(*view).add(right));
 		f.content->add(groups);
 	}
 
@@ -1091,6 +1161,9 @@ std::string SetupFlow()
 	}
 }
 
+// The device each slot's setup screen last drew, so a choice on the rail survives a rebuild or coming back to the screen
+PadType shownDevice[4] = { PadType::NONE, PadType::NONE, PadType::NONE, PadType::NONE };
+
 void ConfigScreen(int player)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
@@ -1100,7 +1173,7 @@ void ConfigScreen(int player)
 	// The screen is built for one controller. When the player is switched, or a controller comes or goes, it is built again.
 	while(!leave)
 	{
-		ControllerConfigView view(player, &over);
+		ControllerConfigView view(player, &over, shownDevice[player & 3]);
 		ScreenWindow screen(view);
 
 		ProfileRow row;
@@ -1116,6 +1189,12 @@ void ConfigScreen(int player)
 			if(sw != 0)
 			{
 				player = NextPlayer(view.player(), sw);
+				break;
+			}
+			const PadType flip = view.takeFlip();
+			if(flip != PadType::NONE)
+			{
+				shownDevice[view.player() & 3] = flip;
 				break;
 			}
 			if(view.outOfDate())

@@ -27,6 +27,7 @@ class HalControlsHardware : public ControlsHardware
 			const InputPadData& pad = controller[index]->getPadData();
 			h.type = PadType_FromPad(pad);
 			h.connected = h.type != PadType::NONE;
+			h.devices = PadDevices_FromPad(pad);
 			h.battery = PadBattery(pad, h.type);
 			// only a lone Wiimote is held sideways (the driver clears the flag for anything with an extension)
 			h.sideways = h.type == PadType::WIIMOTE && controller[index]->isSideways();

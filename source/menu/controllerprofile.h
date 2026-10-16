@@ -58,7 +58,11 @@ struct ProfileOptions {
  */
 ControllerProfile Controllers_Profile(PadType type, const ProfileOptions& options = ProfileOptions());
 
-/** The same for a player slot, taking the orientation and the click support from what the model reports. */
-ControllerProfile Controllers_Profile(const PlayerInfo& player);
+/**
+ * The same for a player slot, taking the orientation and the click support from what the model reports. `shown` is
+ * which of the player's devices to draw (an index into PlayerInfo::devices); the primary one when it is out of range
+ * or the player lists none.
+ */
+ControllerProfile Controllers_Profile(const PlayerInfo& player, int shown = 0);
 
 #endif
