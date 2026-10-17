@@ -325,6 +325,16 @@ static inline GuiShapeStyle MenuPageCardStyle()
 		.shadow(14.0f, MenuRGBA(0, 0, 0, 140), 0.0f, 4.0f));
 }
 
+//!A popover: one flat light panel with a fine outline and a soft shadow, lifting it off the dimmed screen under it
+static inline GuiShapeStyle MenuPopoverStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	return GuiShapeStyle(GuiPaint()
+		.color(p.surfaceRaised)
+		.stroke(1.5f, p.outlineStrong)
+		.shadow(22.0f, MenuRGBA(0, 0, 0, 120), 0.0f, 6.0f));
+}
+
 //!A flat tinted area that groups things on a card (a player, a section of buttons)
 static inline GuiShapeStyle MenuSectionStyle()
 {

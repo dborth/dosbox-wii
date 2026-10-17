@@ -306,117 +306,157 @@ int main(int argc, char ** argv)
 		snap(choosers[i].name, s.root);
 	}
 
-	// the pickers on the sample model
+	// Every list is a popover over the setup screen, beside the button that opened it; the screen under it is dimmed
+	// and, for presets, previews the row under the cursor
 	{
-		struct PickerScene { const char * name; int mode; int preset; bool edited; bool presets; };
-		const PickerScene pickers[] = {
-			{ "picker_preset", 0, 1, true, true },			// edited buttons: choosing asks first
-			{ "picker_preset_two", 1, 0, false, true },		// two joysticks: Compatible shows what it cannot do
-			{ "picker_preset_nojoy", 2, 1, false, true },	// no joystick: Compatible is not offered
-			{ "picker_emulated", 1, 1, false, false },
+		enum Kind { PRESET, EMULATED, SETUP, LOAD, ATTACH };
+		struct PopScene { const char * name; int hw; Kind kind; bool edited; int mode; int preset; int pick; };
+		const PopScene scenes[] = {
+			{ "modal_preset", (int)PadType::CLASSIC, PRESET, false, 0, 1, 2 },
+			{ "modal_preset_edited", (int)PadType::GAMECUBE, PRESET, true, 0, 1, 4 },
+			{ "modal_emulated", (int)PadType::WIIMOTE, EMULATED, false, 0, 1, -1 },
+			{ "picker_preset_two", (int)PadType::CLASSIC, PRESET, false, 1, 0, 1 },
+			{ "picker_preset_nojoy", (int)PadType::CLASSIC, PRESET, false, 2, 1, -1 },
+			{ "picker_emulated", (int)PadType::GAMECUBE, EMULATED, false, 1, 1, 1 },
+			{ "picker_setup", (int)PadType::CLASSIC, SETUP, false, 0, 1, -1 },
+			{ "picker_load", (int)PadType::CLASSIC, LOAD, false, 0, 1, 1 },
+			{ "picker_attach", (int)PadType::CLASSIC, ATTACH, false, 0, 1, -1 },
 		};
-		for(size_t i = 0; i < sizeof(pickers) / sizeof(pickers[0]); i++)
+		for(size_t i = 0; i < sizeof(scenes) / sizeof(scenes[0]); i++)
 		{
-			Controls_SetModel(nullptr);
-			Controls().setEmulated(pickers[i].mode);
-			ApplyAll(pickers[i].preset);
-			if(pickers[i].edited)
-				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
-			std::vector<int> index;
-			const std::vector<PickerItem> items = pickers[i].presets ? Picker_PresetItems(0, index) : Picker_EmulatedItems();
-			Screen s;
-			PickerView view(pickers[i].presets ? "Choose a preset" : "What does DOS see?", items, nullptr);
-			s.page.append(&view);
-			snap(pickers[i].name, s.root);
-		}
-		Controls_SetModel(nullptr);
-		Controls().setEmulated(0);
-		ApplyAll(1);
-	}
-	// Preset and In DOS as modals: the setup screen stays drawn under a dimmed layer
-	{
-		struct ModalScene { const char * name; int hw; bool presets; bool edited; };
-		const ModalScene modals[] = {
-			{ "modal_preset", (int)PadType::CLASSIC, true, false },
-			{ "modal_preset_edited", (int)PadType::GAMECUBE, true, true },
-			{ "modal_emulated", (int)PadType::WIIMOTE, false, false },
-		};
-		for(size_t i = 0; i < sizeof(modals) / sizeof(modals[0]); i++)
-		{
+			const PopScene& sc = scenes[i];
 			Controls_SetModel(nullptr);
 			SampleControls_ResetHardware();
-			SampleControls_SetHardware(0, (PadType)modals[i].hw, false, false);
-			ApplyAll(1);
-			if(modals[i].edited)
+			SampleControls_SetHardware(0, (PadType)sc.hw, false, false);
+			Controls().setEmulated(sc.mode);
+			ApplyAll(sc.preset);
+			if(sc.kind == SETUP || sc.kind == LOAD)
+			{
+				Controls().saveSetup("Plain", "");
+				Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
+				Controls().saveSetup("abcdefghijklmnopqrstuvwx", "LONGNAME.EXE");
+			}
+			if(sc.edited)
 				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
-			std::vector<int> index;
-			const std::vector<PickerItem> items = modals[i].presets ? Picker_PresetItems(0, index) : Picker_EmulatedItems();
 			Screen s;
 			ControllerConfigView config(0, nullptr);
 			s.page.append(&config);
-			PickerView picker(modals[i].presets ? "Choose a preset" : "What does DOS see?", items, nullptr, true);
-			GuiWindow modalWindow(640, 480);
-			modalWindow.append(&picker);
-			s.root.append(&modalWindow);
-			s.page.setState(STATE::DISABLED);		// what the app does: the screen under a modal is dimmed and takes no input
 			for(int u = 0; u < 3; u++)
-				s.root.update(nullptr);			// laid out first, as the app's UpdateGui does
-			s.root.changeFocus(&modalWindow);
-			picker.selectInUse();					// as the app does once the modal has the focus
-			snap(modals[i].name, s.root);
+				s.root.update(nullptr);
+			std::vector<int> index;
+			std::vector<SetupAction> setupKinds;
+			std::vector<AttachChoice> attachKinds;
+			std::vector<PickerItem> items;
+			const char * title = "";
+			ControllerConfigView::Pick which = ControllerConfigView::Pick::PRESET;
+			switch(sc.kind)
+			{
+				case PRESET: items = Picker_PresetItems(0, index); title = "Choose a preset"; break;
+				case EMULATED: items = Picker_EmulatedItems(); title = "What does DOS see?"; which = ControllerConfigView::Pick::EMULATED; break;
+				case SETUP: items = Picker_SetupMenuItems(setupKinds); title = "Load or save a setup"; which = ControllerConfigView::Pick::SETUP; break;
+				case LOAD: items = Picker_SetupItems(index); title = "Load a setup"; which = ControllerConfigView::Pick::SETUP; break;
+				case ATTACH: items = Picker_AttachItems("KEEN4E.EXE", attachKinds); title = "Load these buttons for"; which = ControllerConfigView::Pick::SETUP; break;
+			}
+			PickerView picker(title, items, nullptr, config.anchorFor(which));
+			if(sc.kind == PRESET)
+				picker.onFocusChange([&](int k){ const int pr = k >= 0 && (size_t)k < index.size() ? index[(size_t)k] : -1; config.setPreview(pr < 0 ? Controls().currentPreset(0) : pr); });
+			GuiWindow popWindow(640, 480);
+			popWindow.append(&picker);
+			s.root.append(&popWindow);
+			s.page.setState(STATE::DISABLED);		// what the app does: the screen under a popover is dimmed and takes no input
+			for(int u = 0; u < 3; u++)
+				s.root.update(nullptr);				// laid out first, as the app's UpdateGui does
+			s.root.changeFocus(&popWindow);
+			picker.selectInUse();					// as the app does once the popover has the focus
+			if(sc.pick >= 0)
+				picker.selectItem(sc.pick);
+			config.refresh();
+			snap(sc.name, s.root);
+			if(i < 3)
 			{
 				int w = 0, h = 0;
 				const std::vector<uint8_t>& px = HostPixels(w, h);
 				g_modalBg.push_back(px[((size_t)(h / 2) * w + (size_t)(w * 0.02f)) * 4]);
 			}
-			s.root.remove(&modalWindow);
+			s.root.remove(&popWindow);
 		}
 		Controls_SetModel(nullptr);
-		ApplyAll(1);
-	}
-	// the Setup button's menu, with and without a setup to save over
-	{
-		std::vector<SetupAction> kinds;
-		Controls_SetModel(nullptr);
-		ApplyAll(1);
-		Controls().saveSetup("Plain", "");
-		{
-			Screen s;
-			PickerView view("Load or save a setup", Picker_SetupMenuItems(kinds), nullptr);
-			s.page.append(&view);
-			snap("picker_setup", s.root);
-		}
-	}
-
-	// Load and the attach choices, on the sample model with two saved setups
-	{
-		Controls_SetModel(nullptr);
-		Controls().setEmulated(1);
-		ApplyAll(2);
-		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
+		SampleControls_ResetHardware();
 		Controls().setEmulated(0);
-		ApplyAll(3);
-		Controls().saveSetup("Adventure night", "");
-		Controls().saveSetup("abcdefghijklmnopqrstuvwx", "LONGNAME.EXE");
-		std::vector<int> index;
-		{
-			Screen s;
-			PickerView view("Load a setup", Picker_SetupItems(index), nullptr);
-			s.page.append(&view);
-			snap("picker_load", s.root);
-		}
-		{
-			std::vector<AttachChoice> kinds;
-			Screen s;
-			PickerView view("Load these buttons for", Picker_AttachItems("KEEN4E.EXE", kinds), nullptr);
-			s.page.append(&view);
-			snap("picker_attach", s.root);
-		}
+		ApplyAll(1);
 	}
 
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
+
+	// ---- popovers: placement, size and what they show
+	{
+		// below its anchor when it fits, lined up with the nearer edge, inside the margins
+		PopoverPlace p = Popover_Place(PopoverAnchor(400, 60, 150, 32), 280, 200, 640, 480);
+		EXPECT(p.y == 60 + 32 + 6);
+		EXPECT(p.x == 400 + 150 - 280);				// right half: right edges line up
+		p = Popover_Place(PopoverAnchor(60, 40, 100, 32), 280, 200, 640, 480);
+		EXPECT(p.x == 60);								// left half: left edges line up
+		p = Popover_Place(PopoverAnchor(60, 40, 100, 32, PopoverAnchor::RIGHT_MARGIN), 280, 200, 640, 480);
+		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);
+		p = Popover_Place(PopoverAnchor(300, 40, 100, 32, PopoverAnchor::LEFT_MARGIN), 280, 200, 640, 480);
+		EXPECT(p.x == MENU_PAGE_MARGIN);
+		p = Popover_Place(PopoverAnchor(560, 400, 100, 32), 280, 200, 640, 480);
+		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);	// kept inside the margin
+		EXPECT(p.y + 200 <= 480 - MENU_BAR_BOTTOM_H);	// no room below a footer button: it opens above, inside the band
+		EXPECT(p.y >= MENU_BAR_TOP_H);
+		p = Popover_Place(PopoverAnchor(), 280, 200, 640, 480);
+		EXPECT(p.x == 180 && p.y == 140);				// no anchor: centred
+
+		// every list fits the band between the bars, with rows at least 28 px tall, and its caption fits its lines
+		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+		SampleControls_SetHardware(0, PadType::CLASSIC, false, false);
+		ApplyAll(1);
+		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
+		std::vector<int> index;
+		std::vector<SetupAction> sk;
+		Controls().saveSetup("Plain", "");
+		const std::vector<PickerItem> lists[] = { Picker_PresetItems(0, index), Picker_EmulatedItems(), Picker_SetupMenuItems(sk) };
+		for(size_t l = 0; l < sizeof(lists) / sizeof(lists[0]); l++)
+		{
+			Screen s;
+			PickerView pv("Title", lists[l], nullptr, PopoverAnchor(300, 40, 170, 32, PopoverAnchor::LEFT_MARGIN));
+			EXPECT(pv.panelY() >= MENU_BAR_TOP_H);
+			EXPECT(pv.panelY() + pv.panelH() <= 480 - MENU_BAR_BOTTOM_H);
+			EXPECT(pv.rowH() >= 28 && pv.rowH() <= 36);
+			EXPECT(pv.caption().size() >= 2 && pv.caption().size() <= 3);
+			for(size_t k = 0; k < pv.caption().size(); k++)
+				EXPECT(pv.caption()[k].size() <= 40);
+			// moving the cursor changes the caption; arming an item that asks says what the second press does
+			pv.focusItem(1);
+			EXPECT(pv.focused() == 1);
+			EXPECT(!pv.caption()[0].empty());
+		}
+		{
+			PickerView pv("Title", lists[0], nullptr);
+			EXPECT(lists[0][0].divider && lists[0][0].name == "Undo my changes");	// the one different kind of choice is set apart
+			pv.choose(0);
+			EXPECT(pv.armed() && !pv.chosen());
+			EXPECT(pv.caption()[0].find("discards") != std::string::npos);			// the caption says what A again will do
+			pv.choose(0);
+			EXPECT(pv.chosen() && pv.result() == 0);
+		}
+		// the preview hook hears the cursor, once at once
+		{
+			PickerView pv("Title", lists[0], nullptr);
+			int heard = -99, calls = 0;
+			pv.onFocusChange([&](int k){ heard = k; calls++; });
+			EXPECT(calls == 1);
+			pv.focusItem(3);
+			EXPECT(calls == 2 && heard == 3);
+			pv.focusItem(3);
+			EXPECT(calls == 2);														// the same row again says nothing
+		}
+		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+	}
 	// a disabled screen is washed over once (0xbe at 0x70 over black is 83), however many rows and columns it holds; each
 	// extra layer would lift this toward 0xbe
 	EXPECT(g_modalBg.size() == 3);

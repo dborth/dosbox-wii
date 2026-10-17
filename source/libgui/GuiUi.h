@@ -154,6 +154,10 @@ class GuiCard : public GuiOverlay
 		GuiCard& disabled(bool d = true);
 		//!Shows the card only while `fn` returns true
 		GuiCard& visibleWhen(std::function<bool()> fn);
+		//!Gives the card the selection, as if the D-pad had moved onto it
+		void select() { surface.setState(STATE::SELECTED); }
+		//!Takes the selection away
+		void deselect() { surface.resetState(); }
 		//!Whether the card is the one with the selection (pointer over it, or the D-pad on it)
 		bool isSelected() { const STATE s = surface.getState(); return s == STATE::SELECTED || s == STATE::HELD; }
 		//!Enables the card only while `fn` returns true

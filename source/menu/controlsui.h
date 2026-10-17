@@ -24,6 +24,7 @@
 #include "controlsmodel.h"
 #include "controllerprofile.h"
 #include "menupage.h"
+#include "popover.h"
 
 /** Opens the controller setup from the home menu. Blocks until the user backs out. Opens on the given player (0-3),
     or on the first connected one when there is none given. */
@@ -77,6 +78,12 @@ class ControllerConfigView : public GuiOverlay
 		const std::string& statusText() const { return status; }
 		/** Puts the selection on the header button that opens `which` (Pick::EMULATED or PRESET): where it was when a modal was open over it. */
 		void selectHeader(Pick which);
+		/** The button that opens `which`, in canvas pixels: where its popover opens beside. */
+		PopoverAnchor anchorFor(Pick which);
+		/** While a preset popover is open: the rows show what this preset would give them (-1 = what they do now). */
+		void setPreview(int preset) { previewPreset = preset; }
+		/** Runs the screen's bindings now (a screen under a popover is not updated, but should follow what the popover previews). */
+		void refresh() { ui.runBindings(); }
 	private:
 		enum class Side { LEFT, RIGHT, GROUP };
 		GuiCard& bindingRow(const ProfileRow& row, Side side, int width);
@@ -99,6 +106,8 @@ class ControllerConfigView : public GuiOverlay
 		GuiTextButton * backBtn;
 		GuiTextButton * emulatedButton;
 		GuiTextButton * presetButton;
+		GuiTextButton * setupButton;
+		int previewPreset;
 };
 
 /** One line of a picker's detail pane: what a button does under that choice. */
@@ -113,7 +122,8 @@ struct PickerItem {
 	std::vector<std::string> lines;		/**< What it is, a few short lines (at most three are shown) */
 	std::vector<PickerRow> rows;		/**< What it does for the buttons (at most seven are shown) */
 	bool current;						/**< The one in use now */
-	std::string confirm;				/**< When not empty, choosing needs a second press, and this is what the hint line says meanwhile */
+	std::string confirm;				/**< When not empty, choosing needs a second press, and this is what the caption says meanwhile */
+	bool divider = false;				/**< A rule is drawn after this item: what follows is a different kind of choice */
 };
 
 /** The choices for what DOS sees, as picker items. */
@@ -142,21 +152,22 @@ enum class AttachChoice { RUNNING, NONE, TYPED };
  */
 std::vector<PickerItem> Picker_AttachItems(const std::string& runningProgram, std::vector<AttachChoice>& kinds);
 
-/** A list of choices on the left, and what the one under the cursor means on the right. */
+/**
+ * A list of choices in a popover: one flat panel beside the control that asked, over the screen it came from. Plain
+ * rows (the one in use has a dot), a rule where an item says so, and under the list a caption for the row under the
+ * cursor: its description, or what a second press of A will do. Nothing else is drawn on it.
+ */
 class PickerView : public GuiOverlay
 {
 	public:
-		/**
-		 * @param modal Drawn as a dialog over whatever is behind it (dimmed, but still seen) instead of as a page of its
-		 * own; backButton() is then the X in its corner, and B presses it
-		 */
-		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver, bool modal = false);
+		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
+		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver, const PopoverAnchor& anchor = PopoverAnchor());
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
 		/** The index of the item chosen. */
 		int result() const { return picked; }
-		/** The item the right pane describes. */
+		/** The item under the cursor. */
 		int focused() const { return focus; }
 		/** Whether an item is waiting for its second press. */
 		bool armed() const { return armedIdx >= 0; }
@@ -164,20 +175,36 @@ class PickerView : public GuiOverlay
 		void choose(int index);
 		/** The cursor moved to an item (a pending confirmation is dropped). */
 		void focusItem(int index);
-		/** Puts the selection on the item in use (or the first), whatever it was on: for a modal, once it has the focus. */
+		/** Puts the selection on the item in use (or the first), whatever it was on: once the popover has the focus. */
 		void selectInUse();
+		/** Puts the selection (and the cursor) on an item. */
+		void selectItem(int index);
+		/** Called with an item's index whenever the cursor moves to it, and once now: the screen under the popover previews it. */
+		void onFocusChange(std::function<void(int)> fn);
+		/** The caption lines under the list (always the same number, some empty). */
+		const std::vector<std::string>& caption() const { return captionLines; }
+		/** Where the panel is, and how tall its rows are (design pixels). */
+		int panelX() const { return place.x; }
+		int panelY() const { return place.y; }
+		int panelW() const { return panelWidth; }
+		int panelH() const { return panelHeight; }
+		int rowH() const { return rowHeight; }
 	private:
+		void refreshCaption();
+
 		UiScope ui;
 		std::vector<PickerItem> items;
 		int picked;
 		bool done;
 		int focus;
 		int armedIdx;
-		GuiTextButton * backBtn;
-		std::string hintText;
-		bool isModal;
-		std::vector<GuiTextButton*> itemButtons;
+		GuiButton * backBtn;
+		std::vector<GuiCard*> itemCards;
+		std::vector<std::string> captionLines;
+		std::function<void(int)> focusCb;
 		int inUse;
+		PopoverPlace place;
+		int panelWidth, panelHeight, rowHeight;
 };
 
 /** The screen for choosing what a control does. */
