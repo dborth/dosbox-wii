@@ -40,6 +40,7 @@ struct Screen
 // pixel of the rail of device icons is, at the rail's x, below the card's top
 struct CardGeometry { int top, bottom, railY; };
 static std::vector<CardGeometry> g_cards, g_rails;
+static std::vector<int> g_modalBg;	// the red of the dimmed background over the black margin, per modal scene
 static CardGeometry MeasureCard()
 {
 	int w = 0, h = 0;
@@ -363,6 +364,11 @@ int main(int argc, char ** argv)
 			s.root.changeFocus(&modalWindow);
 			picker.selectInUse();					// as the app does once the modal has the focus
 			snap(modals[i].name, s.root);
+			{
+				int w = 0, h = 0;
+				const std::vector<uint8_t>& px = HostPixels(w, h);
+				g_modalBg.push_back(px[((size_t)(h / 2) * w + (size_t)(w * 0.02f)) * 4]);
+			}
 			s.root.remove(&modalWindow);
 		}
 		Controls_SetModel(nullptr);
@@ -411,6 +417,11 @@ int main(int argc, char ** argv)
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
+	// a disabled screen is washed over once (0xbe at 0x70 over black is 83), however many rows and columns it holds; each
+	// extra layer would lift this toward 0xbe
+	EXPECT(g_modalBg.size() == 3);
+	for(size_t i = 0; i < g_modalBg.size(); i++)
+		EXPECT(g_modalBg[i] >= 80 && g_modalBg[i] <= 86);
 	// the card is the same height whatever controller is drawn in it, and the rail of icons never moves
 	EXPECT(g_cards.size() >= 8 && g_rails.size() >= 4);
 	for(size_t i = 0; i < g_cards.size(); i++)
