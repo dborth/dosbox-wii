@@ -16,7 +16,7 @@ GuiGlyph::GuiGlyph(GLYPH k, const char * letter) : kind(k), text(nullptr), meshF
 	const bool takesLetter = kind == GLYPH::BUTTON || kind == GLYPH::BUMPER || kind == GLYPH::STICK;
 	if(takesLetter && letter && *letter)
 	{
-		const int px = (int)strlen(letter) > 1 ? 11 : 14;
+		const int px = (int)strlen(letter) > 1 ? 10 : 13;
 		text = new GuiText(letter, px, GuiTheme::current().textOnAccent);
 		text->setParent(this);
 		text->setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);

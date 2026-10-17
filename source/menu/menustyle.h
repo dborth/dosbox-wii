@@ -342,14 +342,49 @@ static inline GuiShapeStyle MenuTileStyle()
 	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
 }
 
-//!A selectable row on a section: no look at rest, an accent outline over a light fill when highlighted
+//!A selectable row on a section: no look at rest; highlighted, a warm tint with a slim outline in the same hue.
+//!The fill carries the selection (the outline alone read as a hairline box crowding its neighbours), so rows
+//!need a few pixels of air between them rather than a thick border.
 static inline GuiShapeStyle MenuRowHighlightStyle()
 {
 	const MenuPalette& p = MenuPaletteCurrent();
-	GuiPaint lit = GuiPaint().color(p.surfaceRaised).stroke(2.5f, p.mark);
-	GuiPaint pressed = GuiPaint().color(MenuMix(p.mark, p.surfaceRaised, 0.85f)).stroke(2.5f, p.mark);
+	GuiPaint lit = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.14f)).stroke(1.5f, MenuMix(p.surfaceRaised, p.mark, 0.8f));
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.30f)).stroke(1.5f, p.mark);
 	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
 }
+
+//!A device tile on the setup screen's rail. Light at every state so the dark icon always reads on it:
+//!the device being drawn has a tinted face and a dark outline; a highlighted tile gets the orange of a
+//!highlighted row (no glow, so it never spills onto the tile beside it).
+static inline GuiShapeStyle MenuRailTileStyle(bool showing)
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiPaint rest = showing ?
+		GuiPaint().color(p.surfaceRaised).stroke(2.0f, p.chromeDark) :
+		GuiPaint().color(p.surface).stroke(1.5f, p.outline);
+	GuiPaint lit = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.14f)).stroke(2.0f, p.mark);
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.30f)).stroke(2.0f, p.mark);
+	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
+//!A small round-ish button on the bars (the player stepper): the shared bar look, but the highlight is a
+//!dark face with a slim white outline and no glow, so it never touches the button or the title next to it.
+static inline GuiShapeStyle MenuStepperStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiPaint rest = GuiPaint()
+		.gradient(p.surfaceRaised, MenuMix(p.surface, p.outline, 0.45f))
+		.stroke(1.5f, p.chromeDark)
+		.shadow(4.0f, MenuRGBA(0, 0, 0, 110), 0.0f, 2.0f);
+	GuiPaint lit = GuiPaint().gradient(p.accent, p.accentDark).stroke(2.0f, p.surfaceRaised);
+	GuiPaint pressed = GuiPaint().color(p.accentDark).stroke(2.0f, p.outlineStrong);
+	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
+//!Arrow colors for a button in the bar look: dark on the white resting face, white on the dark highlighted
+//!one (the gray of MenuArrowRest/Lit vanishes on both)
+static inline PixelColor MenuBarArrowRest() { return MenuRGBA(56, 56, 56); }
+static inline PixelColor MenuBarArrowLit() { return MenuRGBA(255, 255, 255); }
 
 //!Text on the chrome bars (the page title and the hint line)
 static inline PixelColor MenuChromeText() { return MenuRGBA(255, 255, 255); }

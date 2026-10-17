@@ -22,70 +22,6 @@ GuiPaint UiBackdropPaint()
 	return GuiPaint().color(rgb(t.background.r, t.background.g, t.background.b, 224));
 }
 
-// ---- battery gauge
-
-UiBatteryBar::UiBatteryBar(int w, int h) : pct(-1), dirty(true), meshFeather(-1.0f)
-{
-	width = w;
-	height = h;
-}
-
-void UiBatteryBar::setLevel(int percent)
-{
-	if(percent > 100)
-		percent = 100;
-	if(percent != pct)
-	{
-		pct = percent;
-		dirty = true;
-	}
-}
-
-void UiBatteryBar::draw()
-{
-	if(!this->isVisible())
-		return;
-
-	const int a = this->getAlpha();
-	if(a > 0 && pct >= 0)
-	{
-		VideoDriver * video = platform->getVideo();
-		const float uiScale = video->getUIScale();
-		const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
-		if(dirty || feather != meshFeather)
-		{
-			const GuiTheme& t = GuiTheme::current();
-			mesh = GuiMesh(feather);
-			const float w = (float)width, h = (float)height;
-			mesh.addRoundRect(GuiRect{ 0.0f, 0.0f, w, h }, GuiCorners(h * 0.5f), GuiFill::solid(t.outline));
-			const float fw = pct == 0 ? 0.0f : std::max(h, w * (float)pct / 100.0f);
-			if(fw > 0.0f)
-			{
-				const PixelColor c = pct >= 50 ? t.good : (pct >= 20 ? t.accent : rgb(218, 72, 60));
-				mesh.addRoundRect(GuiRect{ 0.0f, 0.0f, fw, h }, GuiCorners(h * 0.5f), GuiFill::solid(c));
-			}
-			meshFeather = feather;
-			dirty = false;
-		}
-
-		const float ox = (float)this->getLeft(), oy = (float)this->getTop();
-		const std::vector<MeshVertex>& src = mesh.vertices();
-		scratch.resize(src.size());
-		for(size_t i = 0; i < src.size(); i++)
-		{
-			scratch[i] = src[i];
-			scratch[i].x += ox;
-			scratch[i].y += oy;
-			if(a < 255)
-				scratch[i].c.a = (uint8_t)((src[i].c.a * a + 127) / 255);
-		}
-		if(!scratch.empty())
-			video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
-	}
-
-	this->updateEffects();
-}
-
 // ---- helpers
 
 namespace {
@@ -202,7 +138,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	};
 
 	GuiLabel& target = ui.label().fontSize(UI_FONT_SMALL + 1);
-	target.setMaxWidth(width - 2 * padX - 22 - 8); // long choices are cut rather than spilling out of the row
+	target.setMaxWidth(width - 2 * padX - 19 - 8); // long choices are cut rather than spilling out of the row
 	target.bind(text);
 
 	GuiLayout& content = ui.row().size(width - 2 * padX, 0).gap(8).align(LAYOUT_ALIGN::CENTRE);
@@ -271,26 +207,38 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 	// the buttons start from (Preset: this player) and what DOS sees (In DOS: the whole game). The footer has Setup
 	// (whole game) and Back. Left of the middle is about the player, right of it about the game.
 	MenuPageFrame f = MenuPage_Build(ui, *this, "Controls", [this]{ return status; }, 250);
-	if(several)
+	if(!empty)
 	{
+		// "Player N" with, under it, what the DOS side does with this player (the caption belongs to the name above it)
 		f.title->setVisible(false);
-		// a small page-turning arrow, centred in its button
-		const auto arrowIcon = [this](ARROW dir) -> GuiArrow& {
-			GuiArrow& a = ui.own<GuiArrow>(dir, 9, 13, MenuArrowRest(), MenuArrowLit());
-			a.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-			return a;
-		};
-		// drawn arrows: the font has no clean < and >
-		GuiTextButton& prev = ui.button("").size(30, 30).style(MenuBarButtonStyle())
-			.onClick([this]{ switchRequest = -1; })
-			.onFocus([this]{ status = "A shows the previous controller"; });
-		prev.setIcon(&arrowIcon(ARROW::LEFT));
-		GuiTextButton& next = ui.button("").size(30, 30).style(MenuBarButtonStyle())
-			.onClick([this]{ switchRequest = 1; })
-			.onFocus([this]{ status = "A shows the next controller"; });
-		next.setIcon(&arrowIcon(ARROW::RIGHT));
+		const int slot = player;
 		GuiLabel& who = ui.label(GuiFormat("Player %d", player + 1).c_str()).fontSize(UI_FONT_HEADING).textColor(MenuChromeText());
-		f.headerLeft->gap(8).add(prev).add(who).add(next);
+		GuiLabel& caption = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).textColor(MenuChromeTextMuted())
+			.bind([slot]{ return Controls().player(slot).role; });
+		caption.setMaxWidth(110);
+		GuiLayout& nameBlock = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(who).add(caption);
+		if(several)
+		{
+			// a small page-turning arrow, centred in its button (dark on the white face, white once it is highlighted)
+			const auto arrowIcon = [this](ARROW dir) -> GuiArrow& {
+				GuiArrow& a = ui.own<GuiArrow>(dir, 9, 14, MenuBarArrowRest(), MenuBarArrowLit());
+				a.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
+				return a;
+			};
+			// drawn arrows: the font has no clean < and >
+			GuiTextButton& prev = ui.button("").size(34, 34).style(MenuStepperStyle())
+				.onClick([this]{ switchRequest = -1; })
+				.onFocus([this]{ status = "A shows the previous controller"; });
+			prev.setIcon(&arrowIcon(ARROW::LEFT));
+			GuiTextButton& next = ui.button("").size(34, 34).style(MenuStepperStyle())
+				.onClick([this]{ switchRequest = 1; })
+				.onFocus([this]{ status = "A shows the next controller"; });
+			next.setIcon(&arrowIcon(ARROW::RIGHT));
+			// room between the buttons and the name, so a highlighted one never touches the text
+			f.headerLeft->gap(14).add(prev).add(nameBlock).add(next);
+		}
+		else
+			f.headerLeft->add(nameBlock);
 	}
 
 	const int pl = playerSlot;
@@ -321,15 +269,15 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 	{
 		const ControllerProfile profile = Controllers_Profile(info, (int)shownIndex);
 		view = &ui.controllerView(*profile.layout, profile.scale);
-		// the shoulder buttons are too small to carry legible text; their rows name them
-		view->setLabelFilter([](int id){ return id != INPUT_TRIGGER_L && id != INPUT_TRIGGER_R && id != INPUT_TRIGGER_ZL && id != INPUT_TRIGGER_ZR; });
+		// no text on the drawing: the buttons are too small to carry it legibly, and the rows beside it name each control
+		view->setLabelFilter([](int){ return false; });
 		// lit while held, so pressing a button on the controller shows which control it is
 		view->setLit([pl](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
 		const int sideW = 168;
 		// Two or more devices on the channel (a Wiimote and a GameCube pad): a rail of their icons down the left, the
 		// one drawn lit, A on another draws that one. It takes room from the left rows only where the drawing leaves none.
 		const bool rail = deviceList.size() > 1;
-		const int railW = 46;
+		const int railW = 56;
 		int leftW = sideW;
 		if(rail)
 		{
@@ -339,49 +287,30 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 		}
 		const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
 
-		GuiLayout& left = ui.column().gap(2).align(LAYOUT_ALIGN::END);
-		// which controller this is, and what it does in DOS (with its battery, when it reports one). With a rail the
-		// icons say which it is, and the hint line names the one drawn while the rail has the selection.
-		if(!rail)
-		{
-			GuiLabel& deviceName = ui.label(info.device.c_str()).fontSize(UI_FONT_SMALL).muted();
-			deviceName.setMaxWidth(sideW);
-			left.add(deviceName);
-		}
-		UiBatteryBar& battery = ui.make<UiBatteryBar>(36, 8);
-		// the battery is the primary device's: not shown beside another device's drawing
-		const bool primaryDrawn = shownIndex == 0;
-		ui.bind([&battery, pl, primaryDrawn]{
-			const PlayerInfo p = Controls().player(pl);
-			battery.setLevel(p.battery);
-			battery.setVisible(p.connected && p.battery >= 0 && primaryDrawn);
-		});
-		GuiLabel& role = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).accent().bind([pl]{ return Controls().player(pl).role; });
-		role.setMaxWidth(leftW - 50);
-		left.add(ui.row().size(leftW, 0).gap(8).align(LAYOUT_ALIGN::CENTRE).addSpace().add(battery).add(role));
+		GuiLayout& left = ui.column().gap(3).align(LAYOUT_ALIGN::END);
 		for(size_t i = 0; i < profile.left.size(); i++)
 			left.add(bindingRow(profile.left[i], Side::LEFT, leftW));
 		GuiLayout * railColumn = nullptr;
 		if(rail)
 		{
-			railColumn = &ui.column().gap(4);
+			railColumn = &ui.column().gap(6);
 			for(size_t i = 0; i < deviceList.size(); i++)
 			{
 				const PadType type = deviceList[i];
 				const bool active = i == shownIndex;
 				GuiImage& img = iconImage(ui, padIcon(type));
 				if(!active)
-					img.setAlpha(110);
+					img.setAlpha(150);
 				GuiCard& tile = ui.card();
-				tile.size(railW, railW).style(MenuBarButtonStyle(active)).corners(GuiCorners(9.0f)).pad(3, 3);
+				tile.size(railW, railW).style(MenuRailTileStyle(active)).corners(GuiCorners(10.0f)).pad(8, 8);
 				tile.onFocus([this, type, active]{ status = GuiFormat(active ? "Showing %s" : "A shows the %s", PadType_Name(type)); });
 				if(!active)
 					tile.onClick([this, type]{ flipRequest = type; });
-				tile.add(ui.overlay().size(40, 40).add(img));
+				tile.add(ui.overlay().size(railW - 16, railW - 16).add(img));
 				railColumn->add(tile);
 			}
 		}
-		GuiLayout& right = ui.column().gap(2);
+		GuiLayout& right = ui.column().gap(3);
 		for(size_t i = 0; i < profile.right.size(); i++)
 			right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
 
@@ -390,7 +319,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 		GuiLayout& groups = ui.row().gap(6);
 		for(size_t g = 0; g < profile.groups.size(); g++)
 		{
-			GuiLayout& column = ui.column().gap(2).size(groupSectionW, 0);
+			GuiLayout& column = ui.column().gap(3).size(groupSectionW, 0);
 			column.add(ui.row().size(groupSectionW, 0).pad(10, 0, 0, 2).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted()));
 			for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
 				column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 8));
@@ -409,7 +338,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 			}
 		});
 
-		f.content->gap(6);
+		f.content->gap(4);
 		GuiLayout& top = ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE);
 		if(railColumn)
 			top.add(*railColumn);

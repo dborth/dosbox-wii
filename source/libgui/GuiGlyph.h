@@ -63,8 +63,8 @@ inline void GuiGlyph::size(GLYPH kind, float& w, float& h)
 {
 	switch(kind)
 	{
-		case GLYPH::BUMPER: w = 30.0f; h = 20.0f; break;
-		default: w = 22.0f; h = 22.0f; break;
+		case GLYPH::BUMPER: w = 27.0f; h = 18.0f; break;
+		default: w = 19.0f; h = 19.0f; break;
 	}
 }
 

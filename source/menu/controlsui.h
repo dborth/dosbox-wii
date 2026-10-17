@@ -40,23 +40,6 @@ enum {
 /** The dimmed backdrop a full-screen page draws over the paused game (the theme's background, mostly opaque). */
 GuiPaint UiBackdropPaint();
 
-/** A small battery gauge: a capsule track with a fill that changes color as it drains. */
-class UiBatteryBar : public GuiElement
-{
-	public:
-		UiBatteryBar(int w = 48, int h = 10);
-		/** Sets the charge in percent (negative draws nothing). */
-		void setLevel(int percent);
-		int level() const { return pct; }
-		void draw() override;
-	private:
-		int pct;
-		bool dirty;
-		float meshFeather;
-		GuiMesh mesh;
-		std::vector<MeshVertex> scratch;
-};
-
 /** The controller setup screen for one player. */
 class ControllerConfigView : public GuiOverlay
 {
