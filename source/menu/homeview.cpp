@@ -459,11 +459,10 @@ GuiLayout& HomeView::playersStrip()
 
 // ---- the screen
 
-HomeView::HomeView(HomeSettings& s, const char * version, GuiSound * soundOver, GuiSound * soundClick) :
+HomeView::HomeView(HomeSettings& s, const char * version) :
 	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), creditsCard(nullptr), setupsCard(nullptr),
 	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), hint("Pick something, or Resume to go back to the game")
 {
-	ui.setSounds(soundOver, soundClick);
 	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
 	const int bodyH = sh - MENU_BAR_TOP_H - MENU_BAR_BOTTOM_H - 8;

@@ -135,8 +135,6 @@ class ListScreen
 		bool done;
 
 		// In the order they depend on each other
-		GuiSound btnSoundOver;
-		GuiSound btnSoundClick;
 		UiScope ui;
 		GuiOverlay chromePage;
 		MenuPageFrame chrome;
@@ -156,8 +154,6 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	  helpRow(-1),
 	  messageShown(false),
 	  done(false),
-	  btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM),
-	  btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM),
 	  chrome(),
 	  hintStr(hint ? hint : ""),
 	  backBtn(NULL),
@@ -167,7 +163,6 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 	  hasHelpLine(helpLine),
 	  w(platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight())
 {
-	ui.setSounds(&btnSoundOver, &btnSoundClick);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 

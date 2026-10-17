@@ -3,8 +3,7 @@
  * Daryl Borth 2009-2026
  * filelist.h
  *
- * Contains a list of all of the files stored in the images/, fonts/, and
- * sounds/ folders
+ * Contains a list of all of the files stored in the images/ and fonts/
  ***************************************************************************/
 
 #ifndef _FILELIST_H_
@@ -12,12 +11,6 @@
 
 #include "font_ttf.h"
 #include "en_lang.h"
-
-#include "enter_ogg.h"
-#include "exit_ogg.h"
-
-#include "button_over_pcm.h"
-#include "button_click_pcm.h"
 
 #include "logo_png.h"
 

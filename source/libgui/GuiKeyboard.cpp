@@ -153,9 +153,6 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 	kbText->setPosition(0, KB_TEXT_Y);
 	this->append(kbText);
 
-	keySoundOver = new GuiSound(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	keySoundClick = new GuiSound(button_click_pcm, button_click_pcm_size, SOUND::PCM);
-
 	trigA = new GuiTrigger;
 	trigA->setPrimaryTrigger();
 

@@ -607,7 +607,7 @@ void * OgcImageRenderer::createMesh(const MeshVertex* vertices, size_t count)
 	const size_t begins = (count + 65534) / 65535;
 	const size_t bytes = (begins * 3 + count * 16 + 63) & ~(size_t)31;
 
-	void * list = memalign(32, bytes);
+	void * list = memspace_malloc(bytes);
 	if(!list)
 		return nullptr;
 
@@ -640,7 +640,7 @@ void * OgcImageRenderer::createMesh(const MeshVertex* vertices, size_t count)
 	}
 	DCFlushRange(list, used);
 
-	OgcMesh * m = (OgcMesh *)malloc(sizeof(OgcMesh));
+	OgcMesh * m = (OgcMesh *)memspace_malloc(sizeof(OgcMesh));
 	if(!m)
 	{
 		free(list);

@@ -116,9 +116,6 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
 	MenuKeyboardBox keyboardBox;
 	GuiKeyboard kb(var, maxlen < kbLimit ? maxlen : kbLimit);
 
-	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
-
 	GuiTrigger trigA;
 	trigA.setPrimaryTrigger();
 
@@ -129,8 +126,6 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
 	okBtn.setPosition(25, -25);
 	okBtn.setLabel(&okBtnTxt);
 	okBtn.setImage(&okBtnImg);
-	okBtn.setSoundOver(&btnSoundOver);
-	okBtn.setSoundClick(&btnSoundClick);
 	okBtn.setTrigger(&trigA);
 	okBtn.setEffectGrow();
 
@@ -141,8 +136,6 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
 	cancelBtn.setPosition(-25, -25);
 	cancelBtn.setLabel(&cancelBtnTxt);
 	cancelBtn.setImage(&cancelBtnImg);
-	cancelBtn.setSoundOver(&btnSoundOver);
-	cancelBtn.setSoundClick(&btnSoundClick);
 	cancelBtn.setTrigger(&trigA);
 	cancelBtn.setEffectGrow();
 
@@ -570,11 +563,6 @@ void HomeMenu ()
 	GuiTrigger trigHome;
 	trigHome.setButtonOnlyTrigger(-1, INPUT_BTN_HOME);
 
-	GuiSound btnSoundOver(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	GuiSound btnSoundClick(button_click_pcm, button_click_pcm_size, SOUND::PCM);
-	GuiSound enterSound(enter_ogg, enter_ogg_size, SOUND::OGG);
-	GuiSound exitSound(exit_ogg, exit_ogg_size, SOUND::OGG);
-
 	MenuBarShape bgTopImg(MenuBarShape::TOP);
 	MenuBarShape bgBottomImg(MenuBarShape::BOTTOM);
 
@@ -585,7 +573,7 @@ void HomeMenu ()
 	Controls_SetModel(&mapperModel);
 
 	LiveHomeSettings homeSettings;
-	HomeView home(homeSettings, APPVERSION, &btnSoundOver, &btnSoundClick);
+	HomeView home(homeSettings, APPVERSION);
 
 	GuiWindow w(screenwidth, screenheight);
 	w.append(&home);
@@ -596,8 +584,6 @@ void HomeMenu ()
 	mainWindow->append(&bgTopImg);
 	mainWindow->append(&bgBottomImg);
 	mainWindow->append(&w);
-
-	enterSound.play();
 
 	bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_IN, 35);
 	bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
@@ -626,7 +612,6 @@ void HomeMenu ()
 		switch(action)
 		{
 			case HomeView::Action::RESUME:
-				exitSound.play();
 				bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
 				bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
 				w.setEffect(EFFECT::FADE, -15);
@@ -690,8 +675,6 @@ void HomeMenu ()
 		platform->getInput()->update();
 		usleep(10000);
 	}
-
-	exitSound.stop();
 
 	// elements are stack objects that the window only points at: take them
 	// out before the window (and the stack) goes away

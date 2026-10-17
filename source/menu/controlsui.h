@@ -53,7 +53,7 @@ class ControllerConfigView : public GuiOverlay
 {
 	public:
 		/** `show` is the device to draw when the player holds several (PadType::NONE, or one that is not there: the primary one). */
-		ControllerConfigView(int player, GuiSound * soundOver, PadType show = PadType::NONE);
+		ControllerConfigView(int player, PadType show = PadType::NONE);
 		GuiButton& backButton() { return *backBtn; }
 		/**
 		 * The device the user chose on the rail since the last call (then forgotten), PadType::NONE if none. The screen
@@ -171,7 +171,7 @@ class PickerView : public GuiOverlay
 {
 	public:
 		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
-		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver, const PopoverAnchor& anchor = PopoverAnchor());
+		PickerView(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor = PopoverAnchor());
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
@@ -232,7 +232,7 @@ class TargetChooserView : public GuiOverlay
 		 * @param defaultTarget What the scheme makes it do (the Default button)
 		 * @param anchor The row it opens beside
 		 */
-		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver,
+		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget,
 			const PopoverAnchor& anchor = PopoverAnchor());
 		/** B anywhere, or a click outside the panel. */
 		GuiButton& backButton() { return *backBtn; }

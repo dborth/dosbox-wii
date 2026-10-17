@@ -50,8 +50,7 @@ class HomeView : public GuiOverlay
 	public:
 		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, SETUPS, CREDITS };
 
-		/** `version` goes beside the logo; the sounds are the buttons' (either may be null) */
-		HomeView(HomeSettings& settings, const char * version, GuiSound * soundOver, GuiSound * soundClick);
+		HomeView(HomeSettings& settings, const char * version);
 
 		/** What was pressed since the last call (then forgotten) */
 		Action takeAction();

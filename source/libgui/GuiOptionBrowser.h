@@ -86,8 +86,6 @@ class GuiOptionBrowser : public GuiElement
 		void updateColumns();
 		void updateThumb();
 
-		GuiSound * btnSoundOver;
-		GuiSound * btnSoundClick;
 		GuiTrigger * trigA;
 		GuiTrigger * trigHeldA;
 

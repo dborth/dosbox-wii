@@ -224,10 +224,9 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	return row;
 }
 
-ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, PadType show) :
+ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr), emulatedButton(nullptr), presetButton(nullptr), setupButton(nullptr), previewPreset(-1)
 {
-	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
@@ -636,12 +635,10 @@ void TargetChooserView::selectCategory()
 	kindCards[(size_t)shown < kindCards.size() ? (size_t)shown : 0]->select();
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget,
-	GuiSound * soundOver, const PopoverAnchor& anchor) :
+TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget, const PopoverAnchor& anchor) :
 	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Move over a kind to see its choices"),
 	listen(false), listenKind(TARGET::KEY), kinds(0), keyTab(0), keyTabs(0), keyCaps(0), keyPanel(-1), panelWidth(380), panelHeight(0)
 {
-	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
@@ -895,10 +892,9 @@ void PickerView::refreshCaption()
 	}
 }
 
-PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, GuiSound * soundOver, const PopoverAnchor& anchor) :
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const PopoverAnchor& anchor) :
 	items(itemList), picked(-1), done(false), focus(0), armedIdx(-1), backBtn(nullptr), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
 {
-	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
@@ -1256,8 +1252,7 @@ class ScreenWindow
 // The chooser is a popover over the setup screen, which the caller has disabled and which stays drawn.
 bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget, const PopoverAnchor& anchor)
 {
-	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	TargetChooserView view(name, player, control, target, defaultTarget, &over, anchor);
+	TargetChooserView view(name, player, control, target, defaultTarget, anchor);
 	ScreenWindow screen(view);
 	UpdateGui();
 	mainWindow->changeFocus(&screen.window());
@@ -1288,8 +1283,7 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 int PickerScreen(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor,
 	std::function<void(int)> preview = nullptr, std::function<void()> perFrame = nullptr)
 {
-	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	PickerView view(title, items, &over, anchor);
+	PickerView view(title, items, anchor);
 	if(preview)
 		view.onFocusChange(preview);
 	ScreenWindow screen(view);
@@ -1466,14 +1460,13 @@ PadType shownDevice[4] = { PadType::NONE, PadType::NONE, PadType::NONE, PadType:
 
 void ConfigScreen(int player)
 {
-	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
 	player = ResolvePlayer(player);
 	bool leave = false;
 
 	// The screen is built for one controller. When the player is switched, or a controller comes or goes, it is built again.
 	while(!leave)
 	{
-		ControllerConfigView view(player, &over, shownDevice[player & 3]);
+		ControllerConfigView view(player, shownDevice[player & 3]);
 		ScreenWindow screen(view);
 
 		ProfileRow row;

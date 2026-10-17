@@ -25,7 +25,7 @@
 #include <stddef.h>
 
 #ifdef HW_RVL
-#define IMAGE_DECODE_SCRATCH_SIZE ((640 * 480 * 4) + (480 * sizeof(void *)))
+#define IMAGE_DECODE_SCRATCH_SIZE ((640 * 480 * 1) + (480 * sizeof(void *)))
 #else
 #define IMAGE_DECODE_SCRATCH_SIZE ((1920 * 1080 * 4) + (1080 * sizeof(void*)))
 #endif

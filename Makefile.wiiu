@@ -55,8 +55,7 @@ LDFLAGS		=	-g $(MACHDEP) $(RPXSPECS) -Wl,-Map,$(notdir $@).map -Wl,--gc-sections
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with
 #---------------------------------------------------------------------------------
-LIBS	:=	-lsmb2 -liconv -lwut -lmocha -ldvm \
-			-lpng -lvorbisidec -logg -lz $(FREETYPE_LIBS)
+LIBS	:=	-lsmb2 -liconv -lwut -lmocha -ldvm -lpng -lz $(FREETYPE_LIBS)
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -90,8 +89,7 @@ CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.ttf) \
-					$(wildcard $(dir)/*.lang) $(wildcard $(dir)/*.png) \
-					$(wildcard $(dir)/*.ogg) $(wildcard $(dir)/*.pcm)))
+					$(wildcard $(dir)/*.lang) $(wildcard $(dir)/*.png)))
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -179,14 +177,6 @@ $(OFILES_SOURCES) : imagelist.h
 	$(bin2o)
 
 %.png.o %_png.h : %.png
-	@echo $(notdir $<)
-	$(bin2o)
-
-%.ogg.o %_ogg.h : %.ogg
-	@echo $(notdir $<)
-	$(bin2o)
-
-%.pcm.o %_pcm.h : %.pcm
 	@echo $(notdir $<)
 	$(bin2o)
 
