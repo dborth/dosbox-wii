@@ -553,3 +553,21 @@ void SettingsMenu(GuiWindow * home)
 
 	mainWindow->append(home);
 }
+
+/****************************************************************************
+ * StatusMenu
+ *
+ * Opens the status page in place of the home screen, as SettingsMenu does
+ * for the settings.
+ ***************************************************************************/
+void StatusMenu(GuiWindow * home)
+{
+	mainWindow->remove(home);
+
+	{
+		StatusScreen screen;
+		screen.run();
+	}
+
+	mainWindow->append(home);
+}

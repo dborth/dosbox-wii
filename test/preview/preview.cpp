@@ -4,6 +4,7 @@
 #include "libgui/Gui.h"
 #include "hostgfx.h"
 #include "menu/controlsui.h"
+#include "menu/homeview.h"
 #include "menu/controlsmodel.h"
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
@@ -165,6 +166,23 @@ struct SceneModel : ControlsModel
 	bool pollCapture(CaptureEvent&) override { return false; }
 };
 
+
+// The quick settings of the home screen, with values the scene picks
+struct SceneSettings : HomeSettings
+{
+	int cycles = 3000, skip = 0;
+	bool corrected = true, sharp = false;
+	std::string speed() const override { return std::to_string(cycles); }
+	std::string speedNote() const override { return "Dynamic core"; }
+	void stepSpeed(bool up) override { cycles += up ? 500 : -500; }
+	std::string frameskip() const override { return std::to_string(skip); }
+	void stepFrameskip(bool up) override { skip += up ? 1 : -1; }
+	bool aspectCorrected() const override { return corrected; }
+	void setAspectCorrected(bool c) override { corrected = c; }
+	bool filterSharp() const override { return sharp; }
+	void setFilterSharp(bool s) override { sharp = s; }
+};
+
 int main(int argc, char ** argv)
 {
 	if(argc > 1) outDir = argv[1];
@@ -217,6 +235,33 @@ int main(int argc, char ** argv)
 		ControllerConfigView view(0, nullptr);
 		s.page.append(&view);
 		snap("config_empty", s.root);
+	}
+
+	// the home screen: two controllers, four, none; and with a button highlighted
+	{
+		const int counts[] = { 2, 4, 0 };
+		const char * names[] = { "home", "home_four", "home_none" };
+		for(int i = 0; i < 3; i++)
+		{
+			SceneModel m(counts[i]);
+			m.dev.mouse = i == 1;
+			m.setup = i == 0 ? "Keen 4" : "";
+			Controls_SetModel(&m);
+			SceneSettings settings;
+			Screen s;
+			HomeView view(settings, "2.0", nullptr, nullptr);
+			s.page.append(&view);
+			snap(names[i], s.root);
+		}
+		SceneModel m(2);
+		Controls_SetModel(&m);
+		SceneSettings settings;
+		settings.sharp = true; settings.corrected = false; settings.cycles = 12000; settings.skip = 2;
+		Screen s;
+		HomeView view(settings, "2.0", nullptr, nullptr);
+		view.select(HomeView::Action::SETTINGS);
+		s.page.append(&view);
+		snap("home_selected", s.root);
 	}
 	// the setup screen on the sample model, so rows show real targets: (player, emulated mode, preset, held buttons),
 	// and for the per-hardware scenes what the player is (hw -1 keeps the sample's own hardware)

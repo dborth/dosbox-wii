@@ -1334,7 +1334,13 @@ std::string LoadFlow(const PopoverAnchor& anchor)
 }
 
 // Save: a name, what program it is for, and a check before replacing one of the same name.
-std::string SaveFlow(ScreenWindow& screen, const PopoverAnchor& anchor)
+// What a flow needs of the screen it runs over: to take it away while the on-screen keyboard has the display, and bring it back
+struct ScreenHooks {
+	std::function<void()> hide;
+	std::function<void()> show;
+};
+
+std::string SaveFlow(const ScreenHooks& screen, const PopoverAnchor& anchor)
 {
 	ControlsModel& m = Controls();
 	const std::string running = Setup_CleanProgram(m.runningProgram());
@@ -1398,7 +1404,7 @@ std::string SaveCurrentFlow()
 }
 
 // The Setup button: load a setup, or save this one. What the hint line should say after.
-std::string SetupFlow(ScreenWindow& screen, const PopoverAnchor& anchor)
+std::string SetupFlow(const ScreenHooks& screen, const PopoverAnchor& anchor)
 {
 	std::vector<SetupAction> kinds;
 	const int chosen = PickerScreen("Load or save a setup", Picker_SetupMenuItems(kinds), anchor);
@@ -1474,7 +1480,7 @@ void ConfigScreen(int player)
 				const PopoverAnchor anchor = view.anchorFor(pick);
 				screen.setEnabled(false);
 				if(pick == ControllerConfigView::Pick::SETUP)
-					said = SetupFlow(screen, anchor);
+					said = SetupFlow(ScreenHooks{ [&]{ screen.hide(); }, [&]{ screen.show(); } }, anchor);
 				else if(pick == ControllerConfigView::Pick::EMULATED)
 					EmulatedPicker(anchor);
 				else
@@ -1492,6 +1498,23 @@ void ConfigScreen(int player)
 }
 
 } // namespace
+
+const unsigned char * Controls_PadIcon(PadType type)
+{
+	return padIcon(type);
+}
+
+std::string Controls_SetupMenu(GuiWindow * home, const PopoverAnchor& anchor)
+{
+	// the home screen stays drawn (dimmed) under the popover; only the on-screen keyboard takes it away
+	home->setState(STATE::DISABLED);
+	const ScreenHooks hooks = { [home]{ mainWindow->remove(home); }, [home]{ mainWindow->append(home); } };
+	const std::string said = SetupFlow(hooks, anchor);
+	home->setState(STATE::DEFAULT);
+	mainWindow->changeFocus(home);
+	home->resetState();
+	return said;
+}
 
 void Controls_Menu(GuiWindow * home, int player)
 {

@@ -31,6 +31,10 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen);
 void SettingsMenu(GuiWindow * home);
 
 
+/** Opens the status page in place of the home screen's window. Returns when it is closed. */
+void StatusMenu(GuiWindow * home);
+
+
 /**
  * Increase or decrease the current CPU cycles.
  *

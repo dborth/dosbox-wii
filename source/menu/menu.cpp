@@ -21,6 +21,8 @@
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputDriver.h"
 #include "drivers/InputController.h"
+#include "drivers/KeyboardDriver.h"
+#include "drivers/MouseDriver.h"
 #include "filelist.h"
 #include "input.h"
 #include "osk.h"
@@ -31,7 +33,7 @@
 #include "settings.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
-#include "controllerstatus.h"
+#include "homeview.h"
 
 #define APPVERSION		"2.0"
 
@@ -283,27 +285,6 @@ static void WindowCredits()
 		delete txt[i];
 }
 
-static void updateCyclesText(GuiText * cycleText)
-{
-	char tmpCyclesTxt[15];
-	bool autoAdjust;
-	const int cycles = GetRunningCycles(&autoAdjust);
-
-	if (autoAdjust)
-		sprintf(tmpCyclesTxt, "%d%%", cycles);
-	else
-		sprintf(tmpCyclesTxt, "%d", cycles);
-
-	cycleText->setText(tmpCyclesTxt);
-}
-
-static void updateFskipText(GuiText * fskipText)
-{
-	char tmpFskipTxt[15];
-	sprintf(tmpFskipTxt, "%d", GetRunningFrameskip());
-	fskipText->setText(tmpFskipTxt);
-}
-
 /****************************************************************************
  * Game background
  *
@@ -434,6 +415,108 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 }
 
 /****************************************************************************
+ * LiveHomeSettings
+ *
+ * The home screen's quick settings: the running cycles and frameskip (the
+ * hotkeys and the old +/- buttons changed these, not the config), and the
+ * display choices, which are the Video page's rows.
+ ***************************************************************************/
+class LiveHomeSettings : public HomeSettings
+{
+	public:
+		std::string speed() const override
+		{
+			bool autoAdjust;
+			const int cycles = GetRunningCycles(&autoAdjust);
+			return GuiFormat(autoAdjust ? "%d%%" : "%d", cycles);
+		}
+
+		std::string speedNote() const override
+		{
+			EmulationStatus status;
+			if(GetEmulationStatus(&status) && status.core[0])
+			{
+				if(strcmp(status.core, "dynamic") == 0) return "Dynamic core";
+				if(strcmp(status.core, "normal") == 0) return "Normal core";
+				return "Full core";
+			}
+			return "CPU speed";
+		}
+
+		void stepSpeed(bool up) override
+		{
+			MENU_CycleIncreaseOrDecrease(up);
+			Settings_SyncRunning();
+		}
+
+		std::string frameskip() const override { return GuiFormat("%d", GetRunningFrameskip()); }
+
+		void stepFrameskip(bool up) override
+		{
+			MENU_IncreaseOrDecreaseFrameSkip(up);
+			Settings_SyncRunning();
+		}
+
+		bool aspectCorrected() const override { return !strcasecmp(value("Aspect").c_str(), "corrected"); }
+		void setAspectCorrected(bool corrected) override { choose("Aspect", corrected ? "corrected" : "square", nullptr); }
+
+		bool filterSharp() const override
+		{
+			const std::string v = value("Filter");
+			return !strcasecmp(v.c_str(), "sharp") || !strcasecmp(v.c_str(), "nearest");
+		}
+
+		void setFilterSharp(bool sharp) override { choose("Filter", sharp ? "sharp" : "bilinear", sharp ? "nearest" : nullptr); }
+
+	private:
+		//! The Video page's row with this label, if it is there
+		static bool find(const char * label, int& page, int& row)
+		{
+			for(int p = 0; p < SETTINGS_PAGE_COUNT; p++)
+			{
+				if(strcmp(Settings_PageTitle(p), "Video") != 0)
+					continue;
+				for(int r = 0; r < Settings_RowCount(p); r++)
+				{
+					if(strcmp(Settings_RowLabel(p, r), label) == 0)
+					{
+						page = p;
+						row = r;
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		static std::string value(const char * label)
+		{
+			int page, row;
+			char buf[64] = { 0 };
+			if(find(label, page, row))
+				Settings_RowValue(page, row, buf, sizeof(buf));
+			return buf;
+		}
+
+		//! Steps the row until it shows `wanted` (or `alternative`, where one is as good): a row only steps through its values
+		static void choose(const char * label, const char * wanted, const char * alternative)
+		{
+			int page, row;
+			if(!find(label, page, row))
+				return;
+			for(int i = 0; i < 4; i++)
+			{
+				char buf[64] = { 0 };
+				Settings_RowValue(page, row, buf, sizeof(buf));
+				if(!strcasecmp(buf, wanted) || (alternative && !strcasecmp(buf, alternative)))
+					return;
+				if(!Settings_RowStep(page, row, 1))
+					return;
+			}
+		}
+};
+
+/****************************************************************************
  * HomeMenu
  ***************************************************************************/
 void HomeMenu ()
@@ -489,155 +572,17 @@ void HomeMenu ()
 	MenuBarShape bgTopImg(MenuBarShape::TOP);
 	MenuBarShape bgBottomImg(MenuBarShape::BOTTOM);
 
-	GuiImageData logo(logo_png);
-	GuiImage logoImg(&logo);
-	GuiImageData logoOver(logo_over_png);
-	GuiImage logoImgOver(&logoOver);
-	GuiText logoTxt(APPVERSION, 18, (PixelColor){255, 255, 255, 255});
-	logoTxt.setAlignment(ALIGN_H::RIGHT, ALIGN_V::TOP);
-	logoTxt.setPosition(30, 31);
-	GuiButton logoBtn(logoImg.getWidth(), logoImg.getHeight());
-	logoBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
-	logoBtn.setPosition(-85, -40);
-	logoBtn.setImage(&logoImg);
-	logoBtn.setImageOver(&logoImgOver);
-	logoBtn.setLabel(&logoTxt);
-	logoBtn.setSoundOver(&btnSoundOver);
-	logoBtn.setSoundClick(&btnSoundClick);
-	logoBtn.setTrigger(&trigA);
-
-	GuiText cycleText("", 20, (PixelColor){255, 255, 255, 255});
-	cycleText.setPosition(-215, -180);
-	updateCyclesText(&cycleText);
-
-	GuiText fskipText("", 20, (PixelColor){255, 255, 255, 255});
-	fskipText.setPosition(-45, -180);
-	updateFskipText(&fskipText);
-
-	GuiText cycleDecBtnTxt("-", 24, (PixelColor){0, 0, 0, 255});
-	MenuKeyShape cycleDecImg;
-	GuiButton cycleDecBtn(40, 40);
-	cycleDecBtn.setImage(&cycleDecImg);
-	cycleDecBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-	cycleDecBtn.setPosition(-270, -180);
-	cycleDecBtn.setLabel(&cycleDecBtnTxt);
-	cycleDecBtn.setTrigger(&trigA);
-	cycleDecBtn.setEffectGrow();
-
-	GuiText cycleIncBtnTxt("+", 24, (PixelColor){0, 0, 0, 255});
-	MenuKeyShape cycleIncImg;
-	GuiButton cycleIncBtn(40, 40);
-	cycleIncBtn.setImage(&cycleIncImg);
-	cycleIncBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-	cycleIncBtn.setPosition(-160, -180);
-	cycleIncBtn.setLabel(&cycleIncBtnTxt);
-	cycleIncBtn.setTrigger(&trigA);
-	cycleIncBtn.setEffectGrow();
-
-	GuiText fskipDecBtnTxt("-", 24, (PixelColor){0, 0, 0, 255});
-	MenuKeyShape fskipDecImg;
-	GuiButton fskipDecBtn(40, 40);
-	fskipDecBtn.setImage(&fskipDecImg);
-	fskipDecBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-	fskipDecBtn.setPosition(-80, -180);
-	fskipDecBtn.setLabel(&fskipDecBtnTxt);
-	fskipDecBtn.setTrigger(&trigA);
-	fskipDecBtn.setEffectGrow();
-
-	GuiText fskipIncBtnTxt("+", 24, (PixelColor){0, 0, 0, 255});
-	MenuKeyShape fskipIncImg;
-	GuiButton fskipIncBtn(40, 40);
-	fskipIncBtn.setImage(&fskipIncImg);
-	fskipIncBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-	fskipIncBtn.setPosition(0, -180);
-	fskipIncBtn.setLabel(&fskipIncBtnTxt);
-	fskipIncBtn.setTrigger(&trigA);
-	fskipIncBtn.setEffectGrow();
-
-	GuiText exitBtnTxt("Exit", 24, (PixelColor){0, 0, 0, 255});
-	MenuButtonShape exitBtnImg(MenuButtonShape::LARGE);
-	GuiButton exitBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
-	exitBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	exitBtn.setPosition(-125, 120);
-	exitBtn.setLabel(&exitBtnTxt);
-	exitBtn.setImage(&exitBtnImg);
-	exitBtn.setSoundOver(&btnSoundOver);
-	exitBtn.setSoundClick(&btnSoundClick);
-	exitBtn.setTrigger(&trigA);
-	exitBtn.setEffectGrow();
-
-	GuiText keyboardBtnTxt("Keyboard", 24, (PixelColor){0, 0, 0, 255});
-	MenuButtonShape keyboardBtnImg(MenuButtonShape::LARGE);
-	GuiButton keyboardBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
-	keyboardBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	keyboardBtn.setPosition(125, 120);
-	keyboardBtn.setLabel(&keyboardBtnTxt);
-	keyboardBtn.setImage(&keyboardBtnImg);
-	keyboardBtn.setSoundOver(&btnSoundOver);
-	keyboardBtn.setSoundClick(&btnSoundClick);
-	keyboardBtn.setTrigger(&trigA);
-	keyboardBtn.setEffectGrow();
-
-	GuiText controllersBtnTxt("Controllers", 24, (PixelColor){0, 0, 0, 255});
-	MenuButtonShape controllersBtnImg(MenuButtonShape::LARGE);
-	GuiButton controllersBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
-	controllersBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	controllersBtn.setPosition(-125, 235);
-	controllersBtn.setLabel(&controllersBtnTxt);
-	controllersBtn.setImage(&controllersBtnImg);
-	controllersBtn.setSoundOver(&btnSoundOver);
-	controllersBtn.setSoundClick(&btnSoundClick);
-	controllersBtn.setTrigger(&trigA);
-	controllersBtn.setEffectGrow();
-
-	GuiText settingsBtnTxt("Settings", 24, (PixelColor){0, 0, 0, 255});
-	MenuButtonShape settingsBtnImg(MenuButtonShape::LARGE);
-	GuiButton settingsBtn(MENU_BTN_LARGE_W, MENU_BTN_LARGE_H);
-	settingsBtn.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
-	settingsBtn.setPosition(125, 235);
-	settingsBtn.setLabel(&settingsBtnTxt);
-	settingsBtn.setImage(&settingsBtnImg);
-	settingsBtn.setSoundOver(&btnSoundOver);
-	settingsBtn.setSoundClick(&btnSoundClick);
-	settingsBtn.setTrigger(&trigA);
-	settingsBtn.setEffectGrow();
-
-	GuiText closeBtnTxt("Close", 22, (PixelColor){0, 0, 0, 255});
-	MenuButtonShape closeBtnImg(MenuButtonShape::SMALL);
-	GuiButton closeBtn(MENU_BTN_SMALL_W, MENU_BTN_SMALL_H);
-	closeBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::TOP);
-	closeBtn.setPosition(-50, 29);
-	closeBtn.setLabel(&closeBtnTxt);
-	closeBtn.setImage(&closeBtnImg);
-	closeBtn.setSoundOver(&btnSoundOver);
-	closeBtn.setSoundClick(&btnSoundClick);
-	closeBtn.setTrigger(0, &trigA);
-	closeBtn.setTrigger(1, &trigHome);
-	closeBtn.setEffectGrow();
-
 	// the controller screens read the real controllers, keyboard and mouse from here on
 	Controls_SetHardware(&Controls_Hal());
 	// and what a button does is what the mapper has for it (all four players); the model keeps its state between visits
 	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), &Setups_Live());
 	Controls_SetModel(&mapperModel);
 
-	ControllerStatus controllerStatus(&trigA, &btnSoundOver, &btnSoundClick);
-	int controllerClicked;
+	LiveHomeSettings homeSettings;
+	HomeView home(homeSettings, APPVERSION, &btnSoundOver, &btnSoundClick);
 
 	GuiWindow w(screenwidth, screenheight);
-	controllerStatus.appendTo(w);
-	w.append(&logoBtn);
-	w.append(&closeBtn);
-	w.append(&exitBtn);
-	w.append(&cycleText);
-	w.append(&fskipText);
-	w.append(&cycleDecBtn);
-	w.append(&cycleIncBtn);
-	w.append(&fskipDecBtn);
-	w.append(&fskipIncBtn);
-	w.append(&keyboardBtn);
-	w.append(&controllersBtn);
-	w.append(&settingsBtn);
+	w.append(&home);
 
 	// the bars belong to the main window, not to the home screen, so they stay up while the pages (settings,
 	// controllers) come and go on top of the game picture
@@ -649,10 +594,7 @@ void HomeMenu ()
 	enterSound.play();
 
 	bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_IN, 35);
-	closeBtn.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_IN, 35);
 	bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
-	logoBtn.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
-	controllerStatus.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
 	w.setEffect(EFFECT::FADE, 15);
 
 	while(1)
@@ -660,92 +602,79 @@ void HomeMenu ()
 		UpdateGui();
 
 		keyboard->refresh();	// nothing polls it here, so hot-plug would otherwise go unseen
-		controllerStatus.update();
 
-		if(closeBtn.getState() == STATE::CLICKED)
+		HomeView::Action action = home.takeAction();
+
+		// HOME closes the menu, as Resume does
+		for(int i = 0; i < 4; i++)
+			if(trigHome.isClicked(controller[i]))
+				action = HomeView::Action::RESUME;
+
+		if(action == HomeView::Action::NONE)
+			continue;
+		if(action != HomeView::Action::SETUPS)
+			home.setStatus(std::string());
+
+		bool leave = false;
+
+		switch(action)
 		{
-			exitSound.play();
-			bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
-			closeBtn.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
-			bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
-			logoBtn.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
-			controllerStatus.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
-			w.setEffect(EFFECT::FADE, -15);
+			case HomeView::Action::RESUME:
+				exitSound.play();
+				bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
+				bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
+				w.setEffect(EFFECT::FADE, -15);
 
-			// step the GUI until the effects have finished
-			while(w.getEffect() > 0)
-				UpdateGui();
-			break;
-		}
-		else if(exitBtn.getState() == STATE::CLICKED)
-		{
-			FadeOutAndExit(); // does not return
-		}
-		else if(keyboardBtn.getState() == STATE::CLICKED)
-		{
-			keyboardBtn.resetState();
+				// step the GUI until the effects have finished
+				while(w.getEffect() > 0)
+					UpdateGui();
+				leave = true;
+				break;
 
-			// typed into DOS once the menu is closed and the emulator polls again
-			char command[1024] = { 0 };
-			OnScreenKeyboard(command, sizeof(command));
+			case HomeView::Action::EXIT:
+				FadeOutAndExit(); // does not return
+				break;
 
-			if(command[0] != 0)
+			case HomeView::Action::KEYBOARD:
 			{
-				OSK_TypeText(command);
+				// typed into DOS once the menu is closed and the emulator polls again
+				char command[1024] = { 0 };
+				OnScreenKeyboard(command, sizeof(command));
+
+				if(command[0] != 0)
+				{
+					OSK_TypeText(command);
+					leave = true;
+				}
 				break;
 			}
-		}
-		else if (cycleDecBtn.getState() == STATE::CLICKED)
-		{
-			cycleDecBtn.resetState();
-			MENU_CycleIncreaseOrDecrease(false);
-			Settings_SyncRunning();
-			updateCyclesText(&cycleText);
-		}
-		else if (cycleIncBtn.getState() == STATE::CLICKED)
-		{
-			cycleIncBtn.resetState();
-			MENU_CycleIncreaseOrDecrease(true);
-			Settings_SyncRunning();
-			updateCyclesText(&cycleText);
-		}
-		else if (fskipDecBtn.getState() == STATE::CLICKED)
-		{
-			fskipDecBtn.resetState();
-			MENU_IncreaseOrDecreaseFrameSkip(false);
-			Settings_SyncRunning();
-			updateFskipText(&fskipText);
-		}
-		else if (fskipIncBtn.getState() == STATE::CLICKED)
-		{
-			fskipIncBtn.resetState();
-			MENU_IncreaseOrDecreaseFrameSkip(true);
-			Settings_SyncRunning();
-			updateFskipText(&fskipText);
-		}
-		else if((controllerClicked = controllerStatus.clicked()) >= 0)
-		{
-			Controls_Menu(&w, controllerClicked);
-		}
-		else if (controllersBtn.getState() == STATE::CLICKED)
-		{
-			controllersBtn.resetState();
-			Controls_Menu(&w);
-		}
-		else if (settingsBtn.getState() == STATE::CLICKED)
-		{
-			settingsBtn.resetState();
-			SettingsMenu(&w);
 
-			// the settings may have changed what these show
-			updateCyclesText(&cycleText);
-			updateFskipText(&fskipText);
+			case HomeView::Action::CONTROLLERS:
+				Controls_Menu(&w, home.takePlayer());
+				break;
+
+			case HomeView::Action::SETTINGS:
+				SettingsMenu(&w);
+				break;
+
+			case HomeView::Action::STATUS:
+				StatusMenu(&w);
+				break;
+
+			case HomeView::Action::SETUPS:
+				home.setStatus(Controls_SetupMenu(&w, home.setupsAnchor()));
+				break;
+
+			case HomeView::Action::CREDITS:
+				WindowCredits();
+				break;
+
+			default:
+				break;
 		}
-		else if (logoBtn.getState() == STATE::CLICKED)
-		{
-			logoBtn.resetState();
-			WindowCredits();
-		}
+
+		if(leave)
+			break;
 	}
 
 	// wait for keys to be depressed (rescanning: the pad data is only as
@@ -771,7 +700,7 @@ void HomeMenu ()
 	delete screenImg;
 	if(backgroundTexture)
 		platform->getVideo()->getImageRenderer()->destroyTexture(backgroundTexture);
-	w.removeAll(); // before the controller strip (which the window only points at) is destroyed
+	w.removeAll(); // before the home view (which the window only points at) is destroyed
 
 	for(int i = 0; i < 4; i++)
 	{

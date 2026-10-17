@@ -30,6 +30,13 @@
     or on the first connected one when there is none given. */
 void Controls_Menu(GuiWindow * home, int player = -1);
 
+/** The Setups popover (load a setup, or save this one) over the home screen, opening beside `anchor`. Blocks until it is
+    closed. What the hint line should say about it (empty if nothing was done). */
+std::string Controls_SetupMenu(GuiWindow * home, const PopoverAnchor& anchor);
+
+/** The black device icon for a kind of controller (a PNG, as the asset arrays hold it). */
+const unsigned char * Controls_PadIcon(PadType type);
+
 /** Font sizes used by the controller screens. */
 enum {
 	UI_FONT_TITLE = 26,
