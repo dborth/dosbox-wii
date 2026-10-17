@@ -51,6 +51,7 @@ class HalControlsHardware : public ControlsHardware
 			const InputPadData& drc = controller[0]->getPadData();
 			d.gamepadPresent = drc.hw_connected[INPUT_HW_DRC];
 			d.gamepadTouch = d.gamepadPresent && drc.validPointer && drc.isTouch;
+			d.gamepadBattery = d.gamepadPresent ? (int)(drc.hw_battery_level[INPUT_HW_DRC] > 100 ? 100 : drc.hw_battery_level[INPUT_HW_DRC]) : -1;
 			return d;
 		}
 

@@ -426,7 +426,8 @@ class DrivesScreen : public ListScreen
  * the configured value with the value in effect after it in brackets, and a
  * * on anything that is not the default (see status.h). Nothing here can be
  * changed. The state is read when the screen opens and again on A, which is
- * how a controller connected since then shows up.
+ * how a controller connected since then shows up. It is opened from the Status
+ * tile on the home screen, and from nowhere else.
  ***************************************************************************/
 class StatusScreen : public ListScreen
 {
@@ -463,7 +464,7 @@ class StatusScreen : public ListScreen
  * A list of settings pages, one row per page. A (or clicking) opens the page.
  *
  * Two lists use it. The first (sections = false) is the curated pages followed
- * by "Drives", "Status" and "All settings", which opens the second: one row
+ * by "Drives" and "All settings", which opens the second: one row
  * per config section, each opening its all-settings page. The second one is
  * opened from inside the first, so each level has its own OptionList. Only
  * the first has the Save button, whose result goes where the pages show help.
@@ -477,7 +478,7 @@ class SettingsListScreen : public ListScreen
 			  pageCount(allSettings ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT) {}
 
 	protected:
-		int rowCount() override { return pageCount + (sections ? 0 : 3); }
+		int rowCount() override { return pageCount + (sections ? 0 : 2); }
 
 		void rowText(int row, char * name, size_t nameSize, char *, size_t) override
 		{
@@ -485,8 +486,6 @@ class SettingsListScreen : public ListScreen
 				snprintf(name, nameSize, "%s", Settings_PageTitle(sections ? Settings_AllPage(row) : row));
 			else if(row == pageCount && !sections)
 				snprintf(name, nameSize, "Drives");
-			else if(row == pageCount + 1 && !sections)
-				snprintf(name, nameSize, "Status");
 			else
 				snprintf(name, nameSize, "All settings");
 		}
@@ -499,11 +498,6 @@ class SettingsListScreen : public ListScreen
 			if(!sections && row == pageCount)
 			{
 				DrivesScreen screen;
-				screen.run();
-			}
-			else if(!sections && row == pageCount + 1)
-			{
-				StatusScreen screen;
 				screen.run();
 			}
 			else if(row >= pageCount)

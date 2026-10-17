@@ -100,11 +100,12 @@ struct PlayerInfo {
 
 /** Which shared input devices are present. */
 struct DeviceStatus {
-	bool keyboard;
-	bool mouse;
-	bool wiimoteIr;
-	bool gamepadPresent;	/**< Wii U only: whether to show the GamePad line at all */
-	bool gamepadTouch;
+	bool keyboard = false;
+	bool mouse = false;
+	bool wiimoteIr = false;
+	bool gamepadPresent = false;	/**< Wii U only: whether to show the GamePad line at all */
+	bool gamepadTouch = false;
+	int gamepadBattery = -1;		/**< The GamePad's charge in percent; -1 for none to show */
 };
 
 /** One player slot as the console reports it, before the model adds what DOS does with it. */

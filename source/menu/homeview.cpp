@@ -14,7 +14,7 @@ namespace {
 
 // ---- icons drawn from shapes, in a 24 x 24 box scaled to the element's size
 
-enum { ICON_NONE = -1, ICON_GAUGE, ICON_FRAMES, ICON_ASPECT, ICON_FILTER, ICON_KEYBOARD, ICON_GEAR, ICON_PULSE, ICON_DISK, ICON_POWER, ICON_INFO, ICON_PLAY };
+enum { ICON_NONE = -1, ICON_GAUGE, ICON_FRAMES, ICON_ASPECT, ICON_FILTER, ICON_KEYBOARD, ICON_GEAR, ICON_PULSE, ICON_DISK, ICON_POWER, ICON_INFO, ICON_PLAY, ICON_PAD };
 
 class HomeIcon : public GuiElement
 {
@@ -104,9 +104,15 @@ class HomeIcon : public GuiElement
 					dot(12, 13, 1.8f);
 					break;
 				case ICON_FRAMES:
-					box(3, 5, 18, 14, 2.5f);
-					line(9, 5.5f, 9, 18.5f, 1.6f);
-					line(15, 5.5f, 15, 18.5f, 1.6f);
+					// a strip of film: the frame in the middle, a column of sprocket holes down each side
+					box(3, 4, 18, 16, 2.5f);
+					line(8, 4.5f, 8, 19.5f, 1.6f);
+					line(16, 4.5f, 16, 19.5f, 1.6f);
+					for(int k = 0; k < 3; k++)
+					{
+						dot(5.5f, 8.0f + 4.0f * k, 0.9f);
+						dot(18.5f, 8.0f + 4.0f * k, 0.9f);
+					}
 					break;
 				case ICON_ASPECT:
 					box(3, 4, 18, 13, 2.5f);
@@ -154,6 +160,14 @@ class HomeIcon : public GuiElement
 					dot(12, 7.6f, 1.3f);
 					line(12, 11, 12, 17);
 					break;
+				case ICON_PAD:
+					// a gamepad: the body, a D-pad at the left, two buttons at the right
+					box(2.5f, 6.5f, 19, 11, 5.5f);
+					line(7, 10.2f, 7, 14.2f, 1.8f);
+					line(5, 12.2f, 9, 12.2f, 1.8f);
+					dot(15.5f, 11.0f, 1.2f);
+					dot(18.0f, 13.6f, 1.2f);
+					break;
 				case ICON_PLAY:
 				{
 					std::vector<GuiPoint> tri;
@@ -172,6 +186,15 @@ class HomeIcon : public GuiElement
 		float meshFeather;
 		std::vector<MeshVertex> scratch;
 };
+
+// The tiles under the controllers: as short as they can be, to leave the controllers their room
+const int TILE_W = 128;
+const int TILE_H = 54;
+// The controllers card: its inner width, a player's slot, and the row of shared devices under the players
+const int CONTROLLERS_INNER_W = 244;
+const int PLAYER_SLOT_W = 54;
+const int PLAYER_SLOT_H = 72;
+const int DEVICE_ROW_H = 28;
 
 const PixelColor Dark() { return MenuPaletteCurrent().text; }
 const PixelColor Light() { return MenuChromeText(); }
@@ -217,10 +240,10 @@ GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiC
 GuiCard& HomeView::tile(const char * title, const char * note, int icon, Action action, const char * hintText)
 {
 	const std::string h = hintText;
-	GuiCard& c = ui.card().size(128, 74).style(MenuTileStyle()).corners(GuiCorners(12.0f)).pad(8, 6)
+	GuiCard& c = ui.card().size(TILE_W, TILE_H).style(MenuTileStyle()).corners(GuiCorners(12.0f)).pad(8, 6)
 		.onClick([this, action]{ pending = action; actionPlayer = -1; })
 		.onFocus([this, h]{ hint = h; });
-	GuiLayout& row = ui.row().gap(6).align(LAYOUT_ALIGN::CENTRE).size(112, 62);
+	GuiLayout& row = ui.row().gap(6).align(LAYOUT_ALIGN::CENTRE).size(TILE_W - 16, TILE_H - 12);
 	row.add(ui.make<HomeIcon>(icon, 24, Dark()));
 	GuiLayout& text = ui.column().gap(4).align(LAYOUT_ALIGN::START);
 	text.add(ui.label(title).fontSize(UI_FONT_HEADING - 4));
@@ -274,12 +297,27 @@ void HomeView::quickRow(GuiLayout& column, int icon, const char * labelText, std
 		.add(ui.make<HomeIcon>(icon, 24, Dark())).add(text).addSpace().add(control));
 }
 
-// The four players (device, battery) and, after a divider, the keyboard and mouse. A player's slot opens that player's setup.
+// A battery: a 1px casing, four bars inside it and the terminal, on whole pixels
+struct BatteryShapes {
+	GuiShape * body = nullptr;
+	GuiShape * nub = nullptr;
+	GuiShape * seg[4] = { nullptr, nullptr, nullptr, nullptr };
+};
+
+// How many of the four bars a charge in percent lights; -1 for no battery to show
+static int BatterySegments(int percent)
+{
+	if(percent < 0)
+		return -1;
+	return percent * 4 / 100 > 4 ? 4 : percent * 4 / 100;
+}
+
+// The four players (device, battery), then under a rule the shared devices: the GamePad (Wii U), keyboard and mouse.
+// A player's slot opens that player's setup; the devices are only shown.
 GuiLayout& HomeView::playersStrip()
 {
 	struct Slot {
-		GuiImage * icon = nullptr; GuiShape * ring = nullptr; GuiShape * body = nullptr; GuiShape * nub = nullptr;
-		GuiShape * seg[4] = { nullptr, nullptr, nullptr, nullptr };
+		GuiImage * icon = nullptr; GuiShape * ring = nullptr; BatteryShapes battery;
 		GuiLabel * label = nullptr; GuiCard * card = nullptr; int key = -1;
 	};
 	const PadType kinds[] = { PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMECUBE, PadType::GAMEPAD };
@@ -288,12 +326,46 @@ GuiLayout& HomeView::playersStrip()
 		images[(int)kinds[k]] = &ui.own<GuiImageData>(ControllerIcon(kinds[k]));
 
 	const MenuPalette& pal = MenuPaletteCurrent();
-	GuiLayout& strip = ui.row().gap(0).align(LAYOUT_ALIGN::CENTRE);
+	auto makeBattery = [this](BatteryShapes& b) -> GuiLayout& {
+		b.body = &ui.make<GuiShape>(23, 9);
+		b.nub = &ui.make<GuiShape>(2, 3);
+		GuiLayout& bars = ui.row().size(23, 9).pad(2, 2).gap(1);
+		for(int k = 0; k < 4; k++)
+		{
+			b.seg[k] = &ui.make<GuiShape>(4, 5);
+			bars.add(*b.seg[k]);
+		}
+		GuiLayout& battery = ui.overlay().size(25, 9);
+		battery.add(*b.body, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::CENTRE));
+		battery.add(bars, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::CENTRE));
+		battery.add(*b.nub, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::CENTRE));
+		return battery;
+	};
+	auto showBattery = [pal](BatteryShapes& b, int segs) {
+		const bool shown = segs >= 0;
+		const PixelColor tint = segs <= 1 ? pal.mark : pal.text;
+		b.body->setVisible(shown);
+		b.nub->setVisible(shown);
+		if(shown)
+		{
+			b.body->setPaint(GuiPaint().stroke(1.0f, tint));
+			b.nub->setPaint(GuiPaint().color(tint));
+		}
+		for(int k = 0; k < 4; k++)
+		{
+			b.seg[k]->setVisible(shown && k < segs);
+			if(shown && k < segs)
+				b.seg[k]->setPaint(GuiPaint().color(tint));
+		}
+	};
+
+	// each player: the device, its battery and P1..P4, in a slot tall enough for the tallest device (the Wiimote's 40)
+	GuiLayout& players = ui.row().size(CONTROLLERS_INNER_W, PLAYER_SLOT_H).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::SPACE_BETWEEN);
 	for(int i = 0; i < 4; i++)
 	{
 		Slot& s = ui.own<Slot>();
 		const std::string h = "Set up this player's buttons";
-		s.card = &ui.card().size(38, 62).style(MenuRowHighlightStyle()).corners(GuiCorners(8.0f)).pad(0, 0)
+		s.card = &ui.card().size(PLAYER_SLOT_W, PLAYER_SLOT_H).style(MenuRowHighlightStyle()).corners(GuiCorners(8.0f)).pad(0, 0)
 			.onClick([this, i]{ pending = Action::CONTROLLERS; actionPlayer = i; })
 			.onFocus([this, h]{ hint = h; });
 
@@ -301,35 +373,20 @@ GuiLayout& HomeView::playersStrip()
 		s.ring = &ui.make<GuiShape>(10, 14);
 		s.ring->setShape(SHAPE::ELLIPSE);
 		s.ring->setPaint(GuiPaint().stroke(1.5f, pal.outlineStrong));
-		GuiLayout& iconBox = ui.overlay().size(38, 36);
+		GuiLayout& iconBox = ui.overlay().size(PLAYER_SLOT_W, 40);
 		iconBox.add(*s.icon, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 		iconBox.add(*s.ring, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
-		// the battery: a 1px casing, four bars inside it and the terminal, on whole pixels
-		s.body = &ui.make<GuiShape>(23, 9);
-		s.nub = &ui.make<GuiShape>(2, 3);
-		GuiLayout& bars = ui.row().size(23, 9).pad(2, 2).gap(1);
-		for(int b = 0; b < 4; b++)
-		{
-			s.seg[b] = &ui.make<GuiShape>(4, 5);
-			bars.add(*s.seg[b]);
-		}
-		GuiLayout& battery = ui.overlay().size(25, 9);
-		battery.add(*s.body, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::CENTRE));
-		battery.add(bars, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::CENTRE));
-		battery.add(*s.nub, GuiItem().at(LAYOUT_ALIGN::END, LAYOUT_ALIGN::CENTRE));
-
+		GuiLayout& battery = makeBattery(s.battery);
 		s.label = &ui.label(GuiFormat("P%d", i + 1).c_str()).fontSize(13);
-		GuiLayout& col = ui.column().gap(2).align(LAYOUT_ALIGN::CENTRE).size(38, 62).add(iconBox).add(battery).add(*s.label);
+		GuiLayout& col = ui.column().gap(3).align(LAYOUT_ALIGN::CENTRE).size(PLAYER_SLOT_W, PLAYER_SLOT_H).add(iconBox).add(battery).add(*s.label);
 		s.card->add(col, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
-		strip.add(*s.card);
+		players.add(*s.card);
 
-		ui.bind([&s, i, images, pal]{
+		ui.bind([&s, i, images, showBattery]{
 			const PlayerInfo p = Controls().player(i);
 			const bool present = p.connected;
-			int segs = -1;
-			if(present && p.battery >= 0)
-				segs = p.battery * 4 / 100 > 4 ? 4 : p.battery * 4 / 100;
+			const int segs = present ? BatterySegments(p.battery) : -1;
 			const int key = (present ? 1 + (int)p.type : 0) | ((segs + 1) << 4);
 			if(key == s.key)
 				return;
@@ -340,42 +397,50 @@ GuiLayout& HomeView::playersStrip()
 				s.icon->setImage(images[(int)p.type]);
 			s.label->setAlpha(present ? 255 : 110);
 			s.card->disabled(!present);
-			const bool showBattery = segs >= 0;
-			const PixelColor tint = segs <= 1 ? pal.mark : pal.text;
-			s.body->setVisible(showBattery);
-			s.nub->setVisible(showBattery);
-			if(showBattery)
-			{
-				s.body->setPaint(GuiPaint().stroke(1.0f, tint));
-				s.nub->setPaint(GuiPaint().color(tint));
-			}
-			for(int b = 0; b < 4; b++)
-			{
-				s.seg[b]->setVisible(showBattery && b < segs);
-				if(showBattery && b < segs)
-					s.seg[b]->setPaint(GuiPaint().color(tint));
-			}
+			showBattery(s.battery, segs);
 		});
 	}
 
-	// keyboard and mouse: only their icons, dimmed until one is attached
-	GuiShape& divider = ui.make<GuiShape>(1, 52);
-	divider.setPaint(GuiPaint().color(pal.outline));
+	// the shared devices, dimmed until one is attached: the GamePad with its charge (only where there is one), the
+	// keyboard and the mouse
+	GuiShape& rule = ui.make<GuiShape>(CONTROLLERS_INNER_W, 1);
+	rule.setPaint(GuiPaint().color(pal.outline));
+	GuiLayout& devices = ui.row().size(CONTROLLERS_INNER_W, DEVICE_ROW_H).gap(18).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE);
+	GuiImage * padImage = nullptr;
+	BatteryShapes * padBattery = nullptr;
+	if(Controls().devices().gamepadPresent)
+	{
+		GuiImageData& padData = ui.own<GuiImageData>(icon_gamepad_png);
+		padImage = &ui.make<GuiImage>(&padData);
+		padBattery = &ui.own<BatteryShapes>();
+		GuiLayout& padCharge = makeBattery(*padBattery);
+		devices.add(ui.row().gap(5).align(LAYOUT_ALIGN::CENTRE).add(*padImage).add(padCharge));
+	}
 	GuiImageData& kbdData = ui.own<GuiImageData>(icon_keyboard_png);
 	GuiImageData& mouseData = ui.own<GuiImageData>(icon_mouse_png);
 	GuiImage& kbd = ui.make<GuiImage>(&kbdData);
 	GuiImage& mouse = ui.make<GuiImage>(&mouseData);
-	strip.add(ui.row().size(10, 52));
-	strip.add(divider);
-	strip.add(ui.row().size(10, 52));
-	strip.add(ui.overlay().size(40, 52).add(kbd, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE)));
-	strip.add(ui.overlay().size(28, 52).add(mouse, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE)));
-	ui.bind([&kbd, &mouse]{
+	devices.add(kbd);
+	devices.add(mouse);
+	int padKey = -2;
+	ui.bind([&kbd, &mouse, padImage, padBattery, showBattery, padKey]() mutable {
 		const DeviceStatus d = Controls().devices();
 		kbd.setAlpha(d.keyboard ? 255 : 90);
 		mouse.setAlpha(d.mouse ? 255 : 90);
+		if(padImage)
+			padImage->setAlpha(d.gamepadPresent ? 255 : 90);
+		if(padBattery)
+		{
+			const int segs = d.gamepadPresent ? BatterySegments(d.gamepadBattery) : -1;
+			if(segs != padKey)
+			{
+				padKey = segs;
+				showBattery(*padBattery, segs);
+			}
+		}
 	});
-	return strip;
+
+	return ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(players).add(rule).add(devices);
 }
 
 // ---- the screen
@@ -424,14 +489,13 @@ HomeView::HomeView(HomeSettings& s, const char * version, GuiSound * soundOver, 
 	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, bodyH);
 	quickCard.add(quick, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
-	// body, right: controllers, then four tiles
-	GuiImageData& padData = ui.own<GuiImageData>(icon_classic_png);
-	GuiImage& padImage = ui.make<GuiImage>(&padData);
-	configureCard = &pill("Configure", ICON_NONE, 96, 26, 13, [this]{ pending = Action::CONTROLLERS; actionPlayer = -1; }, [this]{ hint = "Set up the buttons of each controller"; });
-	GuiLayout& controllersHead = ui.row().size(244, 28).gap(6).align(LAYOUT_ALIGN::CENTRE)
-		.add(padImage).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
-	GuiLayout& controllersBody = ui.column().size(244, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
-	GuiCard& controllersCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 8).size(264, 124);
+	// body, right: controllers, then four tiles. The tiles are short, and the controllers take what they leave.
+	configureCard = &pill("Configure", ICON_NONE, 76, 26, 13, [this]{ pending = Action::CONTROLLERS; actionPlayer = -1; }, [this]{ hint = "Set up the buttons of each controller"; });
+	GuiLayout& controllersHead = ui.row().size(CONTROLLERS_INNER_W, 28).gap(6).align(LAYOUT_ALIGN::CENTRE)
+		.add(ui.make<HomeIcon>(ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
+	GuiLayout& controllersBody = ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
+	const int controllersH = bodyH - 2 * TILE_H - 2 * 8;
+	GuiCard& controllersCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 8).size(264, controllersH);
 	controllersCard.add(controllersBody, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
 	keyboardCard = &tile("Keyboard", "On screen", ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");

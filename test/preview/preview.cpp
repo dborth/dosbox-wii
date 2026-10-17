@@ -253,6 +253,24 @@ int main(int argc, char ** argv)
 			s.page.append(&view);
 			snap(names[i], s.root);
 		}
+		{
+			// a Wii U: the GamePad shown beside the keyboard and mouse, once charged and once low
+			const int charges[] = { 70, 12 };
+			const char * gpNames[] = { "home_gamepad", "home_gamepad_low" };
+			for(int i = 0; i < 2; i++)
+			{
+				SceneModel m(3);
+				m.dev.gamepadPresent = true;
+				m.dev.gamepadBattery = charges[i];
+				m.dev.mouse = true;
+				Controls_SetModel(&m);
+				SceneSettings settings;
+				Screen s;
+				HomeView view(settings, "2.0", nullptr, nullptr);
+				s.page.append(&view);
+				snap(gpNames[i], s.root);
+			}
+		}
 		SceneModel m(2);
 		Controls_SetModel(&m);
 		SceneSettings settings;
