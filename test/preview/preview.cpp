@@ -288,23 +288,44 @@ int main(int argc, char ** argv)
 		SampleControls_ResetHardware();
 		SampleControls_SetHeld(0);
 	}
-	// the chooser on the sample model: (name, player, emulated mode, control, what it does now)
-	struct ChooserScene { const char * name; int mode; int preset; int control; BindingTarget now; };
+	// the chooser on the sample model, as a popover beside the row that was pressed: (name, hardware, emulated mode, preset, control, what it does now, kind to show)
+	struct ChooserScene { const char * name; int hw; int mode; int preset; int control; BindingTarget now; int show; };
 	const ChooserScene choosers[] = {
-		{ "chooser", 0, 1, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5) },					// opens on the key it uses
-		{ "chooser_suggested", 0, 1, INPUT_TRIGGER_ZR, BindingTarget() },				// nothing yet: the suggestions
-		{ "chooser_keys_mouse", 2, 0, INPUT_BTN_A, BindingTarget(TARGET::JOYSTICK, 0) },	// no joystick, so no Joystick kind
+		{ "chooser", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5), -1 },				// opens on the key it uses
+		{ "chooser_suggested", (int)PadType::CLASSIC, 0, 1, INPUT_TRIGGER_ZR, BindingTarget(), -1 },			// nothing yet: the suggestions
+		{ "chooser_keys_mouse", (int)PadType::GAMECUBE, 2, 0, INPUT_BTN_A, BindingTarget(TARGET::JOYSTICK, 0), -1 },	// no joystick, so no Joystick kind
+		{ "chooser_left", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_UP, BindingTarget(TARGET::KEY, 5), 3 },		// a left-hand row: the popover on the right
+		{ "chooser_dosbox", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_Y, BindingTarget(), 4 },
+		{ "chooser_fkeys", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), -1 },	// opens on the tab with the key in use
 	};
 	for(size_t i = 0; i < sizeof(choosers) / sizeof(choosers[0]); i++)
 	{
 		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+		SampleControls_SetHardware(0, (PadType)choosers[i].hw, false, false);
 		Controls().setEmulated(choosers[i].mode);
 		ApplyAll(choosers[i].preset);
 		Screen s;
-		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), nullptr);
-		s.page.append(&view);
+		ControllerConfigView config(0, nullptr);
+		s.page.append(&config);
+		for(int u = 0; u < 3; u++)
+			s.root.update(nullptr);
+		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), nullptr, config.anchorForRow(choosers[i].control));
+		GuiWindow popWindow(640, 480);
+		popWindow.append(&view);
+		s.root.append(&popWindow);
+		s.page.setState(STATE::DISABLED);
+		for(int u = 0; u < 3; u++)
+			s.root.update(nullptr);
+		s.root.changeFocus(&popWindow);
+		if(choosers[i].show >= 0)
+			view.showCategory(choosers[i].show);
+		view.selectCategory();
 		snap(choosers[i].name, s.root);
+		s.root.remove(&popWindow);
 	}
+	Controls_SetModel(nullptr);
+	SampleControls_ResetHardware();
 
 	// Every list is a popover over the setup screen, beside the button that opened it; the screen under it is dimmed
 	// and, for presets, previews the row under the cursor

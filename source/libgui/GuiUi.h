@@ -98,6 +98,8 @@ class GuiTextButton : public GuiButton
 		GuiTextButton& style(const GuiShapeStyle& s);
 		//!Squarer corners instead of a capsule
 		GuiTextButton& rounded(float radius);
+		//!The text color while the button is highlighted (default: the theme's text-on-accent, for a dark highlight; a light highlight needs dark text)
+		GuiTextButton& litTextColor(PixelColor c) { textLit.textColor(c); return *this; }
 		//!Disables or enables the button (a disabled button cannot be selected or clicked)
 		GuiTextButton& disabled(bool d = true);
 		//!Sets the text

@@ -65,3 +65,41 @@ void PopoverBackdrop::update(InputController * c)
 	if(!byCancel && pad.validPointer && panel->isInside(pad.cursor_x, pad.cursor_y))
 		resetState();
 }
+
+GuiCard& Popover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool withDotSlot)
+{
+	const int padX = 10, dotSlot = withDotSlot ? 14 : 0;
+	GuiLabel& name = ui.label(title.c_str()).fontSize(title.size() > 18 ? 14 : 16);
+	name.setMaxWidth(width - 2 * padX - (withDotSlot ? dotSlot + 8 : 0));
+	GuiLayout& dotBox = ui.row().size(dotSlot, dotSlot).align(LAYOUT_ALIGN::CENTRE);
+	if(marked)
+	{
+		GuiShape& dot = ui.make<GuiShape>(10, 10);
+		dot.setShape(SHAPE::ELLIPSE);
+		dot.setPaint(GuiPaint().color(MenuPaletteCurrent().accent));
+		dotBox.add(dot);
+	}
+	GuiLayout& content = ui.row().size(width - 2 * padX, height).gap(8).align(LAYOUT_ALIGN::CENTRE).add(name).addSpace();
+	if(withDotSlot)
+		content.add(dotBox);
+	GuiCard& row = ui.card();
+	row.size(width, height).style(MenuRowHighlightStyle()).corners(GuiCorners(8.0f)).pad(padX, 0);
+	row.add(content);
+	return row;
+}
+
+GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH)
+{
+	(void)panelW;
+	const int sw = platform->getVideo()->getScreenWidth();
+	const int sh = platform->getVideo()->getScreenHeight();
+	PopoverBackdrop& backdrop = ui.make<PopoverBackdrop>(sw, sh);
+	backdrop.setTrigger(0, ui.trigger());
+	backdrop.setTrigger(1, &cancel);
+	backdrop.setCancel(&cancel);
+	backdrop.setPanel(&panel);
+	view.add(&backdrop, GuiItem().background());
+	GuiLayout& placed = ui.column().size(sw, sh).addGap((float)at.y).add(ui.row().size(sw, panelH).addGap((float)at.x).add(panel));
+	view.add(&placed);
+	return backdrop;
+}

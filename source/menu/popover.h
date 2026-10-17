@@ -38,6 +38,15 @@ int Popover_MaxHeight(int screenHeight);
  */
 PopoverPlace Popover_Place(const PopoverAnchor& anchor, int w, int h, int screenWidth, int screenHeight);
 
+/** One row of a popover list: the name on the left, a dot on the right when `marked` (the one in use). The caller adds onClick / onFocus. */
+GuiCard& Popover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool dotSlot = true);
+
+/**
+ * Puts a built panel on a popover view: the backdrop behind it (B or a click outside closes: its button is returned),
+ * and the panel at `at` on the screen.
+ */
+GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH);
+
 /** A one pixel rule `w` wide, in the outline color. */
 GuiShape& Popover_Divider(UiScope& ui, int w);
 

@@ -4,6 +4,7 @@
  * controlsui.cpp
  ***************************************************************************/
 #include "controlsui.h"
+#include <algorithm>
 #include "menu.h"
 #include "menupage.h"
 #include "menustyle.h"
@@ -122,6 +123,19 @@ PopoverAnchor ControllerConfigView::anchorFor(Pick which)
 	return b ? PopoverAnchor(b->getLeft(), b->getTop(), b->getWidth(), b->getHeight(), which == Pick::PRESET ? PopoverAnchor::LEFT_MARGIN : PopoverAnchor::AUTO) : PopoverAnchor();
 }
 
+PopoverAnchor ControllerConfigView::anchorForRow(int binding)
+{
+	for(size_t i = 0; i < rowsById.size(); i++)
+		if(rowsById[i].first == binding)
+		{
+			GuiCard * r = rowsById[i].second;
+			// the popover is wide: it goes to the other side of the screen, so the row being changed (and the line to its control) stay in view
+			const bool leftHalf = r->getLeft() + r->getWidth() / 2 < platform->getVideo()->getScreenWidth() / 2;
+			return PopoverAnchor(r->getLeft(), r->getTop(), r->getWidth(), r->getHeight(), leftHalf ? PopoverAnchor::RIGHT_MARGIN : PopoverAnchor::LEFT_MARGIN);
+		}
+	return PopoverAnchor();
+}
+
 bool ControllerConfigView::takeRequest(ProfileRow& row)
 {
 	if(!hasRequest)
@@ -205,6 +219,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	}
 	row.add(content);
 	rowCards.push_back(&row);
+	if(!info)
+		rowsById.push_back(std::make_pair(id, &row));
 	return row;
 }
 
@@ -416,17 +432,17 @@ void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, const std::v
 		const int code = codes[i];
 		// the longest names do not fit a key: draw the symbol, and name it on the hint line when it is selected
 		const std::string& full = names[(size_t)code];
-		const char * shown = full.c_str();
+		const char * shownName = full.c_str();
 		if(kind == TARGET::KEY)
 		{
 			static const char * const caps[][2] = { { "Backspace", "Bksp" }, { "Minus", "-" }, { "Equals", "=" }, { "Comma", "," },
 				{ "Period", "." }, { "Slash", "/" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Backslash", "\\" }, { "Grave", "`" } };
 			for(size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++)
 				if(full == caps[c][0])
-					shown = caps[c][1];
+					shownName = caps[c][1];
 		}
 		const bool now = current.kind == kind && current.code == code;
-		GuiTextButton& b = ui.button(shown).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(now));
+		GuiTextButton& b = ui.button(shownName).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(now));
 		b.onClick([this, kind, code]{
 			picked = BindingTarget(kind, code);
 			done = true;
@@ -437,18 +453,130 @@ void TargetChooserView::optionButtons(GuiLayout& grid, TARGET kind, const std::v
 	}
 }
 
-void TargetChooserView::targetButtons(GuiLayout& grid, const std::vector<BindingTarget>& targets, int w, int h, int fontPx)
+void TargetChooserView::optionRows(GuiLayout& list, TARGET kind, const std::vector<int>& codes, int w, int h)
+{
+	const std::vector<std::string>& names = Catalog_Names(kind);
+	for(size_t i = 0; i < codes.size(); i++)
+	{
+		const int code = codes[i];
+		std::string label = names[(size_t)code];
+		if(!label.empty())
+			label[0] = (char)toupper((unsigned char)label[0]);
+		GuiCard& row = Popover_Row(ui, w, h, label, current.kind == kind && current.code == code);
+		row.onClick([this, kind, code]{
+			picked = BindingTarget(kind, code);
+			done = true;
+		});
+		list.add(row);
+	}
+}
+
+void TargetChooserView::targetRows(GuiLayout& list, const std::vector<BindingTarget>& targets, int w, int h)
 {
 	for(size_t i = 0; i < targets.size(); i++)
 	{
 		const BindingTarget t = targets[i];
-		GuiTextButton& b = ui.button(t.describe().c_str()).size(w, h).fontSize(fontPx).style(MenuBarButtonStyle(t == current));
-		b.onClick([this, t]{
+		GuiCard& row = Popover_Row(ui, w, h, t.describe(), t == current);
+		row.onClick([this, t]{
 			picked = t;
 			done = true;
 		});
-		grid.add(b);
+		list.add(row);
 	}
+}
+
+// The key picker: "Press a key" for a USB keyboard, then the keys most DOS games want, and the rest in groups behind
+// tabs, laid out like a keyboard (Letters in QWERTY rows). Only keys the mapper can bind for this player are drawn.
+void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
+{
+	const std::vector<int> allowed = Controls().choices(player, TARGET::KEY);
+	const std::vector<std::string>& names = Catalog_Names(TARGET::KEY);
+	static const char * const caps[][2] = { { "Backspace", "Bksp" }, { "Minus", "-" }, { "Equals", "=" }, { "Comma", "," },
+		{ "Period", "." }, { "Slash", "/" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Backslash", "\\" }, { "Grave", "`" } };
+
+	// a key by name, as a cap `kw` wide; nothing when the build or player cannot bind it
+	auto cap = [&](GuiLayout& row, const char * name, int kw, int kh) -> bool {
+		const int code = Catalog_Find(TARGET::KEY, name);
+		if(code < 0 || std::find(allowed.begin(), allowed.end(), code) == allowed.end())
+			return false;
+		const std::string full = names[(size_t)code];
+		const char * label = full.c_str();
+		for(size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++)
+			if(full == caps[c][0])
+				label = caps[c][1];
+		const bool inUse = current.kind == TARGET::KEY && current.code == code;
+		GuiTextButton& b = ui.button(label).size(kw, kh).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle(inUse)).rounded(6.0f).litTextColor(MenuPaletteCurrent().text);
+		b.onClick([this, code]{
+			picked = BindingTarget(TARGET::KEY, code);
+			done = true;
+		});
+		b.onFocus([this, full]{ if(!listen) hintText = GuiFormat("Key: %s", full.c_str()); });
+		row.add(b);
+		return true;
+	};
+
+	// each tab: its rows of keys (a row is a list of names, with a left offset for the stagger)
+	struct Row { std::vector<const char *> keys; int indent; };
+	struct Tab { const char * label; int width; int capW; int capH; std::vector<Row> rows; };
+	const std::vector<Tab> tabs = {
+		{ "Common", 54, 58, 28, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "Ctrl", "Alt", "Shift" }, 0 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
+		{ "A-Z", 30, 20, 26, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 10 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 21 } } },
+		{ "0-9", 30, 20, 26, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
+		{ "F-keys", 42, 36, 26, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
+		{ "Edit", 32, 72, 28, { { { "PgUp", "PgDn", "Home" }, 0 }, { { "End", "Ins", "Del" }, 0 } } },
+		{ "Symbols", 46, 36, 26, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave" }, 0 } } },
+	};
+
+	// open on the tab with the key in use
+	keyTab = 0;
+	if(current.kind == TARGET::KEY && current.code >= 0)
+		for(size_t t = 0; t < tabs.size(); t++)
+			for(size_t r = 0; r < tabs[t].rows.size(); r++)
+				for(size_t k = 0; k < tabs[t].rows[r].keys.size(); k++)
+					if(Catalog_Find(TARGET::KEY, tabs[t].rows[r].keys[k]) == current.code)
+						keyTab = (int)t;
+
+	GuiTextButton& press = ui.button("").size(w, 24).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
+		.bind([this]{ return listen && listenKind == TARGET::KEY ? std::string("Press a key...") : std::string("Press a key on the keyboard"); })
+		.visibleWhen([]{ return Controls().devices().keyboard; })
+		.onClick([this]{ startListening(TARGET::KEY); });
+
+	GuiLayout& tabRow = ui.row().gap(2).size(w, 22);
+	std::vector<GuiTextButton*>& tabButtons = ui.own<std::vector<GuiTextButton*> >();
+	GuiLayout& stack = ui.overlay().size(w, 92);
+	for(size_t t = 0; t < tabs.size(); t++)
+	{
+		const int idx = (int)t;
+		GuiTextButton& tb = ui.button(tabs[t].label).size(tabs[t].width, 22).fontSize(UI_FONT_SMALL - 1).style(MenuRowHighlightStyle()).rounded(6.0f).litTextColor(MenuPaletteCurrent().text);
+		tb.onFocus([this, idx]{ keyTab = idx; });
+		tb.onClick([this, idx]{ keyTab = idx; });
+		tabButtons.push_back(&tb);
+		tabRow.add(tb);
+
+		GuiLayout& body = ui.column().gap(2);
+		for(size_t r = 0; r < tabs[t].rows.size(); r++)
+		{
+			GuiLayout& row = ui.row().gap(2);
+			if(tabs[t].rows[r].indent > 0)
+				row.addGap((float)tabs[t].rows[r].indent);
+			for(size_t k = 0; k < tabs[t].rows[r].keys.size(); k++)
+				cap(row, tabs[t].rows[r].keys[k], tabs[t].capW, tabs[t].capH);
+			body.add(row);
+		}
+		stack.add(body, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
+		ui.visibleWhen(body, [this, idx]{ return keyTab == idx; });
+	}
+	// the tab that is showing keeps a fill
+	int styled = -1;
+	ui.bind([&tabButtons, styled, this]() mutable {
+		if(styled == keyTab)
+			return;
+		styled = keyTab;
+		for(size_t k = 0; k < tabButtons.size(); k++)
+			tabButtons[k]->style((int)k == keyTab ? MenuPopoverShownStyle() : MenuRowHighlightStyle());
+	});
+
+	pane.add(press).add(tabRow).add(stack);
 }
 
 void TargetChooserView::startListening(TARGET kind)
@@ -462,164 +590,194 @@ void TargetChooserView::startListening(TARGET kind)
 void TargetChooserView::stopListening()
 {
 	listen = false;
-	hintText = "Pick a kind on the left, then what it does";
+	hintText = "Move over a kind to see its choices";
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget, GuiSound * soundOver) :
-	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Pick a kind on the left, then what it does"),
-	listen(false), listenKind(TARGET::KEY), kinds(0)
+void TargetChooserView::showCategory(int index)
+{
+	if(index < 0 || index >= kinds || index == shown)
+		return;
+	stopListening();
+	shown = index;
+}
+
+void TargetChooserView::selectCategory()
+{
+	if(kindCards.empty())
+		return;
+	for(size_t i = 0; i < kindCards.size(); i++)
+		kindCards[i]->deselect();
+	kindCards[(size_t)shown < kindCards.size() ? (size_t)shown : 0]->select();
+}
+
+TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget,
+	GuiSound * soundOver, const PopoverAnchor& anchor) :
+	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Move over a kind to see its choices"),
+	listen(false), listenKind(TARGET::KEY), kinds(0), keyTab(0), panelWidth(380), panelHeight(0)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
-	MenuPageFrame f = MenuPage_Build(ui, *this, GuiFormat("What should %s do?", controlName).c_str(), [this]{ return hintText; });
-	f.headerRight->add(ui.chip(GuiFormat("Now: %s", Controls().describe(player, control).c_str()).c_str()));
+	const int sw = platform->getVideo()->getScreenWidth();
+	const int sh = platform->getVideo()->getScreenHeight();
+	setFixedSize(sw, sh);
+	setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	setPosition(0, 0);
+
+	ControlsModel& m = Controls();
+	const std::vector<BindingTarget> suggested = m.suggestions(player, control);
+
+	const int pad = 10, inner = panelWidth - 2 * pad;
+	const int leftW = 104, gap = 8, rightW = inner - leftW - gap;
+	const int rowH = 28, rowGap = 2, kindH = 30;
+
+	// the kinds down the left (a joystick only when the player has one), each with the choices it shows
+	struct Panel { const char * name; GuiLayout * layout; TARGET kind; int height; };
+	std::vector<Panel> panels;
+
+	if(!suggested.empty())
+	{
+		GuiLayout& g = ui.column().gap(rowGap);
+		targetRows(g, suggested, rightW, rowH);
+		panels.push_back({ "Suggested", &g, TARGET::NONE, (int)suggested.size() * (rowH + rowGap) });
+	}
+
+	// Key: a row that waits for a real key press, then the common keys and groups of the rest behind tabs
+	{
+		GuiLayout& pane = ui.column().gap(4);
+		keyPane(pane, player, rightW);
+		panels.push_back({ "Key", &pane, TARGET::KEY, 24 + 4 + 22 + 4 + 92 });
+	}
+
+	if(m.joystickButtons(player) > 0)
+	{
+		GuiLayout& g = ui.column().gap(rowGap);
+		const std::vector<int> codes = m.choices(player, TARGET::JOYSTICK);
+		optionRows(g, TARGET::JOYSTICK, codes, rightW, rowH);
+		panels.push_back({ "Joystick", &g, TARGET::JOYSTICK, (int)codes.size() * (rowH + rowGap) });
+	}
 
 	{
-		ControlsModel& m = Controls();
-		const std::vector<BindingTarget> suggested = m.suggestions(player, control);
+		GuiLayout& g = ui.column().gap(rowGap);
+		const std::vector<int> codes = m.choices(player, TARGET::MOUSE);
+		GuiTextButton& click = ui.button("").size(rightW, 24).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
+			.bind([this]{ return listen && listenKind == TARGET::MOUSE ? std::string("Click a button...") : std::string("Click a mouse button"); })
+			.visibleWhen([]{ return Controls().devices().mouse; })
+			.onClick([this]{ startListening(TARGET::MOUSE); });
+		g.add(click);
+		optionRows(g, TARGET::MOUSE, codes, rightW, rowH);
+		panels.push_back({ "Mouse", &g, TARGET::MOUSE, 26 + (int)codes.size() * (rowH + rowGap) });
+	}
 
-		const int choicesW = MENU_PAGE_CONTENT_W - 120 - 6;
-		const int inner = choicesW - 16;
-		const int wide = (inner - 6) / 2;
-		const int keyW = (inner - 9 * 2) / 10; // ten keys across
+	{
+		GuiLayout& g = ui.column().gap(rowGap);
+		const std::vector<int> codes = m.choices(player, TARGET::HOTKEY);
+		optionRows(g, TARGET::HOTKEY, codes, rightW, rowH);
+		panels.push_back({ "DOSBox", &g, TARGET::HOTKEY, (int)codes.size() * (rowH + rowGap) });
+	}
 
-		// the kinds down the left (a joystick only when the player has one), each with the panel it shows
-		struct Panel { const char * tab; const char * heading; GuiLayout * layout; TARGET kind; };
-		std::vector<Panel> panels;
+	{
+		GuiCard& clear = Popover_Row(ui, rightW, rowH, "Leave unassigned", now.kind == TARGET::NONE);
+		clear.onClick([this]{
+			picked = BindingTarget();
+			done = true;
+		});
+		GuiLayout& g = ui.column().gap(6).add(clear).add(ui.label("This control will do nothing.").fontSize(UI_FONT_SMALL).muted());
+		panels.push_back({ "None", &g, TARGET::NONE, rowH + 6 + 18 });
+	}
 
-		if(!suggested.empty())
-		{
-			GuiLayout& g = ui.grid(2).gap(6, 6);
-			targetButtons(g, suggested, wide, 30, UI_FONT_BODY);
-			panels.push_back({ "Suggested", "Common choices for this button", &g, TARGET::NONE });
-		}
+	// open on the kind the control uses now; failing that, the suggestions (the first panel) when there are any
+	shown = 0;
+	for(size_t i = 0; i < panels.size(); i++)
+		if(now.kind != TARGET::NONE && panels[i].kind == now.kind)
+			shown = (int)i;
+	kinds = (int)panels.size();
 
-		// Key: a button that waits for a real key press, above the keys for a pad-only user
-		{
-			GuiLayout& keys = ui.grid(10).gap(2, 2);
-			optionButtons(keys, TARGET::KEY, m.choices(player, TARGET::KEY), keyW, 24, UI_FONT_SMALL);
-			GuiTextButton& press = ui.button("").size(wide, 24).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
-				.bind([this]{ return listen && listenKind == TARGET::KEY ? std::string("Press a key...") : std::string("Press a key on the keyboard"); })
-				.visibleWhen([]{ return Controls().devices().keyboard; })
-				.onClick([this]{ startListening(TARGET::KEY); });
-			panels.push_back({ "Key", "Keyboard keys", &ui.column().gap(4).add(press).add(keys), TARGET::KEY });
-		}
+	// one fixed size for every kind, so the panel does not jump as the cursor moves down the left
+	int bodyH = kinds * (kindH + rowGap);
+	for(size_t i = 0; i < panels.size(); i++)
+		bodyH = std::max(bodyH, panels[i].height);
+	const int headH = 18, footH = 26;
+	panelHeight = 2 * pad + headH + 7 + bodyH + 8 + footH;
+	place = Popover_Place(anchor, panelWidth, panelHeight, sw, sh);
 
-		if(m.joystickButtons(player) > 0)
-		{
-			GuiLayout& g = ui.grid(2).gap(6, 6);
-			optionButtons(g, TARGET::JOYSTICK, m.choices(player, TARGET::JOYSTICK), wide, 30, UI_FONT_BODY);
-			panels.push_back({ "Joystick", "Joystick buttons", &g, TARGET::JOYSTICK });
-		}
-
-		{
-			GuiLayout& g = ui.grid(2).gap(6, 6);
-			optionButtons(g, TARGET::MOUSE, m.choices(player, TARGET::MOUSE), wide, 30, UI_FONT_BODY);
-			GuiTextButton& click = ui.button("").size(wide, 30).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle())
-				.bind([this]{ return listen && listenKind == TARGET::MOUSE ? std::string("Click a button...") : std::string("Click a mouse button"); })
-				.visibleWhen([]{ return Controls().devices().mouse; })
-				.onClick([this]{ startListening(TARGET::MOUSE); });
-			panels.push_back({ "Mouse", "Mouse buttons", &ui.column().gap(6).add(click).add(g), TARGET::MOUSE });
-		}
-
-		{
-			GuiLayout& g = ui.grid(2).gap(6, 6);
-			optionButtons(g, TARGET::HOTKEY, m.choices(player, TARGET::HOTKEY), wide, 30, UI_FONT_BODY);
-			panels.push_back({ "DOSBox", "DOSBox functions", &g, TARGET::HOTKEY });
-		}
-
-		{
-			GuiTextButton& clear = ui.button("Leave unassigned").size(wide, 30).fontSize(UI_FONT_BODY)
-				.style(MenuBarButtonStyle(now.kind == TARGET::NONE))
-				.onClick([this]{
-					picked = BindingTarget();
-					done = true;
-				});
-			panels.push_back({ "None", "Nothing", &ui.column().gap(8)
-				.add(ui.label("This control will do nothing.").fontSize(UI_FONT_BODY).muted())
-				.add(clear), TARGET::NONE });
-		}
-
-		// open on the kind the control uses now; failing that, the suggestions (the first panel) when there are any
-		shown = 0;
-		for(size_t i = 0; i < panels.size(); i++)
-			if(now.kind != TARGET::NONE && panels[i].kind == now.kind)
-				shown = (int)i;
-
-		kinds = (int)panels.size();
-		std::vector<GuiTextButton*>& tabs = ui.own<std::vector<GuiTextButton*>>();
-		std::vector<const char *>& headings = ui.own<std::vector<const char *>>();
-		GuiLayout& list = ui.column().gap(4);
-		for(size_t i = 0; i < panels.size(); i++)
-		{
-			GuiTextButton& tab = ui.button(panels[i].tab).size(104, 34).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle());
-			const int idx = (int)i;
-			tab.onClick([this, idx]{
-				stopListening();
-				shown = idx;
-			});
-			tabs.push_back(&tab);
-			headings.push_back(panels[i].heading);
-			list.add(tab);
-		}
-		// the tab that is showing looks pressed in, apart from the highlight
+	// the kinds: plain rows, the one showing is filled
+	GuiLayout& list = ui.column().gap(rowGap).size(leftW, bodyH);
+	for(size_t i = 0; i < panels.size(); i++)
+	{
+		const int idx = (int)i;
+		GuiCard& row = Popover_Row(ui, leftW, kindH, panels[i].name, false, false);
+		row.onFocus([this, idx]{ showCategory(idx); });
+		row.onClick([this, idx]{ showCategory(idx); });
+		kindCards.push_back(&row);
+		list.add(row);
+	}
+	// the kind that is showing keeps a fill, apart from the highlight, while the cursor is over its choices
+	{
+		std::vector<GuiCard*>& cards = kindCards;
 		int styled = -1;
-		ui.bind([&tabs, styled, this]() mutable {
+		ui.bind([&cards, styled, this]() mutable {
 			if(styled == shown)
 				return;
 			styled = shown;
-			for(size_t k = 0; k < tabs.size(); k++)
-				tabs[k]->style((int)k == shown ? MenuTabActiveStyle() : MenuBarButtonStyle());
-		});
-
-		GuiLayout& stack = ui.overlay();
-		for(size_t i = 0; i < panels.size(); i++)
-		{
-			stack.add(*panels[i].layout, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
-			const int idx = (int)i;
-			ui.visibleWhen(*panels[i].layout, [this, idx]{ return shown == idx; });
-		}
-		GuiLabel& heading = ui.label().fontSize(UI_FONT_SMALL - 1).muted().bind([this, &headings]{ return std::string(headings[(size_t)shown]); });
-
-		f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
-			.add(MenuPage_Section(ui, 120).pad(8, 8).add(list))
-			.add(MenuPage_Section(ui, choicesW).pad(8, 6).add(ui.column().gap(4).add(heading).add(stack))));
-
-		// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
-		ui.bind([this, player]{
-			if(!listen)
-				return;
-			CaptureEvent e;
-			while(Controls().pollCapture(e))
-			{
-				if(e.kind != listenKind)
-					continue;
-				if(e.code < 0 || !Controls().usable(player, BindingTarget(e.kind, e.code)))
-				{
-					hintText = "That one can't be used here.  Press another, or B";
-					continue;
-				}
-				picked = BindingTarget(e.kind, e.code);
-				done = true;
-				listen = false;
-				return;
-			}
+			for(size_t k = 0; k < cards.size(); k++)
+				cards[k]->style((int)k == shown ? MenuPopoverShownStyle() : MenuRowHighlightStyle());
 		});
 	}
 
-	// the control's own default, from the current preset
-	GuiTextButton& useDefault = MenuPage_Button(ui, "Default")
+	GuiLayout& stack = ui.overlay().size(rightW, bodyH);
+	for(size_t i = 0; i < panels.size(); i++)
+	{
+		stack.add(*panels[i].layout, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
+		const int idx = (int)i;
+		ui.visibleWhen(*panels[i].layout, [this, idx]{ return shown == idx; });
+	}
+
+	// the head says what is being set and what it does now; the foot says what the row under the cursor is, and offers the preset's default
+	GuiLabel& title = ui.label(GuiFormat("What should %s do?", controlName).c_str()).fontSize(UI_FONT_SMALL).muted();
+	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
+	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
+	hint.setMaxWidth(inner - 74);
+	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
 		.onClick([this, defaultTarget]{
 			picked = defaultTarget;
 			done = true;
 		})
 		.onFocus([this, defaultTarget]{ hintText = GuiFormat("A picks the preset's default: %s", defaultTarget.describe().c_str()); });
-	GuiTextButton& back = MenuPage_Button(ui, "Back");
-	back.setTrigger(1, &cancel);
-	backBtn = &back;
-	f.footerRight->add(useDefault).add(back);
+
+	GuiLayout& content = ui.column().size(inner, panelHeight - 2 * pad)
+		.add(ui.row().size(inner, headH).align(LAYOUT_ALIGN::CENTRE).add(title).addSpace().add(nowLabel))
+		.add(Popover_Divider(ui, inner))
+		.addGap(6)
+		.add(ui.row().size(inner, bodyH).gap(gap).align(LAYOUT_ALIGN::START).add(list).add(stack))
+		.addGap(8)
+		.add(ui.row().size(inner, footH).align(LAYOUT_ALIGN::CENTRE).add(hint).addSpace().add(useDefault));
+
+	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(pad, pad).size(panelWidth, panelHeight);
+	panel.add(content);
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight);
+
+	// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
+	ui.bind([this, player]{
+		if(!listen)
+			return;
+		CaptureEvent e;
+		while(Controls().pollCapture(e))
+		{
+			if(e.kind != listenKind)
+				continue;
+			if(e.code < 0 || !Controls().usable(player, BindingTarget(e.kind, e.code)))
+			{
+				hintText = "That one can't be used here.  Press another, or B";
+				continue;
+			}
+			picked = BindingTarget(e.kind, e.code);
+			done = true;
+			listen = false;
+			return;
+		}
+	});
 
 	ui.attachTo(*this);
 }
@@ -747,27 +905,12 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 
 	// the list: plain rows, a dot on the one in use, the highlight tint on the one under the cursor
 	GuiLayout& list = ui.column().gap(kPopoverRowGap).size(innerW, listH);
-	const MenuPalette& pal = MenuPaletteCurrent();
 	for(size_t i = 0; i < items.size(); i++)
 	{
 		const int idx = (int)i;
-		const int dotSlot = 14;
-		GuiLabel& name = ui.label(items[i].name.c_str()).fontSize(items[i].name.size() > 18 ? UI_FONT_SMALL + 1 : UI_FONT_BODY);
-		name.setMaxWidth(innerW - 2 * 10 - dotSlot - 8);
-		GuiLayout& dotBox = ui.row().size(dotSlot, dotSlot).align(LAYOUT_ALIGN::CENTRE);
-		if(items[i].current)
-		{
-			GuiShape& dot = ui.make<GuiShape>(10, 10);
-			dot.setShape(SHAPE::ELLIPSE);
-			dot.setPaint(GuiPaint().color(pal.accent));
-			dotBox.add(dot);
-		}
-		GuiLayout& content = ui.row().size(innerW - 20, rowHeight).gap(8).align(LAYOUT_ALIGN::CENTRE).add(name).addSpace().add(dotBox);
-		GuiCard& row = ui.card();
-		row.size(innerW, rowHeight).style(MenuRowHighlightStyle()).corners(GuiCorners(8.0f)).pad(10, 0);
+		GuiCard& row = Popover_Row(ui, innerW, rowHeight, items[i].name, items[i].current);
 		row.onClick([this, idx]{ choose(idx); });
 		row.onFocus([this, idx]{ focusItem(idx); });
-		row.add(content);
 		itemCards.push_back(&row);
 		list.add(row);
 		if(items[i].divider)
@@ -793,18 +936,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(kPopoverPad, kPopoverPad).size(kPopoverW, panelHeight);
 	panel.add(content);
 
-	// behind the panel: B anywhere, or a click outside it, closes
-	PopoverBackdrop& backdrop = ui.make<PopoverBackdrop>(sw, sh);
-	backdrop.setTrigger(0, ui.trigger());
-	backdrop.setTrigger(1, &cancel);
-	backdrop.setCancel(&cancel);
-	backdrop.setPanel(&panel);
-	backBtn = &backdrop;
-	GuiLayout::add(&backdrop, GuiItem().background());
-
-	// the panel at its place on the screen
-	GuiLayout& placed = ui.column().size(sw, sh).addGap((float)place.y).add(ui.row().size(sw, panelHeight).addGap((float)place.x).add(panel));
-	GuiLayout::add(&placed);
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, kPopoverW, panelHeight);
 
 	refreshCaption();
 	ui.attachTo(*this);
@@ -1082,11 +1214,15 @@ class ScreenWindow
 		bool shown;
 };
 
-bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget)
+// The chooser is a popover over the setup screen, which the caller has disabled and which stays drawn.
+bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget, const PopoverAnchor& anchor)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	TargetChooserView view(name, player, control, target, defaultTarget, &over);
+	TargetChooserView view(name, player, control, target, defaultTarget, &over, anchor);
 	ScreenWindow screen(view);
+	UpdateGui();
+	mainWindow->changeFocus(&screen.window());
+	view.selectCategory();
 
 	while(true)
 	{
@@ -1322,11 +1458,12 @@ void ConfigScreen(int player)
 			}
 			if(view.takeRequest(row))
 			{
-				screen.hide();
 				BindingTarget target = Controls().binding(view.player(), row.binding);
-				if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(view.player(), row.binding)))
+				screen.setEnabled(false);
+				if(ChooserScreen(row.name, view.player(), row.binding, target, Controls().defaultBinding(view.player(), row.binding), view.anchorForRow(row.binding)))
 					Controls().setBinding(view.player(), row.binding, target);
-				screen.show();
+				screen.setEnabled(true);
+				mainWindow->changeFocus(&screen.window());
 			}
 			const ControllerConfigView::Pick pick = view.takePick();
 			if(pick != ControllerConfigView::Pick::NONE)

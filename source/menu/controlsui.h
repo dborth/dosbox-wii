@@ -84,6 +84,8 @@ class ControllerConfigView : public GuiOverlay
 		void setPreview(int preset) { previewPreset = preset; }
 		/** Runs the screen's bindings now (a screen under a popover is not updated, but should follow what the popover previews). */
 		void refresh() { ui.runBindings(); }
+		/** The row for a control (the id its binding is stored under), in canvas pixels: the popover opens on the opposite side of the screen, leaving it in view. */
+		PopoverAnchor anchorForRow(int binding);
 	private:
 		enum class Side { LEFT, RIGHT, GROUP };
 		GuiCard& bindingRow(const ProfileRow& row, Side side, int width);
@@ -97,6 +99,7 @@ class ControllerConfigView : public GuiOverlay
 		bool sideways;
 		GuiControllerView * view;
 		std::vector<GuiCard*> rowCards;
+		std::vector<std::pair<int, GuiCard*> > rowsById;
 		std::string status;
 		bool hasRequest;
 		ProfileRow request;
@@ -207,7 +210,10 @@ class PickerView : public GuiOverlay
 		int panelWidth, panelHeight, rowHeight;
 };
 
-/** The screen for choosing what a control does. */
+/**
+ * Choosing what a control does, in a popover beside the row that was pressed: the kinds of target down the left
+ * (moving over one shows its choices on the right), plain rows on the right. The row being edited stays in view.
+ */
 class TargetChooserView : public GuiOverlay
 {
 	public:
@@ -217,8 +223,11 @@ class TargetChooserView : public GuiOverlay
 		 * @param control The control's id (for the suggestions)
 		 * @param current What the control does now
 		 * @param defaultTarget What the scheme makes it do (the Default button)
+		 * @param anchor The row it opens beside
 		 */
-		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver);
+		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget, GuiSound * soundOver,
+			const PopoverAnchor& anchor = PopoverAnchor());
+		/** B anywhere, or a click outside the panel. */
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether the user picked something. */
 		bool chosen() const { return done; }
@@ -231,20 +240,34 @@ class TargetChooserView : public GuiOverlay
 		bool listening() const { return listen; }
 		void startListening(TARGET kind);
 		void stopListening();
+		/** Shows a kind, as moving over it does. */
+		void showCategory(int index);
+		/** Puts the selection on the kind showing (once the popover has the focus). */
+		void selectCategory();
+		int panelX() const { return place.x; }
+		int panelY() const { return place.y; }
+		int panelW() const { return panelWidth; }
+		int panelH() const { return panelHeight; }
 	private:
 		void optionButtons(GuiLayout& grid, TARGET kind, const std::vector<int>& codes, int w, int h, int fontPx);
-		void targetButtons(GuiLayout& grid, const std::vector<BindingTarget>& targets, int w, int h, int fontPx);
+		void optionRows(GuiLayout& list, TARGET kind, const std::vector<int>& codes, int w, int h);
+		void keyPane(GuiLayout& pane, int player, int w);
+		void targetRows(GuiLayout& list, const std::vector<BindingTarget>& targets, int w, int h);
 
 		UiScope ui;
 		BindingTarget current;
 		BindingTarget picked;
 		int shown;
 		bool done;
-		GuiTextButton * backBtn;
+		GuiButton * backBtn;
 		std::string hintText;
 		bool listen;
 		TARGET listenKind;
 		int kinds;
+		int keyTab;
+		std::vector<GuiCard*> kindCards;
+		PopoverPlace place;
+		int panelWidth, panelHeight;
 };
 
 #endif

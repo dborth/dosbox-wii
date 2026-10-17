@@ -335,6 +335,18 @@ static inline GuiShapeStyle MenuPopoverStyle()
 		.shadow(22.0f, MenuRGBA(0, 0, 0, 120), 0.0f, 6.0f));
 }
 
+//!A key on the key picker: a flat, light cap with a fine edge and a hint of a shadow, so a grid of them reads as a keyboard.
+//!The key in use has a darker edge; the one under the cursor takes the row highlight.
+static inline GuiShapeStyle MenuKeycapStyle(bool inUse = false)
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiPaint rest = GuiPaint().color(p.surface).stroke(inUse ? 2.0f : 1.0f, inUse ? p.accent : p.outline)
+		.shadow(3.0f, MenuRGBA(0, 0, 0, 60), 0.0f, 1.5f);
+	GuiPaint lit = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.14f)).stroke(2.0f, p.mark);
+	GuiPaint pressed = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.30f)).stroke(2.0f, p.mark);
+	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
+}
+
 //!A flat tinted area that groups things on a card (a player, a section of buttons)
 static inline GuiShapeStyle MenuSectionStyle()
 {
@@ -361,6 +373,15 @@ static inline GuiShapeStyle MenuRowHighlightStyle()
 	GuiPaint lit = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.14f)).stroke(1.5f, MenuMix(p.surfaceRaised, p.mark, 0.8f));
 	GuiPaint pressed = GuiPaint().color(MenuMix(p.surfaceRaised, p.mark, 0.30f)).stroke(1.5f, p.mark);
 	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
+}
+
+//!The kind (or tab) that is showing in a popover: a flat light-gray fill at rest, the same highlight as any row when the cursor is on it
+static inline GuiShapeStyle MenuPopoverShownStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiShapeStyle s = MenuRowHighlightStyle();
+	s.normal = GuiPaint().color(p.accentTint);
+	return s;
 }
 
 //!A device tile on the setup screen's rail. Light at every state so the dark icon always reads on it:
