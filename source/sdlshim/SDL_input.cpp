@@ -816,6 +816,9 @@ static inline Sint16 StickWithDpad(float stick, bool negative, bool positive)
 	return AxisValue(stick);
 }
 
+//! The GamePad's controls belong to the system keyboard while it is open
+static bool drcIgnored = false;
+
 // Builds the player's joystick from the channel's merged HAL pad data, so
 // every controller type (Wiimote, Nunchuk, Classic, WUPC, GameCube, GamePad)
 // drives it the same way.
@@ -826,6 +829,16 @@ static void ReadPlayer(int ch, SDL_Joystick & js)
 	memset(js.buttons, 0, sizeof(js.buttons));
 	memset(js.axes, 0, sizeof(js.axes));
 	js.hat = SDL_HAT_CENTERED;
+
+	if (pad.hw_connected[INPUT_HW_DRC]) {
+		if (OSK_IsActive())
+			drcIgnored = true;
+		else if (drcIgnored && pad.hw_buttons_h[INPUT_HW_DRC] == 0)
+			drcIgnored = false;
+
+		if (drcIgnored)
+			return;
+	}
 
 	// A lone Wiimote held sideways has its D-pad turned (shared with the setup screen: inputlogic.h)
 	const uint32_t b = PadButtonsForDos(pad, controller[ch]->isSideways());

@@ -205,6 +205,7 @@ void WutInputDriver::init() {
 	WPADEnableWiiRemote(TRUE);
 	VPADInit();
 	OSEnableHomeButtonMenu(FALSE);
+	VPADSetTVMenuInvalid(VPAD_CHAN_0, TRUE);
 	InitUserInputControllers();
 }
 
@@ -218,6 +219,7 @@ void WutInputDriver::shutdown() {
 
 	// Restore the system default before handing control back to the OS/loader.
 	OSEnableHomeButtonMenu(TRUE);
+	VPADSetTVMenuInvalid(VPAD_CHAN_0, FALSE);
 }
 
 bool WutInputDriver::getTouchSample(VPADStatus * out) {
