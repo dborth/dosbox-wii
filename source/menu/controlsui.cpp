@@ -1111,11 +1111,13 @@ std::vector<PickerItem> Picker_SetupMenuItems(std::vector<SetupAction>& kinds)
 	std::vector<PickerItem> items;
 	kinds.clear();
 	const size_t saved = m.setups().size();
+	// Load is offered only when there is something to load: a row that just closes the popover reads as broken
+	if(saved > 0)
 	{
 		PickerItem it;
 		it.name = "Load a setup...";
 		it.current = false;
-		it.lines.push_back(saved == 0 ? std::string("No saved setups yet.") : saved == 1 ? std::string("1 setup saved.") : GuiFormat("%d setups saved.", (int)saved));
+		it.lines.push_back(saved == 1 ? std::string("1 setup saved.") : GuiFormat("%d setups saved.", (int)saved));
 		it.lines.push_back("Replaces every player's buttons");
 		it.lines.push_back("and what DOS sees.");
 		items.push_back(it);
@@ -1135,9 +1137,18 @@ std::vector<PickerItem> Picker_SetupMenuItems(std::vector<SetupAction>& kinds)
 		PickerItem it;
 		it.name = "Save as a new setup...";
 		it.current = false;
-		it.lines.push_back("Asks for a name, then the program it");
-		it.lines.push_back("loads for. Saves every player's buttons");
-		it.lines.push_back("and what DOS sees.");
+		if(saved == 0)
+		{
+			it.lines.push_back("Nothing is saved yet. Saves every player's");
+			it.lines.push_back("buttons and what DOS sees under a name,");
+			it.lines.push_back("so you can load it here next time.");
+		}
+		else
+		{
+			it.lines.push_back("Asks for a name, then the program it");
+			it.lines.push_back("loads for. Saves every player's buttons");
+			it.lines.push_back("and what DOS sees.");
+		}
 		items.push_back(it);
 		kinds.push_back(SetupAction::SAVE_NEW);
 	}
@@ -1436,7 +1447,7 @@ std::string SaveCurrentFlow()
 std::string SetupFlow(const ScreenHooks& screen, const PopoverAnchor& anchor)
 {
 	std::vector<SetupAction> kinds;
-	const int chosen = PickerScreen("Load or save a setup", Picker_SetupMenuItems(kinds), anchor);
+	const int chosen = PickerScreen(Controls().setups().empty() ? "Save a setup" : "Load or save a setup", Picker_SetupMenuItems(kinds), anchor);
 	if(chosen < 0)
 		return std::string();
 	switch(kinds[(size_t)chosen])

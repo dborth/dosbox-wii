@@ -763,11 +763,12 @@ int main(int argc, char ** argv)
 		ApplyAll(1);
 		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_SetupMenuItems(kinds);
-		EXPECT(kinds.size() == items.size() && kinds[0] == SetupAction::LOAD);
-		EXPECT(kinds.back() == SetupAction::SAVE_NEW);
+		EXPECT(kinds.size() == items.size() && kinds.back() == SetupAction::SAVE_NEW);
+		// Load is only offered when something is saved
+		EXPECT((kinds[0] == SetupAction::LOAD) == !Controls().setups().empty());
 		Controls().saveSetup("PLAIN", "");
 		items = Picker_SetupMenuItems(kinds);
-		EXPECT(kinds.size() == 3 && kinds[1] == SetupAction::SAVE_CURRENT && items[1].name == "Save as PLAIN");
+		EXPECT(kinds.size() == 3 && kinds[0] == SetupAction::LOAD && kinds[1] == SetupAction::SAVE_CURRENT && items[1].name == "Save as PLAIN");
 		for(size_t i = 0; i < items.size(); i++)
 			for(size_t k = 0; k < items[i].lines.size(); k++)
 				EXPECT(items[i].lines[k].size() <= 44);

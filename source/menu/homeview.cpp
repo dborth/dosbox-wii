@@ -104,14 +104,15 @@ class HomeIcon : public GuiElement
 					dot(12, 13, 1.8f);
 					break;
 				case ICON_FRAMES:
-					// a strip of film: the frame in the middle, a column of sprocket holes down each side
-					box(3, 4, 18, 16, 2.5f);
-					line(8, 4.5f, 8, 19.5f, 1.6f);
-					line(16, 4.5f, 16, 19.5f, 1.6f);
+					// a strip of film: the frame in the middle, a column of sprocket holes down each side. The rails stop inside
+					// the outline (not past it) and the holes sit clear of both the outline and the rails.
+					box(2, 4, 20, 16, 2.5f);
+					line(8.8f, 5.5f, 8.8f, 18.5f, 1.6f);
+					line(15.2f, 5.5f, 15.2f, 18.5f, 1.6f);
 					for(int k = 0; k < 3; k++)
 					{
-						dot(5.5f, 8.0f + 4.0f * k, 0.9f);
-						dot(18.5f, 8.0f + 4.0f * k, 0.9f);
+						dot(5.9f, 8.5f + 3.5f * k, 1.0f);
+						dot(18.1f, 8.5f + 3.5f * k, 1.0f);
 					}
 					break;
 				case ICON_ASPECT:
@@ -161,12 +162,13 @@ class HomeIcon : public GuiElement
 					line(12, 11, 12, 17);
 					break;
 				case ICON_PAD:
-					// a gamepad: the body, a D-pad at the left, two buttons at the right
-					box(2.5f, 6.5f, 19, 11, 5.5f);
-					line(7, 10.2f, 7, 14.2f, 1.8f);
-					line(5, 12.2f, 9, 12.2f, 1.8f);
+					// a gamepad: the body (as wide as the keyboard and monitor glyphs), a D-pad at the left, two buttons at the right,
+					// all well inside the outline
+					box(1.5f, 4.5f, 21, 15, 7.0f);
+					line(8, 10.5f, 8, 14.5f, 1.8f);
+					line(6, 12.5f, 10, 12.5f, 1.8f);
 					dot(15.5f, 11.0f, 1.2f);
-					dot(18.0f, 13.6f, 1.2f);
+					dot(18.0f, 13.8f, 1.2f);
 					break;
 				case ICON_PLAY:
 				{
@@ -189,12 +191,14 @@ class HomeIcon : public GuiElement
 
 // The tiles under the controllers: as short as they can be, to leave the controllers their room
 const int TILE_W = 128;
-const int TILE_H = 54;
+const int TILE_H = 48;
 // The controllers card: its inner width, a player's slot, and the row of shared devices under the players
 const int CONTROLLERS_INNER_W = 244;
-const int PLAYER_SLOT_W = 54;
-const int PLAYER_SLOT_H = 72;
+const int PLAYER_SLOT_W = 58;
+const int PLAYER_SLOT_H = 80;
+const int PLAYER_SLOT_PAD = 4;	// air between a slot's highlight and the icon and label inside it
 const int DEVICE_ROW_H = 28;
+const int DEVICE_ROW_H_CHARGE = 36;	// the row when a GamePad is there: its battery goes under it, as a player's does
 
 const PixelColor Dark() { return MenuPaletteCurrent().text; }
 const PixelColor Light() { return MenuChromeText(); }
@@ -379,7 +383,7 @@ GuiLayout& HomeView::playersStrip()
 
 		GuiLayout& battery = makeBattery(s.battery);
 		s.label = &ui.label(GuiFormat("P%d", i + 1).c_str()).fontSize(13);
-		GuiLayout& col = ui.column().gap(3).align(LAYOUT_ALIGN::CENTRE).size(PLAYER_SLOT_W, PLAYER_SLOT_H).add(iconBox).add(battery).add(*s.label);
+		GuiLayout& col = ui.column().gap(3).align(LAYOUT_ALIGN::CENTRE).size(PLAYER_SLOT_W, PLAYER_SLOT_H).pad(0, PLAYER_SLOT_PAD).add(iconBox).add(battery).add(*s.label);
 		s.card->add(col, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 		players.add(*s.card);
 
@@ -405,23 +409,33 @@ GuiLayout& HomeView::playersStrip()
 	// keyboard and the mouse
 	GuiShape& rule = ui.make<GuiShape>(CONTROLLERS_INNER_W, 1);
 	rule.setPaint(GuiPaint().color(pal.outline));
-	GuiLayout& devices = ui.row().size(CONTROLLERS_INNER_W, DEVICE_ROW_H).gap(18).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE);
+	const bool hasPad = Controls().devices().gamepadPresent;
+	GuiLayout& devices = ui.row().size(CONTROLLERS_INNER_W, hasPad ? DEVICE_ROW_H_CHARGE : DEVICE_ROW_H).gap(18).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE);
 	GuiImage * padImage = nullptr;
 	BatteryShapes * padBattery = nullptr;
-	if(Controls().devices().gamepadPresent)
+	if(hasPad)
 	{
 		GuiImageData& padData = ui.own<GuiImageData>(icon_gamepad_png);
 		padImage = &ui.make<GuiImage>(&padData);
 		padBattery = &ui.own<BatteryShapes>();
 		GuiLayout& padCharge = makeBattery(*padBattery);
-		devices.add(ui.row().gap(5).align(LAYOUT_ALIGN::CENTRE).add(*padImage).add(padCharge));
+		devices.add(ui.column().gap(3).align(LAYOUT_ALIGN::CENTRE).add(*padImage).add(padCharge));
 	}
 	GuiImageData& kbdData = ui.own<GuiImageData>(icon_keyboard_png);
 	GuiImageData& mouseData = ui.own<GuiImageData>(icon_mouse_png);
 	GuiImage& kbd = ui.make<GuiImage>(&kbdData);
 	GuiImage& mouse = ui.make<GuiImage>(&mouseData);
-	devices.add(kbd);
-	devices.add(mouse);
+	if(hasPad)
+	{
+		// the keyboard and mouse stand level with the GamePad, over the room its battery takes
+		devices.add(ui.column().align(LAYOUT_ALIGN::CENTRE).add(kbd).addGap(12));
+		devices.add(ui.column().align(LAYOUT_ALIGN::CENTRE).add(mouse).addGap(12));
+	}
+	else
+	{
+		devices.add(kbd);
+		devices.add(mouse);
+	}
 	int padKey = -2;
 	ui.bind([&kbd, &mouse, padImage, padBattery, showBattery, padKey]() mutable {
 		const DeviceStatus d = Controls().devices();
