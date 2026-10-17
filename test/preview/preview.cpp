@@ -195,7 +195,7 @@ int main(int argc, char ** argv)
 		SceneModel one(1);
 		Controls_SetModel(&one);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		snap("config_one", s.root);					// no switcher: the title says Controls
 	}
@@ -204,7 +204,7 @@ int main(int argc, char ** argv)
 		two.edited[0] = true; two.dirty = true; two.setup = "KEEN4E";
 		Controls_SetModel(&two);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		snap("config_two", s.root);					// the switcher, a preset marked edited, an unsaved setup
 	}
@@ -213,7 +213,7 @@ int main(int argc, char ** argv)
 		two.mode = 1;
 		Controls_SetModel(&two);
 		Screen s;
-		ControllerConfigView view(1, nullptr);
+		ControllerConfigView view(1);
 		s.page.append(&view);
 		snap("config_two_p2", s.root);
 	}
@@ -224,7 +224,7 @@ int main(int argc, char ** argv)
 		four.setup = "abcdefghijklmnopqrstuvwx";
 		Controls_SetModel(&four);
 		Screen s;
-		ControllerConfigView view(3, nullptr);
+		ControllerConfigView view(3);
 		s.page.append(&view);
 		snap("config_worst", s.root);
 	}
@@ -232,7 +232,7 @@ int main(int argc, char ** argv)
 		SceneModel none(0);
 		Controls_SetModel(&none);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		snap("config_empty", s.root);
 	}
@@ -249,7 +249,7 @@ int main(int argc, char ** argv)
 			Controls_SetModel(&m);
 			SceneSettings settings;
 			Screen s;
-			HomeView view(settings, "2.0", nullptr, nullptr);
+			HomeView view(settings, "2.0");
 			s.page.append(&view);
 			snap(names[i], s.root);
 		}
@@ -266,7 +266,7 @@ int main(int argc, char ** argv)
 				Controls_SetModel(&m);
 				SceneSettings settings;
 				Screen s;
-				HomeView view(settings, "2.0", nullptr, nullptr);
+				HomeView view(settings, "2.0");
 				s.page.append(&view);
 				snap(gpNames[i], s.root);
 			}
@@ -276,7 +276,7 @@ int main(int argc, char ** argv)
 		SceneSettings settings;
 		settings.sharp = true; settings.corrected = false; settings.cycles = 12000; settings.skip = 2;
 		Screen s;
-		HomeView view(settings, "2.0", nullptr, nullptr);
+		HomeView view(settings, "2.0");
 		view.select(HomeView::Action::SETTINGS);
 		s.page.append(&view);
 		snap("home_selected", s.root);
@@ -316,7 +316,7 @@ int main(int argc, char ** argv)
 		ApplyAll(scenes[i].preset);
 		SampleControls_SetHeld(scenes[i].held);
 		Screen s;
-		ControllerConfigView view(scenes[i].player, nullptr);
+		ControllerConfigView view(scenes[i].player);
 		s.page.append(&view);
 		snap(scenes[i].name, s.root, 0, 0, 0);
 		if(scenes[i].hw != NOHW)
@@ -343,7 +343,7 @@ int main(int argc, char ** argv)
 			Controls().applyPreset(0, 1);
 			SampleControls_SetHeld(rails[i].held);
 			Screen s;
-			ControllerConfigView view(0, nullptr, rails[i].show);
+			ControllerConfigView view(0, rails[i].show);
 			s.page.append(&view);
 			snap(rails[i].name, s.root, 0, 0, 0);
 			g_rails.push_back(MeasureCard());
@@ -370,11 +370,11 @@ int main(int argc, char ** argv)
 		Controls().setEmulated(choosers[i].mode);
 		ApplyAll(choosers[i].preset);
 		Screen s;
-		ControllerConfigView config(0, nullptr);
+		ControllerConfigView config(0);
 		s.page.append(&config);
 		for(int u = 0; u < 3; u++)
 			s.root.update(nullptr);
-		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), nullptr, config.anchorForRow(choosers[i].control));
+		TargetChooserView view("A Button", 0, choosers[i].control, choosers[i].now, BindingTarget(TARGET::KEY, 4), config.anchorForRow(choosers[i].control));
 		GuiWindow popWindow(640, 480);
 		popWindow.append(&view);
 		s.root.append(&popWindow);
@@ -425,7 +425,7 @@ int main(int argc, char ** argv)
 			if(sc.edited)
 				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 			Screen s;
-			ControllerConfigView config(0, nullptr);
+			ControllerConfigView config(0);
 			s.page.append(&config);
 			for(int u = 0; u < 3; u++)
 				s.root.update(nullptr);
@@ -443,7 +443,7 @@ int main(int argc, char ** argv)
 				case LOAD: items = Picker_SetupItems(index); title = "Load a setup"; which = ControllerConfigView::Pick::SETUP; break;
 				case ATTACH: items = Picker_AttachItems("KEEN4E.EXE", attachKinds); title = "Load these buttons for"; which = ControllerConfigView::Pick::SETUP; break;
 			}
-			PickerView picker(title, items, nullptr, config.anchorFor(which));
+			PickerView picker(title, items, config.anchorFor(which));
 			if(sc.kind == PRESET)
 				picker.onFocusChange([&](int k){ const int pr = k >= 0 && (size_t)k < index.size() ? index[(size_t)k] : -1; config.setPreview(pr < 0 ? Controls().currentPreset(0) : pr); });
 			GuiWindow popWindow(640, 480);
@@ -490,8 +490,27 @@ int main(int argc, char ** argv)
 		EXPECT(p.x == MENU_PAGE_MARGIN);
 		p = Popover_Place(PopoverAnchor(560, 400, 100, 32), 280, 200, 640, 480);
 		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);	// kept inside the margin
-		EXPECT(p.y + 200 <= 480 - MENU_BAR_BOTTOM_H);	// no room below a footer button: it opens above, inside the band
-		EXPECT(p.y >= MENU_BAR_TOP_H);
+		EXPECT(p.y == 400 - 200 - 6);						// no room below a footer chip: it comes out of the top of it
+		p = Popover_Place(PopoverAnchor(100, 200, 120, 30), 280, 280, 640, 480);
+		EXPECT(p.y >= MENU_BAR_TOP_H && p.y + 280 <= 480 - MENU_BAR_BOTTOM_H);	// a row in the middle of the page: kept in the band
+		// the tail points at the anchor: up from a panel under it, down from one over it, sideways from one beside it
+		{
+			PopoverPlace under = Popover_Place(PopoverAnchor(400, 20, 150, 40), 280, 200, 640, 480);
+			PopoverTail t = Popover_Tail(PopoverAnchor(400, 20, 150, 40), under, 280, 200);
+			EXPECT(t.shown && t.direction == POPOVER_TAIL_UP && t.y + t.h == under.y + 1);
+			EXPECT(t.x >= under.x && t.x + t.w <= under.x + 280);
+			PopoverPlace over = Popover_Place(PopoverAnchor(400, 420, 150, 40), 280, 200, 640, 480);
+			t = Popover_Tail(PopoverAnchor(400, 420, 150, 40), over, 280, 200);
+			EXPECT(t.shown && t.direction == POPOVER_TAIL_DOWN && t.y == over.y + 200 - 1);
+			PopoverAnchor row(60, 200, 170, 30, PopoverAnchor::RIGHT_MARGIN);
+			PopoverPlace beside = Popover_Place(row, 380, 270, 640, 480);
+			t = Popover_Tail(row, beside, 380, 270);
+			EXPECT(t.shown && t.direction == POPOVER_TAIL_LEFT);
+			EXPECT(t.y >= beside.y && t.y + t.h <= beside.y + 270);
+			PopoverAnchor covered(300, 200, 170, 30, PopoverAnchor::RIGHT_MARGIN);
+			EXPECT(!Popover_Tail(covered, Popover_Place(covered, 380, 270, 640, 480), 380, 270).shown);	// the panel covers the anchor: no tail
+			EXPECT(!Popover_Tail(PopoverAnchor(), under, 280, 200).shown);
+		}
 		p = Popover_Place(PopoverAnchor(), 280, 200, 640, 480);
 		EXPECT(p.x == 180 && p.y == 140);				// no anchor: centred
 
@@ -508,8 +527,8 @@ int main(int argc, char ** argv)
 		for(size_t l = 0; l < sizeof(lists) / sizeof(lists[0]); l++)
 		{
 			Screen s;
-			PickerView pv("Title", lists[l], nullptr, PopoverAnchor(300, 40, 170, 32, PopoverAnchor::LEFT_MARGIN));
-			EXPECT(pv.panelY() >= MENU_BAR_TOP_H);
+			PickerView pv("Title", lists[l], PopoverAnchor(300, 40, 170, 32, PopoverAnchor::LEFT_MARGIN));
+			EXPECT(pv.panelY() >= 0);
 			EXPECT(pv.panelY() + pv.panelH() <= 480 - MENU_BAR_BOTTOM_H);
 			EXPECT(pv.rowH() >= 28 && pv.rowH() <= 36);
 			EXPECT(pv.caption().size() >= 2 && pv.caption().size() <= 3);
@@ -521,7 +540,7 @@ int main(int argc, char ** argv)
 			EXPECT(!pv.caption()[0].empty());
 		}
 		{
-			PickerView pv("Title", lists[0], nullptr);
+			PickerView pv("Title", lists[0]);
 			EXPECT(lists[0][0].divider && lists[0][0].name == "Undo my changes");	// the one different kind of choice is set apart
 			pv.choose(0);
 			EXPECT(pv.armed() && !pv.chosen());
@@ -531,7 +550,7 @@ int main(int argc, char ** argv)
 		}
 		// the preview hook hears the cursor, once at once
 		{
-			PickerView pv("Title", lists[0], nullptr);
+			PickerView pv("Title", lists[0]);
 			int heard = -99, calls = 0;
 			pv.onFocusChange([&](int k){ heard = k; calls++; });
 			EXPECT(calls == 1);
@@ -560,7 +579,7 @@ int main(int argc, char ** argv)
 		Controls().setEmulated(0);
 		ApplyAll(1);
 		Screen s;
-		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4), nullptr);
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, 5), BindingTarget(TARGET::KEY, 4));
 		s.page.append(&view);
 		const int withJoystick = view.categoryCount();
 		EXPECT(withJoystick == 6);	// Suggested, Key, Joystick, Mouse, DOSBox, None
@@ -582,7 +601,7 @@ int main(int argc, char ** argv)
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
 		Screen s;
-		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), BindingTarget(), nullptr);
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), BindingTarget());
 		s.page.append(&view);
 		EXPECT(view.keyCapCount() == (int)Controls().choices(0, TARGET::KEY).size());
 		EXPECT(view.keyTabCount() == 6);
@@ -599,7 +618,7 @@ int main(int argc, char ** argv)
 		// a key pressed before listening began does not count
 		Controls_SetModel(nullptr);
 		Screen s;
-		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget(), nullptr);
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget());
 		s.page.append(&view);
 		SampleControls_PushCapture({ TARGET::KEY, Catalog_Find(TARGET::KEY, "Q") });
 		view.startListening(TARGET::KEY);
@@ -613,7 +632,7 @@ int main(int argc, char ** argv)
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(2);
 		Screen s;
-		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget(), nullptr);
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(), BindingTarget());
 		s.page.append(&view);
 		EXPECT(view.categoryCount() == 5);
 		Controls().setEmulated(0);
@@ -625,7 +644,7 @@ int main(int argc, char ** argv)
 		items[1].name = "Two"; items[1].confirm = "Really?";
 		items[2].name = "Three"; items[2].confirm = "Really?";
 		Screen s;
-		PickerView view("Pick", items, nullptr);
+		PickerView view("Pick", items);
 		s.page.append(&view);
 		EXPECT(view.focused() == 0);							// opens on the one in use
 		view.choose(1);
@@ -638,11 +657,11 @@ int main(int argc, char ** argv)
 		view.choose(2);
 		EXPECT(view.chosen() && view.result() == 2);
 
-		PickerView plain("Pick", items, nullptr);
+		PickerView plain("Pick", items);
 		s.page.append(&plain);
 		plain.choose(0);										// no confirmation asked: chosen at once
 		EXPECT(plain.chosen() && plain.result() == 0);
-		PickerView bad("Pick", items, nullptr);
+		PickerView bad("Pick", items);
 		bad.choose(-1);
 		bad.choose(9);
 		EXPECT(!bad.chosen());
@@ -779,7 +798,7 @@ int main(int argc, char ** argv)
 		SceneModel two(2);
 		Controls_SetModel(&two);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		EXPECT(!view.outOfDate() && !view.isEmpty());
 		two.players[1].connected = false;								// the other controller goes: no switcher any more
@@ -798,7 +817,7 @@ int main(int argc, char ** argv)
 		SceneModel none(0);
 		Controls_SetModel(&none);
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		EXPECT(view.isEmpty() && !view.outOfDate());
 		none.players[2].connected = true; none.players[2].type = PadType::GAMECUBE;	// one appears
@@ -811,15 +830,15 @@ int main(int argc, char ** argv)
 		SampleControls_ResetHardware();
 		SampleControls_SetDevices(0, { PadType::WIIMOTE_NUNCHUK, PadType::GAMECUBE });
 		Screen s;
-		ControllerConfigView view(0, nullptr);
+		ControllerConfigView view(0);
 		s.page.append(&view);
 		EXPECT(view.devices().size() == 2 && view.shownType() == PadType::WIIMOTE_NUNCHUK);	// the primary one by default
 		EXPECT(view.takeFlip() == PadType::NONE && !view.outOfDate());
 		{
-			ControllerConfigView gc(0, nullptr, PadType::GAMECUBE);
+			ControllerConfigView gc(0, PadType::GAMECUBE);
 			EXPECT(gc.shownType() == PadType::GAMECUBE);
 			EXPECT(!gc.outOfDate());															// drawing the second device is not a stale screen
-			ControllerConfigView gone(0, nullptr, PadType::CLASSIC);							// not on the channel: the primary one
+			ControllerConfigView gone(0, PadType::CLASSIC);							// not on the channel: the primary one
 			EXPECT(gone.shownType() == PadType::WIIMOTE_NUNCHUK);
 		}
 		const PlayerInfo info = Controls().player(0);
@@ -834,7 +853,7 @@ int main(int argc, char ** argv)
 		EXPECT(!view.outOfDate());
 		// one device: no rail
 		SampleControls_SetDevices(0, { PadType::CLASSIC });
-		ControllerConfigView single(0, nullptr);
+		ControllerConfigView single(0);
 		EXPECT(single.devices().size() == 1 && single.shownType() == PadType::CLASSIC);
 		SampleControls_ResetHardware();
 	}

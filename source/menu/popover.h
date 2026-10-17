@@ -42,10 +42,18 @@ PopoverPlace Popover_Place(const PopoverAnchor& anchor, int w, int h, int screen
 GuiCard& Popover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool dotSlot = true);
 
 /**
+ * Where the little tail on a popover goes, and which way it points (toward the anchor); none when the panel covers the anchor
+ * or there is no anchor. `x`,`y` are the tail's top-left corner; `w`,`h` its size.
+ */
+struct PopoverTail { bool shown; int direction; int x, y, w, h; };
+enum { POPOVER_TAIL_UP, POPOVER_TAIL_DOWN, POPOVER_TAIL_LEFT, POPOVER_TAIL_RIGHT };
+PopoverTail Popover_Tail(const PopoverAnchor& anchor, const PopoverPlace& at, int panelW, int panelH);
+
+/**
  * Puts a built panel on a popover view: the backdrop behind it (B or a click outside closes: its button is returned),
  * and the panel at `at` on the screen.
  */
-GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH);
+GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH, const PopoverAnchor& anchor);
 
 /** A one pixel rule `w` wide, in the outline color. */
 GuiShape& Popover_Divider(UiScope& ui, int w);

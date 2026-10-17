@@ -375,6 +375,15 @@ static inline GuiShapeStyle MenuRowHighlightStyle()
 	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
 }
 
+//!A chip that opens a popover (Preset, In DOS, Setup): a flat light face with a fine edge, the row highlight when the cursor is on it
+static inline GuiShapeStyle MenuChipStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiShapeStyle s = MenuRowHighlightStyle();
+	s.normal = GuiPaint().color(p.surfaceRaised).stroke(1.0f, p.outline).shadow(4.0f, MenuRGBA(0, 0, 0, 70), 0.0f, 1.5f);
+	return s;
+}
+
 //!The kind (or tab) that is showing in a popover: a flat light-gray fill at rest, the same highlight as any row when the cursor is on it
 static inline GuiShapeStyle MenuPopoverShownStyle()
 {

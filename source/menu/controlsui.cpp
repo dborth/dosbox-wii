@@ -110,14 +110,14 @@ int ControllerConfigView::highlighted() const
 
 void ControllerConfigView::selectHeader(Pick which)
 {
-	GuiTextButton * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
+	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
 	if(b)
-		b->setState(STATE::SELECTED);
+		b->select();
 }
 
 PopoverAnchor ControllerConfigView::anchorFor(Pick which)
 {
-	GuiTextButton * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
+	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
 	// A preset previews on the rows and the drawing behind it, so its popover keeps to the left (the two left-hand
 	// rows and the sticks), leaving the right-hand rows, the D-pad and the face buttons in view
 	return b ? PopoverAnchor(b->getLeft(), b->getTop(), b->getWidth(), b->getHeight(), which == Pick::PRESET ? PopoverAnchor::LEFT_MARGIN : PopoverAnchor::AUTO) : PopoverAnchor();
@@ -201,7 +201,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
 		// the hint holds about 30 characters beside the footer buttons (it scrolls when longer), so just the facts
-		status = GuiFormat("%s: %s", name, text().c_str());
+		status = info ? GuiFormat("%s: %s", name, text().c_str()) : GuiFormat("A changes what %s does", name);
 	});
 	if(!info)
 	{
@@ -222,6 +222,23 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	if(!info)
 		rowsById.push_back(std::make_pair(id, &row));
 	return row;
+}
+
+// A chip that opens a popover: what it chooses in small capitals (with "(edited)" when the choice has been changed),
+// what is chosen under it, and an arrow pointing the way the popover opens. A card, so the whole face is the target.
+static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::function<std::string()> value, std::function<bool()> edited, bool opensUp)
+{
+	const std::string title = what;
+	GuiLabel& caption = ui.label().fontSize(UI_FONT_SMALL - 2).muted().bind([title, edited]{ return edited && edited() ? title + " (EDITED)" : title; });
+	GuiLabel& chosen = ui.label().fontSize(UI_FONT_SMALL + 1).bind(value);
+	chosen.setMaxWidth(width - 20 - 16);
+	GuiArrow& arrow = ui.own<GuiArrow>(opensUp ? ARROW::UP : ARROW::DOWN, 10, 6, MenuBarArrowRest(), MenuBarArrowRest());
+	GuiLayout& content = ui.row().size(width - 20, 0).gap(6).align(LAYOUT_ALIGN::CENTRE)
+		.add(ui.column().gap(2).add(caption).add(chosen)).addSpace().add(arrow);
+	GuiCard& chip = ui.card();
+	chip.size(width, 40).style(MenuChipStyle()).corners(GuiCorners(10.0f)).pad(10, 4);
+	chip.add(content);
+	return chip;
 }
 
 ControllerConfigView::ControllerConfigView(int player, PadType show) :
@@ -283,16 +300,17 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	}
 
 	const int pl = playerSlot;
-	GuiTextButton& emulatedBtn = ui.button("").size(174, 32).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
-		.bind([]{ ControlsModel& m = Controls(); return GuiFormat("In DOS: %s", m.emulatedModes()[(size_t)m.currentEmulated()].name.c_str()); })
-		.onClick([this]{ pickRequest = Pick::EMULATED; })
-		.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none (the whole game)"; });
+	GuiCard& emulatedBtn = PickerChip(ui, 168, "IN DOS",
+		[]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; }, nullptr, false);
+	emulatedBtn.onClick([this]{ pickRequest = Pick::EMULATED; });
+	emulatedBtn.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none (the whole game)"; });
 	if(!empty)
 	{
-		GuiTextButton& presetBtn = ui.button("").size(178, 32).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
-			.bind([pl]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s%s", m.presets()[(size_t)m.currentPreset(pl)].name.c_str(), m.modified(pl) ? "*" : ""); })
-			.onClick([this]{ pickRequest = Pick::PRESET; })
-			.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
+		GuiCard& presetBtn = PickerChip(ui, 172, "PRESET",
+			[pl]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset(pl)].name; },
+			[pl]{ return Controls().modified(pl); }, false);
+		presetBtn.onClick([this]{ pickRequest = Pick::PRESET; });
+		presetBtn.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
 		presetButton = &presetBtn;
 		f.headerRight->add(presetBtn);
 	}
@@ -401,13 +419,11 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 
 	// Footer: Setup is the whole game (every player's buttons and what DOS sees), so it sits under In DOS; Back is last.
 	// The pill says which setup is loaded, and marks changes not saved yet.
-	GuiTextButton& setupBtn = MenuPage_Button(ui, "", 190).fontSize(UI_FONT_BODY)
-		.bind([]{
-			ControlsModel& m = Controls();
-			return GuiFormat("Setup: %s%s", m.setupName().empty() ? "none" : ClipName(m.setupName(), 14).c_str(), m.setupModified() ? "*" : "");
-		})
-		.onClick([this]{ pickRequest = Pick::SETUP; })
-		.onFocus([this]{ status = "A loads or saves a setup: every player's buttons and what DOS sees"; });
+	GuiCard& setupBtn = PickerChip(ui, 190, "SETUP",
+		[]{ ControlsModel& m = Controls(); return m.setupName().empty() ? std::string("None") : ClipName(m.setupName(), 16); },
+		[]{ return Controls().setupModified(); }, true);
+	setupBtn.onClick([this]{ pickRequest = Pick::SETUP; });
+	setupBtn.onFocus([this]{ status = "A loads or saves a setup: every player's buttons and what DOS sees"; });
 	setupButton = &setupBtn;
 	GuiTextButton& back = MenuPage_Button(ui, "Back", 76);
 	back.setTrigger(1, &cancel);
@@ -418,7 +434,7 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	// When the page takes focus its window steps the selection down from whatever is selected, or goes to the first
 	// thing in reading order when nothing is, which would be a header button. Starting from the In DOS button, which
 	// sits over the right-hand column, steps onto a control.
-	emulatedBtn.setState(STATE::SELECTED);
+	emulatedBtn.select();
 }
 
 // ---- target chooser
@@ -764,7 +780,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
 	hint.setMaxWidth(inner - 74);
-	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
+	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
 		.onClick([this, defaultTarget]{
 			picked = defaultTarget;
 			done = true;
@@ -781,7 +797,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(pad, pad).size(panelWidth, panelHeight);
 	panel.add(content);
-	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight);
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight, anchor);
 
 	// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
 	ui.bind([this, player]{
@@ -960,7 +976,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(kPopoverPad, kPopoverPad).size(kPopoverW, panelHeight);
 	panel.add(content);
 
-	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, kPopoverW, panelHeight);
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, kPopoverW, panelHeight, anchor);
 
 	refreshCaption();
 	ui.attachTo(*this);

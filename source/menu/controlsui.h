@@ -114,9 +114,9 @@ class ControllerConfigView : public GuiOverlay
 		int switchRequest;
 		int shownPlayers;
 		GuiTextButton * backBtn;
-		GuiTextButton * emulatedButton;
-		GuiTextButton * presetButton;
-		GuiTextButton * setupButton;
+		GuiCard * emulatedButton;
+		GuiCard * presetButton;
+		GuiCard * setupButton;
 		int previewPreset;
 };
 
