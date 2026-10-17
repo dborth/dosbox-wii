@@ -15,6 +15,7 @@ static WiiAudioDriver *instance = nullptr;
 void WiiAudioDriver::init() {
 	instance = this;
 	AUDIO_Init(NULL);
+	AUDIO_SetDSPSampleRate(AI_SAMPLERATE_32KHZ);
 	streamVolume = 127;
 	emulatorAudio = new OgcEmulatorAudio();
 	emulatorAudio->init();

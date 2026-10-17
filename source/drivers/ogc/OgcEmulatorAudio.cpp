@@ -57,6 +57,7 @@ OgcEmulatorAudio::OgcEmulatorAudio() :
 	memset(fadeBuffer, 0, sizeof(fadeBuffer));
 	DCFlushRange(soundbuffer, sizeof(soundbuffer));
 	DCFlushRange(fadeBuffer, sizeof(fadeBuffer));
+	AUDIO_RegisterDMACallback(AudioDMACallback);
 	instance = this;
 }
 
@@ -165,34 +166,20 @@ void OgcEmulatorAudio::resetAudio()
 /****************************************************************************
  * startAudio
  *
- * Takes over the audio interface for emulation. ASND_Init() (menu audio)
- * leaves the DSP at 48 kHz, so the rate is set here every time. DMA is
- * stopped and the queue cleared *before* the callback is registered, so
- * the ISR can never observe half-reset state and stale audio from before
- * a menu visit is never played.
+ * Takes over the audio interface for emulation
  ***************************************************************************/
 void OgcEmulatorAudio::startAudio()
 {
-	AUDIO_RegisterDMACallback(NULL);
-	AUDIO_StopDMA();
-
 	resetAudio();
-
-	AUDIO_SetDSPSampleRate(AI_SAMPLERATE_32KHZ);
-	AUDIO_RegisterDMACallback(AudioDMACallback);
 }
 
 /****************************************************************************
  * stopAudio
  *
- * Unregisters the callback first (so the ISR cannot re-arm DMA after we
- * stop it), then halts DMA. Leaves soundbuffer/nextab/playab as they are.
- * The sample rate is not restored: startMenuAudio() -> ASND_Init() sets
- * 48 kHz again.
+ * Halts DMA. Leaves soundbuffer/nextab/playab as they are.
  ***************************************************************************/
 void OgcEmulatorAudio::stopAudio()
 {
-	AUDIO_RegisterDMACallback(NULL);
 	AUDIO_StopDMA();
 	dma_started = false;
 }
