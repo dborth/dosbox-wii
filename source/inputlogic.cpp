@@ -7,6 +7,7 @@
  ***************************************************************************/
 
 #include "inputlogic.h"
+#include <string.h>
 
 static const uint32_t MENU_COMBO =
 	INPUT_TRIGGER_L | INPUT_TRIGGER_R | INPUT_BTN_PLUS;
@@ -15,6 +16,11 @@ bool PadIsLoneWiimote(const InputPadData & pad)
 {
 	return !(pad.hw_connected[INPUT_HW_GAMECUBE] || pad.hw_connected[INPUT_HW_CLASSIC] ||
 			 pad.hw_connected[INPUT_HW_WUPC] || pad.hw_connected[INPUT_HW_DRC]);
+}
+
+bool DpadEventKeepsJoystick(const char * event)
+{
+	return event && strncmp(event, "jhat_", 5) == 0;
 }
 
 uint32_t PadButtonsForDos(const InputPadData & pad, bool sideways)

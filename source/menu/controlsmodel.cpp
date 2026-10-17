@@ -214,11 +214,12 @@ PlayerInfo Controls_ComposePlayer(const PlayerHardware& h, int index, const Emul
 	{
 		p.device = PadType_Name(p.type);
 		p.preset = preset;
-		// joystick n is player n (the mapper's stick n); players past the joysticks that exist use keys and mouse
-		if(index < mode.joysticks)
+		// the joysticks go to players firstPlayer.. (4axis_2 starts at player 2); the others use keys and mouse
+		const int slot = index - mode.firstPlayer;
+		if(slot >= 0 && slot < mode.joysticks)
 		{
 			p.emulated = Emulated::JOYSTICK;
-			p.joystick = index + 1;
+			p.joystick = slot + 1;
 			p.role = "Joystick " + std::string(1, (char)('0' + p.joystick));
 		}
 		else
@@ -230,22 +231,24 @@ PlayerInfo Controls_ComposePlayer(const PlayerHardware& h, int index, const Emul
 	return p;
 }
 
-int ControlsModel::joystickButtons(int player) const
+int ControlsModel::joystickSlot(int player) const
 {
 	const std::vector<EmulatedMode> modes = emulatedModes();
 	const int cur = currentEmulated();
-	if(cur < 0 || (size_t)cur >= modes.size() || player < 0 || player >= modes[(size_t)cur].joysticks)
-		return 0;
-	return modes[(size_t)cur].buttons;
+	if(cur < 0 || (size_t)cur >= modes.size())
+		return -1;
+	const int slot = player - modes[(size_t)cur].firstPlayer;
+	return player >= 0 && slot >= 0 && slot < modes[(size_t)cur].joysticks ? slot : -1;
+}
+
+int ControlsModel::joystickButtons(int player) const
+{
+	return joystickSlot(player) < 0 ? 0 : emulatedModes()[(size_t)currentEmulated()].buttons;
 }
 
 int ControlsModel::joystickAxes(int player) const
 {
-	const std::vector<EmulatedMode> modes = emulatedModes();
-	const int cur = currentEmulated();
-	if(cur < 0 || (size_t)cur >= modes.size() || player < 0 || player >= modes[(size_t)cur].joysticks)
-		return 0;
-	return modes[(size_t)cur].axes;
+	return joystickSlot(player) < 0 ? 0 : emulatedModes()[(size_t)currentEmulated()].axes;
 }
 
 bool ControlsModel::usable(int player, const BindingTarget& target) const

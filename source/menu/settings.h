@@ -93,6 +93,16 @@ bool Settings_RowStep(int page, int row, int direction);
 void Settings_SyncRunning();
 
 /**
+ * Sets joystick.joysticktype the way the Joystick type row does (section re-initialised, the mapper's joystick
+ * groups built again, pad binds to a joystick moved to the player that now owns it). The one place the type
+ * changes from: the Controllers page's Emulating list calls this too.
+ *
+ * @param type  none, 2axis, 4axis, 4axis_2, fcs or ch
+ * @return true if DOSBox took it and it is the type in effect
+ */
+bool Settings_SetJoystickType(const char * type);
+
+/**
  * Saves the running config to dosbox.conf (see ConfigSave in preferences.h
  * for how the file is replaced).
  *

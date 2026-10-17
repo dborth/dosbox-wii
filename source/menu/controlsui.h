@@ -130,7 +130,8 @@ struct PickerItem {
 };
 
 /** The choices for what DOS sees, as picker items. */
-std::vector<PickerItem> Picker_EmulatedItems();
+/** The Emulating list. `index` (optional) gets each item's index in emulatedModes(): the advanced types are left out unless in effect. */
+std::vector<PickerItem> Picker_EmulatedItems(std::vector<int> * index = nullptr);
 /**
  * The presets a player can choose, as picker items. `index` receives, for each item, the preset it stands for
  * (a preset that needs a joystick is left out when the player has none, unless it is the one in use). When the

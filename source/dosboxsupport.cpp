@@ -223,9 +223,12 @@ void ReinitJoysticks(void)
 	MAPPER_RebuildJoysticks();
 }
 
+void InputHal_RefreshPadRouting(void);
+
 void ResyncPadBinds(void)
 {
 	MAPPER_PadsResync();
+	InputHal_RefreshPadRouting();
 }
 
 //! The core cpudecoder points at, or NULL if it points at something else.

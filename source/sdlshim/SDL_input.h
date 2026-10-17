@@ -187,4 +187,7 @@ int InputHal_TakeMenuKeyTap(void);
 //! are replayed on the next scan; a GUI tap among them must not reopen it.
 void InputHal_MenuClosed(void);
 
+/* The mapper's pad binds changed (the menu closed): the next poll reads again which D-pads still drive their joystick. */
+void InputHal_RefreshPadRouting(void);
+
 #endif

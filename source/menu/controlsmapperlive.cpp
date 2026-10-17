@@ -8,6 +8,7 @@
  ***************************************************************************/
 #include "controlsmapper.h"
 #include "dosboxsupport.h"
+#include "settings.h"
 
 // What the mapper offers (sdl_mapper.cpp)
 bool MAPPER_EventExists(const char * name);
@@ -38,6 +39,8 @@ class LiveMapper : public PadMapper
 		bool save() override { return MAPPER_SaveBindsNow(); }
 
 		std::string joystickType() const override { return GetJoystickTypeName(); }
+
+		bool setJoystickType(const std::string& type) override { return Settings_SetJoystickType(type.c_str()); }
 };
 
 } // namespace
@@ -46,4 +49,10 @@ PadMapper& Mapper_Live()
 {
 	static LiveMapper live;
 	return live;
+}
+
+void Controls_JoystickTypeChanged()
+{
+	if(Mapper_MigrateJoystickBinds(Mapper_Live()))
+		Mapper_Live().save();
 }

@@ -51,24 +51,41 @@ class FakeMapper : public PadMapper
 
 		void reset(const std::string& t)
 		{
+			for(int p = 0; p < 4; p++)
+				for(int s = 0; s < PAD_SOURCE_COUNT; s++)
+					padBinds[p][s].clear();
+			log.clear();
+			saves = 0;
+			setType(t);
+		}
+
+		// What MAPPER_RebuildJoysticks does: the stick groups are built again for the type, the pad groups keep their binds.
+		// The stick group that reads pad N: 4axis one for pad 0 (the one for pad 1 is a dummy); 2axis one each for pads 0
+		// and 1; 4axis_2 one for pad 1 (physical stick 1, emulated joystick 0; pad 0's is a dummy); fcs and ch one for
+		// pad 0; none has none. Its shipped binds are what MAPPER_PadSetDefault gives back, named for the emulated joystick.
+		void setType(const std::string& t)
+		{
 			type = t;
 			for(int p = 0; p < 4; p++)
 				for(int s = 0; s < PAD_SOURCE_COUNT; s++)
-					padBinds[p][s].clear(), stickBinds[p][s].clear();
-			log.clear();
-			saves = 0;
-			// the stick group that reads pad N: 4axis has one for pad 0 (the one for pad 1 is a dummy); 2axis one each
-			// for pads 0 and 1; none has no stick groups. Shipped binds are what MAPPER_PadSetDefault gives back.
+					stickBinds[p][s].clear();
 			for(int p = 0; p < 2; p++)
 			{
-				if(type == "none" || (p == 1 && type != "2axis"))
+				int emu = -1;
+				if(type == "2axis")
+					emu = p;
+				else if(type == "4axis_2")
+					emu = p == 1 ? 0 : -1;
+				else if(type == "4axis" || type == "fcs" || type == "ch")
+					emu = p == 0 ? 0 : -1;
+				if(emu < 0)
 					continue;
 				for(int s = 0; s < PAD_SOURCE_COUNT; s++)
 				{
 					char name[24];
-					if(s < 12 && ((p == 0 && s < 6) || (p == 1 && s < 2)))
-						snprintf(name, sizeof(name), "jbutton_%d_%d", p, s);
-					else if(s >= 12 && p == 0)
+					if(s < 12 && ((emu == 0 && s < 6) || (emu == 1 && s < 2)))
+						snprintf(name, sizeof(name), "jbutton_%d_%d", emu, s);
+					else if(s >= 12 && emu == 0)
 						snprintf(name, sizeof(name), "jhat_0_0_%d", s - 12);
 					else
 						continue;
@@ -112,6 +129,17 @@ class FakeMapper : public PadMapper
 		}
 
 		bool save() override { saves++; return saveWorks; }
+		bool setJoystickType(const std::string& t) override
+		{
+			static const char * const known[] = { "none", "2axis", "4axis", "4axis_2", "fcs", "ch" };
+			bool ok = false;
+			for(size_t i = 0; i < 6; i++)
+				ok = ok || t == known[i];
+			if(!ok)
+				return false;
+			setType(t);
+			return true;
+		}
 		std::string joystickType() const override { return type; }
 
 		void bind(int pad, int source, const char * event) { padBinds[pad][source].push_back(event); }
@@ -276,8 +304,8 @@ static void testShippedState()
 		CHECK(!r.model.presets()[(size_t)r.model.currentPreset(0)].needsJoystick);
 	}
 	{
-		Rig r("fcs");	// until D7c: shown as Joystick, four buttons
-		CHECK(r.model.currentEmulated() == 0);
+		Rig r("fcs");	// its own (advanced) mode, player 1's joystick with four buttons
+		CHECK(r.model.currentEmulated() == 4 && r.model.joystickButtons(0) == 4);
 	}
 }
 
@@ -514,15 +542,153 @@ static void testSaving()
 	CHECK(m.binding(0, INPUT_BTN_A) == joy(0));
 }
 
+
+// ---- the emulated mode (D7c)
+
+static std::string sourceEvent(Rig& r, int player, int control)
+{
+	const std::vector<std::string> e = r.mapper.events(player, Pad_SourceOfControl(control));
+	return e.empty() ? std::string() : e[0];
+}
+
+static void testEmulatedMode()
+{
+	// each type is its own mode; auto reads as Joystick
+	const struct { const char * type; int mode; } types[] = { { "4axis", 0 }, { "2axis", 1 }, { "none", 2 }, { "4axis_2", 3 }, { "fcs", 4 }, { "ch", 5 }, { "auto", 0 } };
+	for(size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++)
+	{
+		Rig r(types[i].type);
+		CHECK(r.model.currentEmulated() == types[i].mode);
+	}
+
+	// setEmulated sets the type through the mapper, and the model follows
+	Rig r("4axis");
+	r.model.setEmulated(1);
+	CHECK_EQ(r.mapper.joystickType(), "2axis");
+	CHECK(r.model.currentEmulated() == 1);
+	CHECK(r.model.joystickSlot(0) == 0 && r.model.joystickSlot(1) == 1 && r.model.joystickSlot(2) == -1);
+	CHECK_EQ(r.model.player(0).role, "Joystick 1");
+	CHECK_EQ(r.model.player(1).role, "Joystick 2");
+	CHECK_EQ(r.model.player(2).role, "Keys + mouse");
+	CHECK(r.model.joystickButtons(1) == 2 && r.model.joystickAxes(1) == 2 && r.model.joystickButtons(2) == 0);
+	r.model.setEmulated(2);
+	CHECK_EQ(r.mapper.joystickType(), "none");
+	CHECK_EQ(r.model.player(0).role, "Keys + mouse");
+	r.model.setEmulated(0);
+	CHECK_EQ(r.model.player(0).role, "Joystick 1");
+	CHECK_EQ(r.model.player(1).role, "Keys + mouse");
+	CHECK(r.model.joystickButtons(0) == 4 && r.model.joystickAxes(0) == 4);
+
+	// an out of range index, or the mode already in effect, changes nothing
+	const int saves = r.mapper.saves;
+	r.model.setEmulated(0);
+	r.model.setEmulated(9);
+	r.model.setEmulated(-1);
+	CHECK(r.model.currentEmulated() == 0 && r.mapper.saves == saves);
+
+	// a type the mapper refuses leaves the mode as it was
+	class Refuser : public FakeMapper { public: bool setJoystickType(const std::string&) override { return false; } };
+	FakeHardware hw;
+	Refuser refuser;
+	MapperControlsModel m(hw, refuser);
+	m.setEmulated(1);
+	CHECK(m.currentEmulated() == 0 && refuser.saves == 0);
+}
+
+static void testAdvancedTypes()
+{
+	// 4axis_2: player 2 holds the one joystick, which is DOS joystick 1 (jbutton_0_*)
+	Rig r("4axis_2");
+	CHECK(r.model.currentEmulated() == 3);
+	CHECK(r.model.joystickSlot(0) == -1 && r.model.joystickSlot(1) == 0);
+	CHECK_EQ(r.model.player(0).role, "Keys + mouse");
+	CHECK_EQ(r.model.player(1).role, "Joystick 1");
+	CHECK(r.model.player(1).joystick == 1 && r.model.player(1).emulated == Emulated::JOYSTICK);
+	CHECK(r.model.joystickButtons(1) == 4 && r.model.joystickButtons(0) == 0);
+	// the shipped binds of player 2's stick group read as joystick buttons 1..4, player 1 has none
+	CHECK(r.model.binding(1, INPUT_BTN_A) == joy(0) && r.model.binding(1, INPUT_BTN_Y) == joy(3));
+	CHECK(r.model.binding(0, INPUT_BTN_A) == BindingTarget());
+	// binding player 2's button writes jbutton_0_*, never jbutton_1_*
+	r.model.setBinding(1, INPUT_TRIGGER_L, joy(2));
+	CHECK_EQ(sourceEvent(r, 1, INPUT_TRIGGER_L), "jbutton_0_2");
+	// player 1 has no joystick to offer
+	r.model.setBinding(0, INPUT_TRIGGER_L, joy(0));
+	CHECK(r.model.binding(0, INPUT_TRIGGER_L) == BindingTarget());
+
+	// the flight sticks are player 1's, with a hat; CH has six buttons
+	Rig f("fcs");
+	CHECK(f.model.currentEmulated() == 4 && f.model.joystickSlot(0) == 0 && f.model.joystickSlot(1) == -1);
+	CHECK(f.model.joystickButtons(0) == 4);
+	Rig c("ch");
+	CHECK(c.model.currentEmulated() == 5 && c.model.joystickButtons(0) == 6 && c.model.joystickAxes(0) == 4);
+	CHECK(c.model.usable(0, joy(3)));
+}
+
+static void testMigrateBinds()
+{
+	// 2axis -> 4axis_2: player 2 had its own joystick (jbutton_1_*), now it is joystick 0
+	Rig r("2axis");
+	r.model.setBinding(1, INPUT_BTN_A, joy(1));
+	CHECK_EQ(sourceEvent(r, 1, INPUT_BTN_A), "jbutton_1_1");
+	r.model.setBinding(0, INPUT_BTN_B, joy(1));
+	r.model.setBinding(0, INPUT_BTN_X, key("Ctrl"));
+	r.model.setEmulated(3);
+	CHECK_EQ(r.mapper.joystickType(), "4axis_2");
+	CHECK_EQ(sourceEvent(r, 1, INPUT_BTN_A), "jbutton_0_1");			// moved to the player's own joystick
+	CHECK(r.model.binding(1, INPUT_BTN_A) == joy(1));
+	// player 1's bind would now fire player 2's joystick: removed
+	CHECK(r.model.binding(0, INPUT_BTN_B) == BindingTarget());
+	CHECK(r.model.binding(0, INPUT_BTN_X) == key("Ctrl"));			// keys are not touched
+	CHECK(r.mapper.saves > 0);
+	// nothing left to move
+	CHECK(!Mapper_MigrateJoystickBinds(r.mapper));
+
+	// 2axis -> 4axis: player 2's joystick buttons point at a joystick nobody drives: left alone, so 2axis finds them again
+	Rig b("2axis");
+	b.model.setBinding(1, INPUT_BTN_A, joy(1));
+	b.model.setEmulated(0);
+	CHECK_EQ(sourceEvent(b, 1, INPUT_BTN_A), "jbutton_1_1");
+	CHECK(b.model.binding(1, INPUT_BTN_A) == BindingTarget());			// no joystick for player 2 now
+	b.model.setEmulated(1);
+	CHECK(b.model.binding(1, INPUT_BTN_A) == joy(1));
+
+	// 4axis -> ch: a button the type has stays (six), 2axis -> 4axis: stays too
+	Rig k("4axis");
+	k.model.setBinding(0, INPUT_TRIGGER_L, joy(3));
+	k.model.setEmulated(5);
+	CHECK_EQ(sourceEvent(k, 0, INPUT_TRIGGER_L), "jbutton_0_3");
+
+	// the Settings row path: the type changes behind the model's back, then the hook runs (what Apply does)
+	Rig s("2axis");
+	s.model.setBinding(1, INPUT_BTN_A, joy(1));
+	s.mapper.setType("4axis_2");
+	CHECK(s.model.currentEmulated() == 3);								// the model reads the type in effect, so roles follow
+	CHECK_EQ(s.model.player(1).role, "Joystick 1");
+	CHECK(Mapper_MigrateJoystickBinds(s.mapper));
+	CHECK_EQ(sourceEvent(s, 1, INPUT_BTN_A), "jbutton_0_1");
+}
+
+static void testPresetFollowsType()
+{
+	// Compatible needs a joystick: with none it is not what the player has, so the closest usable preset is chosen again
+	Rig r("4axis");
+	CHECK(r.model.currentPreset(0) == PRESET_COMPATIBLE);
+	r.model.setEmulated(2);
+	CHECK(r.model.currentPreset(0) != PRESET_COMPATIBLE);
+	CHECK(!Presets_All()[(size_t)r.model.currentPreset(0)].needsJoystick);
+	// and from the Settings row
+	Rig s("4axis");
+	CHECK(s.model.currentPreset(0) == PRESET_COMPATIBLE);
+	s.mapper.setType("none");
+	CHECK(s.model.currentPreset(0) != PRESET_COMPATIBLE);
+}
+
 // ---- what is still a stand-in says so
 
 static void testStandIns()
 {
 	Rig r("2axis");
 	CHECK(r.model.playerCount() == 4);
-	CHECK(r.model.emulatedModes().size() == 3);
-	r.model.setEmulated(2);													// does nothing until D7c: the mapper decides
-	CHECK(r.model.currentEmulated() == 1 && r.mapper.log.empty());
 	CHECK(!r.model.setupModified());										// nothing changed since the start
 	r.model.beginCapture();
 	CaptureEvent e;
@@ -575,6 +741,10 @@ int main()
 	testPresetIsDerivedOnce();
 	testSuggestions();
 	testSaving();
+	testEmulatedMode();
+	testAdvancedTypes();
+	testMigrateBinds();
+	testPresetFollowsType();
 	testStandIns();
 	testPlayers();
 	testInstall();

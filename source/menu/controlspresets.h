@@ -39,7 +39,12 @@ std::vector<BindingTarget> Presets_Suggestions(const ControlsModel& model, int p
 
 // ---- what DOS sees
 
-/** Joystick, Two joysticks, Keyboard + mouse. */
+/**
+ * Joystick, Two joysticks, Keyboard + mouse, then the advanced types (4axis_2, fcs, ch). The first three are
+ * the Emulating list; see EmulatedMode::advanced.
+ */
 const std::vector<EmulatedMode>& Emulated_Modes();
+/** The mode for a joystick.joysticktype value (auto is 4axis), or -1 for a value none of them stands for. */
+int Emulated_IndexOfType(const std::string& type);
 
 #endif

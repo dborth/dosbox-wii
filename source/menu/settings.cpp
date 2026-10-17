@@ -31,6 +31,9 @@
 #include "preferences.h"
 #include "input.h"
 
+// controlsmapperlive.cpp (declared here: controlsmapper.h pulls in headers that clash with DOSBox's)
+void Controls_JoystickTypeChanged();
+
 /****************************************************************************
  * Row table types
  ***************************************************************************/
@@ -125,7 +128,12 @@ static bool Apply(const char * section, const char * prop, const std::string & v
 	// The mapper reads the joystick type and button wrapping when it builds its
 	// joystick groups, so they are built again to put any change in effect
 	if(!strcasecmp(section, "joystick"))
+	{
 		ReinitJoysticks();
+		// pad binds to a joystick follow it (the Controllers page reads the same type)
+		if(!strcasecmp(prop, "joysticktype"))
+			Controls_JoystickTypeChanged();
+	}
 
 	return accepted;
 }
@@ -730,7 +738,7 @@ static const int mouseSpeedPresets[] = { 25, 50, 75, 100, 125, 150, 200, 250, 30
 static const char * const helpJoystickType =
 	"auto is 4axis: one joystick with four buttons for player 1, the right stick as its other two axes. 2axis is "
 	"two joysticks with two buttons each, for players 1 and 2. 4axis_2 is 4axis for player 2. fcs and ch add a hat. "
-	"none turns joysticks off.";
+	"none turns joysticks off. The Controllers page's Emulating list sets the same thing.";
 static const char * const helpDeadzone =
 	"How far joystick 1's stick must move before DOSBox notices, as a percentage. 100 makes it digital.";
 static const char * const helpButtonWrap =
@@ -1729,6 +1737,14 @@ static const char * BaseName(const std::string & path)
 /****************************************************************************
  * Save
  ***************************************************************************/
+bool Settings_SetJoystickType(const char * type)
+{
+	if(!type || !*type)
+		return false;
+	const bool accepted = Apply("joystick", "joysticktype", type);
+	return accepted && !strcmp(GetJoystickTypeName(), type);
+}
+
 bool Settings_Save(char * message, size_t size)
 {
 	if(size == 0)

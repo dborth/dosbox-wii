@@ -148,11 +148,28 @@ std::vector<BindingTarget> Presets_Suggestions(const ControlsModel& model, int p
 
 const std::vector<EmulatedMode>& Emulated_Modes()
 {
+	// The first three are the Emulating list. The rest are the mapper's other joystick types, reached from
+	// Settings: they are listed only when one is in effect, so the player can see it and leave it. Counts are the
+	// ones the mapper's groups use (C4AxisBindGroup 4 axes / 4 buttons, CFCSBindGroup 4 / 4 + hat,
+	// CCHBindGroup 4 / 6 + hat; CStickBindGroup 2 / 2 for two joysticks).
 	static const std::vector<EmulatedMode> modes =
 	{
-		{ "Joystick", "One joystick with four buttons, for player 1", 1, 4, 4 },
-		{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2, 2 },
-		{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0, 0 },
+		{ "Joystick", "One joystick with four buttons, for player 1", 1, 4, 4, "4axis", 0, false, false },
+		{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2, 2, "2axis", 0, false, false },
+		{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0, 0, "none", 0, false, false },
+		{ "Joystick for player 2", "The one joystick, with four buttons, is player 2's", 1, 4, 4, "4axis_2", 1, false, true },
+		{ "Flight stick (FCS)", "One joystick with four buttons and a hat, for player 1", 1, 4, 4, "fcs", 0, true, true },
+		{ "Flight stick (CH)", "One joystick with six buttons and a hat, for player 1", 1, 6, 4, "ch", 0, true, true },
 	};
 	return modes;
+}
+
+int Emulated_IndexOfType(const std::string& type)
+{
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	for(size_t i = 0; i < modes.size(); i++)
+		if(modes[i].type == type)
+			return (int)i;
+	// auto is 4axis here (InitializeJoysticks), and the type only reads auto between the config being set and the mapper building its groups
+	return type == "auto" ? 0 : -1;
 }

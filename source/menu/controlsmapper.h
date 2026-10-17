@@ -34,6 +34,11 @@ class PadMapper
 		virtual bool save() = 0;
 		/** The joystick type in effect: none, 2axis, 4axis, 4axis_2, fcs or ch. */
 		virtual std::string joystickType() const = 0;
+		/**
+		 * Makes a joystick type the one in effect: the joystick.joysticktype setting is changed and the mapper's joystick
+		 * groups are built again (the same path as Settings > Joystick type). False when DOSBox did not take it.
+		 */
+		virtual bool setJoystickType(const std::string& type) = 0;
 };
 
 /** The real mapper (controlsmapperlive.cpp; needs the DOSBox core, so the host tests use a fake). */
@@ -41,19 +46,34 @@ PadMapper& Mapper_Live();
 
 /**
  * The mapper event a target stands for when it is bound to a player's button, or false when the mapper cannot
- * express it for that player (a joystick button beyond the first four, or for a player with no emulated joystick
- * slot: only players 1 and 2 have jbutton_N_* events). An unassigned target gives true and an empty name.
+ * express it (a joystick button beyond the first four, or a joystick slot that does not exist: only the DOS
+ * joysticks 0 and 1 have jbutton_N_* events). `slot` is the player's DOS joystick (ControlsModel::joystickSlot(),
+ * -1 for none), which is the player's number only under 4axis, 2axis, fcs and ch. An unassigned target gives
+ * true and an empty name.
  */
-bool Mapper_EventFor(int player, const BindingTarget& target, std::string& event);
-/** The target an event stands for on a player's button, or false when it is none the catalogs hold (a joystick hat or axis, another player's joystick). */
-bool Mapper_TargetFor(int player, const std::string& event, BindingTarget& target);
+bool Mapper_EventFor(int slot, const BindingTarget& target, std::string& event);
+/** The target an event stands for on a player's button, or false when it is none the catalogs hold (a joystick hat or axis, another joystick's button). */
+bool Mapper_TargetFor(int slot, const std::string& event, BindingTarget& target);
+
+/**
+ * After the joystick type changed: pad binds to a joystick button that is not the player's own are moved to the
+ * player's joystick (player 2 under 4axis_2 is joystick 1, so jbutton_1_0 becomes jbutton_0_0) or removed when
+ * the player has none (player 1 under 4axis_2 would otherwise fire player 2's joystick). A bind to a joystick
+ * nobody uses is left alone, so going back to two joysticks finds player 2's buttons as they were. Safe to call
+ * again: a second call finds nothing to move. Returns whether anything was rebound; the caller saves.
+ */
+bool Mapper_MigrateJoystickBinds(PadMapper& mapper);
+
+/** The type in effect changed behind the model's back (the Settings row): moves the binds and saves. Called by the settings apply path (controlsmapperlive.cpp). */
+void Controls_JoystickTypeChanged();
 
 /**
  * The model the controller screens use once DOSBox is running. Bindings, presets and "modified" are real, for all
- * four players. What stays a stand-in until the later pieces:
+ * four players, and so is the emulated mode: setEmulated() sets joystick.joysticktype and the mapper's joystick
+ * groups follow, currentEmulated() reads the type in effect (4axis_2, fcs and ch show as their own advanced
+ * modes, with the right player holding the joystick), and the Settings > Joystick type row goes through the same
+ * path. What stays a stand-in until the later pieces:
  *
- *  - the emulated mode (D7c): currentEmulated() follows the joystick type in effect, so button limits and roles are
- *    true, but setEmulated() does nothing yet (the Settings > Joystick type row still changes it);
  *  - key and mouse capture (D7d): beginCapture() does nothing and pollCapture() never reports a press;
  *  - setups on disk (D7d): setups() is empty, saveSetup() and loadSetup() fail, runningProgram() and setupName() are
  *    empty; setupModified() is true once anything was changed since the program started, which is exact while there
@@ -117,7 +137,11 @@ class MapperControlsModel : public ControlsModel
 
 		ControlsHardware& hw;
 		PadMapper& mapper;
+		/** A type change leaves a cached preset that needs a joystick the player no longer has: forget it so it is chosen again. */
+		void followJoystickType() const;
+
 		mutable int presetOf[4];
+		mutable std::string seenType;
 		bool dirty;
 		bool failedSave;
 };

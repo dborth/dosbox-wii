@@ -33,6 +33,12 @@ bool PadIsLoneWiimote(const InputPadData & pad);
 //! builds and the live highlight on the setup screen both read this, so they cannot disagree.
 uint32_t PadButtonsForDos(const InputPadData & pad, bool sideways);
 
+//! Whether a mapper event on a pad's D-pad leaves the D-pad driving the DOS joystick. The shipped D-pad bind
+//! is the hat (jhat_*); anything else (a key, a mouse button, a hotkey, a joystick button) means the player
+//! gave the D-pad another job, and the shim then keeps it off the joystick axes and hat, or an arrow-key D-pad
+//! would also steer the joystick. A D-pad with no event (Not assigned) is still the joystick's.
+bool DpadEventKeepsJoystick(const char * event);
+
 /* ---- Menu requests ---- */
 
 //! True while this channel holds HOME, or L + R + Plus/Start on a single device.

@@ -758,6 +758,37 @@ struct SDL_Joystick {
 static SDL_Joystick joysticks[NUM_JOYSTICKS];
 static bool joystickEvents = true;
 
+// Whether each player's D-pad drives the joystick (axes and hat). It does while its four pad sources in the mapper
+// are still at the joystick's defaults; bound to a key or anything else it does not, or an arrow-key D-pad would
+// steer the joystick as well. Read from the mapper when emulation starts and after the menu, where every bind
+// is changed, not every poll.
+static bool dpadDrivesJoystick[NUM_JOYSTICKS];
+static bool padRoutingStale = true;
+
+// sdl_mapper.cpp: what a pad source does (the first NUM_PAD_DPAD sources after the 12 buttons are the D-pad)
+int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
+enum { PAD_FIRST_DPAD_SOURCE = 12, PAD_DPAD_SOURCES = 4, PAD_EVENTS_MAX = 8 };
+
+static void RefreshPadRouting(void)
+{
+	for (int p = 0; p < NUM_JOYSTICKS; p++) {
+		bool keeps = true;
+		for (int d = 0; d < PAD_DPAD_SOURCES && keeps; d++) {
+			char names[PAD_EVENTS_MAX][16];
+			const int count = MAPPER_PadGetEvents(p, PAD_FIRST_DPAD_SOURCE + d, names, PAD_EVENTS_MAX, NULL);
+			for (int i = 0; i < count && i < PAD_EVENTS_MAX; i++)
+				keeps = keeps && DpadEventKeepsJoystick(names[i]);
+		}
+		dpadDrivesJoystick[p] = keeps;
+	}
+	padRoutingStale = false;
+}
+
+void InputHal_RefreshPadRouting(void)
+{
+	padRoutingStale = true;
+}
+
 static inline Sint16 AxisValue(float v)
 {
 	if (v > 1.0f) v = 1.0f;
@@ -812,10 +843,13 @@ static void ReadPlayer(int ch, SDL_Joystick & js)
 	js.buttons[10] = Held(b, INPUT_THUMB_L);
 	js.buttons[11] = Held(b, INPUT_THUMB_R);
 
-	js.hat = DpadToHat(b);
+	// a D-pad with its own job (a key, say) is not also a joystick direction
+	const uint32_t dpad = dpadDrivesJoystick[ch] ? b : (b & ~(INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT));
 
-	js.axes[0] = StickWithDpad(pad.stickX, (b & INPUT_BTN_LEFT) != 0, (b & INPUT_BTN_RIGHT) != 0);
-	js.axes[1] = StickWithDpad(-pad.stickY, (b & INPUT_BTN_UP) != 0, (b & INPUT_BTN_DOWN) != 0);
+	js.hat = DpadToHat(dpad);
+
+	js.axes[0] = StickWithDpad(pad.stickX, (dpad & INPUT_BTN_LEFT) != 0, (dpad & INPUT_BTN_RIGHT) != 0);
+	js.axes[1] = StickWithDpad(-pad.stickY, (dpad & INPUT_BTN_UP) != 0, (dpad & INPUT_BTN_DOWN) != 0);
 	js.axes[2] = AxisValue(pad.substickX);
 	js.axes[3] = AxisValue(-pad.substickY);
 }
@@ -848,6 +882,14 @@ static void PostJoyEvent(Uint8 type, int which, int number, int value)
 
 static void UpdateJoysticks(void)
 {
+	// the mapper has built its pad groups once a joystick has been opened (CreateBindGroups opens the sticks first)
+	if (padRoutingStale) {
+		for (int i = 0; i < NUM_JOYSTICKS; i++)
+			if (joysticks[i].opened) {
+				RefreshPadRouting();
+				break;
+			}
+	}
 	for (int i = 0; i < NUM_JOYSTICKS; i++) {
 		SDL_Joystick & js = joysticks[i];
 		// Previous state, to find what changed
@@ -949,6 +991,10 @@ void InputHal_Init(void)
 		js.nbuttons = JOY_BUTTONS;
 		js.nhats = 1;
 	}
+
+	for (int i = 0; i < NUM_JOYSTICKS; i++)
+		dpadDrivesJoystick[i] = true;
+	padRoutingStale = true;
 
 	eventHead = eventCount = 0;
 	modState = KMOD_NONE;

@@ -141,13 +141,21 @@ struct PresetInfo {
 /**
  * What the program on the DOS side sees. Keyboard and mouse are always there (DOSBox here cannot turn them
  * off), so the only choice is the gamepad port: none, one joystick, or two.
+ *
+ * Each mode is one joysticktype of the mapper. Players are physical sticks, and the type decides which of them
+ * drives a DOS joystick: 4axis_2 hands the one joystick to player 2, not player 1. So a mode says which player
+ * has the first joystick (firstPlayer) and a player's DOS joystick is player - firstPlayer.
  */
 struct EmulatedMode {
 	std::string name;			/**< "Joystick" */
 	std::string description;
-	int joysticks;				/**< How many DOS joysticks exist: players 1..n each get one */
+	int joysticks;				/**< How many DOS joysticks exist: players firstPlayer.. each get one */
 	int buttons;				/**< Buttons on each of them */
 	int axes;					/**< Axes on each: 2 (one stick) or 4 (two sticks, or a stick and a throttle) */
+	std::string type;			/**< The joystick.joysticktype value: 4axis, 2axis, none, 4axis_2, fcs, ch */
+	int firstPlayer = 0;		/**< The player (0-based) that has the first DOS joystick */
+	bool hat = false;			/**< The joystick has a hat (fcs, ch): the D-pad can drive it */
+	bool advanced = false;		/**< Not offered in the Emulating list unless it is the one in effect (set from Settings) */
 };
 
 /** A saved setup: a name and, optionally, the program it loads for. */
@@ -203,6 +211,8 @@ class ControlsModel
 		virtual int currentEmulated() const = 0;
 		virtual void setEmulated(int index) = 0;
 
+		/** The player's DOS joystick, 0-based (the n of the mapper's jbutton_n_*), or -1 when the player has none. */
+		int joystickSlot(int player) const;
 		/** Buttons on the DOS joystick a player drives; 0 when that player has none. */
 		int joystickButtons(int player) const;
 		/** Axes on it: 4 when both sticks count, 2 for the left stick only, 0 with no joystick. */

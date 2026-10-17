@@ -1,5 +1,6 @@
 // Host tests for the controls model contract and the sample model behind it.
 #include "controlsmodel.h"
+#include "controlspresets.h"
 #include "libgui/GuiControllerLayout.h"
 #include "controllerprofile.h"
 #include "drivers/InputData.h"
@@ -37,7 +38,15 @@ static void testEmulatedModes()
 {
 	ControlsModel& m = fresh();
 	const std::vector<EmulatedMode> modes = m.emulatedModes();
-	CHECK(modes.size() == 3);
+	CHECK(modes.size() == 6);
+	CHECK(!modes[0].advanced && !modes[1].advanced && !modes[2].advanced);
+	CHECK(modes[3].advanced && modes[4].advanced && modes[5].advanced);
+	CHECK_EQ(modes[0].type, "4axis");
+	CHECK_EQ(modes[1].type, "2axis");
+	CHECK_EQ(modes[2].type, "none");
+	CHECK_EQ(modes[3].type, "4axis_2");
+	CHECK(modes[3].firstPlayer == 1 && modes[4].hat && modes[5].hat && modes[5].buttons == 6);
+	CHECK(Emulated_IndexOfType("auto") == 0 && Emulated_IndexOfType("ch") == 5 && Emulated_IndexOfType("bogus") == -1);
 	CHECK_EQ(modes[0].name, "Joystick");
 	CHECK_EQ(modes[1].name, "Two joysticks");
 	CHECK_EQ(modes[2].name, "Keyboard + mouse");
@@ -1068,6 +1077,32 @@ static void testHardwareSeam()
 	CHECK(Controls().devices().keyboard);
 }
 
+static std::string readText(const std::string& rel)
+{
+	std::ifstream f(std::string(SRC_DIR) + "/" + rel);
+	std::stringstream ss;
+	ss << f.rdbuf();
+	return ss.str();
+}
+
+static void testDpadRouting()
+{
+	// the shipped D-pad bind is the hat; any other job takes the D-pad off the joystick
+	CHECK(DpadEventKeepsJoystick("jhat_0_0_0") && DpadEventKeepsJoystick("jhat_0_0_3"));
+	CHECK(!DpadEventKeepsJoystick("key_up") && !DpadEventKeepsJoystick("jbutton_0_0"));
+	CHECK(!DpadEventKeepsJoystick("hand_cycleup") && !DpadEventKeepsJoystick("hand_mouseleft") && !DpadEventKeepsJoystick(""));
+	CHECK(!DpadEventKeepsJoystick(nullptr));
+	// the shim asks it of the four D-pad sources of every player, and drops the D-pad from axes and hat when it is false
+	const std::string shim = readText("sdlshim/SDL_input.cpp");
+	CHECK(shim.find("DpadEventKeepsJoystick(names[i])") != std::string::npos);
+	CHECK(shim.find("PAD_FIRST_DPAD_SOURCE = 12") != std::string::npos);
+	CHECK(shim.find("dpadDrivesJoystick[ch] ? b :") != std::string::npos);
+	CHECK(shim.find("js.hat = DpadToHat(dpad);") != std::string::npos);
+	CHECK(shim.find("StickWithDpad(pad.stickX, (dpad & INPUT_BTN_LEFT)") != std::string::npos);
+	// refreshed when the menu closes
+	CHECK(readText("dosboxsupport.cpp").find("InputHal_RefreshPadRouting();") != std::string::npos);
+}
+
 int main()
 {
 	testEmulatedModes();
@@ -1097,6 +1132,7 @@ int main()
 	testDpadForDos();
 	testHardwareSeam();
 	testSetupState();
+	testDpadRouting();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

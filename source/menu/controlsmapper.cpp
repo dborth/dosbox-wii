@@ -55,12 +55,12 @@ const std::map<std::string, int>& keyByEvent()
 const char * const kMouseEvents[] = { "hand_mouseleft", "hand_mouseright", "hand_mousemid" };
 const char * const kHotkeyEvents[] = { "hand_cycleup", "hand_cycledown", "hand_incfskip", "hand_decfskip", "hand_swapimg", "hand_speedlock" };
 
-// Only the emulated joysticks 0 and 1 have buttons events (jbutton_<stick>_<button>), four buttons are offered
-const int kJoystickEventPlayers = 2;
+// Only the emulated joysticks 0 and 1 have buttons events (jbutton_<emulated joystick>_<button>), four buttons are offered
+const int kJoystickEventSlots = 2;
 
 } // namespace
 
-bool Mapper_EventFor(int player, const BindingTarget& target, std::string& event)
+bool Mapper_EventFor(int slot, const BindingTarget& target, std::string& event)
 {
 	event.clear();
 	const std::vector<std::string>& names = Catalog_Names(target.kind);
@@ -75,10 +75,10 @@ bool Mapper_EventFor(int player, const BindingTarget& target, std::string& event
 			return true;
 		case TARGET::JOYSTICK:
 		{
-			if(player < 0 || player >= kJoystickEventPlayers || target.code < 0 || (size_t)target.code >= names.size())
+			if(slot < 0 || slot >= kJoystickEventSlots || target.code < 0 || (size_t)target.code >= names.size())
 				return false;
 			char text[24];
-			snprintf(text, sizeof(text), "jbutton_%d_%d", player, target.code);
+			snprintf(text, sizeof(text), "jbutton_%d_%d", slot, target.code);
 			event = text;
 			return true;
 		}
@@ -96,7 +96,7 @@ bool Mapper_EventFor(int player, const BindingTarget& target, std::string& event
 	return false;
 }
 
-bool Mapper_TargetFor(int player, const std::string& event, BindingTarget& target)
+bool Mapper_TargetFor(int slot, const std::string& event, BindingTarget& target)
 {
 	target = BindingTarget();
 	if(event.compare(0, 4, "key_") == 0)
@@ -110,7 +110,7 @@ bool Mapper_TargetFor(int player, const std::string& event, BindingTarget& targe
 	if(event.compare(0, 8, "jbutton_") == 0)
 	{
 		int stick = -1, button = -1;
-		if(sscanf(event.c_str() + 8, "%d_%d", &stick, &button) != 2 || stick != player || button < 0 || (size_t)button >= Catalog_Names(TARGET::JOYSTICK).size())
+		if(sscanf(event.c_str() + 8, "%d_%d", &stick, &button) != 2 || slot < 0 || stick != slot || button < 0 || (size_t)button >= Catalog_Names(TARGET::JOYSTICK).size())
 			return false;
 		target = BindingTarget(TARGET::JOYSTICK, button);
 		return true;
@@ -128,6 +128,50 @@ bool Mapper_TargetFor(int player, const std::string& event, BindingTarget& targe
 			return true;
 		}
 	return false;
+}
+
+bool Mapper_MigrateJoystickBinds(PadMapper& mapper)
+{
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	int mode = Emulated_IndexOfType(mapper.joystickType());
+	if(mode < 0)
+		return false;
+	const EmulatedMode& m = modes[(size_t)mode];
+
+	// the DOS joystick each player drives (-1 for none)
+	int slotOf[4];
+	for(int p = 0; p < 4; p++)
+		slotOf[p] = p - m.firstPlayer >= 0 && p - m.firstPlayer < m.joysticks ? p - m.firstPlayer : -1;
+
+	bool changed = false;
+	for(int p = 0; p < 4; p++)
+		for(int s = 0; s < PAD_SOURCE_COUNT; s++)
+		{
+			const std::vector<std::string> events = mapper.events(p, s);
+			for(size_t i = 0; i < events.size(); i++)
+			{
+				int stick = -1, button = -1;
+				if(events[i].compare(0, 8, "jbutton_") != 0 || sscanf(events[i].c_str() + 8, "%d_%d", &stick, &button) != 2 || stick == slotOf[p])
+					continue;
+				// not the player's own joystick. A joystick nobody drives is inert, so it is left alone for a player with none.
+				bool drivenByOther = false;
+				for(int q = 0; q < 4; q++)
+					drivenByOther = drivenByOther || (q != p && slotOf[q] == stick);
+				if(slotOf[p] < 0 && !drivenByOther)
+					continue;
+				std::string to;
+				if(slotOf[p] >= 0 && button < m.buttons)
+				{
+					char text[24];
+					snprintf(text, sizeof(text), "jbutton_%d_%d", slotOf[p], button);
+					to = text;
+				}
+				if(mapper.setEvent(p, s, to.c_str()))
+					changed = true;
+				break;	// a source is one thing: setEvent took all its binds
+			}
+		}
+	return changed;
 }
 
 MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& m)
@@ -151,22 +195,37 @@ DeviceStatus MapperControlsModel::devices() const { return hw.devices(); }
 
 uint32_t MapperControlsModel::held(int player) const { return hw.held(player); }
 
-// ---- the emulated mode (read-only until D7c)
+// ---- the emulated mode
 
 std::vector<EmulatedMode> MapperControlsModel::emulatedModes() const { return Emulated_Modes(); }
 
 int MapperControlsModel::currentEmulated() const
 {
-	// 4axis is "Joystick" (also what 4axis_2, fcs and ch are shown as until D7c decides about them)
-	const std::string type = mapper.joystickType();
-	if(type == "none")
-		return 2;
-	if(type == "2axis")
-		return 1;
-	return 0;
+	// auto reads as 4axis; a type none of the modes stands for (not expected) is shown as Joystick
+	const int index = Emulated_IndexOfType(mapper.joystickType());
+	return index < 0 ? 0 : index;
 }
 
-void MapperControlsModel::setEmulated(int index) {}
+void MapperControlsModel::setEmulated(int index)
+{
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	if(index < 0 || (size_t)index >= modes.size() || index == currentEmulated())
+		return;
+	if(!mapper.setJoystickType(modes[(size_t)index].type))
+		return;
+	// the groups are rebuilt from the mapper file, which still holds the binds of the old type
+	Mapper_MigrateJoystickBinds(mapper);
+	saved();
+	followJoystickType();
+}
+
+void MapperControlsModel::followJoystickType() const
+{
+	seenType = mapper.joystickType();
+	for(int p = 0; p < 4; p++)
+		if(presetOf[p] >= 0 && Presets_All()[(size_t)presetOf[p]].needsJoystick && joystickButtons(p) == 0)
+			presetOf[p] = -1;
+}
 
 // ---- reading and writing a button
 
@@ -179,7 +238,7 @@ BindingTarget MapperControlsModel::current(int player, int control) const
 	for(size_t i = 0; i < events.size(); i++)
 	{
 		BindingTarget t;
-		if(Mapper_TargetFor(player, events[i], t))
+		if(Mapper_TargetFor(joystickSlot(player), events[i], t))
 			return t;
 	}
 	return BindingTarget();
@@ -194,7 +253,7 @@ bool MapperControlsModel::write(int player, int control, const BindingTarget& t)
 {
 	const int source = Pad_SourceOfControl(control);
 	std::string event;
-	if(source < 0 || !validPlayer(player) || !Mapper_EventFor(player, t, event))
+	if(source < 0 || !validPlayer(player) || !Mapper_EventFor(joystickSlot(player), t, event))
 		return false;
 	if(!event.empty() && !mapper.eventExists(event.c_str()))
 		return false;
@@ -246,6 +305,8 @@ int MapperControlsModel::currentPreset(int player) const
 {
 	if(!validPlayer(player))
 		return 0;
+	if(seenType != mapper.joystickType())
+		followJoystickType();	// the type was changed from Settings
 	if(presetOf[player] < 0)
 	{
 		// the mapper file does not record a preset: take the closest one the player can use

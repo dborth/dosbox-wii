@@ -773,13 +773,20 @@ static void addWrapped(std::vector<std::string>& lines, const std::string& text,
 	}
 }
 
-std::vector<PickerItem> Picker_EmulatedItems()
+std::vector<PickerItem> Picker_EmulatedItems(std::vector<int> * index)
 {
 	ControlsModel& m = Controls();
 	const std::vector<EmulatedMode> modes = m.emulatedModes();
 	std::vector<PickerItem> items;
+	if(index)
+		index->clear();
 	for(size_t i = 0; i < modes.size(); i++)
 	{
+		// the advanced types are set from Settings: listed only while one is in effect, so it can be left
+		if(modes[i].advanced && (int)i != m.currentEmulated())
+			continue;
+		if(index)
+			index->push_back((int)i);
 		PickerItem it;
 		it.name = modes[i].name;
 		it.current = (int)i == m.currentEmulated();
@@ -793,7 +800,8 @@ std::vector<PickerItem> Picker_EmulatedItems()
 				continue;
 			PickerRow r;
 			r.label = GuiFormat("Player %d", p + 1);
-			r.value = p < modes[i].joysticks ? GuiFormat("Joystick %d", p + 1) : std::string("Keys + mouse");
+			const int slot = p - modes[i].firstPlayer;
+			r.value = slot >= 0 && slot < modes[i].joysticks ? GuiFormat("Joystick %d", slot + 1) : std::string("Keys + mouse");
 			it.rows.push_back(r);
 		}
 		items.push_back(it);
@@ -1033,9 +1041,10 @@ int PickerScreen(const char * title, const std::vector<PickerItem>& items)
 
 void EmulatedPicker()
 {
-	const int chosen = PickerScreen("What does DOS see?", Picker_EmulatedItems());
-	if(chosen >= 0)
-		Controls().setEmulated(chosen);
+	std::vector<int> index;
+	const int chosen = PickerScreen("What does DOS see?", Picker_EmulatedItems(&index));
+	if(chosen >= 0 && (size_t)chosen < index.size())
+		Controls().setEmulated(index[(size_t)chosen]);
 }
 
 // What the hint line should say after.
