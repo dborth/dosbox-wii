@@ -19,6 +19,7 @@
 
 #include "dosbox.h"
 #include "render.h"
+#include "drivers/BulkMemory.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -43,10 +44,10 @@ bool Scaler_SizeCache(size_t bytes) {
 		return true;
 	}
 	/* Free first: the old block and the new one are never both needed */
-	free(Scaler_SourceCache);
+	BulkMemory::release(Scaler_SourceCache);
 	Scaler_SourceCache = 0;
 	scalerCacheSize = 0;
-	Scaler_SourceCache = (Bit8u *)malloc(bytes);
+	Scaler_SourceCache = (Bit8u *)BulkMemory::allocate(bytes);
 	if (!Scaler_SourceCache)
 		return false;
 	scalerCacheSize = bytes;

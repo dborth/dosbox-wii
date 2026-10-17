@@ -477,7 +477,7 @@ bool OgcEmulatorVideo::ensurePrescaleBuffer(int width, int height)
 	if (needed > prescaleCapacity)
 	{
 		free(prescaleMem);
-		prescaleMem = memalign(32, needed);
+		prescaleMem = mem2_malloc(needed);
 		prescaleCapacity = prescaleMem ? needed : 0;
 		if (!prescaleMem)
 			return false;
@@ -540,7 +540,7 @@ bool OgcEmulatorVideo::ensureTexture(int width, int height)
 
 	if (needed > texCapacity) {
 		free(texMem);
-		texMem = memalign(32, needed);
+		texMem = mem2_malloc(needed);
 		texCapacity = texMem ? needed : 0;
 		if (!texMem)
 			return false;

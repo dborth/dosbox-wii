@@ -25,6 +25,7 @@
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
+#include "drivers/BulkMemory.h"
 #include "setup.h"
 #include "videosupport.h"
 #include "preferences.h"
@@ -80,7 +81,7 @@ void GFX_HalShutdown(void) {
 
 	EmulatorVideo()->stopVideo();
 
-	free(gfx.frame);
+	BulkMemory::release(gfx.frame);
 	gfx.frame = NULL;
 	gfx.frameCapacity = 0;
 }
@@ -151,8 +152,8 @@ static bool AllocateFrame(Bitu width, Bitu height) {
 	size_t needed = (size_t)pitch * height;
 
 	if (needed > gfx.frameCapacity) {
-		free(gfx.frame);
-		gfx.frame = (uint16_t *)memalign(32, needed);
+		BulkMemory::release(gfx.frame);
+		gfx.frame = (uint16_t *)BulkMemory::allocate(needed);
 		gfx.frameCapacity = gfx.frame ? needed : 0;
 		if (!gfx.frame)
 			return false;
