@@ -247,6 +247,14 @@ class TargetChooserView : public GuiOverlay
 		bool listening() const { return listen; }
 		void startListening(TARGET kind);
 		void stopListening();
+		/** L and R (any controller) change the key tab while the Key kind is showing. */
+		void update(InputController * c) override;
+		/** Moves the key tab by `dir` (+1 / -1, wrapping). */
+		void stepKeyTab(int dir);
+		int keyTabIndex() const { return keyTab; }
+		int keyTabCount() const { return keyTabs; }
+		/** How many keycaps the key picker draws, over all tabs (every key the player can bind should have one). */
+		int keyCapCount() const { return keyCaps; }
 		/** Shows a kind, as moving over it does. */
 		void showCategory(int index);
 		/** Puts the selection on the kind showing (once the popover has the focus). */
@@ -259,6 +267,7 @@ class TargetChooserView : public GuiOverlay
 		void optionButtons(GuiLayout& grid, TARGET kind, const std::vector<int>& codes, int w, int h, int fontPx);
 		void optionRows(GuiLayout& list, TARGET kind, const std::vector<int>& codes, int w, int h);
 		void keyPane(GuiLayout& pane, int player, int w);
+		std::string defaultHint() const;
 		void targetRows(GuiLayout& list, const std::vector<BindingTarget>& targets, int w, int h);
 
 		UiScope ui;
@@ -272,6 +281,9 @@ class TargetChooserView : public GuiOverlay
 		TARGET listenKind;
 		int kinds;
 		int keyTab;
+		int keyTabs;
+		int keyCaps;
+		int keyPanel;
 		std::vector<GuiCard*> kindCards;
 		PopoverPlace place;
 		int panelWidth, panelHeight;

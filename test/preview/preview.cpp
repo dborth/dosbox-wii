@@ -341,6 +341,7 @@ int main(int argc, char ** argv)
 		{ "chooser_keys_mouse", (int)PadType::GAMECUBE, 2, 0, INPUT_BTN_A, BindingTarget(TARGET::JOYSTICK, 0), -1 },	// no joystick, so no Joystick kind
 		{ "chooser_left", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_UP, BindingTarget(TARGET::KEY, 5), 3 },		// a left-hand row: the popover on the right
 		{ "chooser_dosbox", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_Y, BindingTarget(), 4 },
+		{ "chooser_letters", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "G")), -1 },
 		{ "chooser_fkeys", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), -1 },	// opens on the tab with the key in use
 	};
 	for(size_t i = 0; i < sizeof(choosers) / sizeof(choosers[0]); i++)
@@ -365,6 +366,7 @@ int main(int argc, char ** argv)
 		s.root.changeFocus(&popWindow);
 		if(choosers[i].show >= 0)
 			view.showCategory(choosers[i].show);
+		popWindow.resetState();
 		view.selectCategory();
 		snap(choosers[i].name, s.root);
 		s.root.remove(&popWindow);
@@ -556,6 +558,24 @@ int main(int argc, char ** argv)
 		s.root.update(nullptr);
 		EXPECT(view.chosen() && !view.listening());
 		EXPECT(view.result() == BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "Z")));
+	}
+	{
+		// the key picker: a cap for every key the player can bind, L and R step the tabs (wrapping) only while Key is showing
+		Controls_SetModel(nullptr);
+		Controls().setEmulated(0);
+		Screen s;
+		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), BindingTarget(), nullptr);
+		s.page.append(&view);
+		EXPECT(view.keyCapCount() == (int)Controls().choices(0, TARGET::KEY).size());
+		EXPECT(view.keyTabCount() == 6);
+		EXPECT(view.category() == 1);								// opens on Key, the kind the control uses
+		EXPECT(view.keyTabIndex() == 3);							// ...and on the F-keys tab, which has F3
+		view.stepKeyTab(1);
+		EXPECT(view.keyTabIndex() == 4);
+		view.stepKeyTab(1); view.stepKeyTab(1);
+		EXPECT(view.keyTabIndex() == 0);							// wraps forward
+		view.stepKeyTab(-1);
+		EXPECT(view.keyTabIndex() == 5);							// and back
 	}
 	{
 		// a key pressed before listening began does not count

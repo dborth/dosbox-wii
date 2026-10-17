@@ -512,6 +512,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 		});
 		b.onFocus([this, full]{ if(!listen) hintText = GuiFormat("Key: %s", full.c_str()); });
 		row.add(b);
+		keyCaps++;
 		return true;
 	};
 
@@ -519,12 +520,12 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 	struct Row { std::vector<const char *> keys; int indent; };
 	struct Tab { const char * label; int width; int capW; int capH; std::vector<Row> rows; };
 	const std::vector<Tab> tabs = {
-		{ "Common", 54, 58, 28, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "Ctrl", "Alt", "Shift" }, 0 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
-		{ "A-Z", 30, 20, 26, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 10 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 21 } } },
-		{ "0-9", 30, 20, 26, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
-		{ "F-keys", 42, 36, 26, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
-		{ "Edit", 32, 72, 28, { { { "PgUp", "PgDn", "Home" }, 0 }, { { "End", "Ins", "Del" }, 0 } } },
-		{ "Symbols", 46, 36, 26, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave" }, 0 } } },
+		{ "Common", 54, 58, 32, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "Ctrl", "Alt", "Shift" }, 0 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
+		{ "A-Z", 30, 22, 30, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 11 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 23 } } },
+		{ "0-9", 30, 22, 30, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
+		{ "F-keys", 42, 36, 30, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
+		{ "Edit", 32, 72, 32, { { { "PgUp", "PgDn", "Home" }, 0 }, { { "End", "Ins", "Del" }, 0 } } },
+		{ "Symbols", 46, 36, 30, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave" }, 0 } } },
 	};
 
 	// open on the tab with the key in use
@@ -543,7 +544,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 
 	GuiLayout& tabRow = ui.row().gap(2).size(w, 22);
 	std::vector<GuiTextButton*>& tabButtons = ui.own<std::vector<GuiTextButton*> >();
-	GuiLayout& stack = ui.overlay().size(w, 92);
+	GuiLayout& stack = ui.overlay().size(w, 104);
 	for(size_t t = 0; t < tabs.size(); t++)
 	{
 		const int idx = (int)t;
@@ -576,6 +577,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 			tabButtons[k]->style((int)k == keyTab ? MenuPopoverShownStyle() : MenuRowHighlightStyle());
 	});
 
+	keyTabs = (int)tabs.size();
 	pane.add(press).add(tabRow).add(stack);
 }
 
@@ -587,18 +589,42 @@ void TargetChooserView::startListening(TARGET kind)
 	hintText = kind == TARGET::KEY ? "Press a key on the keyboard.  B cancels" : "Click a mouse button.  B cancels";
 }
 
+std::string TargetChooserView::defaultHint() const
+{
+	return shown == keyPanel ? "L and R change tab" : "Move over a kind to see its choices";
+}
+
 void TargetChooserView::stopListening()
 {
 	listen = false;
-	hintText = "Move over a kind to see its choices";
+	hintText = defaultHint();
+}
+
+void TargetChooserView::stepKeyTab(int dir)
+{
+	if(keyTabs <= 0)
+		return;
+	keyTab = ((keyTab + dir) % keyTabs + keyTabs) % keyTabs;
+}
+
+void TargetChooserView::update(InputController * c)
+{
+	GuiOverlay::update(c);
+	if(!c || listen || shown != keyPanel)
+		return;
+	const auto pressed = c->getPadData().buttons_d;
+	if(pressed & INPUT_TRIGGER_L)
+		stepKeyTab(-1);
+	if(pressed & INPUT_TRIGGER_R)
+		stepKeyTab(1);
 }
 
 void TargetChooserView::showCategory(int index)
 {
 	if(index < 0 || index >= kinds || index == shown)
 		return;
-	stopListening();
 	shown = index;
+	stopListening();
 }
 
 void TargetChooserView::selectCategory()
@@ -613,7 +639,7 @@ void TargetChooserView::selectCategory()
 TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget,
 	GuiSound * soundOver, const PopoverAnchor& anchor) :
 	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Move over a kind to see its choices"),
-	listen(false), listenKind(TARGET::KEY), kinds(0), keyTab(0), panelWidth(380), panelHeight(0)
+	listen(false), listenKind(TARGET::KEY), kinds(0), keyTab(0), keyTabs(0), keyCaps(0), keyPanel(-1), panelWidth(380), panelHeight(0)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -647,7 +673,8 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	{
 		GuiLayout& pane = ui.column().gap(4);
 		keyPane(pane, player, rightW);
-		panels.push_back({ "Key", &pane, TARGET::KEY, 24 + 4 + 22 + 4 + 92 });
+		panels.push_back({ "Key", &pane, TARGET::KEY, 24 + 4 + 22 + 4 + 104 });
+		keyPanel = (int)panels.size() - 1;
 	}
 
 	if(m.joystickButtons(player) > 0)
@@ -693,6 +720,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 		if(now.kind != TARGET::NONE && panels[i].kind == now.kind)
 			shown = (int)i;
 	kinds = (int)panels.size();
+	hintText = defaultHint();
 
 	// one fixed size for every kind, so the panel does not jump as the cursor moves down the left
 	int bodyH = kinds * (kindH + rowGap);
@@ -1222,6 +1250,7 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 	ScreenWindow screen(view);
 	UpdateGui();
 	mainWindow->changeFocus(&screen.window());
+	screen.window().resetState();	// taking the focus selected the first control; the kind showing is the one to start on
 	view.selectCategory();
 
 	while(true)
