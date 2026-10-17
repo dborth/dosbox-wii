@@ -183,7 +183,7 @@ static void WindowCredits()
 {
 	bool exit = false;
 	int i = 0;
-	int y = 14;
+	int y = 0;
 
 	GuiWindow creditsWindow(MENU_CREDITS_W, MENU_CREDITS_H);
 	creditsWindow.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
@@ -191,39 +191,45 @@ static void WindowCredits()
 	MenuDialogShape creditsBoxImg(MENU_CREDITS_W, MENU_CREDITS_H, MENU_CREDITS_HEADER_H);
 	creditsWindow.appendWithAutoRemove(&creditsBoxImg); // destroyed before the window
 
-	const int numEntries = 12;
+	const int numEntries = 17;
 	GuiText * txt[numEntries];
 
-	// the title sits on the dialog's chrome band, so it is white; the credits start below the band
-	txt[i] = new GuiText("Credits", 30, (PixelColor){255, 255, 255, 255});
-	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0, MENU_CREDITS_TITLE_Y); i++; y+=56;
+	const PixelColor black = {0, 0, 0, 255};
+	const PixelColor white = {255, 255, 255, 255};
+	const PixelColor gray = {96, 96, 96, 255};
 
-	txt[i] = new GuiText("Official Site: https://github.com/dborth/dosbox-wii/", 20, (PixelColor){0, 0, 0, 255});
-	txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP); txt[i]->setPosition(0,y); i++; y+=40;
+	auto addLine = [&](const char * text, int size, PixelColor color, int lineY)
+	{
+		txt[i] = new GuiText(text, size, color);
+		txt[i]->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+		txt[i]->setPosition(0, lineY);
+		i++;
+	};
 
-	// presets apply to every GuiText constructed after this call
-	GuiText::setPresets(20, (PixelColor){0, 0, 0, 255}, 0,
-		GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);
+	addLine("Credits", 30, white, MENU_CREDITS_TITLE_Y);
 
-	txt[i] = new GuiText("Porting & Menu Coding:");
-	txt[i]->setPosition(0,y); i++; y+=36;
+	addLine("https://github.com/dborth/dosbox-wii/", 16, gray, 74);
 
-	txt[i] = new GuiText("Tantric");
-	txt[i]->setPosition(0,y); i++; y+=60;
+	struct Credit { const char * role; const char * name; };
+	static const Credit credits[] = {
+		{"Porting & Menu Coding",	"Tantric"},
+		{"PowerPC Dynarec",			"jmarsh"},
+		{"DOSBox/dynarec Updates",	"retro100"},
+		{"DOSBox",					"The DOSBox Team"},
+		{"devkitPPC & libogc2",		"shagkur, wintermute & Extrems"},
+	};
 
-	txt[i] = new GuiText("Thanks to:");
-	txt[i]->setPosition(0,y); i++; y+=36;
+	y = 108;
+	for(const Credit & c : credits)
+	{
+		addLine(c.role, 15, gray, y);
+		addLine(c.name, 22, black, y + 18);
+		y += 46;
+	}
 
-	txt[i] = new GuiText("DOSBox Team");
-	txt[i]->setPosition(0,y); i++; y+=22;
+	y += 12;
 
-	txt[i] = new GuiText("shagkur & wintermute (libogc / devkitPPC)");
-	txt[i]->setPosition(0,y); i++; y+=22;
-
-	y+=20;
-
-	GuiText::setPresets(12, (PixelColor){0, 0, 0, 255}, 0,
-		GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);
+	GuiText::setPresets(12, black, 0, GUI_TEXT_JUSTIFY_CENTER | GUI_TEXT_ALIGN_TOP, ALIGN_H::CENTRE, ALIGN_V::TOP);
 
 	txt[i] = new GuiText("This software is open source and may be copied, distributed, or modified");
 	txt[i]->setPosition(0,y); i++; y+=20;
