@@ -235,7 +235,8 @@ static void testSourceOrder()
 
 static void testEventNames()
 {
-	const std::string mapperText = readFile("dosbox/gui/sdl_mapper.cpp"), buttonsText = readFile("menu/buttons.cpp");
+	const std::string mapperText = readFile("dosbox/gui/sdl_mapper.cpp");
+	const FakeMapper registered;	// answers from the sources that register the events
 	std::set<std::string> seen;
 	const std::vector<std::string>& keys = Catalog_Names(TARGET::KEY);
 	for(size_t i = 0; i < keys.size(); i++)
@@ -245,7 +246,6 @@ static void testEventNames()
 		CHECK(e.compare(0, 4, "key_") == 0);
 		CHECK(seen.insert(e).second);									// no two keys share an event
 		CHECK(quoted(mapperText, e.substr(4)));							// the mapper has it
-		CHECK(quoted(buttonsText, e));									// and so does the page that already worked on a console
 		BindingTarget back;
 		CHECK(Mapper_TargetFor(0, e, back) && back == BindingTarget(TARGET::KEY, (int)i));
 	}
@@ -260,7 +260,7 @@ static void testEventNames()
 		{
 			std::string e;
 			CHECK(Mapper_EventFor(0, BindingTarget(kind, (int)i), e) && e.compare(0, 5, "hand_") == 0);
-			CHECK(quoted(buttonsText, e));
+			CHECK(registered.eventExists(e.c_str()));						// registered by MAPPER_AddHandler somewhere in the core or the app
 			CHECK(seen.insert(e).second);
 			BindingTarget back;
 			CHECK(Mapper_TargetFor(0, e, back) && back == BindingTarget(kind, (int)i));

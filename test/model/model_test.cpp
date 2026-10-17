@@ -291,30 +291,6 @@ static void testCatalogs()
 	CHECK(BindingTarget() == BindingTarget(TARGET::NONE, 5)); // "nothing" equals nothing whatever the code
 }
 
-// The model's lists mirror buttons.cpp (the real targets); a rename there that is not made here shows up as a failure
-static void testMatchesButtonsCpp()
-{
-	std::ifstream f(std::string(SRC_DIR) + "/menu/buttons.cpp");
-	CHECK(f.good());
-	std::stringstream ss;
-	ss << f.rdbuf();
-	const std::string text = ss.str();
-	const TARGET kinds[] = { TARGET::HOTKEY, TARGET::MOUSE };
-	for(size_t k = 0; k < 2; k++)
-	{
-		const std::vector<std::string>& v = Catalog_Names(kinds[k]);
-		for(size_t i = 0; i < v.size(); i++)
-		{
-			const std::string label = kinds[k] == TARGET::MOUSE ? "\"Mouse " + v[i] + "\"" : "\"" + v[i] + "\"";
-			if(text.find(label) == std::string::npos)
-				printf("      not in buttons.cpp: %s\n", label.c_str());
-			CHECK(text.find(label) != std::string::npos);
-		}
-	}
-	for(size_t i = 0; i < Catalog_Names(TARGET::JOYSTICK).size(); i++)
-		CHECK(text.find("\"Joystick " + Catalog_Names(TARGET::JOYSTICK)[i] + "\"") != std::string::npos);
-}
-
 static void testHidKeys()
 {
 	// letters, digits, function keys
@@ -1114,7 +1090,6 @@ int main()
 	testPresets();
 	testPerPlayerBindings();
 	testCatalogs();
-	testMatchesButtonsCpp();
 	testHidKeys();
 	testKindsAndChoices();
 	testSuggestions();

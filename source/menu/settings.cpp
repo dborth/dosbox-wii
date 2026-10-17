@@ -130,7 +130,7 @@ static bool Apply(const char * section, const char * prop, const std::string & v
 	if(!strcasecmp(section, "joystick"))
 	{
 		ReinitJoysticks();
-		// pad binds to a joystick follow it (the Controllers page reads the same type)
+		// pad binds to a joystick follow it (the controller screens read the same type)
 		if(!strcasecmp(prop, "joysticktype"))
 			Controls_JoystickTypeChanged();
 	}
@@ -725,20 +725,22 @@ static const SettingRow audioRows[] =
 };
 
 /****************************************************************************
- * Controls page
+ * DOS joystick and Keyboard & Mouse pages
  *
- * The joystick rows re-initialise the joystick section and then build the
- * mapper's joystick groups again (Apply), which is quick and changes nothing
- * that a running program holds on to but the port's stick positions, so they
- * are live. The mouse speeds only set numbers that DOSBox reads on each
- * movement.
+ * What each controller's buttons do is on the controller screens (Controllers
+ * on the home screen); these are the settings that sit under that. The joystick
+ * rows re-initialise the joystick section and then build the mapper's joystick
+ * groups again (Apply), which is quick and changes nothing that a running
+ * program holds on to but the port's stick positions, so they are live. The
+ * mouse speeds only set numbers that DOSBox reads on each movement.
  ***************************************************************************/
 static const int mouseSpeedPresets[] = { 25, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500 };
 
 static const char * const helpJoystickType =
 	"auto is 4axis: one joystick with four buttons for player 1, the right stick as its other two axes. 2axis is "
 	"two joysticks with two buttons each, for players 1 and 2. 4axis_2 is 4axis for player 2. fcs and ch add a hat. "
-	"none turns joysticks off. The Controllers page's Emulating list sets the same thing.";
+	"none turns joysticks off. The In DOS button on a controller's setup screen sets the same thing, for the types it offers; "
+	"the others (4axis_2, fcs, ch) are only here.";
 static const char * const helpDeadzone =
 	"How far joystick 1's stick must move before DOSBox notices, as a percentage. 100 makes it digital.";
 static const char * const helpButtonWrap =
@@ -760,7 +762,7 @@ static const char * JoystickOff()
 	return (Config_Get("joystick", "joysticktype") == "none") ? "No joystick is emulated." : NULL;
 }
 
-static const SettingRow controlsRows[] =
+static const SettingRow joystickRows[] =
 {
 	{ "Joystick type",	"joystick",	"joysticktype",	ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpJoystickType, 0, 0, NULL, NULL, JoystickEffective },
 	{ "Button wrap",	"joystick",	"buttonwrap",	ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpButtonWrap, 0, 0, NULL, JoystickOff },
@@ -769,6 +771,10 @@ static const SettingRow controlsRows[] =
 	{ "Circular input",	"joystick",	"circularinput",ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpCircular, 0, 0, NULL, JoystickOff },
 	{ "Swap axes 3 and 4","joystick",	"swap34",		ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, JoystickOff },
 	{ "Timed axes",		"joystick",	"timed",		ROW_BOOL,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, JoystickOff },
+};
+
+static const SettingRow keyboardMouseRows[] =
+{
 	{ "Mouse speed X",	"sdl",		"xsens",		ROW_MOUSE_SPEED,	TIER_LIVE,		mouseSpeedPresets, ARRAY_COUNT(mouseSpeedPresets), FMT_PERCENT, NULL, NULL, helpMouseSpeed, 0, 0, NULL, NULL },
 	{ "Mouse speed Y",	"sdl",		"ysens",		ROW_MOUSE_SPEED,	TIER_LIVE,		mouseSpeedPresets, ARRAY_COUNT(mouseSpeedPresets), FMT_PERCENT, NULL, NULL, helpMouseSpeed, 0, 0, NULL, NULL },
 };
@@ -778,7 +784,8 @@ static const PageDef pages[SETTINGS_PAGE_COUNT] =
 	{ "Performance", performanceRows, ARRAY_COUNT(performanceRows) },
 	{ "Video", videoRows, ARRAY_COUNT(videoRows) },
 	{ "Audio", audioRows, ARRAY_COUNT(audioRows) },
-	{ "Controls", controlsRows, ARRAY_COUNT(controlsRows) },
+	{ "Keyboard & Mouse", keyboardMouseRows, ARRAY_COUNT(keyboardMouseRows) },
+	{ "DOS joystick", joystickRows, ARRAY_COUNT(joystickRows) },
 };
 
 /****************************************************************************
@@ -998,7 +1005,7 @@ static std::vector<AllRow> SectionRows(int controlIndex)
 		{
 			// two numbers in one property, so two rows over there; read when they change
 			row.live = true;
-			row.note = "Controls page";
+			row.note = "Keyboard & Mouse page";
 		}
 
 		rows.push_back(row);

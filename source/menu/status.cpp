@@ -451,7 +451,7 @@ static void InputLines(const EmulationStatus & st)
 
 	AddProp("Joystick", "joystick", "joysticktype", st.joystick,
 		"The kind of joystick DOSBox emulates. auto is 4axis: one joystick with four buttons, for player 1. "
-		"Change it on the Controls page.");
+		"Change it under Settings > DOS joystick, or with In DOS on a controller's setup screen.");
 }
 
 /****************************************************************************

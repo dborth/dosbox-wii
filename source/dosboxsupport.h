@@ -103,7 +103,7 @@ bool GetRunningProgram(char * name, size_t size);
 void ReinitJoysticks(void);
 
 //! Call when the menu has closed and emulation is about to run again: what the
-//! pads' binds (the Buttons page) held down is let go, and a button still held
+//! pads' binds (the controller screens) held down is let go, and a button still held
 //! (the one that closed the menu) does nothing until it is released. Main thread.
 void ResyncPadBinds(void);
 

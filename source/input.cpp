@@ -135,7 +135,7 @@ static void GUI_ShutDown(Section * /*sec*/) {
 }
 
 
-/* The mouse buttons as mapper events, so that the Buttons page can put one on a pad button (a bind to a button
+/* The mouse buttons as mapper events, so that the controller screens can put one on a pad button (a bind to a button
  * of a pad group, like a bind to a key). The pointer's own buttons, the Wiimote's A and B and a USB mouse's
  * buttons, reach DOS through the SDL events as before. */
 static void MouseLeftButton(bool pressed) { if(pressed) Mouse_ButtonPressed(0); else Mouse_ButtonReleased(0); }

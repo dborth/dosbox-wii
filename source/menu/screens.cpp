@@ -4,8 +4,8 @@
  * screens.cpp
  *
  * The full-screen lists the home menu opens: the settings (a list of pages,
- * then a page of rows, or all settings by config section), the Buttons page
- * and the lists it chooses from, the Drives screen and the Status screen.
+ * then a page of rows, or all settings by config section), the Drives screen
+ * and the Status screen.
  * They are all one ListScreen; a screen is a subclass that says what its
  * rows are and what a click does. Like the rest of the
  * menu this is single-threaded: run() steps the GUI itself with UpdateGui().
@@ -26,7 +26,6 @@
 #include "settings.h"
 #include "storage.h"
 #include "status.h"
-#include "buttons.h"
 #include "memmanager.h"
 
 /****************************************************************************
@@ -459,146 +458,12 @@ class StatusScreen : public ListScreen
 };
 
 /****************************************************************************
- * ChooserScreen
- *
- * One of the Buttons page's lists (what to do, which key, which hotkey):
- * a click chooses the row, and Back or B chooses nothing.
- ***************************************************************************/
-class ChooserScreen : public ListScreen
-{
-	public:
-		ChooserScreen(const char * title, int whichList)
-			: ListScreen(title, "A: choose    B: cancel", NULL, false), list(whichList), chosenItem(-1) {}
-
-		//! The row chosen, or -1 if the screen was left without choosing.
-		int chosen() const { return chosenItem; }
-
-	protected:
-		int rowCount() override { return Buttons_ListCount(list); }
-
-		void rowText(int row, char * name, size_t nameSize, char *, size_t) override
-		{
-			snprintf(name, nameSize, "%s", Buttons_ListLabel(list, row));
-		}
-
-		bool onClick(int row) override
-		{
-			chosenItem = row;
-			close();
-			return false;
-		}
-
-	private:
-		int list;
-		int chosenItem;
-};
-
-//! Returns the item chosen, or -1 if the list was left with B or Back.
-static int ChooseFromList(const char * title, int list)
-{
-	ChooserScreen screen(title, list);
-
-	screen.run();
-	return screen.chosen();
-}
-
-//! What a button should do: the action list, which opens the key list or the
-//! hotkey list for two of its items. Fills message with what happened (it is
-//! left empty if nothing was chosen).
-static void ChooseButtonAction(int row, char * message, size_t size)
-{
-	char title[64];
-
-	message[0] = 0;
-	snprintf(title, sizeof(title), "Buttons - %s", Buttons_RowLabel(row));
-
-	int item = ChooseFromList(title, BUTTONS_LIST_ACTIONS);
-
-	if(item < 0)
-		return;
-
-	const int result = Buttons_Pick(row, BUTTONS_LIST_ACTIONS, item, message, size);
-
-	if(result != BUTTONS_PICK_OPEN_KEYS && result != BUTTONS_PICK_OPEN_HOTKEYS)
-		return;
-
-	const int list = (result == BUTTONS_PICK_OPEN_KEYS) ? BUTTONS_LIST_KEYS : BUTTONS_LIST_HOTKEYS;
-
-	item = ChooseFromList(title, list);
-
-	if(item >= 0)
-		Buttons_Pick(row, list, item, message, size);
-}
-
-/****************************************************************************
- * ButtonsScreen
- *
- * What each button of player 1's pad does in DOS: a row per button, its
- * action as the value. A on a button opens the choices; a change takes effect
- * at once and is saved to the mapper file (see buttons.h). The rows never
- * change in number, so the browser is kept, and keeps the highlight, while
- * the choices are up.
- ***************************************************************************/
-class ButtonsScreen : public ListScreen
-{
-	public:
-		ButtonsScreen() : ListScreen("Buttons - Player 1", "A: change") {}
-
-	protected:
-		void onOpen() override { Buttons_Refresh(); }
-
-		int rowCount() override { return Buttons_RowCount(); }
-
-		void rowText(int row, char * name, size_t nameSize, char * value, size_t valueSize) override
-		{
-			snprintf(name, nameSize, "%s", Buttons_RowLabel(row));
-			Buttons_RowValue(row, value, valueSize);
-		}
-
-		bool rowHelp(int row, char * help, size_t size) override
-		{
-			Buttons_RowHelp(row, help, size);
-			return true;
-		}
-
-		bool onClick(int row) override
-		{
-			char message[320];
-
-			message[0] = 0;
-
-			const int kind = Buttons_RowKind(row);
-
-			if(kind == BUTTONS_ROW_BUTTON)
-			{
-				// the screen stays up behind the choices; take it off so only one has focus
-				putAway();
-				ChooseButtonAction(row, message, sizeof(message));
-				bringBack();
-			}
-			else if(kind == BUTTONS_ROW_RESTORE)
-			{
-				// writes a small file to the card, as the Save button does
-				Buttons_RestoreAll(message, sizeof(message));
-			}
-
-			Buttons_Refresh();
-
-			// what happened stays where the help is until the highlight moves
-			if(message[0])
-				showMessage(message);
-
-			return true;
-		}
-};
-
-/****************************************************************************
  * SettingsListScreen
  *
  * A list of settings pages, one row per page. A (or clicking) opens the page.
  *
  * Two lists use it. The first (sections = false) is the curated pages followed
- * by "Buttons", "Drives", "Status" and "All settings", which opens the second: one row
+ * by "Drives", "Status" and "All settings", which opens the second: one row
  * per config section, each opening its all-settings page. The second one is
  * opened from inside the first, so each level has its own OptionList. Only
  * the first has the Save button, whose result goes where the pages show help.
@@ -612,17 +477,15 @@ class SettingsListScreen : public ListScreen
 			  pageCount(allSettings ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT) {}
 
 	protected:
-		int rowCount() override { return pageCount + (sections ? 0 : 4); }
+		int rowCount() override { return pageCount + (sections ? 0 : 3); }
 
 		void rowText(int row, char * name, size_t nameSize, char *, size_t) override
 		{
 			if(row < pageCount)
 				snprintf(name, nameSize, "%s", Settings_PageTitle(sections ? Settings_AllPage(row) : row));
 			else if(row == pageCount && !sections)
-				snprintf(name, nameSize, "Buttons");
-			else if(row == pageCount + 1 && !sections)
 				snprintf(name, nameSize, "Drives");
-			else if(row == pageCount + 2 && !sections)
+			else if(row == pageCount + 1 && !sections)
 				snprintf(name, nameSize, "Status");
 			else
 				snprintf(name, nameSize, "All settings");
@@ -635,15 +498,10 @@ class SettingsListScreen : public ListScreen
 
 			if(!sections && row == pageCount)
 			{
-				ButtonsScreen screen;
-				screen.run();
-			}
-			else if(!sections && row == pageCount + 1)
-			{
 				DrivesScreen screen;
 				screen.run();
 			}
-			else if(!sections && row == pageCount + 2)
+			else if(!sections && row == pageCount + 1)
 			{
 				StatusScreen screen;
 				screen.run();
