@@ -149,7 +149,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		content.add(icon).add(target);
 
 	GuiCard& row = ui.card();
-	row.size(width, 0).style(MenuRowHighlightStyle()).pad(padX, 2);
+	row.size(width, 0).style(MenuRowHighlightStyle()).pad(padX, 4);
 	row.corners(GuiCorners(9.0f));
 	const int control = r.control;
 	row.onFocus([this, &row, control, side, name, info, text]{
@@ -287,7 +287,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 		}
 		const int groupSectionW = (MENU_PAGE_CONTENT_W - 12) / 3;
 
-		GuiLayout& left = ui.column().gap(3).align(LAYOUT_ALIGN::END);
+		GuiLayout& left = ui.column().gap(1).align(LAYOUT_ALIGN::END);
 		for(size_t i = 0; i < profile.left.size(); i++)
 			left.add(bindingRow(profile.left[i], Side::LEFT, leftW));
 		GuiLayout * railColumn = nullptr;
@@ -310,7 +310,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 				railColumn->add(tile);
 			}
 		}
-		GuiLayout& right = ui.column().gap(3);
+		GuiLayout& right = ui.column().gap(1);
 		for(size_t i = 0; i < profile.right.size(); i++)
 			right.add(bindingRow(profile.right[i], Side::RIGHT, sideW));
 
@@ -319,7 +319,7 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 		GuiLayout& groups = ui.row().gap(6);
 		for(size_t g = 0; g < profile.groups.size(); g++)
 		{
-			GuiLayout& column = ui.column().gap(3).size(groupSectionW, 0);
+			GuiLayout& column = ui.column().gap(1).size(groupSectionW, 0);
 			column.add(ui.row().size(groupSectionW, 0).pad(10, 0, 0, 2).add(ui.label(profile.groups[g].title).fontSize(UI_FONT_SMALL - 1).muted()));
 			for(size_t i = 0; i < profile.groups[g].rows.size(); i++)
 				column.add(bindingRow(profile.groups[g].rows[i], Side::GROUP, groupSectionW - 8));
