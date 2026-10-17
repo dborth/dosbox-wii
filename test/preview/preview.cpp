@@ -603,6 +603,38 @@ int main(int argc, char ** argv)
 		EXPECT(single.devices().size() == 1 && single.shownType() == PadType::CLASSIC);
 		SampleControls_ResetHardware();
 	}
+	{
+		// a hidden layout takes neither input nor the D-pad's selection (the chooser stacks its panels, and the hidden
+		// ones sit under the visible one)
+		struct Probe : public GuiElement
+		{
+			int updates = 0;
+			void update(InputController *) override { updates++; }
+			void draw() override {}
+		};
+		Probe shownProbe, hiddenProbe;
+		GuiColumn outer(100, 100);
+		GuiColumn shownPanel(100, 40), hiddenPanel(100, 40);
+		shownPanel.add(&shownProbe);
+		hiddenPanel.add(&hiddenProbe);
+		outer.add(&shownPanel);
+		outer.add(&hiddenPanel);
+		hiddenPanel.setVisible(false);
+		outer.update(nullptr);
+		EXPECT(shownProbe.updates == 1 && hiddenProbe.updates == 0);
+		std::vector<GuiElement*> nav;
+		outer.collectNavigable(nav);
+		bool hasHidden = false, hasShown = false;
+		for(size_t i = 0; i < nav.size(); i++)
+		{
+			hasHidden = hasHidden || nav[i] == &hiddenProbe;
+			hasShown = hasShown || nav[i] == &shownProbe;
+		}
+		EXPECT(hasShown && !hasHidden);
+		hiddenPanel.setVisible(true);						// showing it again brings it back
+		outer.update(nullptr);
+		EXPECT(hiddenProbe.updates == 1);
+	}
 	if(failures)
 		return 1;
 	printf("behaviour checks passed\n");

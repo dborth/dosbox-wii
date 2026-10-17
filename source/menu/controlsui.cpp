@@ -236,6 +236,12 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 			hasRequest = true;
 		});
 	}
+	else
+	{
+		// Hovering shows what it is, but clicking does nothing. It still needs a handler: a card with none is never
+		// told its click was seen, so it stays in the clicked state and ignores the pointer from then on.
+		row.onClick([]{});
+	}
 	row.add(content);
 	rowCards.push_back(&row);
 	return row;
