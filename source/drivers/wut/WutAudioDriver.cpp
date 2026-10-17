@@ -18,6 +18,14 @@ static WutAudioDriver *instance = nullptr;
 // to drive AX in the background.
 static inline bool isForeground() { return platform->getStatus() == Status::Running; }
 
+static void wut_frame_callback() {
+	if (instance)
+	{
+		if (instance->getEmulatorAudio())
+			instance->getEmulatorAudio()->frameTick();
+	}
+}
+
 template <int N>
 static void buildChannelMix(AXVoiceDeviceMixData (&mix)[N], bool left, bool right) {
 	memset(mix, 0, sizeof(mix));
@@ -36,6 +44,7 @@ void WutAudioDriver::init() {
 	params.renderer = AX_INIT_RENDERER_48KHZ;
 	params.pipeline = AX_INIT_PIPELINE_SINGLE;
 	AXInitWithParams(&params);
+	AXRegisterAppFrameCallback(wut_frame_callback);
 
 	nextVoiceSlot = 0;
 
@@ -86,6 +95,7 @@ void WutAudioDriver::stopEmulatorAudio() {
 void WutAudioDriver::shutdown() {
 	stopEmulatorAudio();
 	emulatorAudio->shutdown();
+	AXDeregisterAppFrameCallback(wut_frame_callback);
 
 	for (int i = 0; i < 16; i++) {
 		if (voices[i].voice) {
