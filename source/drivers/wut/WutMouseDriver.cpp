@@ -27,13 +27,14 @@ static const uint8_t kProtocolMouse = 2;
 // HIDSetProtocol() argument: 0 = boot protocol, 1 = report protocol
 static const uint8_t kProtocolBoot = 0;
 
-// HIDAttachCallback return value. Claimed = this client uses the device,
-// Unclaimed = leave it to other clients (eg. the OS keyboard library).
-// UNVERIFIED: the values are not documented in WUT. Confirm on hardware that
-// returning "claimed" for a mouse works, and that a keyboard still reaches
-// KBDSetup()'s callbacks when we return "unclaimed" for it.
-static const int32_t kAttachClaimed = 0;
-static const int32_t kAttachUnclaimed = 1;
+// HIDAttachCallback return value. The OS offers each attached device to
+// every HID client in turn: 1 = this client uses the device, 0 = it does not
+// and the device is left to the other clients (eg. the OS keyboard library,
+// which would otherwise never see a keyboard). Values as used by RetroArch's
+// Wii U HID driver (DEVICE_USED / DEVICE_UNUSED); the WUT headers do not
+// document them.
+static const int32_t kAttachClaimed = 1;
+static const int32_t kAttachUnclaimed = 0;
 
 static WutMouseDriver * instance = nullptr;
 
