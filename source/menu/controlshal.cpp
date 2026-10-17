@@ -61,8 +61,46 @@ class HalControlsHardware : public ControlsHardware
 			return PadButtonsForDos(controller[index]->getPadData(), controller[index]->isSideways());
 		}
 
+		void beginCapture() override
+		{
+			// the shim polls both only while emulating, so what is queued now is from before the menu
+			KeyEvent ke;
+			while(keyboard && keyboard->poll(ke)) {}
+			MouseEvent me;
+			mouseHeld = 0;
+			while(usbMouse && usbMouse->poll(me))
+				mouseHeld = me.buttons;
+		}
+
+		bool pollCapture(CaptureEvent& event) override
+		{
+			KeyEvent ke;
+			while(keyboard && keyboard->poll(ke))
+			{
+				if(!ke.pressed)
+					continue;
+				event.kind = TARGET::KEY;
+				event.code = Catalog_KeyFromHid(ke.hidUsage);	// -1 for a key the mapper cannot bind
+				return true;
+			}
+			// a mouse event carries every button held, so a press is a bit that was not set in the one before
+			MouseEvent me;
+			while(usbMouse && usbMouse->poll(me))
+			{
+				const uint8_t fresh = (uint8_t)(me.buttons & ~mouseHeld);
+				mouseHeld = me.buttons;
+				if(!fresh)
+					continue;
+				event.kind = TARGET::MOUSE;
+				event.code = (fresh & MOUSE_BTN_LEFT) ? 0 : (fresh & MOUSE_BTN_RIGHT) ? 1 : 2;	// the catalog's order: left, right, middle
+				return true;
+			}
+			return false;
+		}
+
 	private:
 		static bool valid(int index) { return index >= 0 && index < CHANNELS && controller[index]; }
+		uint8_t mouseHeld = 0;
 };
 
 } // namespace

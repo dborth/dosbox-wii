@@ -618,7 +618,7 @@ void HomeMenu ()
 	// the controller screens read the real controllers, keyboard and mouse from here on
 	Controls_SetHardware(&Controls_Hal());
 	// and what a button does is what the mapper has for it (all four players); the model keeps its state between visits
-	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live());
+	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), &Setups_Live());
 	Controls_SetModel(&mapperModel);
 
 	ControllerStatus controllerStatus(&trigA, &btnSoundOver, &btnSoundClick);

@@ -109,6 +109,74 @@ bool IsShellIdle() {
 }
 
 /****************************************************************************
+ * GetMapperFilePath, GetRunningProgram
+ *
+ * What the setups on disk need to know about the core: where the mapper's file
+ * is, and which program is running.
+ ***************************************************************************/
+std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size);	// menu/controlssetups.cpp
+
+bool GetMapperFilePath(char * path, size_t size)
+{
+	if(!path || size == 0)
+		return false;
+	path[0] = 0;
+
+	Section_prop * section = control ? static_cast<Section_prop *>(control->GetSection("sdl")) : NULL;
+	Prop_path * property = section ? section->Get_path("mapperfile") : NULL;
+
+	if(!property || property->realpath.empty())
+		return false;
+
+	safe_strncpy(path, property->realpath.c_str(), size);
+	return true;
+}
+
+bool GetRunningProgram(char * name, size_t size)
+{
+	if(!name || size == 0)
+		return false;
+	name[0] = 0;
+
+	if(first_shell == NULL || IsShellIdle())
+		return false;
+
+	// DOS_Execute leaves the program's full path after the environment's variables
+	std::string program;
+	const Bit16u envseg = DOS_PSP(dos.psp()).GetEnvironment();
+
+	if(envseg != 0)
+	{
+		Bitu bytes = (Bitu)DOS_MCB((Bit16u)(envseg - 1)).GetSize() * 16;
+
+		if(bytes > 32768)
+			bytes = 32768;
+
+		std::vector<unsigned char> env(bytes);
+
+		for(Bitu i = 0; i < bytes; i++)
+			env[i] = mem_readb(PhysMake(envseg, 0) + i);
+
+		program = Setup_ProgramFromEnvironment(env.empty() ? NULL : &env[0], env.size());
+	}
+
+	if(program.empty())
+	{
+		// no full path: the short name the MCB keeps (the file name up to 8 characters, no extension)
+		char shortName[9];
+
+		DOS_MCB((Bit16u)(dos.psp() - 1)).GetFileName(shortName);
+		program = shortName;
+	}
+
+	if(program.empty())
+		return false;
+
+	safe_strncpy(name, program.c_str(), size);
+	return true;
+}
+
+/****************************************************************************
  * CanReinitDosSection
  *
  * Re-initialising the dos section re-runs XMS_Init and EMS_Init. XMS builds

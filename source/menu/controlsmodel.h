@@ -117,6 +117,12 @@ struct PlayerHardware {
 	bool stickClicks = false;	/**< The driver reports L3 / R3 */
 };
 
+/** A key or mouse button the user just pressed while the chooser was listening. */
+struct CaptureEvent {
+	TARGET kind;	/**< KEY or MOUSE */
+	int code;		/**< Index in that kind's catalog, or -1 when the press has no target (a key the mapper cannot bind) */
+};
+
 /**
  * Everything the model reads from the console, and nothing else: the one seam between the controller screens and
  * the HAL. The app installs the HAL's (controlshal.cpp); tests and previews use the sample one.
@@ -129,6 +135,13 @@ class ControlsHardware
 		virtual DeviceStatus devices() const = 0;
 		/** The buttons held on a player's channel as DOS would get them (INPUT_* bits, a sideways Wiimote's D-pad already turned). */
 		virtual uint32_t held(int index) const = 0;
+		/**
+		 * Starts listening for a key or mouse button press on the USB keyboard and mouse, dropping anything pressed or
+		 * pending before. Does nothing by default (hardware with neither device).
+		 */
+		virtual void beginCapture() {}
+		/** The next press since beginCapture(): a key going down, or a mouse button that was not down a moment ago. False when there is none. */
+		virtual bool pollCapture(CaptureEvent& event) { return false; }
 };
 
 /** A built-in set of targets to start a player's buttons from. */
@@ -171,6 +184,8 @@ struct SetupInfo {
  * name cannot hold are removed, and it is cut to 24 characters. Empty when nothing usable is left.
  */
 std::string Setup_CleanName(const std::string& typed);
+/** Setup names are file names, and FAT ignores case: whether two names are the same setup. */
+bool Setup_SameName(const std::string& a, const std::string& b);
 /** A program name as typed ("c:\\games\\keen4e.exe"): the file name alone, upper case. Empty when there is none. */
 std::string Setup_CleanProgram(const std::string& typed);
 /** The name offered when saving: the running program without its extension ("KEEN4E"), or "My setup". */
@@ -183,12 +198,6 @@ std::string Setup_SuggestedName(const std::string& program);
  * nothing is connected.
  */
 PlayerInfo Controls_ComposePlayer(const PlayerHardware& hardware, int index, const EmulatedMode& mode, const std::string& preset);
-
-/** A key or mouse button the user just pressed while the chooser was listening. */
-struct CaptureEvent {
-	TARGET kind;	/**< KEY or MOUSE */
-	int code;		/**< Index in that kind's catalog, or -1 when the press has no target (a key the mapper cannot bind) */
-};
 
 /** The catalog index of the key a USB HID usage (keyboard page) stands for, or -1. Left and right Ctrl, Shift and Alt are one key each. */
 int Catalog_KeyFromHid(unsigned hidUsage);

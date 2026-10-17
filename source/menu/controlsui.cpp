@@ -1155,7 +1155,7 @@ std::string SaveFlow()
 	const std::vector<SetupInfo> existing = m.setups();
 	for(size_t i = 0; i < existing.size(); i++)
 	{
-		if(existing[i].name == name)
+		if(Setup_SameName(existing[i].name, name))
 		{
 			std::vector<std::string> answers;
 			answers.push_back("Replace it");
@@ -1176,7 +1176,7 @@ std::string SaveCurrentFlow()
 	std::string program;
 	const std::vector<SetupInfo> existing = m.setups();
 	for(size_t i = 0; i < existing.size(); i++)
-		if(existing[i].name == name)
+		if(Setup_SameName(existing[i].name, name))
 			program = existing[i].program;
 	return m.saveSetup(name, program) ? "Saved " + name : std::string("Could not save the setup");
 }

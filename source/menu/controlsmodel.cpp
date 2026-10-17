@@ -4,6 +4,7 @@
  * controlsmodel.cpp
  ***************************************************************************/
 #include "controlsmodel.h"
+#include <ctype.h>
 #include "controlspresets.h"
 #include "libgui/GuiControllerLayout.h"
 #include "drivers/InputData.h"
@@ -293,6 +294,16 @@ std::string Setup_CleanName(const std::string& typed)
 		out.resize(last + 1);
 	}
 	return out;
+}
+
+bool Setup_SameName(const std::string& a, const std::string& b)
+{
+	if(a.size() != b.size())
+		return false;
+	for(size_t i = 0; i < a.size(); i++)
+		if(tolower((unsigned char)a[i]) != tolower((unsigned char)b[i]))
+			return false;
+	return true;
 }
 
 std::string Setup_CleanProgram(const std::string& typed)

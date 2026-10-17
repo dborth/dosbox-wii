@@ -10,6 +10,8 @@
 #ifndef _DOSBOXSUPPORT_H_
 #define _DOSBOXSUPPORT_H_
 
+#include <stddef.h>
+
 //! Reads the config and runs DOSBox until the user exits it. The platform
 //! and GUI must already be up. Returns when DOSBox has shut down.
 void RunDOSBox(int argc, char* argv[]);
@@ -80,6 +82,19 @@ struct EmulationStatus
 //! (the mapper replaces auto with a type when it builds its groups; 4axis, as
 //! things are). Never NULL.
 const char * GetJoystickTypeName(void);
+
+//! The mapper file the core is using: [sdl] mapperfile as the mapper resolved it
+//! at start (the path MAPPER_SaveBindsNow() writes). False when it cannot be
+//! told. Read from the config property, so it is right unless that was changed
+//! with CONFIG -set after start, which the mapper does not follow either.
+bool GetMapperFilePath(char * path, size_t size);
+
+//! The DOS program running now, as DOS recorded it when it was started: the
+//! file name with its extension ("KEEN4E.EXE", read from the environment block
+//! DOS_Execute writes), or just the short name the MCB keeps ("KEEN4E") when
+//! that is not there. False at the DOS prompt, or before the first shell.
+//! Main thread, between decoder runs (as the menu is).
+bool GetRunningProgram(char * name, size_t size);
 
 //! Makes the joystick settings in the config take effect: builds the mapper's
 //! joystick bind groups again, as the type, button wrapping and the like are

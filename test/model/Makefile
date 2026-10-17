@@ -8,7 +8,7 @@ SRC = $(ROOT)/source
 model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controlspresets.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/libgui/GuiControllerLayout.cpp $(SRC)/inputlogic.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
-mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controlspresets.cpp
+mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlssetups.cpp $(SRC)/menu/controlssetupsfiles.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controlspresets.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
 check: model_test mapper_test

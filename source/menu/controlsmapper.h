@@ -16,6 +16,7 @@
 #define _CONTROLSMAPPER_H_
 
 #include "controlsmodel.h"
+#include "controlssetups.h"
 #include <string>
 #include <vector>
 
@@ -72,14 +73,28 @@ void Controls_JoystickTypeChanged();
  * four players, and so is the emulated mode: setEmulated() sets joystick.joysticktype and the mapper's joystick
  * groups follow, currentEmulated() reads the type in effect (4axis_2, fcs and ch show as their own advanced
  * modes, with the right player holding the joystick), and the Settings > Joystick type row goes through the same
- * path. What stays a stand-in until the later pieces:
+ * path. Key and mouse capture go through the ControlsHardware (the USB keyboard and mouse drivers).
  *
- *  - key and mouse capture (D7d): beginCapture() does nothing and pollCapture() never reports a press;
- *  - setups on disk (D7d): setups() is empty, saveSetup() and loadSetup() fail, runningProgram() and setupName() are
- *    empty; setupModified() is true once anything was changed since the program started, which is exact while there
- *    is no setup to compare with;
- *  - the preset a player "started from" is not kept anywhere in the mapper file: it is the closest preset to the
- *    player's buttons when first asked, then whatever applyPreset() chose. D7d stores it with the setup.
+ * Setups on disk (controlssetups.h) need a SetupHost; without one (null) setups() is empty, saveSetup() and
+ * loadSetup() fail and runningProgram() is empty.
+ *
+ *  - saveSetup(): the mapper file is written (MAPPER_SaveBindsNow), copied to <name>.map in the setups folder, and
+ *    <name>.conf is written beside it with [sdl] mapperfile, [joystick] joysticktype, the program and each connected
+ *    player's preset. The map goes first, so a save cut short never lists a setup with no map.
+ *  - loadSetup(): the joystick type is set first (the mapper's joystick groups are built again), then every player's
+ *    sixteen sources are given what <name>.map holds for them (its pad_N and stick_N binds), then binds to a joystick
+ *    that is not the player's own are moved (Mapper_MigrateJoystickBinds), and the result is written to the mapper
+ *    file as any change is. Only the pad sources are applied: keys, hotkeys' own keys and joystick axes in the .map
+ *    take effect when DOSBox starts with that file as [sdl] mapperfile, not on load.
+ *  - the preset a player "started from" is not in the mapper file: a setup keeps it in its .conf, and a load puts it
+ *    back; otherwise it is the closest preset to the player's buttons when first asked, then whatever applyPreset() chose.
+ *
+ * While the mapper file DOSBox is using lives in the setups folder (DOSBox was started with a setup's conf),
+ * changes are not written through to it: that file is a setup, and a load or an edit would silently change the
+ * setup it belongs to. They are held in the running mapper and kept by saveSetup(), as setupModified() shows.
+ * saveSetup() itself always writes the mapper file (it is the only way to get the running binds out), so in that
+ * one situation saving under another name also brings the file's own setup up to date. Closing that needs the
+ * mapper to be able to write elsewhere than the file it started with (a core change).
  *
  * A binding the catalogs cannot hold (a joystick hat, an axis, a fifth joystick button) reads as Not assigned and is
  * left alone until the user changes that button.
@@ -87,7 +102,7 @@ void Controls_JoystickTypeChanged();
 class MapperControlsModel : public ControlsModel
 {
 	public:
-		MapperControlsModel(ControlsHardware& hardware, PadMapper& mapper);
+		MapperControlsModel(ControlsHardware& hardware, PadMapper& mapper, SetupHost * setupHost = nullptr);
 
 		int playerCount() const override { return 4; }
 		PlayerInfo player(int index) const override;
@@ -134,9 +149,15 @@ class MapperControlsModel : public ControlsModel
 		bool writePreset(int player, int preset);
 		int differences(int player, int preset) const;
 		void saved();
+		/** Whether the mapper file DOSBox is using is one of the setups' own (it is in the setups folder). */
+		bool mapperFileIsSetup() const;
+		/** Writes the mapper file unless it is a setup's own; false when it was due and failed. */
+		bool writeThrough();
 
 		ControlsHardware& hw;
 		PadMapper& mapper;
+		SetupHost * host;
+		std::string currentSetup;
 		/** A type change leaves a cached preset that needs a joystick the player no longer has: forget it so it is chosen again. */
 		void followJoystickType() const;
 
