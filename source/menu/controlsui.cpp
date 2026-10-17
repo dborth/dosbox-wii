@@ -26,6 +26,13 @@ GuiPaint UiBackdropPaint()
 
 namespace {
 
+// The setup screen's fixed geometry (design pixels). The card holds the same block whatever controller is drawn:
+// kContentH is what the GameCube drawing, the tallest with groups, needs; kGroupsH is the three columns under the
+// drawing; kPlayerNameW holds "Player 1" and "Player 4" alike, so the switcher's arrows never move.
+const int kContentH = 262;
+const int kGroupsH = 124;
+const int kPlayerNameW = 74;
+
 // How many controllers are connected
 int ConnectedCount()
 {
@@ -98,6 +105,13 @@ int ControllerConfigView::highlighted() const
 		return 0;
 	const std::vector<int>& h = view->getHighlight();
 	return h.empty() ? 0 : h[0];
+}
+
+void ControllerConfigView::selectHeader(Pick which)
+{
+	GuiTextButton * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : nullptr);
+	if(b)
+		b->setState(STATE::SELECTED);
 }
 
 bool ControllerConfigView::takeRequest(ProfileRow& row)
@@ -184,7 +198,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 }
 
 ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, PadType show) :
-	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr)
+	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr), emulatedButton(nullptr), presetButton(nullptr)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
@@ -216,7 +230,8 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 		GuiLabel& caption = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).textColor(MenuChromeTextMuted())
 			.bind([slot]{ return Controls().player(slot).role; });
 		caption.setMaxWidth(110);
-		GuiLayout& nameBlock = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(who).add(caption);
+		// a fixed width, so the arrows stay put whatever the name and caption say ("Player 1" is narrower than "Player 4")
+		GuiLayout& nameBlock = ui.column().gap(4).size(kPlayerNameW, 0).align(LAYOUT_ALIGN::START).add(who).add(caption);
 		if(several)
 		{
 			// a small page-turning arrow, centred in its button (dark on the white face, white once it is highlighted)
@@ -252,8 +267,10 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 			.bind([pl]{ ControlsModel& m = Controls(); return GuiFormat("Preset: %s%s", m.presets()[(size_t)m.currentPreset(pl)].name.c_str(), m.modified(pl) ? "*" : ""); })
 			.onClick([this]{ pickRequest = Pick::PRESET; })
 			.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
+		presetButton = &presetBtn;
 		f.headerRight->add(presetBtn);
 	}
+	emulatedButton = &emulatedBtn;
 	f.headerRight->add(emulatedBtn);
 
 	if(empty)
@@ -338,12 +355,22 @@ ControllerConfigView::ControllerConfigView(int player, GuiSound * soundOver, Pad
 			}
 		});
 
-		f.content->gap(4);
-		GuiLayout& top = ui.row().gap(4).align(LAYOUT_ALIGN::CENTRE);
+		// The card is always the same height, whatever is drawn in it, and the rail always sits in the same place: the
+		// card's content is a fixed block, the rail is pinned to its top left, and the drawing with its rows is centred
+		// in what is left. A drawing with groups under it gets the stage above them; one without (an upright Wiimote)
+		// gets all of it.
+		const bool hasGroups = !profile.groups.empty();
+		const int stageH = hasGroups ? kContentH - kGroupsH - 6 : kContentH;
+		const int railSlotW = rail ? railW + 4 : 0;
+		f.content->gap(4).size(MENU_PAGE_CONTENT_W, kContentH);
+		GuiLayout& top = ui.row().size(MENU_PAGE_CONTENT_W, stageH).gap(4).align(LAYOUT_ALIGN::CENTRE);
 		if(railColumn)
-			top.add(*railColumn);
-		f.content->add(top.add(left).add(*view).add(right));
-		f.content->add(groups);
+			top.add(*railColumn, GuiItem().alignStart());
+		GuiLayout& stage = ui.row().size(MENU_PAGE_CONTENT_W - railSlotW, stageH).gap(4).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE);
+		top.add(stage.add(left).add(*view).add(right));
+		f.content->add(top);
+		if(hasGroups)
+			f.content->add(groups.size(MENU_PAGE_CONTENT_W, kGroupsH));
 	}
 
 	// Footer: Setup is the whole game (every player's buttons and what DOS sees), so it sits under In DOS; Back is last.
@@ -611,20 +638,24 @@ void PickerView::focusItem(int index)
 	hintText = "A chooses, B goes back";
 }
 
-PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, GuiSound * soundOver) :
-	items(itemList), picked(-1), done(false), focus(0), armedIdx(-1), backBtn(nullptr), hintText("A chooses, B goes back")
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, GuiSound * soundOver, bool modal) :
+	items(itemList), picked(-1), done(false), focus(0), armedIdx(-1), backBtn(nullptr), hintText("A chooses, B goes back"), isModal(modal), inUse(0)
 {
 	ui.setSounds(soundOver, nullptr);
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
 
-	MenuPageFrame f = MenuPage_Build(ui, *this, title, [this]{ return hintText; });
+	// A page has the bars and the card; a modal is only the card, centred over the screen that is dimmed behind it
+	MenuPageFrame f = {};
+	if(!isModal)
+		f = MenuPage_Build(ui, *this, title, [this]{ return hintText; });
 
 	int current = 0;
 	for(size_t i = 0; i < items.size(); i++)
 		if(items[i].current)
 			current = (int)i;
 	focus = current;
+	inUse = current;
 
 	// Both panels are one fixed size whatever is chosen, and everything in the right one has a slot of its own
 	// (an empty slot keeps its height), so moving the cursor changes the words and nothing else
@@ -635,7 +666,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	const int headingH = 24, lineH = 17, rowH = 17, labelW = 112;
 	const int maxLines = 4, maxRows = 7;
 
-	std::vector<GuiTextButton*>& buttons = ui.own<std::vector<GuiTextButton*>>();
+	std::vector<GuiTextButton*>& buttons = itemButtons;
 	GuiLayout& list = ui.column().gap(4).size(listW - 16, panelH - 16);
 	for(size_t i = 0; i < items.size(); i++)
 	{
@@ -672,20 +703,70 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 		pane.add(ui.row().size(innerW, rowH).align(LAYOUT_ALIGN::CENTRE).add(slot(name, labelW, rowH)).add(slot(value, innerW - labelW, rowH)));
 	}
 
-	f.content->add(ui.row().gap(6).align(LAYOUT_ALIGN::START)
+	GuiLayout& sections = ui.row().gap(6).align(LAYOUT_ALIGN::START)
 		.add(MenuPage_Section(ui, listW).pad(8, 8).size(listW, panelH).add(list))
-		.add(MenuPage_Section(ui, paneW).pad(12, 10).size(paneW, panelH).add(pane)));
+		.add(MenuPage_Section(ui, paneW).pad(12, 10).size(paneW, panelH).add(pane));
 
-	GuiTextButton& back = MenuPage_Button(ui, "Back");
-	back.setTrigger(1, &cancel);
-	backBtn = &back;
-	f.footerRight->add(back);
+	GuiButton * stepFrom = nullptr; // what to select so the step down lands on the item in use
+	if(!isModal)
+	{
+		f.content->add(sections);
+		GuiTextButton& back = MenuPage_Button(ui, "Back");
+		back.setTrigger(1, &cancel);
+		backBtn = &back;
+		f.footerRight->add(back);
+	}
+	else
+	{
+		const int sw = platform->getVideo()->getScreenWidth();
+		const int sh = platform->getVideo()->getScreenHeight();
+		setFixedSize(sw, sh);
+		setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+		setPosition(0, 0);
+
+		// the title, and an X in the corner that closes without choosing (B does the same)
+		GuiTextButton& close = ui.button("X").size(30, 30).fontSize(UI_FONT_BODY).style(MenuBarButtonStyle());
+		close.setTrigger(1, &cancel);
+		close.onFocus([this]{ hintText = "A or B closes this without changing anything"; });
+		backBtn = &close;
+		stepFrom = &close;
+		GuiLabel& heading = ui.label(title).fontSize(UI_FONT_HEADING);
+		const int dialogInnerW = listW + 6 + paneW;
+		GuiLayout& titleRow = ui.row().size(dialogInnerW, 34).align(LAYOUT_ALIGN::CENTRE).addSpace().add(heading).addSpace();
+		// (the X sits at the right end, over the centred title's row)
+		GuiLayout& closeRow = ui.row().size(dialogInnerW, 34).align(LAYOUT_ALIGN::CENTRE).addSpace().add(close);
+		GuiLayout& header = ui.overlay().size(dialogInnerW, 34).add(titleRow).add(closeRow);
+
+		GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
+		hint.setMaxWidth(dialogInnerW);
+		GuiLayout& dialogContent = ui.column().gap(8).align(LAYOUT_ALIGN::CENTRE).add(header).add(sections).add(hint);
+
+		GuiCard& dialog = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(MENU_DIALOG_RADIUS)).pad(12, 10).size(dialogInnerW + 24, 0);
+		dialog.add(dialogContent);
+		add(dialog, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
+	}
 
 	ui.attachTo(*this);
 	// a window steps the selection down from what is selected, or goes to the first control when nothing is: start
 	// just above the item in use so the step lands on it
-	if(current > 0)
-		buttons[(size_t)current - 1]->setState(STATE::SELECTED);
+	if(!isModal)
+	{
+		if(current > 0)
+			buttons[(size_t)current - 1]->setState(STATE::SELECTED);
+	}
+	else if(stepFrom)
+		stepFrom->setState(STATE::SELECTED);
+}
+
+void PickerView::selectInUse()
+{
+	if(itemButtons.empty())
+		return;
+	for(size_t i = 0; i < itemButtons.size(); i++)
+		itemButtons[i]->resetState();
+	if(backBtn)
+		backBtn->resetState();
+	itemButtons[(size_t)inUse < itemButtons.size() ? (size_t)inUse : 0]->setState(STATE::SELECTED);
 }
 
 // Splits a sentence into lines of at most `max` characters, at spaces, so it fits a pane that cannot wrap text.
@@ -928,6 +1009,10 @@ class ScreenWindow
 				shown = false;
 			}
 		}
+		GuiWindow& window() { return w; }
+		// A disabled screen stays drawn, dimmed (the menu's one look for "something is open over this"), and takes no
+		// input, so a modal put over it is the only thing the D-pad and pointer reach
+		void setEnabled(bool on) { w.setState(on ? STATE::DEFAULT : STATE::DISABLED); }
 	private:
 		GuiWindow w;
 		bool shown;
@@ -957,12 +1042,21 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 	}
 }
 
-// Runs a picker; the index chosen, or -1 on Back.
-int PickerScreen(const char * title, const std::vector<PickerItem>& items)
+// Runs a picker; the index chosen, or -1 on Back. A modal picker is put over whatever screen is running (which is
+// not taken off the window), so it is a question asked in place, not a trip to another page.
+int PickerScreen(const char * title, const std::vector<PickerItem>& items, bool modal = false)
 {
 	GuiSound over(button_over_pcm, button_over_pcm_size, SOUND::PCM);
-	PickerView view(title, items, &over);
+	PickerView view(title, items, &over, modal);
 	ScreenWindow screen(view);
+	if(modal)
+	{
+		// The screen under it still holds the focus, which only moves by itself when that screen is removed. Hand it over
+		// once the modal has been laid out: taking it steps the selection down, and that needs to know where things are.
+		UpdateGui();
+		mainWindow->changeFocus(&screen.window());
+		view.selectInUse(); // (taking the focus stepped the selection, from wherever it was)
+	}
 
 	while(true)
 	{
@@ -977,7 +1071,7 @@ int PickerScreen(const char * title, const std::vector<PickerItem>& items)
 void EmulatedPicker()
 {
 	std::vector<int> index;
-	const int chosen = PickerScreen("What does DOS see?", Picker_EmulatedItems(&index));
+	const int chosen = PickerScreen("What does DOS see?", Picker_EmulatedItems(&index), true);
 	if(chosen >= 0 && (size_t)chosen < index.size())
 		Controls().setEmulated(index[(size_t)chosen]);
 }
@@ -987,7 +1081,7 @@ std::string PresetPicker(int player)
 {
 	std::vector<int> index;
 	const std::string title = ConnectedCount() >= 2 ? GuiFormat("Preset for Player %d", player + 1) : std::string("Choose a preset");
-	const int chosen = PickerScreen(title.c_str(), Picker_PresetItems(player, index));
+	const int chosen = PickerScreen(title.c_str(), Picker_PresetItems(player, index), true);
 	if(chosen < 0)
 		return std::string();
 	ControlsModel& m = Controls();
@@ -1157,15 +1251,27 @@ void ConfigScreen(int player)
 			const ControllerConfigView::Pick pick = view.takePick();
 			if(pick != ControllerConfigView::Pick::NONE)
 			{
-				screen.hide();
+				// Preset and In DOS are modals over this screen, which stays drawn (dimmed) where it is; Setup is a trip to other pages
 				std::string said;
-				if(pick == ControllerConfigView::Pick::EMULATED)
-					EmulatedPicker();
-				else if(pick == ControllerConfigView::Pick::PRESET)
-					said = PresetPicker(view.player());
-				else
+				if(pick == ControllerConfigView::Pick::SETUP)
+				{
+					screen.hide();
 					said = SetupFlow();
-				screen.show();
+					screen.show();
+				}
+				else
+				{
+					screen.setEnabled(false);
+					if(pick == ControllerConfigView::Pick::EMULATED)
+						EmulatedPicker();
+					else
+						said = PresetPicker(view.player());
+					screen.setEnabled(true);
+					// the screen takes the focus back, and the selection returns to the button that was pressed
+					mainWindow->changeFocus(&screen.window());
+					screen.window().resetState();
+					view.selectHeader(pick);
+				}
 				if(!said.empty())
 					view.setStatus(said);
 			}

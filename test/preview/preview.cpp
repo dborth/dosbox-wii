@@ -36,6 +36,39 @@ struct Screen
 	~Screen() { root.remove(&top); root.remove(&bottom); root.remove(&page); }
 };
 
+// The setup screen's card as drawn (read back from the frame): where it starts and ends, and where the first non-card
+// pixel of the rail of device icons is, at the rail's x, below the card's top
+struct CardGeometry { int top, bottom, railY; };
+static std::vector<CardGeometry> g_cards, g_rails;
+static CardGeometry MeasureCard()
+{
+	int w = 0, h = 0;
+	const std::vector<uint8_t>& px = HostPixels(w, h);
+	CardGeometry g = { -1, -1, -1 };
+	const int x = (int)(w * 0.075f);
+	for(int y = (int)(h * 0.19f); y < h; y++)
+	{
+		const uint8_t * p = &px[((size_t)y * w + x) * 4];
+		if(p[0] + p[1] + p[2] > 650)
+		{
+			if(g.top < 0)
+				g.top = y;
+			g.bottom = y;
+		}
+	}
+	for(int y = g.top + 4; g.top >= 0 && y < g.bottom && g.railY < 0; y++)
+		for(int xx = (int)(w * 0.095f); xx < (int)(w * 0.115f); xx++)
+		{
+			const uint8_t * p = &px[((size_t)y * w + xx) * 4];
+			if(p[0] + p[1] + p[2] < 600)
+			{
+				g.railY = y;
+				break;
+			}
+		}
+	return g;
+}
+
 // Lays the page out, optionally moves the selection, and draws it over a paused game
 static void snap(const char * name, GuiWindow& root, int downs = 0, int rights = 0, int ups = 0)
 {
@@ -222,6 +255,8 @@ int main(int argc, char ** argv)
 		ControllerConfigView view(scenes[i].player, nullptr);
 		s.page.append(&view);
 		snap(scenes[i].name, s.root, 0, 0, 0);
+		if(scenes[i].hw != NOHW)
+			g_cards.push_back(MeasureCard());
 	}
 	SampleControls_ResetHardware();
 	SampleControls_SetHeld(0);
@@ -247,6 +282,7 @@ int main(int argc, char ** argv)
 			ControllerConfigView view(0, nullptr, rails[i].show);
 			s.page.append(&view);
 			snap(rails[i].name, s.root, 0, 0, 0);
+			g_rails.push_back(MeasureCard());
 		}
 		SampleControls_ResetHardware();
 		SampleControls_SetHeld(0);
@@ -296,6 +332,42 @@ int main(int argc, char ** argv)
 		Controls().setEmulated(0);
 		ApplyAll(1);
 	}
+	// Preset and In DOS as modals: the setup screen stays drawn under a dimmed layer
+	{
+		struct ModalScene { const char * name; int hw; bool presets; bool edited; };
+		const ModalScene modals[] = {
+			{ "modal_preset", (int)PadType::CLASSIC, true, false },
+			{ "modal_preset_edited", (int)PadType::GAMECUBE, true, true },
+			{ "modal_emulated", (int)PadType::WIIMOTE, false, false },
+		};
+		for(size_t i = 0; i < sizeof(modals) / sizeof(modals[0]); i++)
+		{
+			Controls_SetModel(nullptr);
+			SampleControls_ResetHardware();
+			SampleControls_SetHardware(0, (PadType)modals[i].hw, false, false);
+			ApplyAll(1);
+			if(modals[i].edited)
+				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
+			std::vector<int> index;
+			const std::vector<PickerItem> items = modals[i].presets ? Picker_PresetItems(0, index) : Picker_EmulatedItems();
+			Screen s;
+			ControllerConfigView config(0, nullptr);
+			s.page.append(&config);
+			PickerView picker(modals[i].presets ? "Choose a preset" : "What does DOS see?", items, nullptr, true);
+			GuiWindow modalWindow(640, 480);
+			modalWindow.append(&picker);
+			s.root.append(&modalWindow);
+			s.page.setState(STATE::DISABLED);		// what the app does: the screen under a modal is dimmed and takes no input
+			for(int u = 0; u < 3; u++)
+				s.root.update(nullptr);			// laid out first, as the app's UpdateGui does
+			s.root.changeFocus(&modalWindow);
+			picker.selectInUse();					// as the app does once the modal has the focus
+			snap(modals[i].name, s.root);
+			s.root.remove(&modalWindow);
+		}
+		Controls_SetModel(nullptr);
+		ApplyAll(1);
+	}
 	// the Setup button's menu, with and without a setup to save over
 	{
 		std::vector<SetupAction> kinds;
@@ -339,6 +411,13 @@ int main(int argc, char ** argv)
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
+	// the card is the same height whatever controller is drawn in it, and the rail of icons never moves
+	EXPECT(g_cards.size() >= 8 && g_rails.size() >= 4);
+	for(size_t i = 0; i < g_cards.size(); i++)
+		EXPECT(g_cards[i].top >= 0 && g_cards[i].top == g_cards[0].top && g_cards[i].bottom == g_cards[0].bottom);
+	// (rail scene 1 has a lit icon first, whose pale edge this reading can't see, so only its card is compared)
+	for(size_t i = 0; i < g_rails.size(); i++)
+		EXPECT(g_rails[i].top == g_cards[0].top && g_rails[i].bottom == g_cards[0].bottom && (i == 1 || (g_rails[i].railY >= 0 && g_rails[i].railY == g_rails[0].railY)));
 	{
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);

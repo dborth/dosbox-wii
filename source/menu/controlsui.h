@@ -75,6 +75,8 @@ class ControllerConfigView : public GuiOverlay
 		/** The player slot being set up (0-3). */
 		int player() const { return playerSlot; }
 		const std::string& statusText() const { return status; }
+		/** Puts the selection on the header button that opens `which` (Pick::EMULATED or PRESET): where it was when a modal was open over it. */
+		void selectHeader(Pick which);
 	private:
 		enum class Side { LEFT, RIGHT, GROUP };
 		GuiCard& bindingRow(const ProfileRow& row, Side side, int width);
@@ -95,6 +97,8 @@ class ControllerConfigView : public GuiOverlay
 		int switchRequest;
 		int shownPlayers;
 		GuiTextButton * backBtn;
+		GuiTextButton * emulatedButton;
+		GuiTextButton * presetButton;
 };
 
 /** One line of a picker's detail pane: what a button does under that choice. */
@@ -142,7 +146,11 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& runningProgram, st
 class PickerView : public GuiOverlay
 {
 	public:
-		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver);
+		/**
+		 * @param modal Drawn as a dialog over whatever is behind it (dimmed, but still seen) instead of as a page of its
+		 * own; backButton() is then the X in its corner, and B presses it
+		 */
+		PickerView(const char * title, const std::vector<PickerItem>& items, GuiSound * soundOver, bool modal = false);
 		GuiButton& backButton() { return *backBtn; }
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
@@ -156,6 +164,8 @@ class PickerView : public GuiOverlay
 		void choose(int index);
 		/** The cursor moved to an item (a pending confirmation is dropped). */
 		void focusItem(int index);
+		/** Puts the selection on the item in use (or the first), whatever it was on: for a modal, once it has the focus. */
+		void selectInUse();
 	private:
 		UiScope ui;
 		std::vector<PickerItem> items;
@@ -165,6 +175,9 @@ class PickerView : public GuiOverlay
 		int armedIdx;
 		GuiTextButton * backBtn;
 		std::string hintText;
+		bool isModal;
+		std::vector<GuiTextButton*> itemButtons;
+		int inUse;
 };
 
 /** The screen for choosing what a control does. */
