@@ -14,13 +14,13 @@
  *     <name>.map    DOSBox's mapper file, a copy of the one in use when saved.
  *
  * Everything here is plain text work over the SetupHost seam, so it builds and
- * tests on a PC with a fake. controlssetupsfiles.cpp is the stdio one;
- * controlssetupslive.cpp is the one that knows the core.
+ * tests on a PC with a fake. FileSetupHost (below) is the stdio one;
+ * controlslive.cpp is the one that knows the core.
  ***************************************************************************/
 #ifndef _CONTROLSSETUPS_H_
 #define _CONTROLSSETUPS_H_
 
-#include "controlspresets.h"
+#include "controlsmodel.h"
 #include <stddef.h>
 #include <string>
 #include <vector>
@@ -44,6 +44,28 @@ class SetupHost
 		virtual std::string mapperFile() const = 0;
 		/** The DOS program running now, as DOS recorded it ("KEEN4E.EXE", or just "KEEN4E" when only the short name is known); empty at the prompt. */
 		virtual std::string runningProgram() const = 0;
+};
+
+/**
+ * The files half of a SetupHost, over stdio and dirent: the setups folder, listing it, reading and writing. Still
+ * abstract: the mapper's file and the running program need the core (controlslive.cpp), and a PC test gives them as it likes.
+ */
+class FileSetupHost : public SetupHost
+{
+	public:
+		explicit FileSetupHost(const std::string& folder = std::string()) : folderPath(folder) {}
+
+		/** The folder given at construction; the live host works it out when asked, as the app drive is not known until the platform is up. */
+		std::string directory() const override { return folderPath; }
+		/** Makes the folder, and its parent when that is missing too (not further). */
+		bool makeDirectory() override;
+		std::vector<std::string> files() const override;
+		bool read(const std::string& path, std::string& text) const override;
+		/** Writes path + ".tmp", then swaps it in keeping the old file as path + ".bak" until the swap is done (put back if it fails). */
+		bool write(const std::string& path, const std::string& text) override;
+
+	private:
+		std::string folderPath;
 };
 
 /** One setup as its .conf describes it. */
@@ -85,9 +107,6 @@ struct MapPadBinds
 	std::vector<std::string> events[4][PAD_SOURCE_COUNT];
 };
 void Setup_ParsePadBinds(const std::string& mapText, MapPadBinds& out);
-
-/** The real host (controlssetupslive.cpp; needs the core, so the host tests use a fake). */
-SetupHost& Setups_Live();
 
 /** The setups in the host's folder: each .conf that starts with our first line (any other .conf is left alone), by name ignoring case. Whether its .map is there is not checked. */
 std::vector<SetupRecord> Setups_List(const SetupHost& host);

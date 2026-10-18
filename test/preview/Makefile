@@ -10,18 +10,19 @@ LIBS = $(shell pkg-config --libs freetype2 libpng 2>/dev/null || echo -lfreetype
 
 ROOT = ../..
 SRC = $(ROOT)/source
+SHARED = ../shared
 GEN = gen
 LIBGUI = $(addprefix $(SRC)/libgui/, GuiLayout.cpp GuiWindow.cpp GuiElement.cpp GuiLayoutSolver.cpp GuiGeometry.cpp GuiUi.cpp \
 	GuiButton.cpp GuiShape.cpp GuiPaint.cpp GuiTheme.cpp GuiText.cpp GuiImage.cpp GuiImageData.cpp \
 	GuiArrow.cpp GuiMeshCache.cpp GuiControllerView.cpp GuiControllerDraw.cpp GuiControllerLayout.cpp GuiGlyph.cpp)
-APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controlspresets.cpp controllerprofile.cpp controlsui.cpp menupage.cpp popover.cpp homeview.cpp)
+APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controllerprofile.cpp controlsui.cpp menupage.cpp popover.cpp homeview.cpp) $(SHARED)/samplecontrols.cpp
 
 all: out/.stamp
 
 $(GEN)/assets.cpp: $(wildcard $(ROOT)/data/images/*) $(wildcard $(ROOT)/data/fonts/*) gen_assets.py
 	python3 gen_assets.py $(ROOT)/data images $(GEN)
 
-INC = -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers $(FT_CFLAGS) -I$(GEN)/stubs
+INC = -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) $(FT_CFLAGS) -I$(GEN)/stubs
 
 # the console build trims FreeType down to three modules by hand; a host FreeType registers its own
 $(GEN)/GuiTextRenderer.o: $(SRC)/libgui/GuiTextRenderer.cpp hostft.h

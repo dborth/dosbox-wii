@@ -6,6 +6,7 @@
 #include "menu/controlsui.h"
 #include "menu/homeview.h"
 #include "menu/controlsmodel.h"
+#include "samplecontrols.h"
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
 #include "menu/menuart.h"
@@ -190,6 +191,7 @@ int main(int argc, char ** argv)
 	if(argc > 1) outDir = argv[1];
 	const float scale = argc > 2 ? (float)atof(argv[2]) : 2.0f;
 	HostInit(640, 480, scale);
+	SampleControls_Use();
 	MenuApplyTheme();
 
 	// the setup screen as the model shows it for a given set of controllers

@@ -28,7 +28,7 @@
 #include "osk.h"
 #include "menu.h"
 #include "controlsui.h"
-#include "controlshal.h"
+#include "controlslive.h"
 #include "controlsmapper.h"
 #include "settings.h"
 #include "dosboxsupport.h"
@@ -566,9 +566,8 @@ void HomeMenu ()
 	MenuBarShape bgTopImg(MenuBarShape::TOP);
 	MenuBarShape bgBottomImg(MenuBarShape::BOTTOM);
 
-	// the controller screens read the real controllers, keyboard and mouse from here on
-	Controls_SetHardware(&Controls_Hal());
-	// and what a button does is what the mapper has for it (all four players); the model keeps its state between visits
+	// the controller screens read the real controllers, keyboard and mouse, and what a button does is what the
+	// mapper has for it (all four players); the model keeps its state between visits
 	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), &Setups_Live());
 	Controls_SetModel(&mapperModel);
 

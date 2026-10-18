@@ -4,7 +4,6 @@
  * controlsmapper.cpp
  ***************************************************************************/
 #include "controlsmapper.h"
-#include "controlspresets.h"
 #include <map>
 #include <stdio.h>
 #include <stdlib.h>

@@ -2,8 +2,7 @@
 // The fake follows sdl_mapper.cpp as read (CPadBindGroup, MAPPER_PadSetEvent, the shipped binds); it is only as
 // faithful as that reading. The text checks tie the names and the button order to the real sources.
 #include "controlsmapper.h"
-#include "controlspresets.h"
-#include "controlssetupsfiles.h"
+#include "samplecontrols.h"
 #include "drivers/InputData.h"
 #include <algorithm>
 #include <deque>
@@ -1547,13 +1546,14 @@ static void testFileHost()
 	CHECK(system(cleanup.c_str()) == 0);
 
 	// the live host keeps the folder beside dosbox.conf, where Cross::GetPlatformConfigDir puts the config
-	const std::string live = readFile("menu/controlssetupslive.cpp"), cross = readFile("dosbox/misc/cross.cpp");
+	const std::string live = readFile("menu/controlslive.cpp"), cross = readFile("dosbox/misc/cross.cpp");
 	CHECK(live.find("std::string(appDrive) + \"/\" DOSBOX_DIR_NAME \"/Setups\"") != std::string::npos);
 	CHECK(cross.find("in = std::string(appDrive) + \"/\" DOSBOX_DIR_NAME;") != std::string::npos);
 }
 
 int main()
 {
+	SampleControls_Use();
 	testSourceOrder();
 	testEventNames();
 	testShippedState();

@@ -27,12 +27,10 @@
 #include "setup.h"
 #include "control.h"
 #include "settings.h"
+#include "controlslive.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
 #include "input.h"
-
-// controlsmapperlive.cpp (declared here: controlsmapper.h pulls in headers that clash with DOSBox's)
-void Controls_JoystickTypeChanged();
 
 /****************************************************************************
  * Row table types

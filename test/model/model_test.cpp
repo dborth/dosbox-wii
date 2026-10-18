@@ -1,6 +1,6 @@
 // Host tests for the controls model contract and the sample model behind it.
 #include "controlsmodel.h"
-#include "controlspresets.h"
+#include "samplecontrols.h"
 #include "libgui/GuiControllerLayout.h"
 #include "controllerprofile.h"
 #include "drivers/InputData.h"
@@ -1081,6 +1081,7 @@ static void testDpadRouting()
 
 int main()
 {
+	SampleControls_Use();
 	testEmulatedModes();
 	testUsable();
 	testDescribe();

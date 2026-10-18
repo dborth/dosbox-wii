@@ -5,7 +5,6 @@
  ***************************************************************************/
 #include "controlsmodel.h"
 #include <ctype.h>
-#include "controlspresets.h"
 #include "libgui/GuiControllerLayout.h"
 #include "drivers/InputData.h"
 #include <deque>
@@ -351,312 +350,187 @@ std::vector<int> ControlsModel::choices(int player, TARGET kind) const
 	return codes;
 }
 
-// ---- sample data
+// ---- presets, what DOS sees, and the mapper's pad sources
 
 namespace {
 
-bool hasSource(int control) { return Pad_SourceOfControl(control) >= 0; }
+BindingTarget key(const char * name) { return BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, name)); }
+BindingTarget joy(int button) { return BindingTarget(TARGET::JOYSTICK, button); }
+BindingTarget mouseBtn(const char * name) { return BindingTarget(TARGET::MOUSE, Catalog_Find(TARGET::MOUSE, name)); }
 
-// ---- hardware: what the screens read from the console
-
-// Invented players for the host tests and previews, until the real hardware is installed. A test or preview
-// can make a player something else, and set what is held.
-class SampleHardware : public ControlsHardware
+// control, in the order of the mapper's pad sources
+const int kSourceControl[PAD_SOURCE_COUNT] =
 {
-	public:
-		SampleHardware() : heldBits(0) {}
-
-		PlayerHardware player(int i) const override
-		{
-			PlayerHardware h;
-			if(i >= 0 && i < 4 && over[i].set)
-			{
-				h.type = over[i].type;
-				h.devices = over[i].devices;
-				h.connected = h.type != PadType::NONE;
-				h.sideways = over[i].sideways;
-				h.stickClicks = over[i].stickClicks;
-				h.battery = h.connected && h.type != PadType::GAMECUBE ? 80 : -1;
-				return h;
-			}
-			switch(i)
-			{
-				case 0: h.connected = true; h.type = PadType::WIIMOTE_NUNCHUK; h.battery = 80; break;
-				case 1: h.connected = true; h.type = PadType::CLASSIC; h.battery = 45; break;
-				case 2: h.connected = true; h.type = PadType::GAMECUBE; break;
-				default: break;
-			}
-			return h;
-		}
-
-		DeviceStatus devices() const override
-		{
-			DeviceStatus d;
-			d.keyboard = true;
-			d.mouse = false;
-			d.wiimoteIr = false;
-			d.gamepadPresent = false;
-			d.gamepadTouch = false;
-			return d;
-		}
-
-		uint32_t held(int player) const override { return player == 0 ? heldBits : 0; }
-
-		void setHeld(uint32_t bits) { heldBits = bits; }
-		void setHardware(int player, PadType type, bool sideways, bool stickClicks)
-		{
-			if(player < 0 || player >= 4)
-				return;
-			over[player].set = true;
-			over[player].type = type;
-			over[player].sideways = sideways;
-			over[player].stickClicks = stickClicks;
-			over[player].devices.clear();
-		}
-		void setDevices(int player, const std::vector<PadType>& list, bool sideways, bool stickClicks)
-		{
-			if(list.empty() || player < 0 || player >= 4)
-				return;
-			setHardware(player, list[0], sideways, stickClicks);
-			over[player].devices = list;
-		}
-		void resetHardware()
-		{
-			for(int i = 0; i < 4; i++)
-				over[i].set = false;
-		}
-
-	private:
-		struct Override { bool set = false; PadType type = PadType::NONE; bool sideways = false; bool stickClicks = false; std::vector<PadType> devices; };
-		Override over[4];
-		uint32_t heldBits;
+	INPUT_BTN_A, INPUT_BTN_B, INPUT_BTN_X, INPUT_BTN_Y,
+	INPUT_TRIGGER_L, INPUT_TRIGGER_R, INPUT_TRIGGER_ZL, INPUT_TRIGGER_ZR,
+	INPUT_BTN_MINUS, INPUT_BTN_PLUS,
+	INPUT_THUMB_L | BIND_STICK_CLICK, INPUT_THUMB_R | BIND_STICK_CLICK,
+	INPUT_BTN_UP, INPUT_BTN_RIGHT, INPUT_BTN_DOWN, INPUT_BTN_LEFT
 };
-
-SampleHardware * sampleHardware()
-{
-	static SampleHardware h;
-	return &h;
-}
-
-ControlsHardware * hardwareInstalled = nullptr;
-
-const ControlsHardware& hardware()
-{
-	return hardwareInstalled ? *hardwareInstalled : *sampleHardware();
-}
-
-class SampleControlsModel : public ControlsModel
-{
-	public:
-		SampleControlsModel() : mode(0), dirty(false)
-		{
-			for(int i = 0; i < 4; i++)
-				preset[i] = PRESET_ARROWS;
-		}
-
-		int playerCount() const override { return 4; }
-
-		PlayerInfo player(int i) const override
-		{
-			const bool ok = validPlayer(i);
-			return Controls_ComposePlayer(hardware().player(i), i, Emulated_Modes()[(size_t)mode],
-				ok ? Presets_All()[(size_t)preset[i]].name : std::string());
-		}
-
-		DeviceStatus devices() const override { return hardware().devices(); }
-
-		uint32_t held(int player) const override { return hardware().held(player); }
-
-		std::vector<EmulatedMode> emulatedModes() const override { return Emulated_Modes(); }
-		int currentEmulated() const override { return mode; }
-		void setEmulated(int index) override
-		{
-			if(index >= 0 && index < (int)Emulated_Modes().size() && index != mode)
-			{
-				mode = index;
-				dirty = true;
-			}
-		}
-
-		std::vector<PresetInfo> presets() const override { return Presets_All(); }
-		int currentPreset(int player) const override { return validPlayer(player) ? preset[player] : 0; }
-		void applyPreset(int player, int index) override
-		{
-			if(!validPlayer(player) || index < 0 || index >= PRESET_COUNT)
-				return;
-			preset[player] = index;
-			dropEdits(player); // a preset brings its own defaults, for this player only
-			dirty = true;
-		}
-
-		bool supported(int control) const override { return hasSource(control); }
-
-		BindingTarget binding(int player, int control) const override
-		{
-			const std::map<int64_t, BindingTarget>::const_iterator it = edits.find(editKey(player, control));
-			if(it != edits.end())
-				return it->second;
-			return hasSource(control) ? Presets_Target(validPlayer(player) ? preset[player] : 0, control) : BindingTarget();
-		}
-		BindingTarget presetBinding(int p, int control) const override
-		{
-			return p >= 0 && p < PRESET_COUNT && hasSource(control) ? Presets_Target(p, control) : BindingTarget();
-		}
-		bool modified(int player) const override
-		{
-			for(std::map<int64_t, BindingTarget>::const_iterator it = edits.begin(); it != edits.end(); ++it)
-				if(it->first / kStride == (int64_t)player)
-					return true;
-			return false;
-		}
-
-		BindingTarget defaultBinding(int player, int control) const override { return hasSource(control) ? Presets_Target(validPlayer(player) ? preset[player] : 0, control) : BindingTarget(); }
-		void setBinding(int player, int control, const BindingTarget& t) override
-		{
-			if(!hasSource(control) || binding(player, control) == t)
-				return;
-			edits[editKey(player, control)] = t;
-			dirty = true;
-		}
-		void resetBindings(int player) override
-		{
-			if(modified(player))
-			{
-				dropEdits(player);
-				dirty = true;
-			}
-		}
-
-		std::vector<SetupInfo> setups() const override
-		{
-			std::vector<SetupInfo> v;
-			for(size_t i = 0; i < saved.size(); i++)
-			{
-				SetupInfo s;
-				s.name = saved[i].name;
-				s.program = saved[i].program;
-				s.emulated = Emulated_Modes()[(size_t)saved[i].mode].name;
-				s.preset = presetSummary(saved[i].preset);
-				v.push_back(s);
-			}
-			return v;
-		}
-		bool saveSetup(const std::string& name, const std::string& program) override
-		{
-			if(name.empty())
-				return false;
-			Setup s;
-			s.name = name;
-			s.program = program;
-			s.mode = mode;
-			for(int i = 0; i < 4; i++)
-				s.preset[i] = preset[i];
-			s.edits = edits;
-			current = name;
-			dirty = false;
-			for(size_t i = 0; i < saved.size(); i++)
-			{
-				if(saved[i].name == name)
-				{
-					saved[i] = s;
-					return true;
-				}
-			}
-			saved.push_back(s);
-			return true;
-		}
-		bool loadSetup(int index) override
-		{
-			if(index < 0 || (size_t)index >= saved.size())
-				return false;
-			mode = saved[(size_t)index].mode;
-			for(int i = 0; i < 4; i++)
-				preset[i] = saved[(size_t)index].preset[i];
-			edits = saved[(size_t)index].edits;
-			current = saved[(size_t)index].name;
-			dirty = false;
-			return true;
-		}
-		std::string runningProgram() const override { return "KEEN4E.EXE"; }
-		std::string setupName() const override { return current; }
-		bool setupModified() const override { return dirty; }
-
-		std::vector<BindingTarget> suggestions(int player, int control) const override { return Presets_Suggestions(*this, player, control); }
-
-		void beginCapture() override { pending.clear(); }
-		bool pollCapture(CaptureEvent& e) override
-		{
-			if(pending.empty())
-				return false;
-			e = pending.front();
-			pending.pop_front();
-			return true;
-		}
-		void pushCapture(const CaptureEvent& e) { pending.push_back(e); }
-
-	private:
-		struct Setup
-		{
-			std::string name, program;
-			int mode;
-			int preset[4];
-			std::map<int64_t, BindingTarget> edits;
-		};
-
-		static bool validPlayer(int player) { return player >= 0 && player < 4; }
-
-		void dropEdits(int player)
-		{
-			for(std::map<int64_t, BindingTarget>::iterator it = edits.begin(); it != edits.end();)
-			{
-				if(it->first / kStride == (int64_t)player)
-					edits.erase(it++);
-				else
-					++it;
-			}
-		}
-
-		// the preset every connected player started from, or "Mixed" when they differ
-		std::string presetSummary(const int (&p)[4]) const
-		{
-			int first = -1;
-			for(int i = 0; i < 4; i++)
-			{
-				if(!player(i).connected)
-					continue;
-				if(first < 0)
-					first = p[i];
-				else if(p[i] != first)
-					return "Mixed";
-			}
-			return Presets_All()[(size_t)(first < 0 ? p[0] : first)].name;
-		}
-
-		static const int64_t kStride = (int64_t)1 << 32;
-		static int64_t editKey(int player, int control) { return (int64_t)player * kStride + (int64_t)(uint32_t)control; }
-
-		int mode;
-		int preset[4];
-		bool dirty;
-		std::string current;
-		std::map<int64_t, BindingTarget> edits;
-		std::vector<Setup> saved;
-		std::deque<CaptureEvent> pending;
-};
-
-SampleControlsModel * sampleModel()
-{
-	static SampleControlsModel m;
-	return &m;
-}
-
-ControlsModel * installed = nullptr;
 
 } // namespace
 
+int Pad_SourceOfControl(int control)
+{
+	for(int i = 0; i < PAD_SOURCE_COUNT; i++)
+		if(kSourceControl[i] == control)
+			return i;
+	return -1;
+}
+
+int Pad_ControlOfSource(int source)
+{
+	return source >= 0 && source < PAD_SOURCE_COUNT ? kSourceControl[source] : -1;
+}
+
+const std::vector<PresetInfo>& Presets_All()
+{
+	static const std::vector<PresetInfo> presets =
+	{
+		{ "Compatible", "Buttons fire the DOS joystick, as DOSBox does on its own", true },
+		{ "Arrow keys", "D-pad and buttons as arrows, Ctrl, Alt and Space (platformers)", false },
+		{ "Arrows + shooter", "Arrows, with Ctrl to fire, Space to use, Alt to strafe (Doom-style)", false },
+		{ "Point and click", "A and B click, the D-pad moves between hot spots (adventures)", false },
+		{ "Menu keys", "D-pad, Enter and Esc, for installers and the DOS prompt", false },
+	};
+	return presets;
+}
+
+BindingTarget Presets_Target(int preset, int control)
+{
+	if(preset < 0 || preset >= PRESET_COUNT || Pad_SourceOfControl(control) < 0)
+		return BindingTarget();
+
+	const bool dpadArrows = preset != PRESET_COMPATIBLE;
+	switch(control)
+	{
+		case INPUT_BTN_UP: return dpadArrows ? key("Up") : BindingTarget();
+		case INPUT_BTN_DOWN: return dpadArrows ? key("Down") : BindingTarget();
+		case INPUT_BTN_LEFT: return dpadArrows ? key("Left") : BindingTarget();
+		case INPUT_BTN_RIGHT: return dpadArrows ? key("Right") : BindingTarget();
+		default: break;
+	}
+
+	switch(preset)
+	{
+		case PRESET_COMPATIBLE:
+			switch(control)
+			{
+				case INPUT_BTN_A: return joy(0);
+				case INPUT_BTN_B: return joy(1);
+				case INPUT_BTN_X: return joy(2);
+				case INPUT_BTN_Y: return joy(3);
+				default: return BindingTarget();
+			}
+		case PRESET_ARROWS:
+			switch(control)
+			{
+				case INPUT_BTN_A: return key("Ctrl");
+				case INPUT_BTN_B: return key("Alt");
+				case INPUT_BTN_X: return key("Space");
+				case INPUT_BTN_Y: return key("Enter");
+				case INPUT_BTN_PLUS: return key("Enter");
+				case INPUT_BTN_MINUS: return key("Esc");
+				case INPUT_TRIGGER_L: return key("PgUp");
+				case INPUT_TRIGGER_R: return key("PgDn");
+				default: return BindingTarget();
+			}
+		case PRESET_SHOOTER:
+			switch(control)
+			{
+				case INPUT_BTN_A: return key("Ctrl");
+				case INPUT_BTN_B: return key("Space");
+				case INPUT_BTN_X: return key("Alt");
+				case INPUT_BTN_Y: return key("Shift");
+				case INPUT_BTN_PLUS: return key("Enter");
+				case INPUT_BTN_MINUS: return key("Esc");
+				case INPUT_TRIGGER_L: return key("Z");
+				case INPUT_TRIGGER_R: return key("X");
+				default: return BindingTarget();
+			}
+		case PRESET_POINT:
+			switch(control)
+			{
+				case INPUT_BTN_A: return mouseBtn("left button");
+				case INPUT_BTN_B: return mouseBtn("right button");
+				case INPUT_BTN_PLUS: return key("Enter");
+				case INPUT_BTN_MINUS: return key("Esc");
+				default: return BindingTarget();
+			}
+		case PRESET_MENU:
+			switch(control)
+			{
+				case INPUT_BTN_A: return key("Enter");
+				case INPUT_BTN_B: return key("Esc");
+				case INPUT_BTN_X: return key("Y");
+				case INPUT_BTN_Y: return key("N");
+				case INPUT_BTN_PLUS: return key("Enter");
+				case INPUT_BTN_MINUS: return key("Esc");
+				default: return BindingTarget();
+			}
+		default: return BindingTarget();
+	}
+}
+
+std::vector<BindingTarget> Presets_Suggestions(const ControlsModel& model, int player, int control)
+{
+	std::vector<BindingTarget> out;
+	if(Pad_SourceOfControl(control) < 0)
+		return out;
+	for(int p = 0; p < PRESET_COUNT; p++)
+	{
+		const BindingTarget t = Presets_Target(p, control);
+		if(t.kind == TARGET::NONE || !model.usable(player, t))
+			continue;
+		bool seen = false;
+		for(size_t i = 0; i < out.size(); i++)
+			seen = seen || out[i] == t;
+		if(!seen)
+			out.push_back(t);
+	}
+	return out;
+}
+
+const std::vector<EmulatedMode>& Emulated_Modes()
+{
+	// The first three are the Emulating list. The rest are the mapper's other joystick types, reached from
+	// Settings: they are listed only when one is in effect, so the player can see it and leave it. Counts are the
+	// ones the mapper's groups use (C4AxisBindGroup 4 axes / 4 buttons, CFCSBindGroup 4 / 4 + hat,
+	// CCHBindGroup 4 / 6 + hat; CStickBindGroup 2 / 2 for two joysticks).
+	static const std::vector<EmulatedMode> modes =
+	{
+		{ "Joystick", "One joystick with four buttons, for player 1", 1, 4, 4, "4axis", 0, false, false },
+		{ "Two joysticks", "Players 1 and 2 each get a joystick with two buttons", 2, 2, 2, "2axis", 0, false, false },
+		{ "Keyboard + mouse", "No joystick: the buttons act as keys and the mouse", 0, 0, 0, "none", 0, false, false },
+		{ "Joystick for player 2", "The one joystick, with four buttons, is player 2's", 1, 4, 4, "4axis_2", 1, false, true },
+		{ "Flight stick (FCS)", "One joystick with four buttons and a hat, for player 1", 1, 4, 4, "fcs", 0, true, true },
+		{ "Flight stick (CH)", "One joystick with six buttons and a hat, for player 1", 1, 6, 4, "ch", 0, true, true },
+	};
+	return modes;
+}
+
+int Emulated_IndexOfType(const std::string& type)
+{
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	for(size_t i = 0; i < modes.size(); i++)
+		if(modes[i].type == type)
+			return (int)i;
+	// auto is 4axis here (InitializeJoysticks), and the type only reads auto between the config being set and the mapper building its groups
+	return type == "auto" ? 0 : -1;
+}
+
+// ---- the installed model
+
+namespace {
+
+ControlsModel * installed = nullptr;
+ControlsModel * fallback = nullptr;
+
+}
+
 ControlsModel& Controls()
 {
-	return installed ? *installed : *sampleModel();
+	return installed ? *installed : *fallback;
 }
 
 void Controls_SetModel(ControlsModel * model)
@@ -664,33 +538,7 @@ void Controls_SetModel(ControlsModel * model)
 	installed = model;
 }
 
-void Controls_SetHardware(ControlsHardware * hardware)
+void Controls_SetFallback(ControlsModel * model)
 {
-	hardwareInstalled = hardware;
-}
-
-void SampleControls_SetHeld(uint32_t bits)
-{
-	sampleHardware()->setHeld(bits);
-}
-
-void SampleControls_PushCapture(const CaptureEvent& event)
-{
-	if(!installed)
-		sampleModel()->pushCapture(event);
-}
-
-void SampleControls_SetHardware(int player, PadType type, bool sideways, bool stickClicks)
-{
-	sampleHardware()->setHardware(player, type, sideways, stickClicks);
-}
-
-void SampleControls_SetDevices(int player, const std::vector<PadType>& devices, bool sideways, bool stickClicks)
-{
-	sampleHardware()->setDevices(player, devices, sideways, stickClicks);
-}
-
-void SampleControls_ResetHardware()
-{
-	sampleHardware()->resetHardware();
+	fallback = model;
 }

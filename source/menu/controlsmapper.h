@@ -9,7 +9,7 @@
  * once and is written to the mapper file.
  *
  * The mapper is reached through PadMapper, so the logic here builds and tests
- * on a PC with a fake; controlsmapperlive.cpp is the one that calls the
+ * on a PC with a fake; controlslive.cpp is the one that calls the
  * mapper. What is not real yet is listed on MapperControlsModel.
  ***************************************************************************/
 #ifndef _CONTROLSMAPPER_H_
@@ -42,9 +42,6 @@ class PadMapper
 		virtual bool setJoystickType(const std::string& type) = 0;
 };
 
-/** The real mapper (controlsmapperlive.cpp; needs the DOSBox core, so the host tests use a fake). */
-PadMapper& Mapper_Live();
-
 /**
  * The mapper event a target stands for when it is bound to a player's button, or false when the mapper cannot
  * express it (a joystick button beyond the first four, or a joystick slot that does not exist: only the DOS
@@ -64,9 +61,6 @@ bool Mapper_TargetFor(int slot, const std::string& event, BindingTarget& target)
  * again: a second call finds nothing to move. Returns whether anything was rebound; the caller saves.
  */
 bool Mapper_MigrateJoystickBinds(PadMapper& mapper);
-
-/** The type in effect changed behind the model's back (the Settings row): moves the binds and saves. Called by the settings apply path (controlsmapperlive.cpp). */
-void Controls_JoystickTypeChanged();
 
 /**
  * The model the controller screens use once DOSBox is running. Bindings, presets and "modified" are real, for all

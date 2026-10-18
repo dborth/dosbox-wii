@@ -126,7 +126,7 @@ struct CaptureEvent {
 
 /**
  * Everything the model reads from the console, and nothing else: the one seam between the controller screens and
- * the HAL. The app installs the HAL's (controlshal.cpp); tests and previews use the sample one.
+ * the HAL. The app installs the HAL's (controlslive.cpp); tests and previews use the sample one (test/shared/samplecontrols.h).
  */
 class ControlsHardware
 {
@@ -282,24 +282,47 @@ class ControlsModel
 		virtual bool setupModified() const = 0;
 };
 
-/** The model the screens use (sample data until a real one is installed). */
+// ---- the mapper's pad sources (CPadBindGroup in sdl_mapper.cpp)
+
+/** Sources in a pad group: the 12 buttons, then the D-pad up, right, down, left. */
+enum { PAD_SOURCE_COUNT = 16 };
+
+/**
+ * The mapper pad source a control binds through, or -1 when it has none (stick movement, Capture, Home).
+ * The order is the shim's joystick button order (SDL_input.cpp ReadPlayer): the pad group reads the
+ * shim's SDL joystick by index, so the two must agree. A Wiimote's 1 and 2 share the sources of X and Y.
+ */
+int Pad_SourceOfControl(int control);
+/** The control id for a pad source (0..PAD_SOURCE_COUNT-1), or -1. The inverse of Pad_SourceOfControl() for the controls that have one. */
+int Pad_ControlOfSource(int source);
+
+// ---- presets
+
+enum { PRESET_COMPATIBLE, PRESET_ARROWS, PRESET_SHOOTER, PRESET_POINT, PRESET_MENU, PRESET_COUNT };
+
+const std::vector<PresetInfo>& Presets_All();
+/** What a preset gives a control (nothing for a control with no entry or no pad source). */
+BindingTarget Presets_Target(int preset, int control);
+/** Likely targets for a control: what each preset gives it that the player can use, without duplicates or Not assigned. */
+std::vector<BindingTarget> Presets_Suggestions(const ControlsModel& model, int player, int control);
+
+// ---- what DOS sees
+
+/**
+ * Joystick, Two joysticks, Keyboard + mouse, then the advanced types (4axis_2, fcs, ch). The first three are
+ * the Emulating list; see EmulatedMode::advanced.
+ */
+const std::vector<EmulatedMode>& Emulated_Modes();
+/** The mode for a joystick.joysticktype value (auto is 4axis), or -1 for a value none of them stands for. */
+int Emulated_IndexOfType(const std::string& type);
+
+/** The model the screens use: the one installed, else the fallback (see Controls_SetFallback). */
 ControlsModel& Controls();
 
-/** Installs a model; null goes back to the sample data. The model must outlive its use. */
+/** Installs a model; null goes back to the fallback. The model must outlive its use. */
 void Controls_SetModel(ControlsModel * model);
 
-/** Installs where the model reads the console from; null goes back to the sample players. Must outlive its use. */
-void Controls_SetHardware(ControlsHardware * hardware);
-
-/** Sets what the sample hardware reports as held (for tests and previews; does nothing once another model is installed). */
-void SampleControls_SetHeld(uint32_t bits);
-/** Queues a press for the sample model's pollCapture() (tests and previews). */
-void SampleControls_PushCapture(const CaptureEvent& event);
-/** Makes a sample player a different kind of hardware (PadType::NONE: nothing connected) for tests and previews. */
-void SampleControls_SetHardware(int player, PadType type, bool sideways = false, bool stickClicks = false);
-/** Puts the sample players back to their usual hardware. */
-void SampleControls_ResetHardware();
-/** Makes a sample player hold several devices on one channel (a Wiimote and a GameCube pad), primary first; the first sets the type. */
-void SampleControls_SetDevices(int player, const std::vector<PadType>& devices, bool sideways = false, bool stickClicks = false);
+/** What Controls() returns while no model is installed. The console build never needs one (it installs its model before any screen opens); the host tests and previews register sample data. */
+void Controls_SetFallback(ControlsModel * model);
 
 #endif
