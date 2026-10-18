@@ -22,6 +22,7 @@
 #include <string>
 #include "libgui/Gui.h"
 #include "controlsmodel.h"
+#include "controllerview.h"
 #include "controllerprofile.h"
 #include "menupage.h"
 #include "popover.h"
@@ -82,7 +83,6 @@ class ControllerConfigView : public GuiOverlay
 		bool isEmpty() const { return padType == PadType::NONE; }
 		/** The player slot being set up (0-3). */
 		int player() const { return playerSlot; }
-		const std::string& statusText() const { return status; }
 		/** Puts the selection on the header button that opens `which` (Pick::EMULATED or PRESET): where it was when a modal was open over it. */
 		void selectHeader(Pick which);
 		/** The button that opens `which`, in canvas pixels: where its popover opens beside. */
@@ -104,7 +104,7 @@ class ControllerConfigView : public GuiOverlay
 		size_t shownIndex;
 		PadType flipRequest;
 		bool sideways;
-		GuiControllerView * view;
+		ControllerView * view;
 		std::vector<GuiCard*> rowCards;
 		std::vector<std::pair<int, GuiCard*> > rowsById;
 		std::string status;

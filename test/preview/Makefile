@@ -14,8 +14,8 @@ SHARED = ../shared
 GEN = gen
 LIBGUI = $(addprefix $(SRC)/libgui/, GuiLayout.cpp GuiWindow.cpp GuiElement.cpp GuiLayoutSolver.cpp GuiGeometry.cpp GuiUi.cpp \
 	GuiButton.cpp GuiShape.cpp GuiPaint.cpp GuiTheme.cpp GuiText.cpp GuiImage.cpp GuiImageData.cpp \
-	GuiArrow.cpp GuiMeshCache.cpp GuiControllerView.cpp GuiControllerDraw.cpp GuiControllerLayout.cpp GuiGlyph.cpp)
-APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controllerprofile.cpp controlsui.cpp menupage.cpp popover.cpp homeview.cpp) $(SHARED)/samplecontrols.cpp
+	GuiArrow.cpp GuiMeshCache.cpp GuiGlyph.cpp)
+APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controllerprofile.cpp controllerlayout.cpp controllerview.cpp controlsui.cpp menupage.cpp popover.cpp homeview.cpp) $(SHARED)/samplecontrols.cpp
 
 all: out/.stamp
 

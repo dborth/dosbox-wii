@@ -327,11 +327,11 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	else
 	{
 		const ControllerProfile profile = Controllers_Profile(info, (int)shownIndex);
-		view = &ui.controllerView(*profile.layout, profile.scale);
+		view = &ui.make<ControllerView>(*profile.layout, profile.scale);
 		// no text on the drawing: the buttons are too small to carry it legibly, and the rows beside it name each control
 		view->setLabelFilter([](int){ return false; });
 		// lit while held, so pressing a button on the controller shows which control it is
-		view->setLit([pl](int id){ return id > 0 && id < GUI_CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
+		view->setLit([pl](int id){ return id > 0 && id < CTL_CAPTURE && (Controls().held(pl) & (uint32_t)id) != 0; });
 		const int sideW = 168;
 		// Two or more devices on the channel (a Wiimote and a GameCube pad): a rail of their icons down the left, the
 		// one drawn lit, A on another draws that one. It takes room from the left rows only where the drawing leaves none.

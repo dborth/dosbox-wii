@@ -106,7 +106,7 @@ struct GroupSpec {
 
 /** Everything that makes one kind of hardware's profile: the rest is the shared builder. */
 struct Spec {
-	const GuiControllerLayout * layout;
+	const ControllerLayout * layout;
 	float scale;
 	std::vector<LabelSet> names;		// searched in order
 	std::vector<int> left, right;
@@ -140,7 +140,7 @@ std::vector<int> sticks(bool clicks)
 
 // Every pad with two sticks (or a GameCube's stick and C-stick): shoulders and system buttons beside the
 // drawing; sticks, D-pad and face buttons underneath
-Spec padSpec(const GuiControllerLayout& layout, float scale, const std::vector<LabelSet>& names,
+Spec padSpec(const ControllerLayout& layout, float scale, const std::vector<LabelSet>& names,
 	const std::vector<int>& left, const std::vector<int>& right, bool clicks)
 {
 	Spec s;
@@ -161,19 +161,19 @@ const std::vector<int> kProRight = { INPUT_TRIGGER_R, INPUT_TRIGGER_ZR, INPUT_BT
 
 // ---- one Spec per kind of hardware
 
-Spec proSpec(const GuiControllerLayout& layout, float scale, bool clicks)
+Spec proSpec(const ControllerLayout& layout, float scale, bool clicks)
 {
 	return padSpec(layout, scale, kStandardNames, kProLeft, kProRight, clicks);
 }
 
 Spec classicSpec()
 {
-	return padSpec(GuiClassicControllerLayout(), 0.4f, { LABELS(kClassic), LABELS(kStandard) }, kProLeft, kProRight, false);
+	return padSpec(ClassicControllerLayout(), 0.4f, { LABELS(kClassic), LABELS(kStandard) }, kProLeft, kProRight, false);
 }
 
 Spec gameCubeSpec()
 {
-	return padSpec(GuiGameCubeControllerLayout(), 0.4f, { LABELS(kGameCube), LABELS(kStandard) },
+	return padSpec(GameCubeControllerLayout(), 0.4f, { LABELS(kGameCube), LABELS(kStandard) },
 		{ INPUT_TRIGGER_L }, { INPUT_TRIGGER_R, INPUT_TRIGGER_ZR, INPUT_BTN_PLUS, INPUT_BTN_HOME }, false);
 }
 
@@ -182,7 +182,7 @@ Spec gameCubeSpec()
 Spec wiimoteUprightSpec()
 {
 	Spec s;
-	s.layout = &GuiWiimoteControllerLayout();
+	s.layout = &WiimoteControllerLayout();
 	s.scale = 0.55f;
 	s.names = { LABELS(kWiimote), LABELS(kStandard) };
 	s.left = { INPUT_BTN_UP, INPUT_BTN_DOWN, INPUT_BTN_LEFT, INPUT_BTN_RIGHT, INPUT_BTN_MINUS, INPUT_BTN_1 };
@@ -194,7 +194,7 @@ Spec wiimoteUprightSpec()
 Spec wiimoteSidewaysSpec()
 {
 	Spec s;
-	s.layout = &GuiWiimoteSidewaysControllerLayout();
+	s.layout = &WiimoteSidewaysControllerLayout();
 	s.scale = 0.48f;
 	s.names = { LABELS(kWiimote), LABELS(kStandard) };
 	s.left = { INPUT_BTN_MINUS };
@@ -207,7 +207,7 @@ Spec wiimoteSidewaysSpec()
 Spec nunchukSpec()
 {
 	Spec s;
-	s.layout = &GuiWiimoteNunchukControllerLayout();
+	s.layout = &WiimoteNunchukControllerLayout();
 	s.scale = 0.32f;
 	s.names = { LABELS(kNunchuk), LABELS(kWiimote), LABELS(kStandard) };
 	s.left = { INPUT_TRIGGER_L, INPUT_TRIGGER_ZL };
@@ -286,11 +286,11 @@ ControllerProfile Controllers_Profile(PadType type, const ProfileOptions& option
 		case PadType::GAMECUBE:
 			return build(name, gameCubeSpec());
 		case PadType::GAMEPAD:
-			return build(name, proSpec(GuiGamePadControllerLayout(), 0.42f, options.stickClicks));
+			return build(name, proSpec(GamePadControllerLayout(), 0.42f, options.stickClicks));
 		case PadType::WIIU_PRO:
 		case PadType::NONE:
 		default:
-			return build(type == PadType::NONE ? "Controller" : name, proSpec(GuiWiiUProControllerLayout(), 0.4f, options.stickClicks));
+			return build(type == PadType::NONE ? "Controller" : name, proSpec(WiiUProControllerLayout(), 0.4f, options.stickClicks));
 	}
 }
 

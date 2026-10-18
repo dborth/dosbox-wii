@@ -70,12 +70,6 @@
 #define MENU_ARROW_LONG			24
 #define MENU_ARROW_SHORT		17
 
-// progress bar and spinner inside the progress dialog
-#define MENU_PROGRESS_W			398
-#define MENU_PROGRESS_H			22
-#define MENU_SPINNER_SIZE		72
-#define MENU_SPINNER_DOTS		8
-
 // the two cards of the game list page (the list itself is drawn by GuiFileBrowser)
 #define MENU_LIST_X			20
 #define MENU_LIST_Y			101
@@ -247,35 +241,6 @@ static inline GuiPaint MenuDialogHeaderPaint()
 		.stroke(2.0f, p.chromeDark);
 }
 
-//!The empty part of a progress bar
-static inline GuiPaint MenuProgressTrackPaint()
-{
-	const MenuPalette& p = MenuPaletteCurrent();
-	return GuiPaint().color(p.outline).stroke(1.5f, p.outlineStrong);
-}
-
-//!The filled part of a progress bar
-static inline GuiPaint MenuProgressFillPaint()
-{
-	const MenuPalette& p = MenuPaletteCurrent();
-	return GuiPaint().gradient(MenuMix(p.accent, MenuRGBA(255, 255, 255), 0.3f), p.accent);
-}
-
-//!One dot of the busy spinner. level 0 is the head (bold, accent colored); higher
-//!levels trail off smaller and paler.
-static inline GuiPaint MenuSpinnerDotPaint(int level)
-{
-	const MenuPalette& p = MenuPaletteCurrent();
-	const float t = (float)level / (float)(MENU_SPINNER_DOTS - 1);
-	return GuiPaint().color(MenuMix(p.accent, p.outline, t));
-}
-
-//!Diameter of the spinner dot at a trail level
-static inline float MenuSpinnerDotSize(int level)
-{
-	return 14.0f - 6.0f * (float)level / (float)(MENU_SPINNER_DOTS - 1);
-}
-
 //!Resting and lit colors of the page-turning arrows (gray, turning to the accent)
 static inline PixelColor MenuArrowRest() { return MenuPaletteCurrent().outlineStrong; }
 static inline PixelColor MenuArrowLit() { return MenuPaletteCurrent().accent; }
@@ -302,17 +267,6 @@ static inline GuiShapeStyle MenuBarButtonStyle(bool marked = false)
 		.stroke(2.0f, p.outlineStrong);
 
 	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
-}
-
-//!A tab that is showing: a pressed-in gray face, so it reads as "this page" and not as the highlight
-static inline GuiShapeStyle MenuTabActiveStyle()
-{
-	const MenuPalette& p = MenuPaletteCurrent();
-	GuiShapeStyle s = MenuBarButtonStyle();
-	s.normal = GuiPaint()
-		.gradient(MenuMix(p.outlineStrong, p.chromeDark, 0.15f), p.outlineStrong)
-		.stroke(2.0f, p.chromeDark);
-	return s;
 }
 
 //!The one card behind a page's content: opaque, so the game picture never shows through the controls

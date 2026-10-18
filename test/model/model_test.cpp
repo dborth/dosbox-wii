@@ -1,7 +1,7 @@
 // Host tests for the controls model contract and the sample model behind it.
 #include "controlsmodel.h"
 #include "samplecontrols.h"
-#include "libgui/GuiControllerLayout.h"
+#include "controllerlayout.h"
 #include "controllerprofile.h"
 #include "drivers/InputData.h"
 #include "inputlogic.h"
@@ -171,12 +171,12 @@ static void testSupported()
 
 	CHECK(!m.supported(INPUT_THUMB_L));			// stick movement is the joystick's axes, not a mapping
 	CHECK(!m.supported(INPUT_THUMB_R));
-	CHECK(!m.supported(GUI_CTL_CAPTURE));
+	CHECK(!m.supported(CTL_CAPTURE));
 	CHECK(!m.supported(INPUT_BTN_HOME));		// the menu button is fixed
 
 	// an unsupported control cannot be set, and reads as nothing
-	m.setBinding(0, GUI_CTL_CAPTURE, key("Esc"));
-	CHECK(m.binding(0, GUI_CTL_CAPTURE).kind == TARGET::NONE);
+	m.setBinding(0, CTL_CAPTURE, key("Esc"));
+	CHECK(m.binding(0, CTL_CAPTURE).kind == TARGET::NONE);
 	m.setBinding(0, INPUT_THUMB_L, key("Esc")); // a stick's movement is the joystick's axes, not a mapping
 	CHECK(m.binding(0, INPUT_THUMB_L).kind == TARGET::NONE);
 }
@@ -403,7 +403,7 @@ static void testSuggestions()
 	// a control no preset uses has nothing to suggest, and neither does one the mapper has no source for
 	CHECK(m.suggestions(0, INPUT_TRIGGER_ZR).empty());
 	CHECK(m.suggestions(0, INPUT_BTN_HOME).empty());
-	CHECK(m.suggestions(0, GUI_CTL_CAPTURE).empty());
+	CHECK(m.suggestions(0, CTL_CAPTURE).empty());
 
 	// no joystick, no joystick suggestions; a joystick without the button, none for that button
 	m.setEmulated(2);
@@ -454,7 +454,7 @@ static void testPresetPreview()
 	}
 	CHECK(m.presetBinding(-1, INPUT_BTN_A).kind == TARGET::NONE);
 	CHECK(m.presetBinding(99, INPUT_BTN_A).kind == TARGET::NONE);
-	CHECK(m.presetBinding(0, GUI_CTL_CAPTURE).kind == TARGET::NONE);
+	CHECK(m.presetBinding(0, CTL_CAPTURE).kind == TARGET::NONE);
 
 	// describing a target that is not set yet says what it would do for that player
 	m.setEmulated(1);
@@ -773,18 +773,18 @@ static void testProfilesPerHardware()
 	clicks.stickClicks = true;
 
 	// each kind has its own drawing; an empty slot gets the Pro's
-	CHECK(Controllers_Profile(PadType::WIIU_PRO).layout == &GuiWiiUProControllerLayout());
-	CHECK(Controllers_Profile(PadType::NONE).layout == &GuiWiiUProControllerLayout());
-	CHECK(Controllers_Profile(PadType::GAMEPAD).layout == &GuiGamePadControllerLayout());
-	CHECK(Controllers_Profile(PadType::CLASSIC).layout == &GuiClassicControllerLayout());
-	CHECK(Controllers_Profile(PadType::GAMECUBE).layout == &GuiGameCubeControllerLayout());
-	CHECK(Controllers_Profile(PadType::WIIMOTE).layout == &GuiWiimoteControllerLayout());
-	CHECK(Controllers_Profile(PadType::WIIMOTE, side).layout == &GuiWiimoteSidewaysControllerLayout());
-	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK).layout == &GuiWiimoteNunchukControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIU_PRO).layout == &WiiUProControllerLayout());
+	CHECK(Controllers_Profile(PadType::NONE).layout == &WiiUProControllerLayout());
+	CHECK(Controllers_Profile(PadType::GAMEPAD).layout == &GamePadControllerLayout());
+	CHECK(Controllers_Profile(PadType::CLASSIC).layout == &ClassicControllerLayout());
+	CHECK(Controllers_Profile(PadType::GAMECUBE).layout == &GameCubeControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE).layout == &WiimoteControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE, side).layout == &WiimoteSidewaysControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK).layout == &WiimoteNunchukControllerLayout());
 
 	// orientation only matters to a lone Wiimote (a Nunchuk means it is held upright)
-	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK, side).layout == &GuiWiimoteNunchukControllerLayout());
-	CHECK(Controllers_Profile(PadType::CLASSIC, side).layout == &GuiClassicControllerLayout());
+	CHECK(Controllers_Profile(PadType::WIIMOTE_NUNCHUK, side).layout == &WiimoteNunchukControllerLayout());
+	CHECK(Controllers_Profile(PadType::CLASSIC, side).layout == &ClassicControllerLayout());
 	CHECK(profileRows(Controllers_Profile(PadType::GAMECUBE, side)).size() == profileRows(Controllers_Profile(PadType::GAMECUBE)).size());
 
 	// the Pro and the GamePad list the same controls; the Classic is the Pro without the clicks it does not have
@@ -851,9 +851,9 @@ static void testProfilesPerHardware()
 	// the model's player drives the options
 	PlayerInfo pi;
 	pi.type = PadType::WIIMOTE;
-	CHECK(Controllers_Profile(pi).layout == &GuiWiimoteControllerLayout());
+	CHECK(Controllers_Profile(pi).layout == &WiimoteControllerLayout());
 	pi.sideways = true;
-	CHECK(Controllers_Profile(pi).layout == &GuiWiimoteSidewaysControllerLayout());
+	CHECK(Controllers_Profile(pi).layout == &WiimoteSidewaysControllerLayout());
 	pi.type = PadType::WIIU_PRO;
 	CHECK(!hasClickRows(Controllers_Profile(pi)));
 	pi.stickClicks = true;
@@ -942,7 +942,7 @@ static void testDeviceList()
 	const PlayerInfo p = m.player(0);
 	CHECK(p.connected && p.type == PadType::WIIMOTE && p.devices == List({ PadType::WIIMOTE, PadType::GAMECUBE }));
 	// each device gets its own drawing; one past the list falls back to the primary
-	CHECK(Controllers_Profile(p, 0).layout == &GuiWiimoteControllerLayout());
+	CHECK(Controllers_Profile(p, 0).layout == &WiimoteControllerLayout());
 	CHECK(Controllers_Profile(p, 1).layout != Controllers_Profile(p, 0).layout);
 	CHECK_EQ(Controllers_Profile(p, 1).name, PadType_Name(PadType::GAMECUBE));
 	CHECK(Controllers_Profile(p, -1).layout == Controllers_Profile(p, 0).layout);
@@ -1044,7 +1044,7 @@ static void testHardwareSeam()
 	CHECK((Controls().held(0)) == (0));
 
 	// and the setup screen's profile follows the hardware, end to end
-	CHECK(Controllers_Profile(wm).layout == &GuiWiimoteSidewaysControllerLayout());
+	CHECK(Controllers_Profile(wm).layout == &WiimoteSidewaysControllerLayout());
 	CHECK(hasClickRows(Controllers_Profile(gp)));
 
 	// pulling it out goes back to the sample players

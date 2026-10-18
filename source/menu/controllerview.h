@@ -1,26 +1,62 @@
 /****************************************************************************
- * libgui
+ * DOSBox Wii Home Menu
  * Daryl Borth 2026
- * GuiControllerView.h
+ * controllerview.h
+ *
+ * Drawing a controller from a ControllerLayout: the geometry for each state
+ * (BuildController*), and ControllerView, the element that shows it and what
+ * is happening on it.
  ***************************************************************************/
-#pragma once
-#include "GuiControllerDraw.h"
+#ifndef _CONTROLLERVIEW_H_
+#define _CONTROLLERVIEW_H_
 
-//!Draws a controller from a GuiControllerLayout and shows what is happening on it: controls light up
+#include "libgui/Gui.h"
+#include "libgui/GuiPaint.h"
+#include "libgui/GuiTheme.h"
+#include "controllerlayout.h"
+
+// ---- the drawing: how a controller and its controls look in each state (pure geometry: no elements, no platform)
+
+//!The look a control is drawn in.
+enum class CTL_STATE {
+	NORMAL,
+	LIT,				//!< Pressed
+	HIGHLIGHT,			//!< Being edited / pointed at
+	LIT_HIGHLIGHT
+};
+
+//!Builds the resting drawing of a controller (silhouette, then every decorative control) in local
+//!coordinates, with the layout multiplied by `scale`. The silhouette's outline is made by drawing each
+//!piece's outline first and the fills after, so overlapping pieces merge into one shape.
+void BuildControllerBody(GuiMesh& mesh, const ControllerLayout& layout, float scale);
+
+//!Builds one control in one state (an analog stick's cap is separate, see BuildControllerStickCap).
+void BuildControllerSpot(GuiMesh& mesh, const ControlSpot& spot, CTL_STATE state, float scale);
+
+//!Builds an analog stick's cap, displaced by (x, y) (each -1 to 1) from the middle of its ring.
+void BuildControllerStickCap(GuiMesh& mesh, const ControlSpot& spot, float x, float y, bool lit, float scale);
+
+//!Builds the whole controller as thin lines only, no fills and no theme: the silhouette and every control
+//!(a stick with its cap at rest) stroked centered on the outline in one color.
+//!\param width Line width in drawing units (not multiplied by `scale`)
+void BuildControllerOutline(GuiMesh& mesh, const ControllerLayout& layout, float scale, float width, PixelColor color);
+
+// ---- the element
+
+//!Draws a controller from a ControllerLayout and shows what is happening on it: controls light up
 //!while pressed, a chosen control is highlighted (optionally with a line from a list row to it), and
 //!sticks follow their position. It is a picture, not a button: selection lives in the list beside it,
 //!and the list tells the view what to highlight.
-//!\ingroup grp_controller
-class GuiControllerView : public GuiElement
+class ControllerView : public GuiElement
 {
 	public:
 		//!\param layout The controller to draw (must outlive the view)
 		//!\param scale Multiplies the layout's units
-		GuiControllerView(const GuiControllerLayout& layout, float scale = 1.0f);
-		~GuiControllerView();
+		ControllerView(const ControllerLayout& layout, float scale = 1.0f);
+		~ControllerView();
 
 		//!Changes the controller drawn
-		void setLayout(const GuiControllerLayout& layout);
+		void setLayout(const ControllerLayout& layout);
 		//!Changes the size
 		void setScale(float scale);
 		//!Highlights one control (0 = none)
@@ -69,7 +105,7 @@ class GuiControllerView : public GuiElement
 		void freeBaked(Baked& b);
 		void freeAllBaked();
 
-		const GuiControllerLayout * layout;
+		const ControllerLayout * layout;
 		float scale;
 		std::vector<int> highlighted;
 		bool leader;
@@ -88,3 +124,5 @@ class GuiControllerView : public GuiElement
 		float originX, originY;
 		int alpha;
 };
+
+#endif

@@ -10,7 +10,7 @@
  *
  * The mapper is reached through PadMapper, so the logic here builds and tests
  * on a PC with a fake; controlslive.cpp is the one that calls the
- * mapper. What is not real yet is listed on MapperControlsModel.
+ * mapper. What a model does not carry through is listed on MapperControlsModel.
  ***************************************************************************/
 #ifndef _CONTROLSMAPPER_H_
 #define _CONTROLSMAPPER_H_

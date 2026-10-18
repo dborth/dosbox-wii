@@ -1,12 +1,14 @@
 /****************************************************************************
- * libgui
+ * DOSBox Wii Home Menu
  * Daryl Borth 2026
- * GuiControllerLayout.cpp
+ * controllerlayout.cpp
+ *
+ * The layout tables (see controllerlayout.h).
  ***************************************************************************/
 
-#include "GuiControllerLayout.h"
+#include "controllerlayout.h"
 
-const GuiControlSpot * GuiControllerLayout::find(int id) const
+const ControlSpot * ControllerLayout::find(int id) const
 {
 	if(id == 0)
 		return nullptr;
@@ -30,9 +32,9 @@ static GuiPath mk(const char * cmds, const float * pts, size_t count)
 	return p;
 }
 
-static GuiControlSpot spot(int id, CTL_SHAPE shape, float x, float y, float w, float h, float radius, const char * label, const GuiPath & path, unsigned flags)
+static ControlSpot spot(int id, CTL_SHAPE shape, float x, float y, float w, float h, float radius, const char * label, const GuiPath & path, unsigned flags)
 {
-	return GuiControlSpot{ id, shape, x, y, w, h, radius, label, path, flags };
+	return ControlSpot{ id, shape, x, y, w, h, radius, label, path, flags };
 }
 
 static const float kWiiUPro_1[] = { 345.85f, 48.24f, 345.55f, 40.22f, 335.76f, 37.26f, 335.76f, 37.26f, 331.31f, 33.4f, 320.92f, 28.35f, 320.92f, 28.35f, 319.14f, 26.43f, 318.84f, 21.68f, 318.84f, 21.68f, 295.84f, 21.68f, 295.84f, 28.65f, 295.84f, 28.65f, 294.07f, 28.65f, 266.76f, 40.22f, 239.46f, 51.8f, 199.99f, 51.2f, 199.99f, 51.2f, 199.99f, 51.2f, 160.52f, 51.8f, 133.22f, 40.22f, 105.92f, 28.65f, 104.14f, 28.65f, 104.14f, 28.65f, 104.14f, 21.68f, 81.13f, 21.68f, 81.13f, 21.68f, 80.83f, 26.42f, 79.05f, 28.35f, 79.05f, 28.35f, 68.67f, 33.4f, 64.22f, 37.26f, 64.22f, 37.26f, 54.42f, 40.22f, 54.12f, 48.24f, 54.12f, 48.24f, 13.62f, 93.64f, 4.72f, 230.15f, -4.19f, 366.65f, 74.75f, 273.47f, 91.96f, 258.63f, 109.18f, 243.8f, 126.98f, 225.99f, 199.98f, 225.99f, 272.98f, 225.99f, 290.79f, 243.8f, 308.0f, 258.63f, 325.21f, 273.47f, 404.15f, 366.65f, 395.25f, 230.15f, 386.35f, 93.64f, 345.85f, 48.24f, 345.85f, 48.24f };
@@ -45,9 +47,9 @@ static const float kWiiUPro_7[] = { 116.92f, 160.73f, 116.93f, 145.22f, 117.06f,
 static const float kWiiUPro_8[] = { 137.06f, 180.87f, 137.04f, 196.37f, 136.92f, 197.2f, 136.59f, 198.13f, 136.2f, 198.83f, 135.58f, 199.57f, 134.84f, 200.19f, 133.98f, 200.65f, 133.04f, 200.94f, 132.03f, 201.05f, 121.43f, 201.02f, 120.61f, 200.87f, 119.84f, 200.59f, 119.13f, 200.19f, 118.39f, 199.57f, 117.78f, 198.83f, 117.38f, 198.13f, 117.06f, 197.2f, 116.93f, 196.37f, 116.92f, 180.87f, 126.99f, 170.8f };
 static const float kWiiUPro_9[] = { 116.92f, 180.87f, 101.42f, 180.85f, 100.59f, 180.72f, 99.66f, 180.4f, 98.95f, 180.0f, 98.21f, 179.39f, 97.6f, 178.65f, 97.2f, 177.94f, 96.92f, 177.17f, 96.76f, 176.35f, 96.74f, 165.75f, 96.84f, 164.74f, 97.13f, 163.8f, 97.6f, 162.94f, 98.21f, 162.2f, 98.95f, 161.58f, 99.66f, 161.19f, 100.59f, 160.86f, 101.42f, 160.74f, 116.92f, 160.73f, 126.99f, 170.8f };
 static const float kWiiUPro_10[] = { 157.24f, 175.84f, 157.17f, 176.69f, 156.96f, 177.49f, 156.63f, 178.24f, 156.19f, 178.91f, 155.53f, 179.61f, 154.89f, 180.1f, 154.17f, 180.47f, 153.39f, 180.73f, 152.73f, 180.84f, 152.21f, 180.87f, 137.06f, 180.87f, 126.99f, 170.8f, 137.06f, 160.73f, 152.22f, 160.73f, 153.06f, 160.8f, 153.71f, 160.95f, 154.32f, 161.19f, 154.89f, 161.5f, 155.53f, 161.98f, 156.09f, 162.56f, 156.47f, 163.08f, 156.84f, 163.8f, 157.06f, 164.41f, 157.19f, 165.07f, 157.24f, 165.75f };
-static GuiControllerLayout buildWiiUPro()
+static ControllerLayout buildWiiUPro()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 400.0f;	l.height = 307.59f;
 	l.bodyPaths.push_back(mk("MCCCLLCCCCLLCCCCCCCCCZ", kWiiUPro_1, 106));
 	l.spots.push_back(spot(INPUT_TRIGGER_ZR, CTL_SHAPE::PATH, 295.84f, 6.04f, 23.51f, 15.65f, 0.0f, "ZR", mk("MLLLLLLLLLLLLLLLLLLLLLLZ", kWiiUPro_2, 46), 0u));
@@ -83,9 +85,9 @@ static const float kGamePad_8[] = { 63.92f, 101.81f, 64.04f, 108.27f, 59.23f, 11
 static const float kGamePad_9[] = { 63.85f, 117.69f, 63.85f, 130.77f, 54.62f, 130.77f, 54.62f, 117.69f, 59.23f, 113.08f };
 static const float kGamePad_10[] = { 59.23f, 113.08f, 54.62f, 117.69f, 41.54f, 117.69f, 41.54f, 108.46f, 54.42f, 108.27f };
 static const float kGamePad_11[] = { 64.04f, 108.27f, 76.92f, 108.46f, 76.92f, 117.69f, 63.85f, 117.69f, 59.23f, 113.08f };
-static GuiControllerLayout buildGamePad()
+static ControllerLayout buildGamePad()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 400.0f;	l.height = 230.77f;
 	l.bodyPaths.push_back(mk("MCCCCCCCCCCCCCCZ", kGamePad_1, 86));
 	l.spots.push_back(spot(INPUT_TRIGGER_L, CTL_SHAPE::PATH, 18.67f, 7.57f, 71.89f, 30.51f, 0.0f, "L", mk("MLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLZ", kGamePad_2, 126), 0u));
@@ -122,9 +124,9 @@ static const float kGameCube_9[] = { 139.17f, 195.57f, 139.15f, 195.26f, 139.05f
 static const float kGameCube_10[] = { 121.64f, 231.75f, 121.65f, 250.47f, 121.77f, 251.06f, 122.06f, 251.56f, 122.35f, 251.84f, 122.7f, 252.06f, 123.09f, 252.19f, 123.46f, 252.22f, 137.42f, 252.22f, 138.01f, 252.1f, 138.51f, 251.81f, 138.8f, 251.52f, 138.98f, 251.22f, 139.12f, 250.83f, 139.17f, 250.47f, 139.18f, 231.76f, 130.41f, 222.99f };
 static const float kGameCube_11[] = { 121.64f, 214.22f, 102.93f, 214.22f, 102.34f, 214.34f, 101.84f, 214.64f, 101.55f, 214.93f, 101.34f, 215.28f, 101.21f, 215.67f, 101.18f, 216.04f, 101.18f, 230.0f, 101.3f, 230.59f, 101.59f, 231.09f, 101.88f, 231.37f, 102.18f, 231.56f, 102.57f, 231.7f, 102.93f, 231.75f, 121.64f, 231.75f, 130.41f, 222.99f };
 static const float kGameCube_12[] = { 139.18f, 231.76f, 157.89f, 231.76f, 158.48f, 231.64f, 158.98f, 231.34f, 159.27f, 231.05f, 159.48f, 230.7f, 159.61f, 230.31f, 159.65f, 229.94f, 159.65f, 215.98f, 159.53f, 215.39f, 159.23f, 214.88f, 158.94f, 214.6f, 158.64f, 214.41f, 158.25f, 214.27f, 157.89f, 214.22f, 139.18f, 214.22f, 130.41f, 222.99f };
-static GuiControllerLayout buildGameCube()
+static ControllerLayout buildGameCube()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 400.0f;	l.height = 323.75f;
 	l.bodyPaths.push_back(mk("MCCLCCCCCCCCLCCLCCCCCCZ", kGameCube_1, 116));
 	l.spots.push_back(spot(INPUT_TRIGGER_L, CTL_SHAPE::PATH, 32.11f, 26.52f, 58.86f, 41.1f, 0.0f, "L", mk("MLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLZ", kGameCube_2, 184), 0u));
@@ -157,9 +159,9 @@ static const float kClassic_9[] = { 72.53f, 60.03f, 89.09f, 60.03f, 89.09f, 80.9
 static const float kClassic_10[] = { 72.53f, 97.48f, 80.81f, 89.2f, 89.09f, 97.48f, 89.09f, 118.37f, 72.53f, 118.37f };
 static const float kClassic_11[] = { 51.65f, 80.92f, 72.53f, 80.92f, 80.81f, 89.2f, 72.53f, 97.48f, 51.65f, 97.48f };
 static const float kClassic_12[] = { 109.98f, 80.92f, 109.98f, 97.48f, 89.09f, 97.48f, 80.81f, 89.2f, 89.09f, 80.92f };
-static GuiControllerLayout buildClassic()
+static ControllerLayout buildClassic()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 400.0f;	l.height = 211.53f;
 	l.bodyPaths.push_back(mk("MCLCCLCCCCCLCCCCZ", kClassic_1, 80));
 	l.spots.push_back(spot(INPUT_TRIGGER_L, CTL_SHAPE::PATH, 36.95f, 3.9f, 80.68f, 33.92f, 0.0f, "L", mk("MLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLZ", kClassic_2, 140), 0u));
@@ -190,9 +192,9 @@ static const float kWiimote_4[] = { 58.17f, 80.54f, 58.17f, 93.96f, 45.64f, 93.9
 static const float kWiimote_5[] = { 51.9f, 74.27f, 45.64f, 80.54f, 32.21f, 80.54f, 32.21f, 68.01f, 45.64f, 68.01f };
 static const float kWiimote_6[] = { 58.17f, 68.01f, 71.59f, 68.01f, 71.59f, 80.54f, 58.17f, 80.54f, 51.9f, 74.27f };
 static const float kWiimote_7[] = { 105.57f, 121.12f, 105.42f, 119.96f, 105.29f, 119.38f, 104.91f, 118.27f, 104.67f, 117.74f, 104.39f, 117.23f, 103.74f, 116.25f, 103.37f, 115.8f, 102.54f, 114.97f, 102.09f, 114.6f, 101.12f, 113.95f, 100.07f, 113.43f, 98.96f, 113.06f, 98.39f, 112.92f, 97.23f, 112.77f, 96.64f, 112.75f, 96.64f, 170.02f, 97.23f, 170.0f, 98.39f, 169.85f, 98.96f, 169.72f, 100.07f, 169.34f, 101.12f, 168.82f, 101.62f, 168.51f, 102.54f, 167.8f, 103.37f, 166.97f, 103.74f, 166.52f, 104.39f, 165.55f, 104.91f, 164.5f, 105.29f, 163.39f, 105.42f, 162.82f, 105.57f, 161.66f, 105.59f, 161.07f };
-static GuiControllerLayout buildWiimote()
+static ControllerLayout buildWiimote()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 114.54f;	l.height = 400.0f;
 	l.bodyPaths.push_back(mk("MLCLCLCLCZ", kWiimote_1, 34));
 	l.spots.push_back(spot(0, CTL_SHAPE::CIRCLE, 21.03f, 24.61f, 13.42f, 13.42f, 0.0f, nullptr, GuiPath(), 0u));
@@ -218,9 +220,9 @@ static const float kWiimoteSideways_4[] = { 80.54f, 67.11f, 80.54f, 80.54f, 68.0
 static const float kWiimoteSideways_5[] = { 54.59f, 67.11f, 54.59f, 54.59f, 68.01f, 54.59f, 74.27f, 60.85f, 68.01f, 67.11f };
 static const float kWiimoteSideways_6[] = { 80.54f, 54.59f, 93.96f, 54.59f, 93.96f, 67.11f, 80.54f, 67.11f, 74.27f, 60.85f };
 static const float kWiimoteSideways_7[] = { 121.12f, 7.18f, 119.96f, 7.33f, 119.38f, 7.46f, 118.27f, 7.84f, 117.74f, 8.08f, 117.23f, 8.36f, 116.25f, 9.01f, 115.8f, 9.38f, 114.97f, 10.21f, 114.6f, 10.66f, 113.95f, 11.63f, 113.43f, 12.68f, 113.06f, 13.79f, 112.92f, 14.36f, 112.77f, 15.53f, 112.75f, 16.11f, 170.02f, 16.11f, 170.0f, 15.53f, 169.85f, 14.36f, 169.72f, 13.79f, 169.34f, 12.68f, 168.82f, 11.63f, 168.51f, 11.13f, 167.8f, 10.21f, 166.97f, 9.38f, 166.52f, 9.01f, 165.55f, 8.36f, 164.5f, 7.84f, 163.39f, 7.46f, 162.82f, 7.33f, 161.66f, 7.18f, 161.07f, 7.16f };
-static GuiControllerLayout buildWiimoteSideways()
+static ControllerLayout buildWiimoteSideways()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 400.0f;	l.height = 114.54f;
 	l.bodyPaths.push_back(mk("MLCLCLCLCZ", kWiimoteSideways_1, 34));
 	l.spots.push_back(spot(0, CTL_SHAPE::CIRCLE, 24.61f, 78.3f, 13.42f, 13.42f, 0.0f, nullptr, GuiPath(), 0u));
@@ -250,9 +252,9 @@ static const float kWiimoteNunchuk_8[] = { 215.66f, 80.54f, 215.66f, 93.96f, 203
 static const float kWiimoteNunchuk_9[] = { 209.4f, 74.27f, 203.13f, 80.54f, 189.71f, 80.54f, 189.71f, 68.01f, 203.13f, 68.01f };
 static const float kWiimoteNunchuk_10[] = { 215.66f, 68.01f, 229.08f, 68.01f, 229.08f, 80.54f, 215.66f, 80.54f, 209.4f, 74.27f };
 static const float kWiimoteNunchuk_11[] = { 263.07f, 121.12f, 262.92f, 119.96f, 262.78f, 119.38f, 262.41f, 118.27f, 262.17f, 117.74f, 261.89f, 117.23f, 261.23f, 116.25f, 260.87f, 115.8f, 260.04f, 114.97f, 259.59f, 114.6f, 258.61f, 113.95f, 257.57f, 113.43f, 256.46f, 113.06f, 255.88f, 112.92f, 254.72f, 112.77f, 254.14f, 112.75f, 254.14f, 170.02f, 254.72f, 170.0f, 255.88f, 169.85f, 256.46f, 169.72f, 257.57f, 169.34f, 258.61f, 168.82f, 259.59f, 168.17f, 260.04f, 167.8f, 260.87f, 166.97f, 261.57f, 166.05f, 261.89f, 165.55f, 262.41f, 164.5f, 262.78f, 163.39f, 262.92f, 162.82f, 263.07f, 161.66f, 263.09f, 161.07f };
-static GuiControllerLayout buildWiimoteNunchuk()
+static ControllerLayout buildWiimoteNunchuk()
 {
-	GuiControllerLayout l;
+	ControllerLayout l;
 	l.width = 277.4f;	l.height = 400.0f;
 	l.bodyPaths.push_back(mk("MCCCCCZ", kWiimoteNunchuk_1, 32));
 	l.bodyPaths.push_back(mk("MLCLCLCLCZ", kWiimoteNunchuk_5, 34));
@@ -275,44 +277,44 @@ static GuiControllerLayout buildWiimoteNunchuk()
 	return l;
 }
 
-const GuiControllerLayout& GuiWiiUProControllerLayout()
+const ControllerLayout& WiiUProControllerLayout()
 {
-	static const GuiControllerLayout layout = buildWiiUPro();
+	static const ControllerLayout layout = buildWiiUPro();
 	return layout;
 }
 
-const GuiControllerLayout& GuiGamePadControllerLayout()
+const ControllerLayout& GamePadControllerLayout()
 {
-	static const GuiControllerLayout layout = buildGamePad();
+	static const ControllerLayout layout = buildGamePad();
 	return layout;
 }
 
-const GuiControllerLayout& GuiGameCubeControllerLayout()
+const ControllerLayout& GameCubeControllerLayout()
 {
-	static const GuiControllerLayout layout = buildGameCube();
+	static const ControllerLayout layout = buildGameCube();
 	return layout;
 }
 
-const GuiControllerLayout& GuiClassicControllerLayout()
+const ControllerLayout& ClassicControllerLayout()
 {
-	static const GuiControllerLayout layout = buildClassic();
+	static const ControllerLayout layout = buildClassic();
 	return layout;
 }
 
-const GuiControllerLayout& GuiWiimoteControllerLayout()
+const ControllerLayout& WiimoteControllerLayout()
 {
-	static const GuiControllerLayout layout = buildWiimote();
+	static const ControllerLayout layout = buildWiimote();
 	return layout;
 }
 
-const GuiControllerLayout& GuiWiimoteSidewaysControllerLayout()
+const ControllerLayout& WiimoteSidewaysControllerLayout()
 {
-	static const GuiControllerLayout layout = buildWiimoteSideways();
+	static const ControllerLayout layout = buildWiimoteSideways();
 	return layout;
 }
 
-const GuiControllerLayout& GuiWiimoteNunchukControllerLayout()
+const ControllerLayout& WiimoteNunchukControllerLayout()
 {
-	static const GuiControllerLayout layout = buildWiimoteNunchuk();
+	static const ControllerLayout layout = buildWiimoteNunchuk();
 	return layout;
 }

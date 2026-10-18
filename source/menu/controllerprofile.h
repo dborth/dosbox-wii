@@ -6,14 +6,14 @@
  * What the configuration screen lists for a kind of controller: which drawing
  * to use, and the controls to list beside it and under it. A profile is data,
  * so supporting another controller means adding a profile (and a drawing in
- * libgui's GuiControllerLayout form), not touching the screen.
+ * libgui's ControllerLayout form), not touching the screen.
  ***************************************************************************/
 #ifndef _CONTROLLERPROFILE_H_
 #define _CONTROLLERPROFILE_H_
 
 #include <vector>
 #include "libgui/GuiGlyph.h"
-#include "libgui/GuiControllerLayout.h"
+#include "controllerlayout.h"
 #include "controlsmodel.h"
 
 /** One row in a list on the configuration screen. */
@@ -36,7 +36,7 @@ struct ProfileGroup {
 /** A controller's drawing and the controls to list for it. */
 struct ControllerProfile {
 	const char * name;
-	const GuiControllerLayout * layout;
+	const ControllerLayout * layout;
 	float scale;						/**< Size of the drawing on the configuration screen. */
 	std::vector<ProfileRow> left;		/**< Listed to the left of the drawing, top to bottom. */
 	std::vector<ProfileRow> right;		/**< Listed to the right. */

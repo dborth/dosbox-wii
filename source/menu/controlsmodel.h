@@ -3,11 +3,10 @@
  * Daryl Borth 2009-2026
  * controlsmodel.h
  *
- * What the controller screens show and edit, behind one interface. The screens
- * only talk to ControlsModel; today it is backed by sample data so the UI can
- * be built and tried first. Connecting the real thing means writing another
- * ControlsModel (reading the input drivers and DOSBox's mapper) and handing it
- * to Controls_SetModel().
+ * What the controller screens show and edit, behind one interface, with the
+ * catalogs and presets every model shares. The screens only talk to
+ * ControlsModel: the app installs MapperControlsModel (controlsmapper.h), and
+ * the host tests and previews install sample data (test/shared/samplecontrols.h).
  ***************************************************************************/
 #ifndef _CONTROLSMODEL_H_
 #define _CONTROLSMODEL_H_

@@ -8,7 +8,7 @@
  ***************************************************************************/
 #include "samplecontrols.h"
 #include <ctype.h>
-#include "libgui/GuiControllerLayout.h"
+#include "controllerlayout.h"
 #include "drivers/InputData.h"
 #include <deque>
 #include <map>
