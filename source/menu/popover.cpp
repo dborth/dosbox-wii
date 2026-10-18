@@ -127,8 +127,9 @@ GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCa
 	const PopoverTail tail = Popover_Tail(anchor, at, panelW, panelH);
 	if(tail.shown)
 	{
-		static const ARROW arrows[] = { ARROW::UP, ARROW::DOWN, ARROW::LEFT, ARROW::RIGHT };
-		GuiArrow& arrow = ui.own<GuiArrow>(arrows[tail.direction], tail.w, tail.h, tailColor, tailColor);
+		static const SHAPE kinds[] = { SHAPE::TRIANGLE_UP, SHAPE::TRIANGLE_DOWN, SHAPE::TRIANGLE_LEFT, SHAPE::TRIANGLE_RIGHT };
+		GuiShape& arrow = ui.own<GuiShape>(tail.w, tail.h);
+		arrow.setArrow(kinds[tail.direction], tailColor, tailColor);
 		GuiLayout& tailPlaced = ui.column().size(sw, sh).addGap((float)tail.y).add(ui.row().size(sw, tail.h).addGap((float)tail.x).add(arrow));
 		view.add(&tailPlaced);
 	}

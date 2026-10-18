@@ -65,10 +65,6 @@
 #define MENU_SCREEN_H			64
 
 // page-turning arrows: hit area of the button, and the glyph drawn inside it
-#define MENU_ARROW_HIT_LONG		32
-#define MENU_ARROW_HIT_SHORT	28
-#define MENU_ARROW_LONG			24
-#define MENU_ARROW_SHORT		17
 
 // the two cards of the game list page (the list itself is drawn by GuiFileBrowser)
 #define MENU_LIST_X			20
@@ -249,10 +245,6 @@ static inline GuiPaint MenuDialogHeaderPaint()
 		.stroke(2.0f, p.chromeDark);
 }
 
-//!Resting and lit colors of the page-turning arrows (gray, turning to the accent)
-static inline PixelColor MenuArrowRest() { return MenuPaletteCurrent().outlineStrong; }
-static inline PixelColor MenuArrowLit() { return MenuPaletteCurrent().accent; }
-
 //!The one button look for the controller screens (and the bars): white and outlined at rest like the home
 //!screen's, a dark face with a white outline and a glow when highlighted (the label turns white with it).
 //!`marked` outlines a resting button in the accent color: the choice a control has now.
@@ -383,8 +375,7 @@ static inline GuiShapeStyle MenuStepperStyle()
 	return GuiShapeStyle(rest).onFocus(lit).onPress(pressed);
 }
 
-//!Arrow colors for a button in the bar look: dark on the white resting face, white on the dark highlighted
-//!one (the gray of MenuArrowRest/Lit vanishes on both)
+//!Arrow colors for a button in the bar look: dark on the white resting face, white on the dark highlighted one
 static inline PixelColor MenuBarArrowRest() { return MenuRGBA(56, 56, 56); }
 static inline PixelColor MenuBarArrowLit() { return MenuRGBA(255, 255, 255); }
 

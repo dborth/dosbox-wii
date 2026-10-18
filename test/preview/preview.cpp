@@ -915,6 +915,38 @@ int main(int argc, char ** argv)
 		outer.update(nullptr);
 		EXPECT(hiddenProbe.updates == 1);
 	}
+	// ---- arrows are shapes: setArrow draws a triangle pointing the way asked, in the rest colour, and the lit one when selected
+	{
+		struct Kind { SHAPE shape; int insideX, insideY, emptyX, emptyY; };	// a point inside the triangle, and a corner it leaves empty
+		const int W = 40, H = 40, X = 100, Y = 100;
+		const Kind kinds[] = {
+			{ SHAPE::TRIANGLE_UP,    W / 2, H - 4, 2,     2 },
+			{ SHAPE::TRIANGLE_DOWN,  W / 2, 4,     2,     H - 3 },
+			{ SHAPE::TRIANGLE_LEFT,  W - 4, H / 2, 2,     2 },
+			{ SHAPE::TRIANGLE_RIGHT, 4,     H / 2, W - 3, 2 }
+		};
+		for(const Kind& k : kinds)
+		{
+			GuiWindow root(640, 480);
+			GuiShape arrow(W, H);
+			arrow.setArrow(k.shape, PixelColor{ 220, 0, 0, 255 }, PixelColor{ 0, 0, 220, 255 });
+			arrow.setPosition(X, Y);
+			root.append(&arrow);
+			int w = 0, h = 0;
+			auto at = [&](int dx, int dy) { const std::vector<uint8_t>& px = HostPixels(w, h); return &px[((size_t)((Y + dy) * h / 480) * w + (size_t)((X + dx) * w / 640)) * 4]; };
+			HostClear(0, 0, 0);
+			root.draw();
+			const uint8_t * in = at(k.insideX, k.insideY);
+			const uint8_t * out = at(k.emptyX, k.emptyY);
+			EXPECT(in[0] > 150 && in[2] < 60);				// inside: the rest colour
+			EXPECT(out[0] < 30 && out[1] < 30 && out[2] < 30);	// the corner the triangle leaves empty: the background
+			arrow.setState(STATE::SELECTED);
+			HostClear(0, 0, 0);
+			root.draw();
+			in = at(k.insideX, k.insideY);
+			EXPECT(in[2] > 150 && in[0] < 60);				// highlighted: the lit colour, at once
+		}
+	}
 	if(failures)
 		return 1;
 	printf("behaviour checks passed\n");

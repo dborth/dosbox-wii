@@ -88,22 +88,6 @@ class MenuKeyShape : public GuiShape
 		}
 };
 
-//!A page-turning arrow: gray, turning to the accent color while its button is
-//!highlighted. Use it as the image of a GuiButton of MENU_ARROW_* size; it centers
-//!itself in the button.
-class MenuArrowImage : public GuiArrow
-{
-	public:
-		MenuArrowImage(ARROW dir) :
-			GuiArrow(dir,
-				(dir == ARROW::LEFT || dir == ARROW::RIGHT) ? MENU_ARROW_SHORT : MENU_ARROW_LONG,
-				(dir == ARROW::LEFT || dir == ARROW::RIGHT) ? MENU_ARROW_LONG : MENU_ARROW_SHORT,
-				MenuArrowRest(), MenuArrowLit())
-		{
-			setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
-		}
-};
-
 class MenuIconData : public GuiImageData
 {
 	public:

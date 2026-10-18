@@ -10,7 +10,7 @@
  * here knows how the menu looks: the space it must leave at the screen's
  * edges and the tail's colour are given. The menu's look is menupopover.h.
  *
- * Needs only libgui (and GuiArrow, for the tail).
+ * Needs only libgui.
  ***************************************************************************/
 #ifndef _POPOVER_H_
 #define _POPOVER_H_

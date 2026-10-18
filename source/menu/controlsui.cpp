@@ -211,7 +211,8 @@ static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::funct
 	GuiLabel& caption = ui.label(title.c_str()).fontSize(UI_FONT_SMALL - 2).muted();
 	GuiLabel& chosen = ui.label().fontSize(UI_FONT_SMALL + 1).bind(value);
 	chosen.setMaxWidth(width - 20 - 16);
-	GuiArrow& arrow = ui.own<GuiArrow>(opensUp ? ARROW::UP : ARROW::DOWN, 10, 6, MenuBarArrowRest(), MenuBarArrowRest());
+	GuiShape& arrow = ui.own<GuiShape>(10, 6);
+	arrow.setArrow(opensUp ? SHAPE::TRIANGLE_UP : SHAPE::TRIANGLE_DOWN, MenuBarArrowRest(), MenuBarArrowRest());
 	GuiLayout& content = ui.row().size(width - 20, 0).gap(6).align(LAYOUT_ALIGN::CENTRE)
 		.add(ui.column().gap(2).add(caption).add(chosen)).addSpace().add(arrow);
 	GuiCard& chip = ui.card();
@@ -257,8 +258,9 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 		if(several)
 		{
 			// a small page-turning arrow, centred in its button (dark on the white face, white once it is highlighted)
-			const auto arrowIcon = [this](ARROW dir) -> GuiArrow& {
-				GuiArrow& a = ui.own<GuiArrow>(dir, 9, 14, MenuBarArrowRest(), MenuBarArrowLit());
+			const auto arrowIcon = [this](SHAPE dir) -> GuiShape& {
+				GuiShape& a = ui.own<GuiShape>(9, 14);
+				a.setArrow(dir, MenuBarArrowRest(), MenuBarArrowLit());
 				a.setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 				return a;
 			};
@@ -266,11 +268,11 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 			GuiTextButton& prev = ui.button("").size(34, 34).style(MenuStepperStyle())
 				.onClick([this]{ switchRequest = -1; })
 				.onFocus([this]{ status = "A shows the previous controller"; });
-			prev.setIcon(&arrowIcon(ARROW::LEFT));
+			prev.setIcon(&arrowIcon(SHAPE::TRIANGLE_LEFT));
 			GuiTextButton& next = ui.button("").size(34, 34).style(MenuStepperStyle())
 				.onClick([this]{ switchRequest = 1; })
 				.onFocus([this]{ status = "A shows the next controller"; });
-			next.setIcon(&arrowIcon(ARROW::RIGHT));
+			next.setIcon(&arrowIcon(SHAPE::TRIANGLE_RIGHT));
 			// room between the buttons and the name, so a highlighted one never touches the text
 			f.headerLeft->gap(14).add(prev).add(nameBlock).add(next);
 		}
