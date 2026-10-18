@@ -25,7 +25,7 @@
 #include "controllerview.h"
 #include "controllerprofile.h"
 #include "menupage.h"
-#include "popover.h"
+#include "menupopover.h"
 
 /** Opens the controller setup from the home menu. Blocks until the user backs out. Opens on the given player (0-3),
     or on the first connected one when there is none given. */

@@ -3,10 +3,14 @@
  * Daryl Borth 2009-2026
  * popover.h
  *
- * The one look for a question asked in place: a small light panel that opens
- * beside the control that asked it, over the screen it came from (dimmed, but
- * still there). Two layers at most: the screen, then the popover. This file
- * holds the parts every popover shares, and PickerView, the list built on them.
+ * The mechanics of a question asked in place: a panel that opens beside the
+ * control that asked it, over the screen it came from. Where it goes
+ * (Popover_Place), the little tail that points at its anchor (Popover_Tail),
+ * and the backdrop that closes it (PopoverBackdrop, Popover_Mount). Nothing
+ * here knows how the menu looks: the space it must leave at the screen's
+ * edges and the tail's colour are given. The menu's look is menupopover.h.
+ *
+ * Needs only libgui (and GuiArrow, for the tail).
  ***************************************************************************/
 #ifndef _POPOVER_H_
 #define _POPOVER_H_
@@ -27,18 +31,18 @@ struct PopoverAnchor {
 /** Where the popover's top-left corner goes. */
 struct PopoverPlace { int x, y; };
 
-/** The most height a popover can have: the band between the header and footer bars. */
-int Popover_MaxHeight(int screenHeight);
+/** What a popover keeps clear at the screen's edges: the bars at the top and bottom, and the margin at both sides. */
+struct PopoverInsets { int top, bottom, side; };
+
+/** The most height a popover can have: the band between the bars. */
+int Popover_MaxHeight(int screenHeight, const PopoverInsets& insets);
 
 /**
  * Places a popover of `w` x `h` beside its anchor: below it when it fits in the band between the bars, else above,
  * lined up with the anchor's right edge when the anchor is on the right half of the screen and its left edge
  * otherwise, and kept inside the margins. With no anchor it is centred.
  */
-PopoverPlace Popover_Place(const PopoverAnchor& anchor, int w, int h, int screenWidth, int screenHeight);
-
-/** One row of a popover list: the name on the left, a dot on the right when `marked` (the one in use). The caller adds onClick / onFocus. */
-GuiCard& Popover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool dotSlot = true);
+PopoverPlace Popover_Place(const PopoverAnchor& anchor, int w, int h, int screenWidth, int screenHeight, const PopoverInsets& insets);
 
 /**
  * Where the little tail on a popover goes, and which way it points (toward the anchor); none when the panel covers the anchor
@@ -50,18 +54,9 @@ PopoverTail Popover_Tail(const PopoverAnchor& anchor, const PopoverPlace& at, in
 
 /**
  * Puts a built panel on a popover view: the backdrop behind it (B or a click outside closes: its button is returned),
- * and the panel at `at` on the screen.
+ * and the panel at `at` on the screen. The tail (when the anchor gets one) is drawn in `tailColor`, the panel's face.
  */
-GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH, const PopoverAnchor& anchor);
-
-/**
- * A small round close button (an X) for the right end of a popover's title row: a way out that does not depend on
- * B or on finding empty space to click. `onClick` is what it does; pass the backdrop's dismiss().
- */
-GuiCard& Popover_CloseButton(UiScope& ui, std::function<void()> onClick);
-
-/** A one pixel rule `w` wide, in the outline color. */
-GuiShape& Popover_Divider(UiScope& ui, int w);
+GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH, const PopoverAnchor& anchor, PixelColor tailColor);
 
 /**
  * The invisible button across the whole screen behind a popover: B anywhere, or a click outside the panel, presses
@@ -87,78 +82,5 @@ class PopoverBackdrop : public GuiButton
 		GuiTrigger * primary;
 		bool closing;
 };
-
-/** One line of a picker's detail pane: what a button does under that choice. */
-struct PickerRow {
-	std::string label;	/**< "A Button" */
-	std::string value;	/**< "Key: Ctrl" */
-};
-
-/** A choice in a picker. */
-struct PickerItem {
-	std::string name;					/**< "Arrow keys" */
-	std::vector<std::string> lines;		/**< What it is, a few short lines (at most three are shown) */
-	std::vector<PickerRow> rows;		/**< What it does for the buttons (at most seven are shown) */
-	bool current;						/**< The one in use now */
-	bool divider = false;				/**< A rule is drawn after this item: what follows is a different kind of choice */
-};
-
-/**
- * A list of choices in a popover: one flat panel beside the control that asked, over the screen it came from. Plain
- * rows (the one in use has a dot), a rule where an item says so, and under the list a caption for the row under the
- * cursor: its description. Nothing else is drawn on it.
- */
-class PickerView : public GuiOverlay
-{
-	public:
-		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
-		PickerView(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor = PopoverAnchor());
-		GuiButton& backButton() { return *backBtn; }
-		/** Whether a choice was made (after any confirmation). */
-		bool chosen() const { return done; }
-		/** The index of the item chosen. */
-		int result() const { return picked; }
-		/** The item under the cursor. */
-		int focused() const { return focus; }
-		/** What A does on an item: it is chosen. */
-		void choose(int index);
-		/** The cursor moved to an item . */
-		void focusItem(int index);
-		/** Puts the selection on the item in use (or the first), whatever it was on: once the popover has the focus. */
-		void selectInUse();
-		/** Puts the selection (and the cursor) on an item. */
-		void selectItem(int index);
-		/** Called with an item's index whenever the cursor moves to it, and once now: the screen under the popover previews it. */
-		void onFocusChange(std::function<void(int)> fn);
-		/** The caption lines under the list (always the same number, some empty). */
-		const std::vector<std::string>& caption() const { return captionLines; }
-		/** Where the panel is, and how tall its rows are (design pixels). */
-		int panelX() const { return place.x; }
-		int panelY() const { return place.y; }
-		int panelW() const { return panelWidth; }
-		int panelH() const { return panelHeight; }
-		int rowH() const { return rowHeight; }
-	private:
-		void refreshCaption();
-
-		UiScope ui;
-		std::vector<PickerItem> items;
-		int picked;
-		bool done;
-		int focus;
-		GuiButton * backBtn;
-		std::vector<GuiCard*> itemCards;
-		std::vector<std::string> captionLines;
-		std::function<void(int)> focusCb;
-		int inUse;
-		PopoverPlace place;
-		int panelWidth, panelHeight, rowHeight;
-};
-
-/**
- * Splits a sentence into lines of at most `max` characters, at spaces, and appends them to `lines`: for the panes and
- * captions of a popover, which cannot wrap text (a label does not wrap).
- */
-void Popover_Wrap(std::vector<std::string>& lines, const std::string& text, size_t max);
 
 #endif

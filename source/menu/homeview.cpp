@@ -448,13 +448,13 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	HomeSettings * hs = &settings;
 	quickRow(quick, ICON_GAUGE, "Speed", [hs]{ return hs->speedNote(); },
 		stepper([hs]{ return hs->speed(); }, [hs](bool up){ hs->stepSpeed(up); }, "- slows DOS down, + speeds it up (CPU cycles)"));
-	quick.add(Popover_Divider(ui, 256));
+	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
 		stepper([hs]{ return hs->frameskip(); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
-	quick.add(Popover_Divider(ui, 256));
+	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, ICON_ASPECT, "Aspect", []{ return std::string("4:3 monitor"); },
 		choice("Corrected", "Square", [hs]{ return hs->aspectCorrected(); }, [hs](bool c){ hs->setAspectCorrected(c); }, "Corrected draws the picture 4:3 like a real monitor. Square keeps pixels square"));
-	quick.add(Popover_Divider(ui, 256));
+	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
 		choice("Sharp", "Smooth", [hs]{ return hs->filterSharp(); }, [hs](bool sharp){ hs->setFilterSharp(sharp); }, "Sharp keeps pixel edges crisp. Smooth blends them"));
 	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, bodyH);

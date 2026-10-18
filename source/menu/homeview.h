@@ -23,7 +23,7 @@
 #include <string>
 #include "libgui/Gui.h"
 #include "menupage.h"
-#include "popover.h"
+#include "menupopover.h"
 
 /** What the quick settings read and change. All of them take effect at once. */
 class HomeSettings

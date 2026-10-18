@@ -459,7 +459,7 @@ void TargetChooserView::optionRows(GuiLayout& list, TARGET kind, const std::vect
 		std::string label = names[(size_t)code];
 		if(!label.empty())
 			label[0] = (char)toupper((unsigned char)label[0]);
-		GuiCard& row = Popover_Row(ui, w, h, label, current.kind == kind && current.code == code);
+		GuiCard& row = MenuPopover_Row(ui, w, h, label, current.kind == kind && current.code == code);
 		row.onClick([this, kind, code]{
 			picked = BindingTarget(kind, code);
 			done = true;
@@ -473,7 +473,7 @@ void TargetChooserView::targetRows(GuiLayout& list, const std::vector<BindingTar
 	for(size_t i = 0; i < targets.size(); i++)
 	{
 		const BindingTarget t = targets[i];
-		GuiCard& row = Popover_Row(ui, w, h, t.describe(), t == current);
+		GuiCard& row = MenuPopover_Row(ui, w, h, t.describe(), t == current);
 		row.onClick([this, t]{
 			picked = t;
 			done = true;
@@ -700,7 +700,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	}
 
 	{
-		GuiCard& clear = Popover_Row(ui, rightW, rowH, "Leave unassigned", now.kind == TARGET::NONE);
+		GuiCard& clear = MenuPopover_Row(ui, rightW, rowH, "Leave unassigned", now.kind == TARGET::NONE);
 		clear.onClick([this]{
 			picked = BindingTarget();
 			done = true;
@@ -723,14 +723,14 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 		bodyH = std::max(bodyH, panels[i].height);
 	const int headH = 24, footH = 26;
 	panelHeight = 2 * pad + headH + 7 + bodyH + 8 + footH;
-	place = Popover_Place(anchor, panelWidth, panelHeight, sw, sh);
+	place = Popover_Place(anchor, panelWidth, panelHeight, sw, sh, MenuPopover_Insets());
 
 	// the kinds: plain rows, the one showing is filled
 	GuiLayout& list = ui.column().gap(rowGap).size(leftW, bodyH);
 	for(size_t i = 0; i < panels.size(); i++)
 	{
 		const int idx = (int)i;
-		GuiCard& row = Popover_Row(ui, leftW, kindH, panels[i].name, false, false);
+		GuiCard& row = MenuPopover_Row(ui, leftW, kindH, panels[i].name, false, false);
 		row.onFocus([this, idx]{ showCategory(idx); });
 		row.onClick([this, idx]{ showCategory(idx); });
 		kindCards.push_back(&row);
@@ -760,7 +760,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	// the head says what is being set and what it does now; the foot says what the row under the cursor is, and offers the preset's default
 	GuiLabel& title = ui.label(GuiFormat("What should %s do?", controlName).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
-	GuiCard& close = Popover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
+	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
 	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
 	hint.setMaxWidth(inner - 74);
 	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
@@ -772,7 +772,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 
 	GuiLayout& content = ui.column().size(inner, panelHeight - 2 * pad)
 		.add(ui.row().size(inner, headH).align(LAYOUT_ALIGN::CENTRE).add(title).addSpace().add(nowLabel).addGap(8).add(close))
-		.add(Popover_Divider(ui, inner))
+		.add(MenuPopover_Divider(ui, inner))
 		.addGap(6)
 		.add(ui.row().size(inner, bodyH).gap(gap).align(LAYOUT_ALIGN::START).add(list).add(stack))
 		.addGap(8)
@@ -780,7 +780,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(pad, pad).size(panelWidth, panelHeight);
 	panel.add(content);
-	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight, anchor);
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight, anchor, MenuPaletteCurrent().surfaceRaised);
 
 	// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
 	ui.bind([this, player]{
@@ -825,7 +825,7 @@ std::vector<PickerItem> Picker_EmulatedItems(std::vector<int> * index)
 		PickerItem it;
 		it.name = modes[i].name;
 		it.current = (int)i == m.currentEmulated();
-		Popover_Wrap(it.lines, modes[i].description, 44);
+		MenuPopover_Wrap(it.lines, modes[i].description, 44);
 		// (most descriptions already give the buttons: do not say it twice)
 		if(modes[i].joysticks > 0 && modes[i].description.find("button") == std::string::npos)
 			it.lines.push_back(GuiFormat("%d buttons, %d axes each.", modes[i].buttons, modes[i].axes));
@@ -889,7 +889,7 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 		PickerItem it;
 		it.name = presets[i].name;
 		it.current = inUse;
-		Popover_Wrap(it.lines, presets[i].description, 44);
+		MenuPopover_Wrap(it.lines, presets[i].description, 44);
 		describe(it, (int)i);
 		items.push_back(it);
 		index.push_back((int)i);
@@ -978,7 +978,7 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& running, std::vect
 		PickerItem it;
 		it.name = running;
 		it.current = true;
-		Popover_Wrap(it.lines, "These buttons load by themselves when " + running + " starts.", 44);
+		MenuPopover_Wrap(it.lines, "These buttons load by themselves when " + running + " starts.", 44);
 		items.push_back(it);
 		kinds.push_back(AttachChoice::RUNNING);
 	}
@@ -986,7 +986,7 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& running, std::vect
 		PickerItem it;
 		it.name = "No program";
 		it.current = running.empty();
-		Popover_Wrap(it.lines, "Load it yourself from the Load button.", 44);
+		MenuPopover_Wrap(it.lines, "Load it yourself from the Load button.", 44);
 		items.push_back(it);
 		kinds.push_back(AttachChoice::NONE);
 	}
@@ -994,7 +994,7 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& running, std::vect
 		PickerItem it;
 		it.name = "Type a name";
 		it.current = false;
-		Popover_Wrap(it.lines, "For a program that is not running now.", 44);
+		MenuPopover_Wrap(it.lines, "For a program that is not running now.", 44);
 		items.push_back(it);
 		kinds.push_back(AttachChoice::TYPED);
 	}
@@ -1142,7 +1142,7 @@ int AskScreen(const char * title, const std::vector<std::string>& answers, const
 		PickerItem it;
 		it.name = answers[i];
 		it.current = false;
-		Popover_Wrap(it.lines, detail, 44);
+		MenuPopover_Wrap(it.lines, detail, 44);
 		items.push_back(it);
 	}
 	return PickerScreen(title, items, anchor);

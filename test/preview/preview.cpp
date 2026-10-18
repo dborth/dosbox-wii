@@ -10,7 +10,7 @@
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
 #include "menu/menuart.h"
-#include "menu/popover.h"
+#include "menu/menupopover.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -483,39 +483,39 @@ int main(int argc, char ** argv)
 	// ---- popovers: placement, size and what they show
 	{
 		// below its anchor when it fits, lined up with the nearer edge, inside the margins
-		PopoverPlace p = Popover_Place(PopoverAnchor(400, 60, 150, 32), 280, 200, 640, 480);
+		PopoverPlace p = Popover_Place(PopoverAnchor(400, 60, 150, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.y == 60 + 32 + 6);
 		EXPECT(p.x == 400 + 150 - 280);				// right half: right edges line up
-		p = Popover_Place(PopoverAnchor(60, 40, 100, 32), 280, 200, 640, 480);
+		p = Popover_Place(PopoverAnchor(60, 40, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 60);								// left half: left edges line up
-		p = Popover_Place(PopoverAnchor(60, 40, 100, 32, PopoverAnchor::RIGHT_MARGIN), 280, 200, 640, 480);
+		p = Popover_Place(PopoverAnchor(60, 40, 100, 32, PopoverAnchor::RIGHT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);
-		p = Popover_Place(PopoverAnchor(300, 40, 100, 32, PopoverAnchor::LEFT_MARGIN), 280, 200, 640, 480);
+		p = Popover_Place(PopoverAnchor(300, 40, 100, 32, PopoverAnchor::LEFT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == MENU_PAGE_MARGIN);
-		p = Popover_Place(PopoverAnchor(560, 400, 100, 32), 280, 200, 640, 480);
+		p = Popover_Place(PopoverAnchor(560, 400, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);	// kept inside the margin
 		EXPECT(p.y == 400 - 200 - 6);						// no room below a footer chip: it comes out of the top of it
-		p = Popover_Place(PopoverAnchor(100, 200, 120, 30), 280, 280, 640, 480);
+		p = Popover_Place(PopoverAnchor(100, 200, 120, 30), 280, 280, 640, 480, MenuPopover_Insets());
 		EXPECT(p.y >= MENU_BAR_TOP_H && p.y + 280 <= 480 - MENU_BAR_BOTTOM_H);	// a row in the middle of the page: kept in the band
 		// the tail points at the anchor: up from a panel under it, down from one over it, sideways from one beside it
 		{
-			PopoverPlace under = Popover_Place(PopoverAnchor(400, 20, 150, 40), 280, 200, 640, 480);
+			PopoverPlace under = Popover_Place(PopoverAnchor(400, 20, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
 			PopoverTail t = Popover_Tail(PopoverAnchor(400, 20, 150, 40), under, 280, 200);
 			EXPECT(t.shown && t.direction == POPOVER_TAIL_UP && t.y + t.h == under.y + 1);
 			EXPECT(t.x >= under.x && t.x + t.w <= under.x + 280);
-			PopoverPlace over = Popover_Place(PopoverAnchor(400, 420, 150, 40), 280, 200, 640, 480);
+			PopoverPlace over = Popover_Place(PopoverAnchor(400, 420, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
 			t = Popover_Tail(PopoverAnchor(400, 420, 150, 40), over, 280, 200);
 			EXPECT(t.shown && t.direction == POPOVER_TAIL_DOWN && t.y == over.y + 200 - 1);
 			PopoverAnchor row(60, 200, 170, 30, PopoverAnchor::RIGHT_MARGIN);
-			PopoverPlace beside = Popover_Place(row, 380, 270, 640, 480);
+			PopoverPlace beside = Popover_Place(row, 380, 270, 640, 480, MenuPopover_Insets());
 			t = Popover_Tail(row, beside, 380, 270);
 			EXPECT(t.shown && t.direction == POPOVER_TAIL_LEFT);
 			EXPECT(t.y >= beside.y && t.y + t.h <= beside.y + 270);
 			PopoverAnchor covered(300, 200, 170, 30, PopoverAnchor::RIGHT_MARGIN);
-			EXPECT(!Popover_Tail(covered, Popover_Place(covered, 380, 270, 640, 480), 380, 270).shown);	// the panel covers the anchor: no tail
+			EXPECT(!Popover_Tail(covered, Popover_Place(covered, 380, 270, 640, 480, MenuPopover_Insets()), 380, 270).shown);	// the panel covers the anchor: no tail
 			EXPECT(!Popover_Tail(PopoverAnchor(), under, 280, 200).shown);
 		}
-		p = Popover_Place(PopoverAnchor(), 280, 200, 640, 480);
+		p = Popover_Place(PopoverAnchor(), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 180 && p.y == 140);				// no anchor: centred
 
 		// every list fits the band between the bars, with rows at least 28 px tall, and its caption fits its lines
