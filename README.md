@@ -44,11 +44,11 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
 
 ## Nightly Builds
 
-Every push builds automatically. Grab the latest continuous-integration build:
+Every push and pull request is built by [`build.yml`](.github/workflows/build.yml). Each push to `master` also replaces the **Pre-release** downloads below, so these are the latest `master` builds:
 
 | Platform    | Status                            | Download                          |
 |-------------|-----------------------------------|-----------------------------------|
-| Wii / vWii  | [![Build Status][Build]][Actions] | [![Download][Download]][dosbox-wii]   |
+| Wii         | [![Build Status][Build]][Actions] | [![Download][Download]][dosbox-wii]   |
 | Wii U       | [![Build Status][Build]][Actions] | [![Download][Download]][dosbox-wiiu]  |
 
 [Actions]: https://github.com/dborth/dosbox-wii/actions/workflows/build.yml
@@ -57,7 +57,7 @@ Every push builds automatically. Grab the latest continuous-integration build:
 [dosbox-wii]: https://github.com/dborth/dosbox-wii/releases/download/Pre-release/DOSBox-Wii.zip
 [dosbox-wiiu]: https://github.com/dborth/dosbox-wii/releases/download/Pre-release/DOSBox-WiiU.zip
 
-> The Wii build also runs in **vWii**, the Wii U's built-in Wii mode. The Wii U build is a separate, **native** Wii U (Aroma) application — see [Wii U](#wii-u).
+> The Wii U's built-in Wii mode (**vWii**) runs Wii software, so the Wii build is the one to try there; see [Wii](#wii). The Wii U build is a separate, **native** Wii U application — see [Wii U](#wii-u).
 
 ---
 
@@ -105,9 +105,9 @@ DOS sees the `DOSBox` folder as drive **C:**, so put your games inside it. Every
 ### Wii
 
 1. Follow the **[Wii Homebrew Guide](https://wii.hacks.guide/)** if you haven't already installed the Homebrew Channel. This is a one-time setup per console.
-2. Download the Wii build (`DOSBox-Wii.zip` above) and extract it to the root of your SD card. This adds:
-   - `apps/dosbox-wii/` — `boot.dol`, `icon.png` and `meta.xml`, which the Homebrew Channel launches.
-   - `DOSBox/` — the (empty) folder for your games.
+2. Download the Wii build (`DOSBox-Wii.zip` above) and extract it to the root of your SD card. The zip holds:
+   - `apps/dosbox-wii/` — `boot.dol` (the program), `icon.png` and `meta.xml` (the name, icon and description the Homebrew Channel shows).
+   - `DOSBox/` — an empty folder for your games. (DOSBox Wii makes it itself on first run if it isn't there; see [above](#all-platforms-sd-card--folder-layout).)
 3. Copy your DOS games into `DOSBox/`.
 4. Insert the SD card, open the **Homebrew Channel**, and launch **DOSBox Wii**.
 
@@ -122,17 +122,21 @@ SD:/
     └── ...
 ```
 
-You will want a **Wii Remote** to start with. A USB keyboard makes DOS much easier to use; without one, use the [on-screen keyboard](#home-screen) and a [controller preset](#setting-up-a-controller).
+The app is the single `boot.dol`; its font, language text and images are built into it.
 
-The Wii build runs unchanged in **vWii** (launch it from the Homebrew Channel inside Wii mode on a Wii U). The Wii build only reads a GamePad if libogc2 reports one, which has not been tested in vWii; use the native build below for GamePad support.
+When it starts, the Wii build looks at the IOS it is running on. If that isn't IOS 58 or 61, and the loader's preferred IOS is one of those, it reloads into it. (The USB drive code is written for IOS 58.) It carries on with whatever IOS it has otherwise.
+
+**In vWii**, launch it the same way from the Homebrew Channel in Wii mode. The Wii build recognises a Wii U, and reads the Wii U GamePad as player 1 when libogc2's GamePad support (WiiDRC) starts; see [Wii and Wii U](#wii-and-wii-u). Neither this nor storage has been tested in vWii.
+
+To start, a USB keyboard or any supported controller will do. DOSBox Wii opens at the DOS prompt, and the [menu](#opening-and-closing-it) opens with **Home** (or **L + R + Plus**) and has an on-screen keyboard; see [Controls](#controls) for the controllers and their buttons.
 
 ### Wii U
 
-The native Wii U build is a dedicated Aroma application (`.wuhb`).
+The native Wii U build is a `.wuhb` application for Aroma, installed as **DOSBox Wii U** (short name *DOSBox*).
 
 1. Follow the **[Wii U Homebrew Guide](https://wiiu.hacks.guide/)** to install **Aroma** if you haven't already. One-time setup per console.
-2. Download the Wii U build (`DOSBox-WiiU.zip` above). Copy the `dosbox-wiiu` folder (it contains `dosbox-wiiu.wuhb`) into `wiiu/apps/` on your SD card. DOSBox Wii creates the `DOSBox/` folder for your games at the SD card root on first run; you can also make it yourself and fill it first.
-3. Insert the SD card and turn on your Wii U. With Aroma installed, **DOSBox Wii** appears as its own icon on the Wii U Menu.
+2. Download the Wii U build (`DOSBox-WiiU.zip` above). Copy the `dosbox-wiiu` folder from it into `wiiu/apps/` on your SD card. The folder holds `dosbox-wiiu.wuhb`.
+3. Put the SD card in the console and turn it on. **DOSBox Wii U** is then an app you can start from Aroma.
 
 ```text
 SD:/
@@ -144,15 +148,25 @@ SD:/
     └── ...
 ```
 
-> ⚠️ **Run the latest Aroma.** This build is only tested against the current Aroma release. If something looks wrong, update Aroma first.
+The zip does not contain a `DOSBox/` folder. DOSBox Wii creates it at the SD card root on first run, or you can make it yourself and fill it first.
 
-**USB drives need Mocha.** On the native Wii U build, USB storage (FAT32, exFAT and NTFS) is reached through **[Mocha](https://github.com/wiiu-env/MochaPayload)**, an optional part of an Aroma setup. If Mocha isn't there, USB drives are not available at all, but the SD card still works. USB drives are mounted from *Settings → Drives* (see [Mounting other drives](#mounting-other-drives)).
+**You need an SD card in the console.** USB drives are not mounted when DOSBox Wii starts, so the `DOSBox` folder, your config and your games are on the SD card. USB drives are for extra DOS drives, mounted from *Settings → Drives* (see [Mounting other drives](#mounting-other-drives)).
+
+**USB drives need Mocha.** USB storage (FAT32, exFAT and NTFS) is reached through **[Mocha](https://github.com/wiiu-env/MochaPayload)**, an optional part of an Aroma setup. If DOSBox Wii can't start it (the console isn't running Aroma or a compatible setup, or Mocha isn't installed), USB drives are not available at all; the SD card still works.
 
 ---
 
 ## First Run
 
-On launch DOSBox Wii finds the `DOSBox` folder (see [above](#all-platforms-sd-card--folder-layout)) and reads a config file (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)). If it finds none, it writes a default `dosbox.conf` into the folder and uses that. It then mounts the folder as drive **C:**, runs any `[autoexec]` lines, and shows the DOS prompt (`Z:\>`).
+DOSBox Wii starts like this, in order:
+
+1. The console is set up: video, audio, controllers and storage.
+2. It finds the `DOSBox` folder (see [above](#all-platforms-sd-card--folder-layout)), making one if none exists.
+3. It reads a config file (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)). If it finds none, it writes a default `dosbox.conf` into the `DOSBox` folder and reads that.
+4. It mounts the `DOSBox` folder as drive **C:**.
+5. DOSBox starts. There is no splash screen or menu first: the first thing on screen is DOSBox's own welcome banner, then any `[autoexec]` commands, then the DOS prompt (`Z:\>`).
+
+So the second launch looks like the first, except that the `dosbox.conf` it reads is the one the first launch wrote.
 
 To get to your games:
 
@@ -161,6 +175,8 @@ C:
 cd mygame
 game.exe
 ```
+
+The welcome banner is DOSBox's stock text. Its hints about **Ctrl+F11**, **Ctrl+F12** and **Ctrl+F1** are for a USB keyboard (cycles down, cycles up, and DOSBox's key mapper); cycles are also on the [home screen](#home-screen). It also points to a README "in the DOSBox directory" that is not there.
 
 If no storage device has a `DOSBox` folder or lets DOSBox Wii create one, DOSBox still starts, on its built-in settings, with no drive C:. It does not tell you why; check that the SD card is in and not write-protected.
 
