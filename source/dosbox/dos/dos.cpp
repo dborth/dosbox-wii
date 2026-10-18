@@ -1248,6 +1248,10 @@ static DOS* test;
 
 void DOS_ShutDown(Section* /*sec*/) {
 	delete test;
+	/* DOS_SetupDevices() adds CON, NUL and the others to this table and nothing takes them out again, so a restart
+	 * would find them still there (and run out of slots on the third run). Forgotten, not deleted: other modules
+	 * keep pointers to some of them. */
+	for (Bitu i=0;i<DOS_DEVICES;i++) Devices[i]=0;
 }
 
 void DOS_Init(Section* sec) {

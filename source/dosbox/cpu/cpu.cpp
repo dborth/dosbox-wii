@@ -2179,6 +2179,9 @@ class CPU: public Module_base {
 private:
 	static bool inited;
 public:
+	/* The constructor does its set-up once (inited) and only re-reads the config after that, which is what a
+	 * live change of the cpu section relies on. A restart needs the whole set-up again. */
+	static void ForgetInit(void) { inited=false; }
 	CPU(Section* configuration):Module_base(configuration) {
 		if(inited) {
 			Change_Config(configuration);
@@ -2408,9 +2411,16 @@ void CPU_ShutDown(Section* sec) {
 	delete test;
 }
 
+/* Not changeable on the fly: only runs when the whole config is destroyed (a restart), not when a section is
+ * re-initialised from the menu */
+static void CPU_ForgetInit(Section* /*sec*/) {
+	CPU::ForgetInit();
+}
+
 void CPU_Init(Section* sec) {
 	test = new CPU(sec);
 	sec->AddDestroyFunction(&CPU_ShutDown,true);
+	sec->AddDestroyFunction(&CPU_ForgetInit,false);
 }
 //initialize static members
 bool CPU::inited=false;

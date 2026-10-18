@@ -707,4 +707,9 @@ void HomeMenu ()
 	}
 
 	GuiMeshCache::flush();
+
+	// flush() hands the meshes to the video driver, which frees them once the GPU has finished a frame. They live in
+	// the menu heap, which goes when EnterMenu() switches the memory mode back, so draw a frame now rather than
+	// leave the driver holding pointers into it (it freed them on the next menu entry, into whatever was there)
+	platform->getVideo()->renderMenu();
 }
