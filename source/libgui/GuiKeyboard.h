@@ -46,8 +46,8 @@ class GuiKeyboard : public GuiWindow
 		GuiButton * keyBtn[KB_ROWS][KB_COLUMNS];
 		GuiShape * keyImg[KB_ROWS][KB_COLUMNS];
 		GuiText * keyTxt[KB_ROWS][KB_COLUMNS];
-		GuiSound * keySoundOver;
-		GuiSound * keySoundClick;
+		GuiSound * keySoundOver = nullptr;
+		GuiSound * keySoundClick = nullptr;
 		GuiTrigger * trigA;
 		Key keys[KB_ROWS][KB_COLUMNS]; // two chars = less space than one pointer
 };
