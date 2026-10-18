@@ -19,6 +19,7 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
   - [The DOSBox folder and C:](#the-dosbox-folder-and-c)
   - [Mounting other drives](#mounting-other-drives)
   - [dosbox.conf](#dosboxconf)
+  - [Other files DOSBox Wii creates](#other-files-dosbox-wii-creates)
 - [The Home Menu](#the-home-menu)
   - [Opening and closing it](#opening-and-closing-it)
   - [Home screen](#home-screen)
@@ -70,7 +71,7 @@ Every push builds automatically. Grab the latest continuous-integration build:
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad** on the native Wii U build
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
 - Our own video output: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines (on the Wii, in 480-line modes), zoom and shift, and a widescreen setting on the Wii
-- Mounts SD cards and USB drives as DOS drives, with hot-plug, from a **Drives** screen in the menu
+- Mounts SD cards and USB drives as DOS drives from a **Drives** screen in the menu, which also picks up drives plugged in or removed while it is open
 - Saves your settings back to `dosbox.conf` from the menu (*Settings → Save*), keeping the previous version as `dosbox.conf.bak`
 - Open source
 
@@ -80,18 +81,26 @@ Every push builds automatically. Grab the latest continuous-integration build:
 
 ### All Platforms: SD Card & Folder Layout
 
-DOSBox Wii keeps its files in a folder named `DOSBox` at the root of a storage device. It looks on the SD card first, then USB drives 1 to 3, and uses the first one that already has a `DOSBox` folder. If none has one, it creates the folder on the first usable device. (The folder is found by looking, not by where the app was launched from.)
+DOSBox Wii keeps its files, and your DOS games, in a folder named `DOSBox`. When it starts it looks at the SD card, then USB drives 1, 2 and 3, in that order, and uses the first one that **already has** a `DOSBox` folder (capital letters don't matter on FAT). If none has one, it creates `DOSBox` on the first device that lets it. Where the app was launched from makes no difference.
 
-Format your SD card as **FAT32** — it is the most reliable, best-tested option and the one this guide assumes.
+- On the **Wii**, a `DOSBox` folder on a USB drive is used in preference to an SD card that has none.
+- On the **Wii U**, USB drives are not mounted yet when this check runs (they are mounted from the *Drives* screen), so the folder is always on the SD card.
 
-Put your DOS games inside the `DOSBox` folder; DOS sees that folder as drive **C:**:
+Format your SD card and USB drives as **FAT32**. It is what the Wii build recommends and the one this guide assumes (the Wii U build can also read exFAT and NTFS USB drives).
+
+DOS sees the `DOSBox` folder as drive **C:**, so put your games inside it. Everything else in the folder is made by DOSBox Wii as it is needed (see [Other files](#other-files-dosbox-wii-creates)):
 
 ```text
-SD:/DOSBox/
-├── dosbox.conf      ← created on first run; see "dosbox.conf" below
-├── Setups/          ← saved controller setups (created when you save one)
-└── ...              ← your DOS games and files: this is drive C:
+<device>/DOSBox/                 ← drive C:
+├── dosbox.conf                  ← first run, when no config file is found
+├── dosbox.conf.bak              ← after Settings → Save over an existing file
+├── mapper-SVN-r4301.map         ← after you change a controller button
+├── Setups/                      ← after you save a setup
+├── capture/                     ← after a wave recording (Ctrl+F6, USB keyboard)
+└── ...                          ← your DOS games and files
 ```
+
+`<device>` is `sd:` on the Wii and the SD card's root (`/vol/external01/`) on the Wii U.
 
 ### Wii
 
@@ -122,7 +131,7 @@ The Wii build runs unchanged in **vWii** (launch it from the Homebrew Channel in
 The native Wii U build is a dedicated Aroma application (`.wuhb`).
 
 1. Follow the **[Wii U Homebrew Guide](https://wiiu.hacks.guide/)** to install **Aroma** if you haven't already. One-time setup per console.
-2. Download the Wii U build (`DOSBox-WiiU.zip` above). Copy the `dosbox-wiiu` folder (it contains `dosbox-wiiu.wuhb`) into `wiiu/apps/` on your SD card, and create a `DOSBox/` folder at the SD card root for your games.
+2. Download the Wii U build (`DOSBox-WiiU.zip` above). Copy the `dosbox-wiiu` folder (it contains `dosbox-wiiu.wuhb`) into `wiiu/apps/` on your SD card. DOSBox Wii creates the `DOSBox/` folder for your games at the SD card root on first run; you can also make it yourself and fill it first.
 3. Insert the SD card and turn on your Wii U. With Aroma installed, **DOSBox Wii** appears as its own icon on the Wii U Menu.
 
 ```text
@@ -137,13 +146,13 @@ SD:/
 
 > ⚠️ **Run the latest Aroma.** This build is only tested against the current Aroma release. If something looks wrong, update Aroma first.
 
-**USB drives need Mocha.** On the native Wii U build, USB storage (FAT32, exFAT and NTFS) is reached through **[Mocha](https://github.com/wiiu-env/MochaPayload)**, which comes with the standard Aroma setup. If Mocha isn't available, USB drives won't appear, but the SD card still works.
+**USB drives need Mocha.** On the native Wii U build, USB storage (FAT32, exFAT and NTFS) is reached through **[Mocha](https://github.com/wiiu-env/MochaPayload)**, an optional part of an Aroma setup. If Mocha isn't there, USB drives are not available at all, but the SD card still works. USB drives are mounted from *Settings → Drives* (see [Mounting other drives](#mounting-other-drives)).
 
 ---
 
 ## First Run
 
-On the first launch DOSBox Wii finds your `DOSBox` folder, creates a default `dosbox.conf` in it if there isn't one, mounts the folder as drive **C:**, and starts at the DOS prompt (`Z:\>`).
+On launch DOSBox Wii finds the `DOSBox` folder (see [above](#all-platforms-sd-card--folder-layout)) and reads a config file (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)). If it finds none, it writes a default `dosbox.conf` into the folder and uses that. It then mounts the folder as drive **C:**, runs any `[autoexec]` lines, and shows the DOS prompt (`Z:\>`).
 
 To get to your games:
 
@@ -153,6 +162,8 @@ cd mygame
 game.exe
 ```
 
+If no storage device has a `DOSBox` folder or lets DOSBox Wii create one, DOSBox still starts, on its built-in settings, with no drive C:. It does not tell you why; check that the SD card is in and not write-protected.
+
 Open the [Home menu](#opening-and-closing-it) at any time (press **Home**) to change settings, set up your controller, or exit.
 
 ---
@@ -161,36 +172,147 @@ Open the [Home menu](#opening-and-closing-it) at any time (press **Home**) to ch
 
 ### The DOSBox folder and C:
 
-Drive **C:** is always the `DOSBox` folder described [above](#all-platforms-sd-card--folder-layout). Drive **Z:** is DOSBox's own virtual drive, as on a PC.
+Drive **C:** is always the `DOSBox` folder found at startup (see [above](#all-platforms-sd-card--folder-layout)). It is mounted just before DOS starts, as a read-write hard disk. Whatever the card's real size, DOS reports about 1 GB in total with about 250 MB free, and the volume label is `C_DRIVE`. If there is no `DOSBox` folder, there is no C:.
+
+Drive **Z:** is DOSBox's own virtual drive, as on a PC.
+
+Because C: exists before `[autoexec]` runs, an `[autoexec]` that mounts something else on `c` has to free the letter first: `mount -u c`.
 
 ### Mounting other drives
 
-Nothing else is mounted automatically. Two ways to add a drive:
+Nothing else is mounted for you. There are two ways to add a drive.
 
-- **From the menu:** *Settings → Drives* lists the SD card and USB drives the console currently sees. Press **A** on one to mount it on the first free drive letter, and **A** again to unmount it. Drives plugged in or removed while the screen is open show up by themselves. A DOS drive whose device has been removed is dropped automatically. Unmounting only works at the DOS prompt, because a running program may have files open.
-- **From DOS**, with the `MOUNT` command and a device prefix (`sd:/`, `usb:/`, `usb2:/`, `usb3:/`):
+#### From the menu: Settings → Drives
 
-  ```text
-  mount e usb:/
-  e:
-  dir
-  ```
+The screen has one row for each storage device, then a last row, **DOS drives**, listing every DOS drive and where it comes from (read-only; its help line scrolls).
 
-The Wii's DVD drive and network shares can't be mounted as DOS drives at this time.
+| Console | Rows |
+|---|---|
+| Wii | Always four: **SD Card**, **USB Mass Storage**, **USB Mass Storage 2**, **USB Mass Storage 3** |
+| Wii U | **SD Card** always; **USB Storage 1**, **2**, **3** only while that drive is mounted |
+
+What a row's value says, and what **A** does:
+
+| Value | Meaning | **A** |
+|---|---|---|
+| `Not available` | Nothing readable is in that slot (on the Wii, this includes a drive in a format it can't mount) | Says "That drive is not available." |
+| `Not mounted` | The console can read it, and it isn't a DOS drive yet | Mounts it on the **first free letter from D to Y**, using the volume label (or `D_DRIVE`, `E_DRIVE`... if it has none) |
+| `D:  label` | Mounted as a DOS drive from this screen | Unmounts it. **Only at the DOS prompt** |
+
+A mounted row is the **whole device**, not the `DOSBox` folder: with the SD card on `D:`, your games are in `D:\DOSBox\`. You can mount while a program is running; you can't unmount then. A device is not ejected by unmounting it: only the DOS drive goes.
+
+If **A** can't do it, a message says why:
+
+| Message | Cause |
+|---|---|
+| That drive is not available. | The row's value is `Not available` |
+| Unmount at the DOS prompt, not while a program is running. | Unmounting needs the DOS prompt |
+| Could not unmount the drive. | DOS refused to remove the drive |
+| Too many drives are mounted. | Eight drives mounted from this screen already |
+| No drive letter is free. | D to Y are all in use |
+| Could not mount the drive. | DOS refused to mount it |
+
+**Hot-plug works only while this screen is open.** A background check runs about once a second while it is up (the rows refresh about twice a second), and at no other time. So:
+
+- On the **Wii**, SD and USB drives that are present at launch are already readable. A drive plugged in later becomes readable, and appears here, once you open this screen.
+- On the **Wii U**, USB drives are never mounted until this screen is open, including drives plugged in before launch. Open it and wait a moment for the row to appear.
+- When a device is removed, a DOS drive that this screen mounted from it is taken away, but only while the screen is open and DOS is at the prompt. Otherwise it stays until you next open the screen at the prompt.
+
+Drives you mount with `MOUNT` aren't tracked here: their row still says `Not mounted`, and pressing **A** would mount the same device again on another letter.
+
+#### From DOS: MOUNT
+
+`MOUNT` takes any folder the console can open, so use the device's prefix. The device has to be readable first (see above):
+
+| Device | Wii | Wii U |
+|---|---|---|
+| SD card | `sd:/` | `/vol/external01/` (no `sd:` prefix) |
+| USB drive 1 | `usb:/` | `usb1:/` |
+| USB drive 2 | `usb2:/` | `usb2:/` |
+| USB drive 3 | `usb3:/` | `usb3:/` |
+
+```text
+mount e usb:/
+e:
+dir
+```
+
+A subfolder works too (`mount e usb:/games`), and `mount -u e` removes the drive again. A folder that doesn't exist gives `Directory ... doesn't exist.` DOSBox Wii has no way to connect a network share or read a disc, so `dvd:/` and `smb:/` are never there to mount.
 
 ### dosbox.conf
 
-DOSBox reads `dosbox.conf` from the `DOSBox` folder (for example `sd:/DOSBox/dosbox.conf`). If it doesn't exist, a default one is generated on first run. It is the standard DOSBox format, with the usual `[cpu]`, `[sblaster]`, `[dos]`, `[autoexec]` and other sections, plus these additions on this build:
+#### Where DOSBox looks for dosbox.conf
+
+Normally one file is read, the first of these that exists:
+
+1. `dosbox.conf` in the program's working directory. DOSBox Wii doesn't set the working directory itself, so which folder this is depends on the launcher.
+2. `dosbox.conf` in the `DOSBox` folder (for example `sd:/DOSBox/dosbox.conf`).
+
+If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but neither launcher entry in this repository passes any. To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
+
+Whichever file was read is the one **Settings → Save** writes back to, with the previous version kept as `dosbox.conf.bak` (see [Saving](#saving)).
+
+Paths inside a config file that start with a device prefix (`sd:/...`, `usb:/...`) are used as written. Any other path, including a Wii U SD path starting `/vol/external01/`, is taken as relative to the folder of the config file. On the Wii U, write a bare file name for `mapperfile`.
+
+#### What is in the default file
+
+The default file holds every setting DOSBox Wii has, each with DOSBox's own comment above it, in this order:
 
 | Section | What it holds |
 |---|---|
-| `[display]` | Video output: `fit`, `aspect`, `filter`, `scanlines`, `zoomx`, `zoomy`, `shiftx`, `shifty`, `widescreen` |
-| `[sdl]` | `sensitivity` (mouse speed) and `mapperfile` (the key/button mapper file). `autolock` is ignored: the mouse is always captured |
-| `[render]` | `frameskip` only |
+| `[sdl]` | Mouse speed and the mapper file (below) |
+| `[display]` | Video output (below) |
+| `[dosbox]` | `language`, `machine` (default `svga_s3`), `captures`, `memsize` (1 to 63 MB, default 16) |
+| `[render]` | `frameskip` |
+| `[cpu]` | CPU core, type and cycles |
+| `[mixer]` | Mixer options |
+| `[sblaster]`, `[gus]`, `[speaker]` | Sound Blaster and OPL, Gravis Ultrasound, PC speaker, Tandy and Disney |
+| `[joystick]` | DOS joystick options |
+| `[dos]` | `xms`, `ems`, `umb`, `keyboardlayout` |
+| `[autoexec]` | Commands run at startup |
 
-Edit it with a text editor on your PC, or change settings from the menu and press **Save** on the Settings list; see [Saving](#saving). Saving regenerates the file from the running configuration (the first config file DOSBox loaded) and keeps the file it replaced as `dosbox.conf.bak`; comments you added by hand are lost from the new file.
+This build has no `[midi]`, `[serial]`, `[ipx]`, `[pci]` or `[debug]` section.
 
-Some settings (machine type, memory size, mixer options, `[sdl] mapperfile`) are only read when DOSBox starts. The menu shows them as **(next launch)** and cannot change them: edit `dosbox.conf` and relaunch.
+A conf from a PC build of DOSBox still loads. A section or setting this build doesn't have is ignored without a message: the line is read, matches nothing, and is dropped the next time you **Save**. (The lines under an unknown section header are read as part of the section above it, where a setting name that section doesn't have is ignored too.) A number outside its range is set to the nearest limit; a text value that isn't one of the listed choices falls back to the default.
+
+#### Settings this build adds or changes
+
+**`[display]`**: how the picture is drawn. These apply at once when changed from the menu, and are read at startup from the file.
+
+| Setting | Values | Default |
+|---|---|---|
+| `fit` | `fit` (as large as fits, keeping its shape), `integer` (the largest whole-number multiple), `fill` (stretched over the screen) | `fit` |
+| `aspect` | `corrected` (shape of a real monitor: 320x200 fills a 4:3 screen), `square` | `corrected` |
+| `filter` | `sharp`, `bilinear`, `nearest` | `bilinear` |
+| `scanlines` | 0 to 100 (percent; 0 is off) | 0 |
+| `zoomx`, `zoomy` | 50 to 200 (percent of normal size; used by `fit` and `fill`) | 100 |
+| `shiftx`, `shifty` | -100 to 100 (units of 1/640 of the screen width, and 1/480 of its height; negative is left or up) | 0 |
+| `widescreen` | `auto` (follow the console's setting), `4x3`, `16x9` | `auto` |
+
+`widescreen` has an effect on the Wii only, and `scanlines` only in 480-line modes on the Wii; see [Wii and Wii U](#wii-and-wii-u).
+
+**`[sdl]`**
+
+| Setting | Meaning | Default |
+|---|---|---|
+| `sensitivity` | Mouse speed in percent: `x,y`, each -1000 to 1000 (for example `100,-50`; the second number is the vertical speed and is optional) | `100` |
+| `mapperfile` | The file the controller buttons are saved in. Read once at startup | `mapper-SVN-r4301.map` |
+| `autolock` | **Ignored.** The mouse is always captured | `true` |
+
+**`[render]`** has `frameskip` only (0 to 10, default 0). An old `scaler`, `forced` or `aspect` line in `[render]` is ignored; the aspect setting is now `[display] aspect`.
+
+Everything else in `[cpu]`, `[sblaster]`, `[dos]` and the other sections is standard DOSBox r4301: see the comments in the file.
+
+### Other files DOSBox Wii creates
+
+| File or folder | Where | Made when |
+|---|---|---|
+| `dosbox.conf` | `DOSBox` folder | First launch with no config file found |
+| `dosbox.conf.bak` | Beside the config file | **Settings → Save** over an existing file. Each save replaces the older `.bak`, so it is always the version before the last save |
+| `dosbox.conf.tmp` | Beside the config file | During a save, and removed when it finishes. It is left behind only if a save was cut short, and removed by the next save |
+| `mapper-SVN-r4301.map` | Folder of the config file | You change a controller button, or save a [setup](#setups-saving-controls-per-game) |
+| `Setups/` (`name.conf`, `name.map`) | `DOSBox` folder | The first time you save a setup |
+| `capture/` | Folder of the config file (`[dosbox] captures`) | The first wave recording (**Ctrl+F6** on a USB keyboard) or raw capture. Screenshots are not built into this build |
 
 To start a game automatically and quit when it ends, use `[autoexec]`:
 
@@ -685,7 +807,7 @@ Most 386-era games run well; demanding 486 and Pentium-class games may not. If a
 
 ### A game closes DOSBox, crashes, or hangs
 
-- **Delete `dosbox.conf`** (from the `DOSBox` folder) to restore the default settings. A new one is created on next launch.
+- **Delete `dosbox.conf`** (from the `DOSBox` folder) to restore the default settings. A new one is created on next launch. (Settings → Save keeps the version before your last save as `dosbox.conf.bak`.)
 - **Disable the sound.** Use the sound setup program that came with the game, and/or set *Sound Blaster* to `none` and *Gravis Ultrasound* to off.
 - **Change some settings**, alone or in combination:
   - Fixed cycles (for example `fixed 10000`)
@@ -704,7 +826,7 @@ Press **Home** on a Wiimote, Classic Controller, Wii U Pro Controller or GamePad
 
 ### My USB drive doesn't show up
 
-Plugged-in drives appear on *Settings → Drives* by themselves, and must be mounted from there (or with `MOUNT`) before DOS can use them. On the native Wii U build, USB needs **Mocha** (see [Wii U](#wii-u)).
+Open *Settings → Drives*: it only notices drives plugged in or removed while it is open, so wait a moment for the row to appear, then press **A** on it to mount it (or use `MOUNT`; see [Mounting other drives](#mounting-other-drives)). On the Wii U, USB drives are never mounted until that screen has been open, and USB needs **Mocha** (see [Wii U](#wii-u)). A drive in a format the console can't read shows as `Not available` (Wii) or doesn't appear (Wii U): use FAT32.
 
 ### A setting says "(DOS prompt only)" or "(next launch)"
 
@@ -714,10 +836,10 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 
 ## Known Limitations
 
-- DVD and network shares can't be mounted as DOS drives.
-- No CD audio.
-- No MIDI output: a game that selects MIDI will play silence. Use Sound Blaster FM music instead.
-- Modem and IPX networking are not compiled in, and the serial port is a dummy.
+- Disc drives and network shares can't be used: there is no screen to connect a share or read a disc, so `dvd:/` and `smb:/` don't exist for `MOUNT`.
+- No CD audio, and no CD drive is reported to DOS.
+- No MIDI or MPU-401, no serial ports and no modem or IPX networking: none of these is compiled in, and there is no `[midi]`, `[serial]` or `[ipx]` section. A game that looks for a MIDI device finds none; use Sound Blaster FM music instead.
+- Drives are mounted from the *Drives* screen (or `MOUNT`), and the screen watches for drives being plugged in or removed only while it is open.
 - GameCube controllers are not supported on the Wii U build.
 - Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
 - A saved setup is loaded by hand (*SETUP → Load a setup*); it does not load by itself when its program starts.
