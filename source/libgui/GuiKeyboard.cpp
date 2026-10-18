@@ -262,8 +262,10 @@ GuiKeyboard::~GuiKeyboard()
 	delete keyEnter;
 	delete keySpaceImg;
 	delete keySpace;
-	delete keySoundOver;
-	delete keySoundClick;
+	if(keySoundOver)
+		delete keySoundOver;
+	if(keySoundClick)
+		delete keySoundClick;
 	delete trigA;
 
 	for(int i=0; i<KB_ROWS; i++)
