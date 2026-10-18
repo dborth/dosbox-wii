@@ -79,10 +79,13 @@ class PopoverBackdrop : public GuiButton
 		void setPanel(GuiElement * panelElement) { panel = panelElement; }
 		/** The trigger that means "close" (B), which counts wherever the pointer is. */
 		void setCancel(GuiTrigger * t) { cancel = t; }
+		/** The trigger whose press, with the pointer off the panel, closes the popover. */
+		void setPrimary(GuiTrigger * t) { primary = t; }
 		void update(InputController * c) override;
 	private:
 		GuiElement * panel;
 		GuiTrigger * cancel;
+		GuiTrigger * primary;
 		bool closing;
 };
 

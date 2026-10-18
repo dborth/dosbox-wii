@@ -54,7 +54,7 @@ GuiShape& Popover_Divider(UiScope& ui, int w)
 	return line;
 }
 
-PopoverBackdrop::PopoverBackdrop(int w, int h) : GuiButton(w, h), panel(nullptr), cancel(nullptr), closing(false)
+PopoverBackdrop::PopoverBackdrop(int w, int h) : GuiButton(w, h), panel(nullptr), cancel(nullptr), primary(nullptr), closing(false)
 {
 	setSelectable(false);
 	setRumble(false);
@@ -74,19 +74,20 @@ void PopoverBackdrop::update(InputController * c)
 			return;
 		closing = false;	// the screen took the click (or ignored it) and reset the button
 	}
-	GuiButton::update(c);
-	if(getState() != STATE::CLICKED || !c || !panel)
+	if(!c || getState() == STATE::CLICKED || getState() == STATE::DISABLED)
 		return;
-	// Every controller gets its own pass through update(), and a click made in one pass is still standing in the next.
-	// Only the controller that clicked can say whether the click was outside the panel: judging it by another
-	// controller's cursor (which may well be over the panel) cancelled the click, so with two controllers connected
-	// clicking away did nothing.
-	if(c->getChannel() != getStateChan())
+	if(parentElement && parentElement->getState() == STATE::DISABLED)
 		return;
+
+	// A click anywhere outside the panel, or B, closes it.
+	// Each controller can click for itself here.
 	const InputPadData& pad = c->getPadData();
-	const bool byCancel = cancel && cancel->isClicked(c);
-	if(!byCancel && pad.validPointer && panel->isInside(pad.cursor_x, pad.cursor_y))
-		resetState();
+	const int chan = c->getChannel();
+	bool leave = cancel && cancel->isClicked(c);
+	if(!leave && primary && primary->isClicked(c) && pad.validPointer && chan >= 0)
+		leave = !panel || !panel->isInside(pad.cursor_x, pad.cursor_y);
+	if(leave)
+		setState(STATE::CLICKED, chan);
 }
 
 namespace {
@@ -210,7 +211,9 @@ GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCa
 	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
 	PopoverBackdrop& backdrop = ui.make<PopoverBackdrop>(sw, sh);
-	backdrop.setTrigger(0, ui.trigger());
+	GuiTrigger * click = ui.trigger();
+	backdrop.setTrigger(0, click);
+	backdrop.setPrimary(click);
 	backdrop.setTrigger(1, &cancel);
 	backdrop.setCancel(&cancel);
 	backdrop.setPanel(&panel);

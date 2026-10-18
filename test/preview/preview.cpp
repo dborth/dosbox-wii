@@ -9,6 +9,7 @@
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
 #include "menu/menuart.h"
+#include "menu/popover.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -23,6 +24,7 @@ static void ApplyAll(int preset)
 }
 
 // The main window as HomeMenu builds it: the header and footer bars, with a page on top
+void Host_SetPressMask(int mask);
 struct Screen
 {
 	GuiWindow root;
@@ -836,6 +838,48 @@ int main(int argc, char ** argv)
 		ControllerConfigView single(0);
 		EXPECT(single.devices().size() == 1 && single.shownType() == PadType::CLASSIC);
 		SampleControls_ResetHardware();
+	}
+	{
+		// the popover backdrop covers the whole screen, so every pointer is always over it. With two pointers either
+		// player can click away, whichever controller the screen happens to update first (player 4 down to player 1)
+		PopoverBackdrop backdrop(640, 480);
+		struct Box : public GuiElement
+		{
+			Box() { width = 100; height = 100; }
+			void draw() override {}
+		};
+		Box panel;
+		panel.setPosition(200, 100);
+		backdrop.setPanel(&panel);
+		backdrop.setCancel(nullptr);
+		GuiTrigger click;
+		backdrop.setPrimary(&click);
+		InputController p1(0), p2(1);
+		InputPadData off, on;
+		off.validPointer = true; off.cursor_x = 40; off.cursor_y = 40;			// outside the panel
+		on.validPointer = true; on.cursor_x = 250; on.cursor_y = 150;			// over the panel
+		const auto frame = [&](const InputPadData& a, const InputPadData& b, int pressed) {
+			p1.update(a, 0.016f);
+			p2.update(b, 0.016f);
+			Host_SetPressMask(pressed);
+			backdrop.update(&p2);												// the screen updates the later players first
+			backdrop.update(&p1);
+			Host_SetPressMask(0);
+		};
+		frame(off, off, 1);														// player 1 clicks, both pointers off the panel
+		EXPECT(backdrop.getState() == STATE::CLICKED);
+		backdrop.resetState();
+		frame(off, off, 2);														// player 2 clicks
+		EXPECT(backdrop.getState() == STATE::CLICKED);
+		backdrop.resetState();
+		frame(on, off, 1);														// player 1 clicks on the panel: not a click away
+		EXPECT(backdrop.getState() != STATE::CLICKED);
+		frame(off, on, 1);														// player 1 clicks away while player 2 points at the panel
+		EXPECT(backdrop.getState() == STATE::CLICKED);
+		backdrop.resetState();
+		InputPadData lost = off; lost.validPointer = false;
+		frame(lost, off, 1);													// no pointer: a press is not a click away
+		EXPECT(backdrop.getState() != STATE::CLICKED);
 	}
 	{
 		// a hidden layout takes neither input nor the D-pad's selection (the chooser stacks its panels, and the hidden
