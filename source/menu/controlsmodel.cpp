@@ -305,6 +305,11 @@ bool Setup_SameName(const std::string& a, const std::string& b)
 	return true;
 }
 
+std::string Setup_ClipName(const std::string& name, size_t most)
+{
+	return name.size() <= most ? name : name.substr(0, most - 2) + "..";
+}
+
 std::string Setup_CleanProgram(const std::string& typed)
 {
 	size_t start = typed.find_last_of("/\\:");

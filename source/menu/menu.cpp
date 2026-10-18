@@ -28,6 +28,7 @@
 #include "osk.h"
 #include "menu.h"
 #include "controlsui.h"
+#include "controlssetupsui.h"
 #include "controlslive.h"
 #include "controlsmapper.h"
 #include "settings.h"

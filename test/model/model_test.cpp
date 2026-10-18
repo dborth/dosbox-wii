@@ -558,6 +558,10 @@ static void testSetupNames()
 	CHECK_EQ(Setup_CleanName("a/b\\c:d*e?f\"g<h>i|j"), "abcdefghij");
 	CHECK_EQ(Setup_CleanName("keen4e.exe"), "keen4eexe");
 	CHECK_EQ(Setup_CleanName(""), "");
+	CHECK_EQ(Setup_ClipName("Keen 4", 16), "Keen 4");
+	CHECK_EQ(Setup_ClipName("1234567890123456", 16), "1234567890123456");	// exactly as long as allowed: untouched
+	CHECK_EQ(Setup_ClipName("12345678901234567", 16), "12345678901234..");	// one over: cut to 16 with the ".."
+	CHECK_EQ(Setup_ClipName("", 16), "");
 	CHECK_EQ(Setup_CleanName("   "), "");
 	CHECK_EQ(Setup_CleanName("///"), "");
 	CHECK_EQ(Setup_CleanName("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwx");		// 24 characters

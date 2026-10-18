@@ -100,4 +100,15 @@ class PickerView : public GuiOverlay
  */
 void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, size_t max);
 
+/**
+ * Runs a PickerView as a popover over the screen that is showing (which the caller has disabled and which stays drawn),
+ * until a choice is made or it is closed. The index chosen, or -1. `preview` is told which item has the focus; `perFrame`
+ * runs every frame (for what must be checked while it is open).
+ */
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor,
+	std::function<void(int)> preview = nullptr, std::function<void()> perFrame = nullptr);
+
+/** A question with a few answers and a line of detail, as a popover (see MenuPopover_Pick). The index of the answer, or -1. */
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const PopoverAnchor& anchor);
+
 #endif

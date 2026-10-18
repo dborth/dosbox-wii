@@ -186,6 +186,8 @@ struct SetupInfo {
 std::string Setup_CleanName(const std::string& typed);
 /** Setup names are file names, and FAT ignores case: whether two names are the same setup. */
 bool Setup_SameName(const std::string& a, const std::string& b);
+/** A setup's name as it fits on a button: long ones are cut to `most` characters, ending "..". */
+std::string Setup_ClipName(const std::string& name, size_t most);
 /** A program name as typed ("c:\\games\\keen4e.exe"): the file name alone, upper case. Empty when there is none. */
 std::string Setup_CleanProgram(const std::string& typed);
 /** The name offered when saving: the running program without its extension ("KEEN4E"), or "My setup". */

@@ -4,6 +4,7 @@
 #include "libgui/Gui.h"
 #include "hostgfx.h"
 #include "menu/controlsui.h"
+#include "menu/controlssetupsui.h"
 #include "menu/homeview.h"
 #include "menu/controlsmodel.h"
 #include "samplecontrols.h"
@@ -709,7 +710,6 @@ int main(int argc, char ** argv)
 		Controls().setEmulated(0);
 		ApplyAll(1);
 		std::vector<int> index;
-		EXPECT(Picker_SetupItems(index).empty() || true);
 		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
 		Controls().saveSetup("Plain", "");
 		std::vector<PickerItem> items = Picker_SetupItems(index);

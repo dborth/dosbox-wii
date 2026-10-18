@@ -22,6 +22,7 @@
 #include <string>
 #include <functional>
 #include "libgui/Gui.h"
+#include "menu.h"
 
 /** Space kept clear at each side of the screen, for TVs that crop the picture. */
 #define MENU_PAGE_MARGIN	44
@@ -67,5 +68,43 @@ GuiCard& MenuPage_Section(UiScope& ui, int w);
 
 /** A button for the bars and the pages: Back, Reset. */
 GuiTextButton& MenuPage_Button(UiScope& ui, const char * text, int width = 104);
+
+// A full-screen page on the menu's main window, above the header and footer bars HomeMenu keeps there. It can be
+// taken off the window while another screen runs on top (a window only hands the D-pad to the topmost screen that way).
+class MenuScreenWindow
+{
+	public:
+		MenuScreenWindow(GuiElement& view) :
+			w(platform->getVideo()->getScreenWidth(), platform->getVideo()->getScreenHeight()),
+			shown(false)
+		{
+			w.append(&view);
+			show();
+		}
+		~MenuScreenWindow() { hide(); }
+		void show()
+		{
+			if(!shown)
+			{
+				mainWindow->append(&w);
+				shown = true;
+			}
+		}
+		void hide()
+		{
+			if(shown)
+			{
+				mainWindow->remove(&w);
+				shown = false;
+			}
+		}
+		GuiWindow& window() { return w; }
+		// A disabled screen stays drawn, dimmed (the menu's one look for "something is open over this"), and takes no
+		// input, so a modal put over it is the only thing the D-pad and pointer reach
+		void setEnabled(bool on) { w.setState(on ? STATE::DEFAULT : STATE::DISABLED); }
+	private:
+		GuiWindow w;
+		bool shown;
+};
 
 #endif

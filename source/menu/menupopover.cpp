@@ -6,6 +6,7 @@
  * See menupopover.h.
  ***************************************************************************/
 #include "menupopover.h"
+#include "menu.h"
 #include "menustyle.h"
 #include "menupage.h"
 #include "menuart.h"
@@ -264,4 +265,45 @@ void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, 
 		lines.push_back(text.substr(start, end - start));
 		start = end < text.size() && text[end] == ' ' ? end + 1 : end;
 	}
+}
+
+// ---- running one on the menu's main window
+
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor,
+	std::function<void(int)> preview, std::function<void()> perFrame)
+{
+	PickerView view(title, items, anchor);
+	if(preview)
+		view.onFocusChange(preview);
+	MenuScreenWindow screen(view);
+	// The screen under it still holds the focus, which only moves by itself when that screen is removed. Hand it over
+	// once the popover has been laid out: taking it steps the selection down, and that needs to know where things are.
+	UpdateGui();
+	mainWindow->changeFocus(&screen.window());
+	view.selectInUse(); // (taking the focus stepped the selection, from wherever it was)
+
+	while(true)
+	{
+		UpdateGui();
+		if(perFrame)
+			perFrame();
+		if(view.chosen())
+			return view.result();
+		if(view.backButton().getState() == STATE::CLICKED)
+			return -1;
+	}
+}
+
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const PopoverAnchor& anchor)
+{
+	std::vector<PickerItem> items;
+	for(size_t i = 0; i < answers.size(); i++)
+	{
+		PickerItem it;
+		it.name = answers[i];
+		it.current = false;
+		MenuPopover_Wrap(it.lines, detail, 44);
+		items.push_back(it);
+	}
+	return MenuPopover_Pick(title, items, anchor);
 }
