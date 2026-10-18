@@ -27,7 +27,9 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
 - [Controls](#controls)
   - [Supported devices](#supported-devices)
   - [Setting up a controller](#setting-up-a-controller)
+  - [Controls on each controller](#controls-on-each-controller)
   - [Keyboard & mouse](#keyboard--mouse)
+  - [The D-pad and the joystick](#the-d-pad-and-the-joystick)
   - [Setups: saving controls per game](#setups-saving-controls-per-game)
 - [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
@@ -62,9 +64,9 @@ Every push builds automatically. Grab the latest continuous-integration build:
 - DOSBox SVN r4301 core with the PowerPC **dynamic recompiler** (dynarec), two to four times faster than the normal core on the benchmark in [`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt)
 - A Home menu you can open at any time: speed, frameskip, aspect and filter at a glance, plus settings pages for Performance, Video, Audio, Keyboard & Mouse, and the DOS joystick
 - A **Status** page showing what DOSBox is actually doing (resolved CPU core, effective cycles, screen mode, audio rate, mounted drives, loaded config), with anything that differs from the default marked
-- Controller setup with a drawing of your controller, press-to-assign buttons, and built-in presets for common kinds of DOS game
-- **Setups**: save a game's controls and settings under a name and load them again later
-- Wiimote, Wiimote + Nunchuk, Classic Controller, GameCube Controller and Wii U Pro Controller support, plus the **Wii U GamePad** on the native Wii U build
+- Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
+- **Setups**: save every player's buttons and what DOS sees under a name, and load them again later
+- Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad** on the native Wii U build
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
 - Our own video output: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and 16:9 handling
 - Mounts SD cards and USB drives as DOS drives, with hot-plug, from a **Drives** screen in the menu
@@ -112,7 +114,7 @@ SD:/
 
 You will want a **Wii Remote** to start with. A USB keyboard makes DOS much easier to use; without one, use the [on-screen keyboard](#home-screen) and a [controller preset](#setting-up-a-controller).
 
-The Wii build runs unchanged in **vWii** (launch it from the Homebrew Channel inside Wii mode on a Wii U). The Wii U GamePad is not usable there; use the native build below for GamePad support.
+The Wii build runs unchanged in **vWii** (launch it from the Homebrew Channel inside Wii mode on a Wii U). The Wii build only reads a GamePad if libogc2 reports one, which has not been tested in vWii; use the native build below for GamePad support.
 
 ### Wii U
 
@@ -224,11 +226,11 @@ Choose **Resume** to go back to the game. Choose **Exit** to quit DOSBox. From D
 | **Frameskip** | More skipped frames makes heavy games faster, but choppier |
 | **Aspect** | *Corrected* draws the picture 4:3 like a real monitor; *Square* keeps pixels square |
 | **Filter** | *Sharp* keeps pixel edges crisp; *Smooth* blends them |
-| **Controllers** | Opens controller setup; see [Controls](#controls) |
+| **Controllers** | Shows the connected controllers. **Configure**, or a player's icon, opens controller setup; see [Controls](#controls) |
 | **Keyboard** | An on-screen keyboard for typing into DOS |
 | **Settings** | All options |
 | **Status** | What DOSBox is set to and doing right now |
-| **Setups** | Save or load the buttons and settings for this game |
+| **Setups** | Save or load every player's buttons and what DOS sees |
 | **Exit** / **Credits** | Quit DOSBox / who made this |
 
 The home screen also shows the controllers the console sees, with a battery level for each wireless one, and lights up icons for a connected keyboard and mouse.
@@ -241,13 +243,13 @@ The home screen also shows the controllers the console sees, with a battery leve
 | **Video** | Aspect, fit, filter, scanlines, zoom width/height, shift X/Y, widescreen |
 | **Audio** | Output rate, Sound Blaster type, OPL mode and rate, PC speaker, Tandy, Disney Sound Source, Gravis Ultrasound |
 | **Keyboard & Mouse** | Mouse speed (X and Y) |
-| **DOS joystick** | Joystick type, button wrap, dead zone, autofire, circular input, timed axes |
+| **DOS joystick** | Joystick type, button wrap, dead zone, autofire, circular input, swap axes 3 and 4, timed axes |
 | **Drives** | Mount and unmount SD and USB drives; see [above](#mounting-other-drives) |
 | **All settings** | Every other DOSBox option, one page per section (including the DOS keyboard layout under *DOS memory and keyboard*) |
 
 The **Save** button on the Settings page writes your changes to `dosbox.conf`.
 
-Not every setting can change while a program is running. Video, frameskip, cycles and CPU type apply immediately. **Audio, DOS joystick and the DOS memory settings apply only at the DOS prompt** (the row says so when it's unavailable). Settings that DOSBox reads only at startup are marked **(next launch)**.
+Not every setting can change while a program is running. Video, frameskip, cycles and CPU type apply immediately. **Audio, the CPU core and the DOS memory settings apply only at the DOS prompt** (the row says so when it's unavailable). Settings that DOSBox reads only at startup are marked **(next launch)**.
 
 ### Status
 
@@ -257,52 +259,231 @@ Not every setting can change while a program is running. Video, frameskip, cycle
 
 ## Controls
 
+DOSBox Wii separates two things:
+
+- **The physical controller** you hold. The console has four controller slots, and each connected slot is a **player** (Player 1 to 4). The console decides which controller lands in which slot.
+- **What DOS sees.** A joystick (or two), or nothing, on the gamepad port. A USB keyboard and mouse are always available to DOS, and you cannot switch them off.
+
+Every control on a controller can be given one **target**: a keyboard key, a DOS joystick button, a mouse button, a DOSBox function, or nothing. Buttons are set per player, and a **preset** gives you a starting point for a kind of game.
+
 ### Supported devices
 
-- **Wii:** Wiimote, Wiimote + Nunchuk, Classic Controller, GameCube Controller, Wii U Pro Controller
-- **Wii U (native):** the Wii U GamePad (buttons, sticks and touch screen), Wii U Pro Controller, and the Wii controllers above
-- **USB keyboard and mouse**
-- The Wiimote **pointer** works as a mouse (it isn't available while a Classic Controller is attached)
+| Device | Wii build | Wii U build |
+|---|---|---|
+| Wiimote, Wiimote + Nunchuk | Yes | Yes |
+| Classic Controller | Yes | Yes |
+| Wii U Pro Controller | Yes | Yes |
+| GameCube Controller | Yes | **No** (the Wii U input driver has no GameCube support) |
+| Wii U GamePad | Only if libogc2 reports one; not tested in vWii | Yes (buttons, sticks, touch screen) |
+| USB keyboard, USB mouse | Yes | Yes |
 
-Each connected controller is a *player* (player 1 to 4). The console decides the order. A Wiimote and a GameCube controller on the same slot count as one player. On Wii U the GamePad is always player 1.
+A player can hold more than one device. A Wiimote with a Nunchuk or Classic attached counts as one device. A GameCube controller on the same slot is a second device, and the Wii U GamePad always shares **Player 1** with whatever is on slot 1. The setup screen shows a column of device icons so you can choose which one to look at. Everything held on a slot is merged into that one player, and the player has one set of bindings.
 
 ### Setting up a controller
 
-Open **Controllers** from the home screen. The setup screen shows a drawing of the controller with what each control does in DOS beside it; controls light up as you press them.
+Open **Controllers** on the home screen. **Configure** opens the setup screen, and a player's icon in the strip opens that player. The setup screen has:
 
-1. **Emulating** — what DOS should see:
+- **Player N**, with what DOS does with that player ("Joystick 1", or "Keys + mouse") underneath. Arrows to switch players appear when two or more controllers are connected.
+- A **drawing of the controller** with a row for each control. Each row shows what that control does now ("Key: Ctrl", "Joystick 2", "Mouse left", "DOS: Cycles up"), or why it does nothing ("Joystick off", "No button 3"). Controls light up on the drawing as you press them on the real controller.
+- A **PRESET** chip (this player) and an **IN DOS** chip (the whole game) at the top.
+- A **SETUP** chip and **Back** at the bottom; see [Setups](#setups-saving-controls-per-game).
 
-   | Mode | What it gives you |
-   |---|---|
-   | **Joystick** | One joystick with four buttons, for player 1 |
-   | **Two joysticks** | Players 1 and 2 each get a joystick with two buttons |
-   | **Keyboard + mouse** | No joystick; the buttons act as keys and the mouse |
+Press **A** on a row to change what that control does. Changes apply at once and are written to the mapper file (`[sdl] mapperfile`, `mapper-<version>.map` by default).
 
-2. **Preset** — a starting point for a kind of game:
+#### What DOS sees (the IN DOS chip)
 
-   | Preset | Good for |
-   |---|---|
-   | **Compatible** | Buttons fire the DOS joystick, as DOSBox does on its own |
-   | **Arrow keys** | D-pad and buttons as arrows, Ctrl, Alt and Space (platformers) |
-   | **Arrows + shooter** | Arrows, with Ctrl to fire, Space to use, Alt to strafe (Doom-style) |
-   | **Point and click** | A and B click, the D-pad moves between hot spots (adventures) |
-   | **Menu keys** | D-pad, Enter and Esc, for installers and the DOS prompt |
+| Mode | `joysticktype` | What it gives you |
+|---|---|---|
+| **Joystick** | `4axis` | One joystick with four buttons, for player 1 |
+| **Two joysticks** | `2axis` | Players 1 and 2 each get a joystick with two buttons |
+| **Keyboard + mouse** | `none` | No joystick; the buttons act as keys and the mouse |
 
-3. **Change a single control** — select it, then press the key on your USB keyboard or click the mouse button you want, or pick from the list. A control can be a key, a joystick button, a mouse button, a DOSBox function (cycles up/down, frameskip up/down, swap disk image, hold-to-fast-forward), or nothing.
+Players who do not have a joystick use keys and the mouse. The type `auto` is shown as **Joystick**: with four controllers reported, the mapper picks `4axis`.
 
-The **Home** button (or **L + R + Plus**) always opens the menu and can't be reassigned. Use **Reset** to return a player to its preset, and **Load** / **Save** for [setups](#setups-saving-controls-per-game).
+Three more types can only be set from *Settings → DOS joystick → Joystick type*, and appear in the IN DOS list only while one of them is active: **Joystick for player 2** (`4axis_2`), **Flight stick (FCS)** (`fcs`, four buttons and a hat) and **Flight stick (CH)** (`ch`, six buttons and a hat). The picker only ever offers joystick buttons 1 to 4. The *Joystick type* row in Settings and the IN DOS chip change the same setting.
+
+Switching mode moves any joystick-button bindings to the joystick each player now has, and drops them for a player who no longer has one. A binding to a joystick nobody uses is left alone, so switching back to two joysticks finds player 2's buttons as they were.
+
+#### Presets (the PRESET chip)
+
+A preset replaces **this player's** buttons only. If you have changed buttons since the preset was applied, the list starts with **Undo my changes**. *Compatible* is hidden for a player who has no joystick.
+
+| Source | Compatible | Arrow keys | Arrows + shooter | Point and click | Menu keys |
+|---|---|---|---|---|---|
+| D-pad | not assigned (moves the joystick) | arrow keys | arrow keys | arrow keys | arrow keys |
+| A | Joystick 1 | Ctrl | Ctrl | Mouse left | Enter |
+| B | Joystick 2 | Alt | Space | Mouse right | Esc |
+| X (Wiimote `1`) | Joystick 3 | Space | Alt | — | Y |
+| Y (Wiimote `2`) | Joystick 4 | Enter | Shift | — | N |
+| Plus (Start) | — | Enter | Enter | Enter | Enter |
+| Minus (Select) | — | Esc | Esc | Esc | Esc |
+| L | — | PgUp | Z | — | — |
+| R | — | PgDn | X | — | — |
+
+ZL, ZR and the stick clicks are not assigned by any preset. Under *Two joysticks* only joystick buttons 1 and 2 exist, so *Compatible* leaves X and Y unassigned there (the preset list previews them as "No button 3" and "No button 4").
+
+The preset name on screen is the one the buttons started from. DOSBox does not record it in the mapper file, so until you pick one (or load a setup) it is the closest match to your current buttons.
+
+#### Changing one control
+
+Press **A** on a row. The chooser lists, down the left:
+
+| Kind | What it offers |
+|---|---|
+| **Suggested** | What the presets give this control that this player can use (only shown when there is something to suggest) |
+| **Key** | **Press a key on the keyboard** (shown only while a USB keyboard is connected), then 77 keys on tabs: Common, A-Z, 0-9, F-keys, Edit, Symbols (**L** and **R** change tab). Left and right Ctrl, Alt and Shift are one key each |
+| **Joystick** | Buttons 1 to 4, limited to what the current mode has. Not shown for a player with no joystick |
+| **Mouse** | Left, right and middle button; **Click a mouse button** is shown while a USB mouse is connected |
+| **DOSBox** | Cycles up, Cycles down, Frameskip up, Frameskip down, Swap disk image, Fast forward (hold) |
+| **None** | The control does nothing |
+
+**Default** gives the control what this player's preset gives it. **B** cancels. A control has exactly one target, so choosing one replaces whatever it did before, including the DOSBox default binds. A key that is not in the list (a keypad key, say) is refused with "That one can't be used here".
+
+Stick rows (**L Stick**, **R Stick**, **Main Stick**, **C-Stick**, **Nunchuk Stick**) are information only. They show "Joystick axes" when the current mode gives this player that stick as an axis (the left stick needs a joystick; the right stick needs the four-axis modes) and "Not used" otherwise. **A stick cannot be bound to keys or the mouse.** The **Home** row, and the GameCube's **Menu** row, are fixed.
+
+### Controls on each controller
+
+Each table lists the rows on the setup screen. **Preset source** says which line of the preset table above a control takes its default from. **Menu**: Home opens the Home menu on every controller that has it; on the GameCube controller (and on any controller, as an alternative) hold **L + R + Plus** (Start on a GameCube).
+
+#### Wiimote
+
+Drawn upright with every control listed beside it, or sideways if the Wiimote is held that way (the setup screen draws the one that matches).
+
+| Row | Preset source | Notes |
+|---|---|---|
+| A Button | A | |
+| B Trigger | B | |
+| 1 Button | X | Shares the joystick button with X (a Wiimote has no X) |
+| 2 Button | Y | Shares the joystick button with Y |
+| Minus / Plus | Minus / Plus | |
+| Up, Down, Left, Right | D-pad | Held sideways, the directions are the ones you hold it by |
+| Home | — | Fixed: opens the menu |
+
+#### Wiimote + Nunchuk
+
+| Row | Preset source | Notes |
+|---|---|---|
+| C Button | L | |
+| Z Button | ZL | |
+| Nunchuk Stick | — | Information: joystick axes |
+| A Button, B Trigger, 1 Button, 2 Button | A, B, X, Y | |
+| Minus / Plus | Minus / Plus | |
+| Up, Down, Left, Right | D-pad | The Wiimote's D-pad |
+| Home | — | Fixed: opens the menu |
+
+#### Classic Controller
+
+| Row | Preset source | Notes |
+|---|---|---|
+| L Trigger, R Trigger | L, R | Treated as buttons |
+| ZL Button, ZR Button | ZL, ZR | |
+| Minus / Plus | Minus / Plus | |
+| L Stick, R Stick | — | Information: joystick axes. **No stick clicks** (a Classic has none) |
+| Up, Down, Left, Right | D-pad | |
+| B, A, Y, X | B, A, Y, X | |
+| Home | — | Fixed: opens the menu |
+
+#### GameCube Controller (Wii build only)
+
+| Row | Preset source | Notes |
+|---|---|---|
+| L Trigger, R Trigger | L, R | Treated as buttons |
+| Z Button | ZR | |
+| Start | Plus | |
+| Main Stick, C-Stick | — | Information: joystick axes. No stick clicks |
+| Up, Down, Left, Right | D-pad | |
+| B, A, Y, X | B, A, Y, X | |
+| Menu | — | Fixed: "Hold L + R + Start" |
+
+A GameCube controller has no Minus or ZL, so those sources are never pressed.
+
+#### Wii U Pro Controller
+
+| Row | Preset source | Notes |
+|---|---|---|
+| L Bumper, R Bumper | L, R | |
+| L Trigger, R Trigger | ZL, ZR | |
+| Select, Start | Minus, Plus | |
+| L Stick, R Stick | — | Information: joystick axes |
+| L Click, R Click | L3, R3 (not in any preset) | **Wii U build only.** The Wii build never reports stick clicks, so these rows are left out there |
+| Up, Down, Left, Right | D-pad | |
+| B, A, Y, X | B, A, Y, X | |
+| Home | — | Fixed: opens the menu |
+
+#### Wii U GamePad (Wii U build)
+
+The same rows as the Wii U Pro Controller, drawn as a GamePad, with **L Click** and **R Click**. The touch screen is not a row: it is a trackpad (see [Keyboard & mouse](#keyboard--mouse)).
 
 ### Keyboard & mouse
 
-- **USB keyboard:** plug it in; it works at the DOS prompt and in games. The DOS keyboard layout is `[dos] keyboardlayout`, under *All settings → DOS memory and keyboard*.
+- **USB keyboard:** it works at the DOS prompt and in games, and it can be used to pick keys in the chooser. The DOS keyboard layout is `[dos] keyboardlayout`, under *All settings → DOS memory and keyboard*.
 - **On-screen keyboard:** *Home → Keyboard*.
-- **Mouse:** the Wiimote pointer, a USB mouse, or (Wii U) the GamePad touch screen as a trackpad: tap to click, **ZR / ZL** for left / right buttons. The mouse is always captured, so the first click isn't used up capturing it. Speed is under *Settings → Keyboard & Mouse*.
+- **The mouse is always captured.** The first click is not used up capturing it, and `[sdl] autolock` is ignored. Speed is under *Settings → Keyboard & Mouse*.
+- **Moving the mouse** takes one of three things: the Wiimote pointer, a USB mouse, or the GamePad touch screen. **There is no way to move the mouse with a stick or the D-pad.** A Classic, Wii U Pro or GameCube controller with nothing else attached cannot move it.
+- **Wiimote pointer:** only **player 1's** Wiimote is used, on its own or with a Nunchuk attached. It is not available while a Classic Controller or Wii U Pro Controller is attached.
+- **Player 1's Wiimote A and B are always also the left and right mouse buttons.** This is fixed, and it is in addition to whatever the preset gives A and B. A game that reads both the mouse and the joystick or keyboard sees both.
+- **USB mouse:** left, right and middle buttons and movement. The wheel is not read.
+- **GamePad touch screen** (Wii U build): a trackpad. Dragging moves the cursor, a tap is a left click, and **ZR** and **ZL** are the left and right buttons while the GamePad is connected. These are fixed, whatever the buttons are set to. While the on-screen keyboard is open, the touch screen belongs to it.
+
+### The D-pad and the joystick
+
+A DOS joystick has no D-pad, so with a joystick enabled the D-pad is folded into the joystick's left stick axes. To stop an arrow-key D-pad also steering the joystick, **the D-pad drives the joystick only while all four of its directions are left on the joystick default or Not assigned.** Give any direction a key, mouse button, joystick button or DOSBox function and the whole D-pad stops moving the joystick. The rule is checked when emulation starts and again after you leave the menu.
 
 ### Setups: saving controls per game
 
-A **setup** is a named set of controls and joystick settings for one game. From the setup screen choose **Save**, type a name on the on-screen keyboard, and optionally attach it to a program name such as `KEEN4E.EXE`. **Load** brings it back later, and *Home → Setups* does the same from the home screen.
+A **setup** is a saved copy of every player's buttons and what DOS sees. It holds nothing else from `dosbox.conf` (no cycles, sound or video).
 
-A setup is two ordinary DOSBox files in `DOSBox/Setups/`: `name.conf` (which points at the map through `[sdl] mapperfile`) and `name.map` (DOSBox's own mapper file). You can copy them between consoles or edit them by hand.
+Open the **SETUP** chip (bottom of the setup screen) or *Home → Setups*:
+
+- **Save as a new setup...** asks for a name on the on-screen keyboard (it suggests the running program's name, without `.EXE`, or "My setup"), then which program the setup is for: the running program, no program, or a name you type. If the name is already used you are asked before it is replaced. Names are up to 24 characters, without dots, slashes or other characters a file name cannot hold, and case does not matter.
+- **Save as *name*** (offered when a setup is loaded) replaces that setup, keeping its program.
+- **Load a setup...** lists the saved setups with the program, what DOS sees and the preset recorded.
+
+#### Where the files are
+
+Setups are kept in `DOSBox/Setups/` on the device that holds your DOSBox folder (for example `sd:/DOSBox/Setups/`). The folder is created on the first save. Each setup is two files:
+
+```text
+sd:/DOSBox/Setups/
+├── Keen4.conf
+└── Keen4.map
+```
+
+**`name.conf`** is a small DOSBox config. The first line must be exactly `# DOSBox Wii setup`; the list of setups only shows `.conf` files that begin with it, so other `.conf` files in the folder are ignored.
+
+```text
+# DOSBox Wii setup
+# program=KEEN4E.EXE
+# preset.1=Arrow keys
+[sdl]
+mapperfile=Keen4.map
+[joystick]
+joysticktype=4axis
+```
+
+- `# program=` is the program name as an upper-case file name with its extension, only if you attached one.
+- `# preset.N=` (N is the player, 1 to 4) is the preset that player started from, written only for players who were connected. It is a label for the Load list; the buttons themselves are in the `.map`.
+- `mapperfile=` is the `.map` beside it, by file name.
+- `joysticktype=` is what DOS sees (`4axis`, `2axis`, `none`, `4axis_2`, `fcs` or `ch`).
+
+**`name.map`** is a copy of DOSBox's whole mapper file as it was at the moment of the save: every event and its binds (keys, hotkeys, joystick buttons and axes, and each player's `pad_N` lines). It is the same format as `mapper-<version>.map`.
+
+The `.map` is written first, then the `.conf`, so a save cut short never leaves a listed setup without its map. Each file is written to a temporary name first and swapped in.
+
+#### What happens when you load one
+
+**Load** is something you do; a setup is **not** loaded by itself when its program starts. (The program name is stored and shown in the list, but nothing at present looks it up when a program runs.)
+
+Loading, from the menu:
+
+1. sets the joystick type from the `.conf`;
+2. gives each player's 16 buttons and D-pad directions what the `.map` has for them (its `pad_N` lines, and the matching `stick_N` binds);
+3. moves joystick-button binds onto the joystick each player now has;
+4. writes the result to the mapper file DOSBox is using.
+
+**Only those buttons and the joystick type change when you load from the menu.** Other binds in the `.map` (keyboard-key binds, hotkey keys, joystick axes) take effect only when DOSBox itself starts with that `.conf` (the standard `-conf` option). If you start DOSBox that way, the setup's `.map` is the live mapper file, so changes you make on screen are held in memory and are written to the setup only when you **Save** it.
+
+You can copy the pair between consoles, or edit the `.map` with a text editor (it is the standard DOSBox mapper format).
 
 ---
 
@@ -345,7 +526,7 @@ Plugged-in drives appear on *Settings → Drives* by themselves, and must be mou
 
 ### A setting is greyed out or says "(next launch)"
 
-Audio, DOS joystick and DOS memory settings apply only at the DOS prompt. Startup-only settings need an edit to `dosbox.conf` and a relaunch.
+Audio, CPU core and DOS memory settings apply only at the DOS prompt. Startup-only settings need an edit to `dosbox.conf` and a relaunch.
 
 ---
 
@@ -355,6 +536,9 @@ Audio, DOS joystick and DOS memory settings apply only at the DOS prompt. Startu
 - No CD audio.
 - No MIDI output: a game that selects MIDI will play silence. Use Sound Blaster FM music instead.
 - Modem and IPX networking are not compiled in, and the serial port is a dummy.
+- GameCube controllers are not supported on the Wii U build.
+- Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
+- A saved setup is loaded by hand (*SETUP → Load a setup*); it does not load by itself when its program starts.
 - No in-place restart. Changes to startup-only settings take effect the next time you launch DOSBox Wii.
 
 ---
