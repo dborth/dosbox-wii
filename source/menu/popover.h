@@ -55,6 +55,12 @@ PopoverTail Popover_Tail(const PopoverAnchor& anchor, const PopoverPlace& at, in
  */
 GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCard& panel, const PopoverPlace& at, int panelW, int panelH, const PopoverAnchor& anchor);
 
+/**
+ * A small round close button (an X) for the right end of a popover's title row: a way out that does not depend on
+ * B or on finding empty space to click. `onClick` is what it does; pass the backdrop's dismiss().
+ */
+GuiCard& Popover_CloseButton(UiScope& ui, std::function<void()> onClick);
+
 /** A one pixel rule `w` wide, in the outline color. */
 GuiShape& Popover_Divider(UiScope& ui, int w);
 
@@ -67,6 +73,8 @@ class PopoverBackdrop : public GuiButton
 {
 	public:
 		PopoverBackdrop(int w, int h);
+		/** Closes the popover as B does (the close button calls this): the backdrop reads as clicked, and stays so. */
+		void dismiss();
 		/** The panel: a click inside it does not count. */
 		void setPanel(GuiElement * panelElement) { panel = panelElement; }
 		/** The trigger that means "close" (B), which counts wherever the pointer is. */
@@ -75,6 +83,7 @@ class PopoverBackdrop : public GuiButton
 	private:
 		GuiElement * panel;
 		GuiTrigger * cancel;
+		bool closing;
 };
 
 #endif

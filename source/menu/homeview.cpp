@@ -164,11 +164,11 @@ class HomeIcon : public GuiElement
 				case ICON_PAD:
 					// a gamepad: the body (as wide as the keyboard and monitor glyphs), a D-pad at the left, two buttons at the right,
 					// all well inside the outline
-					box(1.5f, 4.5f, 21, 15, 7.0f);
-					line(8, 10.5f, 8, 14.5f, 1.8f);
-					line(6, 12.5f, 10, 12.5f, 1.8f);
-					dot(15.5f, 11.0f, 1.2f);
-					dot(18.0f, 13.8f, 1.2f);
+					box(0.5f, 4.5f, 23, 15, 7.0f);
+					line(7.5f, 10.5f, 7.5f, 14.5f, 1.8f);
+					line(5.5f, 12.5f, 9.5f, 12.5f, 1.8f);
+					dot(16.5f, 11.0f, 1.2f);
+					dot(19.0f, 13.8f, 1.2f);
 					break;
 				case ICON_PLAY:
 				{
@@ -523,7 +523,7 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(quickCard).add(right);
 
 	// footer: Exit, what the highlighted thing does, Credits
-	exitCard = &pill("Exit DOSBox", ICON_POWER, 132, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Close DOSBox and go back to the Homebrew Channel"; });
+	exitCard = &pill("Exit", ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });
 	creditsCard = &pill("Credits", ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; });
 	GuiLabel& hintLabel = ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted())
 		.bind([this]{ return status.empty() ? hint : status; });

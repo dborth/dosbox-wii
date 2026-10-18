@@ -54,21 +54,107 @@ GuiShape& Popover_Divider(UiScope& ui, int w)
 	return line;
 }
 
-PopoverBackdrop::PopoverBackdrop(int w, int h) : GuiButton(w, h), panel(nullptr), cancel(nullptr)
+PopoverBackdrop::PopoverBackdrop(int w, int h) : GuiButton(w, h), panel(nullptr), cancel(nullptr), closing(false)
 {
 	setSelectable(false);
 	setRumble(false);
 }
 
+void PopoverBackdrop::dismiss()
+{
+	closing = true;
+	setState(STATE::CLICKED);
+}
+
 void PopoverBackdrop::update(InputController * c)
 {
+	if(closing)
+	{
+		if(getState() == STATE::CLICKED)
+			return;
+		closing = false;	// the screen took the click (or ignored it) and reset the button
+	}
 	GuiButton::update(c);
 	if(getState() != STATE::CLICKED || !c || !panel)
+		return;
+	// Every controller gets its own pass through update(), and a click made in one pass is still standing in the next.
+	// Only the controller that clicked can say whether the click was outside the panel: judging it by another
+	// controller's cursor (which may well be over the panel) cancelled the click, so with two controllers connected
+	// clicking away did nothing.
+	if(c->getChannel() != getStateChan())
 		return;
 	const InputPadData& pad = c->getPadData();
 	const bool byCancel = cancel && cancel->isClicked(c);
 	if(!byCancel && pad.validPointer && panel->isInside(pad.cursor_x, pad.cursor_y))
 		resetState();
+}
+
+namespace {
+
+// The X of a close button: two crossed strokes, drawn from shapes like the home screen's icons
+class PopoverCross : public GuiElement
+{
+	public:
+		PopoverCross(int size) : meshFeather(-1.0f)
+		{
+			width = size;
+			height = size;
+		}
+
+		void draw() override
+		{
+			if(!this->isVisible())
+				return;
+			const int a = this->getAlpha();
+			if(a > 0)
+			{
+				VideoDriver * video = platform->getVideo();
+				const float uiScale = video->getUIScale();
+				const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
+				if(feather != meshFeather)
+				{
+					mesh = GuiMesh(feather);
+					const GuiFill fill = GuiFill::solid(MenuPaletteCurrent().text);
+					const float s = (float)width, m = s * 0.3f, w = 1.8f;
+					mesh.addLine(GuiPoint{ m, m }, GuiPoint{ s - m, s - m }, w, fill);
+					mesh.addLine(GuiPoint{ s - m, m }, GuiPoint{ m, s - m }, w, fill);
+					mesh.addEllipse(GuiRect{ m - w / 2, m - w / 2, w, w }, fill);
+					mesh.addEllipse(GuiRect{ s - m - w / 2, s - m - w / 2, w, w }, fill);
+					mesh.addEllipse(GuiRect{ s - m - w / 2, m - w / 2, w, w }, fill);
+					mesh.addEllipse(GuiRect{ m - w / 2, s - m - w / 2, w, w }, fill);
+					meshFeather = feather;
+				}
+				const float ox = (float)this->getLeft(), oy = (float)this->getTop();
+				const std::vector<MeshVertex>& src = mesh.vertices();
+				scratch.resize(src.size());
+				for(size_t i = 0; i < src.size(); i++)
+				{
+					scratch[i] = src[i];
+					scratch[i].x += ox;
+					scratch[i].y += oy;
+					if(a < 255)
+						scratch[i].c.a = (uint8_t)((src[i].c.a * a + 127) / 255);
+				}
+				if(!scratch.empty())
+					video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
+			}
+			this->updateEffects();
+		}
+
+	private:
+		GuiMesh mesh;
+		float meshFeather;
+		std::vector<MeshVertex> scratch;
+};
+
+}
+
+GuiCard& Popover_CloseButton(UiScope& ui, std::function<void()> onClick)
+{
+	const int size = 22;
+	GuiCard& close = ui.card().size(size, size).style(MenuRowHighlightStyle()).corners(GuiCorners(size / 2.0f)).pad(0, 0).onClick(onClick);
+	close.add(ui.make<PopoverCross>(size), GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
+	return close;
 }
 
 GuiCard& Popover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool withDotSlot)

@@ -224,12 +224,11 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	return row;
 }
 
-// A chip that opens a popover: what it chooses in small capitals (with "(edited)" when the choice has been changed),
-// what is chosen under it, and an arrow pointing the way the popover opens. A card, so the whole face is the target.
-static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::function<std::string()> value, std::function<bool()> edited, bool opensUp)
+// A chip that opens a popover: what it chooses in small capitals, what is chosen under it, and an arrow pointing the way the popover opens. A card, so the whole face is the target.
+static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::function<std::string()> value, bool opensUp)
 {
 	const std::string title = what;
-	GuiLabel& caption = ui.label().fontSize(UI_FONT_SMALL - 2).muted().bind([title, edited]{ return edited && edited() ? title + " (EDITED)" : title; });
+	GuiLabel& caption = ui.label(title.c_str()).fontSize(UI_FONT_SMALL - 2).muted();
 	GuiLabel& chosen = ui.label().fontSize(UI_FONT_SMALL + 1).bind(value);
 	chosen.setMaxWidth(width - 20 - 16);
 	GuiArrow& arrow = ui.own<GuiArrow>(opensUp ? ARROW::UP : ARROW::DOWN, 10, 6, MenuBarArrowRest(), MenuBarArrowRest());
@@ -301,14 +300,13 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 
 	const int pl = playerSlot;
 	GuiCard& emulatedBtn = PickerChip(ui, 168, "IN DOS",
-		[]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; }, nullptr, false);
+		[]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; }, false);
 	emulatedBtn.onClick([this]{ pickRequest = Pick::EMULATED; });
 	emulatedBtn.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none (the whole game)"; });
 	if(!empty)
 	{
 		GuiCard& presetBtn = PickerChip(ui, 172, "PRESET",
-			[pl]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset(pl)].name; },
-			[pl]{ return Controls().modified(pl); }, false);
+			[pl]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset(pl)].name; }, false);
 		presetBtn.onClick([this]{ pickRequest = Pick::PRESET; });
 		presetBtn.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
 		presetButton = &presetBtn;
@@ -418,10 +416,9 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	}
 
 	// Footer: Setup is the whole game (every player's buttons and what DOS sees), so it sits under In DOS; Back is last.
-	// The pill says which setup is loaded, and marks changes not saved yet.
+	// The chip says which setup is loaded.
 	GuiCard& setupBtn = PickerChip(ui, 190, "SETUP",
-		[]{ ControlsModel& m = Controls(); return m.setupName().empty() ? std::string("None") : ClipName(m.setupName(), 16); },
-		[]{ return Controls().setupModified(); }, true);
+		[]{ ControlsModel& m = Controls(); return m.setupName().empty() ? std::string("None") : ClipName(m.setupName(), 16); }, true);
 	setupBtn.onClick([this]{ pickRequest = Pick::SETUP; });
 	setupBtn.onFocus([this]{ status = "A loads or saves a setup: every player's buttons and what DOS sees"; });
 	setupButton = &setupBtn;
@@ -739,7 +736,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	int bodyH = kinds * (kindH + rowGap);
 	for(size_t i = 0; i < panels.size(); i++)
 		bodyH = std::max(bodyH, panels[i].height);
-	const int headH = 18, footH = 26;
+	const int headH = 24, footH = 26;
 	panelHeight = 2 * pad + headH + 7 + bodyH + 8 + footH;
 	place = Popover_Place(anchor, panelWidth, panelHeight, sw, sh);
 
@@ -778,6 +775,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	// the head says what is being set and what it does now; the foot says what the row under the cursor is, and offers the preset's default
 	GuiLabel& title = ui.label(GuiFormat("What should %s do?", controlName).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
+	GuiCard& close = Popover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
 	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
 	hint.setMaxWidth(inner - 74);
 	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
@@ -788,7 +786,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 		.onFocus([this, defaultTarget]{ hintText = GuiFormat("A picks the preset's default: %s", defaultTarget.describe().c_str()); });
 
 	GuiLayout& content = ui.column().size(inner, panelHeight - 2 * pad)
-		.add(ui.row().size(inner, headH).align(LAYOUT_ALIGN::CENTRE).add(title).addSpace().add(nowLabel))
+		.add(ui.row().size(inner, headH).align(LAYOUT_ALIGN::CENTRE).add(title).addSpace().add(nowLabel).addGap(8).add(close))
 		.add(Popover_Divider(ui, inner))
 		.addGap(6)
 		.add(ui.row().size(inner, bodyH).gap(gap).align(LAYOUT_ALIGN::START).add(list).add(stack))
@@ -831,7 +829,7 @@ namespace {
 
 const int kPopoverW = 280;
 const int kPopoverPad = 10;
-const int kPopoverTitleH = 18;
+const int kPopoverTitleH = 24;
 const int kPopoverCaptionLineH = 16;
 const int kPopoverDividerH = 9;
 const int kPopoverRowGap = 2;
@@ -843,13 +841,6 @@ void PickerView::choose(int index)
 {
 	if(index < 0 || (size_t)index >= items.size())
 		return;
-	if(!items[(size_t)index].confirm.empty() && armedIdx != index)
-	{
-		focus = index;
-		armedIdx = index;
-		refreshCaption();
-		return;
-	}
 	picked = index;
 	done = true;
 }
@@ -860,8 +851,6 @@ void PickerView::focusItem(int index)
 		return;
 	const bool moved = focus != index;
 	focus = index;
-	if(armedIdx != index)
-		armedIdx = -1;
 	refreshCaption();
 	if(moved && focusCb)
 		focusCb(index);
@@ -875,7 +864,7 @@ void PickerView::onFocusChange(std::function<void(int)> fn)
 		focusCb(focus);
 }
 
-// The caption under the list: what the row under the cursor is, or (once armed) what the second press does
+// The caption under the list: what the row under the cursor is
 void PickerView::refreshCaption()
 {
 	for(size_t i = 0; i < captionLines.size(); i++)
@@ -884,17 +873,12 @@ void PickerView::refreshCaption()
 		return;
 	const PickerItem& it = items[(size_t)focus];
 	std::string text;
-	if(armedIdx == focus && !it.confirm.empty())
-		text = it.confirm;
-	else
-	{
-		for(size_t i = 0; i < it.lines.size(); i++)
-			text += (text.empty() ? "" : " ") + it.lines[i];
-		// the rows say what the choice does for each button; a screen that previews the choice shows that itself
-		if(!focusCb)
-			for(size_t i = 0; i < it.rows.size(); i++)
-				text += (text.empty() ? "" : (i == 0 ? "  " : ", ")) + it.rows[i].label + ": " + it.rows[i].value;
-	}
+	for(size_t i = 0; i < it.lines.size(); i++)
+		text += (text.empty() ? "" : " ") + it.lines[i];
+	// the rows say what the choice does for each button; a screen that previews the choice shows that itself
+	if(!focusCb)
+		for(size_t i = 0; i < it.rows.size(); i++)
+			text += (text.empty() ? "" : (i == 0 ? "  " : ", ")) + it.rows[i].label + ": " + it.rows[i].value;
 	std::vector<std::string> wrapped;
 	addWrapped(wrapped, text, kPopoverCaptionChars);
 	for(size_t i = 0; i < captionLines.size() && i < wrapped.size(); i++)
@@ -909,7 +893,7 @@ void PickerView::refreshCaption()
 }
 
 PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const PopoverAnchor& anchor) :
-	items(itemList), picked(-1), done(false), focus(0), armedIdx(-1), backBtn(nullptr), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
+	items(itemList), picked(-1), done(false), focus(0), backBtn(nullptr), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
 {
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
@@ -959,6 +943,8 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 
 	// what the popover is about, then a rule; the caption goes under the list
 	GuiLabel& heading = ui.label(title).fontSize(UI_FONT_SMALL).muted();
+	// a way out that needs neither B nor a click on the empty screen around the panel
+	GuiCard& close = Popover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
 	GuiLayout& captionColumn = ui.column().size(innerW, captionH).pad(0, 0);
 	for(int k = 0; k < captionLinesN; k++)
 	{
@@ -966,7 +952,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 		captionColumn.add(ui.row().size(innerW, kPopoverCaptionLineH).align(LAYOUT_ALIGN::CENTRE).add(line));
 	}
 	GuiLayout& content = ui.column().size(innerW, panelHeight - 2 * kPopoverPad)
-		.add(ui.row().size(innerW, kPopoverTitleH).align(LAYOUT_ALIGN::CENTRE).add(heading))
+		.add(ui.row().size(innerW, kPopoverTitleH).align(LAYOUT_ALIGN::CENTRE).add(heading).addSpace().add(close))
 		.add(Popover_Divider(ui, innerW))
 		.addGap(6)
 		.add(list)
@@ -1093,7 +1079,6 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 		it.current = false;
 		it.lines.push_back(GuiFormat("Back to %s.", presets[(size_t)now].name.c_str()));
 		describe(it, now);
-		it.confirm = "This discards your changes.  Press A again to confirm";
 		it.divider = true;
 		items.push_back(it);
 		index.push_back(-1);
@@ -1109,8 +1094,6 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 		it.current = inUse;
 		addWrapped(it.lines, presets[i].description, 44);
 		describe(it, (int)i);
-		if(edited)
-			it.confirm = "This replaces your changes.  Press A again to confirm";
 		items.push_back(it);
 		index.push_back((int)i);
 	}
@@ -1183,8 +1166,6 @@ std::vector<PickerItem> Picker_SetupItems(std::vector<int>& index)
 		PickerRow preset; preset.label = "Preset"; preset.value = setups[i].preset;
 		it.rows.push_back(dos);
 		it.rows.push_back(preset);
-		if(m.setupModified())
-			it.confirm = "This replaces your changes.  Press A again to confirm";
 		items.push_back(it);
 		index.push_back((int)i);
 	}

@@ -132,7 +132,6 @@ struct PickerItem {
 	std::vector<std::string> lines;		/**< What it is, a few short lines (at most three are shown) */
 	std::vector<PickerRow> rows;		/**< What it does for the buttons (at most seven are shown) */
 	bool current;						/**< The one in use now */
-	std::string confirm;				/**< When not empty, choosing needs a second press, and this is what the caption says meanwhile */
 	bool divider = false;				/**< A rule is drawn after this item: what follows is a different kind of choice */
 };
 
@@ -165,7 +164,7 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& runningProgram, st
 /**
  * A list of choices in a popover: one flat panel beside the control that asked, over the screen it came from. Plain
  * rows (the one in use has a dot), a rule where an item says so, and under the list a caption for the row under the
- * cursor: its description, or what a second press of A will do. Nothing else is drawn on it.
+ * cursor: its description. Nothing else is drawn on it.
  */
 class PickerView : public GuiOverlay
 {
@@ -179,11 +178,9 @@ class PickerView : public GuiOverlay
 		int result() const { return picked; }
 		/** The item under the cursor. */
 		int focused() const { return focus; }
-		/** Whether an item is waiting for its second press. */
-		bool armed() const { return armedIdx >= 0; }
-		/** What A does on an item; the first press only arms an item that asks for confirmation. */
+		/** What A does on an item: it is chosen. */
 		void choose(int index);
-		/** The cursor moved to an item (a pending confirmation is dropped). */
+		/** The cursor moved to an item . */
 		void focusItem(int index);
 		/** Puts the selection on the item in use (or the first), whatever it was on: once the popover has the focus. */
 		void selectInUse();
@@ -207,7 +204,6 @@ class PickerView : public GuiOverlay
 		int picked;
 		bool done;
 		int focus;
-		int armedIdx;
 		GuiButton * backBtn;
 		std::vector<GuiCard*> itemCards;
 		std::vector<std::string> captionLines;

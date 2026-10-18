@@ -534,7 +534,7 @@ int main(int argc, char ** argv)
 			EXPECT(pv.caption().size() >= 2 && pv.caption().size() <= 3);
 			for(size_t k = 0; k < pv.caption().size(); k++)
 				EXPECT(pv.caption()[k].size() <= 40);
-			// moving the cursor changes the caption; arming an item that asks says what the second press does
+			// moving the cursor changes the caption
 			pv.focusItem(1);
 			EXPECT(pv.focused() == 1);
 			EXPECT(!pv.caption()[0].empty());
@@ -543,10 +543,7 @@ int main(int argc, char ** argv)
 			PickerView pv("Title", lists[0]);
 			EXPECT(lists[0][0].divider && lists[0][0].name == "Undo my changes");	// the one different kind of choice is set apart
 			pv.choose(0);
-			EXPECT(pv.armed() && !pv.chosen());
-			EXPECT(pv.caption()[0].find("discards") != std::string::npos);			// the caption says what A again will do
-			pv.choose(0);
-			EXPECT(pv.chosen() && pv.result() == 0);
+			EXPECT(pv.chosen() && pv.result() == 0);								// one press chooses: nothing asks twice
 		}
 		// the preview hook hears the cursor, once at once
 		{
@@ -638,29 +635,17 @@ int main(int argc, char ** argv)
 		Controls().setEmulated(0);
 	}
 	{
-		// a picker: items that ask for confirmation need a second press, others do not
+		// a picker: one press chooses, whatever the item
 		std::vector<PickerItem> items(3);
 		items[0].name = "One"; items[0].current = true;
-		items[1].name = "Two"; items[1].confirm = "Really?";
-		items[2].name = "Three"; items[2].confirm = "Really?";
+		items[1].name = "Two";
+		items[2].name = "Three";
 		Screen s;
 		PickerView view("Pick", items);
 		s.page.append(&view);
 		EXPECT(view.focused() == 0);							// opens on the one in use
 		view.choose(1);
-		EXPECT(view.armed() && !view.chosen());
-		view.focusItem(2);										// moving away drops the confirmation
-		EXPECT(!view.armed() && view.focused() == 2);
-		view.choose(1);
-		view.choose(2);											// a different item re-arms rather than choosing
-		EXPECT(view.armed() && !view.chosen());
-		view.choose(2);
-		EXPECT(view.chosen() && view.result() == 2);
-
-		PickerView plain("Pick", items);
-		s.page.append(&plain);
-		plain.choose(0);										// no confirmation asked: chosen at once
-		EXPECT(plain.chosen() && plain.result() == 0);
+		EXPECT(view.chosen() && view.result() == 1);
 		PickerView bad("Pick", items);
 		bad.choose(-1);
 		bad.choose(9);
@@ -675,14 +660,11 @@ int main(int argc, char ** argv)
 		std::vector<PickerItem> items = Picker_PresetItems(0, index);
 		EXPECT(items.size() == 5 && index.size() == 5);
 		EXPECT(items[1].current && !items[0].current);
-		EXPECT(items[0].confirm.empty());						// nothing changed, nothing to lose
 		EXPECT(items[0].rows.size() == 7 && items[0].rows[0].label == "A Button" && items[0].rows[0].value == "Joystick 1");
 		EXPECT(items[1].rows[0].value == "Key: Ctrl");
 
 		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_PresetItems(0, index);
-		for(size_t i = 0; i < items.size(); i++)
-			EXPECT(!items[i].confirm.empty());					// every choice would throw the change away
 
 		ApplyAll(1);
 		Controls().setEmulated(2);								// no joystick: the joystick preset is not offered
@@ -737,10 +719,8 @@ int main(int argc, char ** argv)
 		EXPECT(items[keen].lines[0] == "Loads for KEEN4E.EXE.");
 		EXPECT(items[plain].lines[0] == "Not tied to a program.");
 		EXPECT(items[keen].rows.size() == 2 && items[keen].rows[0].value == "Joystick" && items[keen].rows[1].value == "Arrow keys");
-		EXPECT(items[keen].confirm.empty());										// nothing edited
 		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_SetupItems(index);
-		EXPECT(!items[0].confirm.empty());											// loading would throw the edit away
 		ApplyAll(1);
 	}
 	{
@@ -767,7 +747,7 @@ int main(int argc, char ** argv)
 		std::vector<PickerItem> items = Picker_PresetItems(0, index);
 		EXPECT(items[0].name != "Undo my changes");						// player 1 has no changes
 		items = Picker_PresetItems(1, index);
-		EXPECT(items[0].name == "Undo my changes" && index[0] == -1 && !items[0].current && !items[0].confirm.empty());
+		EXPECT(items[0].name == "Undo my changes" && index[0] == -1 && !items[0].current);
 		EXPECT(items.size() == index.size() && items.size() == 5);		// Undo, and the presets (no joystick here, so no Compatible)
 		EXPECT(items[0].lines[0] == "Back to Arrow keys.");
 		Controls().applyPreset(2, 4);									// a preset for player 3 leaves player 2's change alone
