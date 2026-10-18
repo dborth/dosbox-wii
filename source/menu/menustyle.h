@@ -79,6 +79,14 @@
 #define MENU_PREVIEW_W		256
 #define MENU_PREVIEW_H		MENU_LIST_H
 
+/** Font sizes used by the menu pages and popovers. */
+enum {
+	UI_FONT_TITLE = 26,
+	UI_FONT_HEADING = 20,
+	UI_FONT_BODY = 16,
+	UI_FONT_SMALL = 13
+};
+
 static inline PixelColor MenuRGBA(int r, int g, int b, int a = 255)
 {
 	PixelColor c = { (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };

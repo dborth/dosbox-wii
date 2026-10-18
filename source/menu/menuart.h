@@ -213,6 +213,65 @@ class MenuDialogShape : public GuiElement
 		GuiShape header;
 };
 
+//!An element that is one mesh, built in its own coordinates (0,0 is its top-left) and drawn where
+//!it is, faded with it. Sub-classes only say how to build the mesh: build() is called with `mesh`
+//!empty and ready for the video driver's edge feathering, and again when that changes or after
+//!invalidate() (the look changed).
+class MenuMeshElement : public GuiElement
+{
+	public:
+		MenuMeshElement(int w, int h) : meshFeather(-1.0f)
+		{
+			width = w;
+			height = h;
+		}
+
+		void draw() override
+		{
+			if(!this->isVisible())
+				return;
+			const int a = this->getAlpha();
+			if(a > 0)
+			{
+				VideoDriver * video = platform->getVideo();
+				const float uiScale = video->getUIScale();
+				const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
+				if(feather != meshFeather)
+				{
+					mesh = GuiMesh(feather);
+					build();
+					meshFeather = feather;
+				}
+				const float ox = (float)this->getLeft(), oy = (float)this->getTop();
+				const std::vector<MeshVertex>& src = mesh.vertices();
+				scratch.resize(src.size());
+				for(size_t i = 0; i < src.size(); i++)
+				{
+					scratch[i] = src[i];
+					scratch[i].x += ox;
+					scratch[i].y += oy;
+					if(a < 255)
+						scratch[i].c.a = (uint8_t)((src[i].c.a * a + 127) / 255);
+				}
+				if(!scratch.empty())
+					video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
+			}
+			this->updateEffects();
+		}
+
+		//!Has build() run again at the next draw
+		void invalidate() { meshFeather = -1.0f; }
+
+	protected:
+		virtual void build() = 0;
+
+		GuiMesh mesh;
+
+	private:
+		float meshFeather;
+		std::vector<MeshVertex> scratch;
+};
+
 //!The window behind the on-screen keyboard: a card with a chrome band holding the text
 //!field. Insert it as the keyboard's first element: keyboard.insert(&box, 0). It is
 //!wider than the keyboard itself so the keys keep a margin from the card's edge.

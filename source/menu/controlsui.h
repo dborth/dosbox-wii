@@ -38,14 +38,6 @@ std::string Controls_SetupMenu(GuiWindow * home, const PopoverAnchor& anchor);
 /** The black device icon for a kind of controller (a PNG, as the asset arrays hold it). */
 const unsigned char * Controls_PadIcon(PadType type);
 
-/** Font sizes used by the controller screens. */
-enum {
-	UI_FONT_TITLE = 26,
-	UI_FONT_HEADING = 20,
-	UI_FONT_BODY = 16,
-	UI_FONT_SMALL = 13
-};
-
 /** The dimmed backdrop a full-screen page draws over the paused game (the theme's background, mostly opaque). */
 GuiPaint UiBackdropPaint();
 
@@ -120,21 +112,6 @@ class ControllerConfigView : public GuiOverlay
 		int previewPreset;
 };
 
-/** One line of a picker's detail pane: what a button does under that choice. */
-struct PickerRow {
-	std::string label;	/**< "A Button" */
-	std::string value;	/**< "Key: Ctrl" */
-};
-
-/** A choice in a picker. */
-struct PickerItem {
-	std::string name;					/**< "Arrow keys" */
-	std::vector<std::string> lines;		/**< What it is, a few short lines (at most three are shown) */
-	std::vector<PickerRow> rows;		/**< What it does for the buttons (at most seven are shown) */
-	bool current;						/**< The one in use now */
-	bool divider = false;				/**< A rule is drawn after this item: what follows is a different kind of choice */
-};
-
 /** The choices for what DOS sees, as picker items. */
 /** The Emulating list. `index` (optional) gets each item's index in emulatedModes(): the advanced types are left out unless in effect. */
 std::vector<PickerItem> Picker_EmulatedItems(std::vector<int> * index = nullptr);
@@ -161,57 +138,6 @@ enum class AttachChoice { RUNNING, NONE, TYPED };
  */
 std::vector<PickerItem> Picker_AttachItems(const std::string& runningProgram, std::vector<AttachChoice>& kinds);
 
-/**
- * A list of choices in a popover: one flat panel beside the control that asked, over the screen it came from. Plain
- * rows (the one in use has a dot), a rule where an item says so, and under the list a caption for the row under the
- * cursor: its description. Nothing else is drawn on it.
- */
-class PickerView : public GuiOverlay
-{
-	public:
-		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
-		PickerView(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor = PopoverAnchor());
-		GuiButton& backButton() { return *backBtn; }
-		/** Whether a choice was made (after any confirmation). */
-		bool chosen() const { return done; }
-		/** The index of the item chosen. */
-		int result() const { return picked; }
-		/** The item under the cursor. */
-		int focused() const { return focus; }
-		/** What A does on an item: it is chosen. */
-		void choose(int index);
-		/** The cursor moved to an item . */
-		void focusItem(int index);
-		/** Puts the selection on the item in use (or the first), whatever it was on: once the popover has the focus. */
-		void selectInUse();
-		/** Puts the selection (and the cursor) on an item. */
-		void selectItem(int index);
-		/** Called with an item's index whenever the cursor moves to it, and once now: the screen under the popover previews it. */
-		void onFocusChange(std::function<void(int)> fn);
-		/** The caption lines under the list (always the same number, some empty). */
-		const std::vector<std::string>& caption() const { return captionLines; }
-		/** Where the panel is, and how tall its rows are (design pixels). */
-		int panelX() const { return place.x; }
-		int panelY() const { return place.y; }
-		int panelW() const { return panelWidth; }
-		int panelH() const { return panelHeight; }
-		int rowH() const { return rowHeight; }
-	private:
-		void refreshCaption();
-
-		UiScope ui;
-		std::vector<PickerItem> items;
-		int picked;
-		bool done;
-		int focus;
-		GuiButton * backBtn;
-		std::vector<GuiCard*> itemCards;
-		std::vector<std::string> captionLines;
-		std::function<void(int)> focusCb;
-		int inUse;
-		PopoverPlace place;
-		int panelWidth, panelHeight, rowHeight;
-};
 
 /**
  * Choosing what a control does, in a popover beside the row that was pressed: the kinds of target down the left

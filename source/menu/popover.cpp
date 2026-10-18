@@ -5,6 +5,7 @@
  ***************************************************************************/
 #include "popover.h"
 #include "menustyle.h"
+#include "menuart.h"
 #include "menupage.h"
 #include <algorithm>
 
@@ -93,59 +94,23 @@ void PopoverBackdrop::update(InputController * c)
 namespace {
 
 // The X of a close button: two crossed strokes, drawn from shapes like the home screen's icons
-class PopoverCross : public GuiElement
+class PopoverCross : public MenuMeshElement
 {
 	public:
-		PopoverCross(int size) : meshFeather(-1.0f)
-		{
-			width = size;
-			height = size;
-		}
-
-		void draw() override
-		{
-			if(!this->isVisible())
-				return;
-			const int a = this->getAlpha();
-			if(a > 0)
-			{
-				VideoDriver * video = platform->getVideo();
-				const float uiScale = video->getUIScale();
-				const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
-				if(feather != meshFeather)
-				{
-					mesh = GuiMesh(feather);
-					const GuiFill fill = GuiFill::solid(MenuPaletteCurrent().text);
-					const float s = (float)width, m = s * 0.3f, w = 1.8f;
-					mesh.addLine(GuiPoint{ m, m }, GuiPoint{ s - m, s - m }, w, fill);
-					mesh.addLine(GuiPoint{ s - m, m }, GuiPoint{ m, s - m }, w, fill);
-					mesh.addEllipse(GuiRect{ m - w / 2, m - w / 2, w, w }, fill);
-					mesh.addEllipse(GuiRect{ s - m - w / 2, s - m - w / 2, w, w }, fill);
-					mesh.addEllipse(GuiRect{ s - m - w / 2, m - w / 2, w, w }, fill);
-					mesh.addEllipse(GuiRect{ m - w / 2, s - m - w / 2, w, w }, fill);
-					meshFeather = feather;
-				}
-				const float ox = (float)this->getLeft(), oy = (float)this->getTop();
-				const std::vector<MeshVertex>& src = mesh.vertices();
-				scratch.resize(src.size());
-				for(size_t i = 0; i < src.size(); i++)
-				{
-					scratch[i] = src[i];
-					scratch[i].x += ox;
-					scratch[i].y += oy;
-					if(a < 255)
-						scratch[i].c.a = (uint8_t)((src[i].c.a * a + 127) / 255);
-				}
-				if(!scratch.empty())
-					video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
-			}
-			this->updateEffects();
-		}
+		PopoverCross(int size) : MenuMeshElement(size, size) {}
 
 	private:
-		GuiMesh mesh;
-		float meshFeather;
-		std::vector<MeshVertex> scratch;
+		void build() override
+		{
+			const GuiFill fill = GuiFill::solid(MenuPaletteCurrent().text);
+			const float s = (float)width, m = s * 0.3f, w = 1.8f;
+			mesh.addLine(GuiPoint{ m, m }, GuiPoint{ s - m, s - m }, w, fill);
+			mesh.addLine(GuiPoint{ s - m, m }, GuiPoint{ m, s - m }, w, fill);
+			mesh.addEllipse(GuiRect{ m - w / 2, m - w / 2, w, w }, fill);
+			mesh.addEllipse(GuiRect{ s - m - w / 2, s - m - w / 2, w, w }, fill);
+			mesh.addEllipse(GuiRect{ s - m - w / 2, m - w / 2, w, w }, fill);
+			mesh.addEllipse(GuiRect{ m - w / 2, s - m - w / 2, w, w }, fill);
+		}
 };
 
 }
@@ -231,4 +196,192 @@ GuiButton& Popover_Mount(UiScope& ui, GuiLayout& view, GuiTrigger& cancel, GuiCa
 		view.add(&tailPlaced);
 	}
 	return backdrop;
+}
+
+// ---- the list picker
+
+namespace {
+
+const int kPopoverW = 280;
+const int kPopoverPad = 10;
+const int kPopoverTitleH = 24;
+const int kPopoverCaptionLineH = 16;
+const int kPopoverDividerH = 9;
+const int kPopoverRowGap = 2;
+const int kPopoverCaptionChars = 38;	// at the caption's size, in the width inside the padding
+
+}
+
+void PickerView::choose(int index)
+{
+	if(index < 0 || (size_t)index >= items.size())
+		return;
+	picked = index;
+	done = true;
+}
+
+void PickerView::focusItem(int index)
+{
+	if(index < 0 || (size_t)index >= items.size())
+		return;
+	const bool moved = focus != index;
+	focus = index;
+	refreshCaption();
+	if(moved && focusCb)
+		focusCb(index);
+}
+
+void PickerView::onFocusChange(std::function<void(int)> fn)
+{
+	focusCb = fn;
+	refreshCaption();
+	if(focusCb && !items.empty())
+		focusCb(focus);
+}
+
+// The caption under the list: what the row under the cursor is
+void PickerView::refreshCaption()
+{
+	for(size_t i = 0; i < captionLines.size(); i++)
+		captionLines[i].clear();
+	if(items.empty() || focus < 0 || (size_t)focus >= items.size())
+		return;
+	const PickerItem& it = items[(size_t)focus];
+	std::string text;
+	for(size_t i = 0; i < it.lines.size(); i++)
+		text += (text.empty() ? "" : " ") + it.lines[i];
+	// the rows say what the choice does for each button; a screen that previews the choice shows that itself
+	if(!focusCb)
+		for(size_t i = 0; i < it.rows.size(); i++)
+			text += (text.empty() ? "" : (i == 0 ? "  " : ", ")) + it.rows[i].label + ": " + it.rows[i].value;
+	std::vector<std::string> wrapped;
+	Popover_Wrap(wrapped, text, kPopoverCaptionChars);
+	for(size_t i = 0; i < captionLines.size() && i < wrapped.size(); i++)
+		captionLines[i] = wrapped[i];
+	if(wrapped.size() > captionLines.size())
+	{
+		std::string& last = captionLines.back();
+		if(last.size() > 2)
+			last.resize(last.size() - 2);
+		last += "..";
+	}
+}
+
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const PopoverAnchor& anchor) :
+	items(itemList), picked(-1), done(false), focus(0), backBtn(nullptr), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
+{
+	GuiTrigger& cancel = ui.own<GuiTrigger>();
+	cancel.setSecondaryTrigger();
+
+	const int sw = platform->getVideo()->getScreenWidth();
+	const int sh = platform->getVideo()->getScreenHeight();
+	setFixedSize(sw, sh);
+	setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
+	setPosition(0, 0);
+
+	int current = 0;
+	for(size_t i = 0; i < items.size(); i++)
+		if(items[i].current)
+			current = (int)i;
+	focus = current;
+	inUse = current;
+
+	// Size: a short list gets roomy rows; a long one shrinks its rows (down to 28 px) to stay between the bars
+	const int n = (int)items.size();
+	int dividers = 0;
+	for(size_t i = 0; i < items.size(); i++)
+		dividers += items[i].divider ? 1 : 0;
+	const int captionLinesN = n <= 5 ? 3 : 2;
+	captionLines.assign((size_t)captionLinesN, std::string());
+	const int captionH = captionLinesN * kPopoverCaptionLineH + 4;
+	const int fixedH = 2 * kPopoverPad + kPopoverTitleH + 7 + 8 + captionH;
+	const int spare = Popover_MaxHeight(sh) - fixedH - dividers * kPopoverDividerH - std::max(0, n - 1) * kPopoverRowGap;
+	rowHeight = std::max(28, std::min(36, n > 0 ? spare / n : 36));
+	const int listH = n * rowHeight + std::max(0, n - 1) * kPopoverRowGap + dividers * kPopoverDividerH;
+	panelHeight = fixedH + listH;
+	const int innerW = kPopoverW - 2 * kPopoverPad;
+	place = Popover_Place(anchor, kPopoverW, panelHeight, sw, sh);
+
+	// the list: plain rows, a dot on the one in use, the highlight tint on the one under the cursor
+	GuiLayout& list = ui.column().gap(kPopoverRowGap).size(innerW, listH);
+	for(size_t i = 0; i < items.size(); i++)
+	{
+		const int idx = (int)i;
+		GuiCard& row = Popover_Row(ui, innerW, rowHeight, items[i].name, items[i].current);
+		row.onClick([this, idx]{ choose(idx); });
+		row.onFocus([this, idx]{ focusItem(idx); });
+		itemCards.push_back(&row);
+		list.add(row);
+		if(items[i].divider)
+			list.add(ui.row().size(innerW, kPopoverDividerH).align(LAYOUT_ALIGN::CENTRE).add(Popover_Divider(ui, innerW)));
+	}
+
+	// what the popover is about, then a rule; the caption goes under the list
+	GuiLabel& heading = ui.label(title).fontSize(UI_FONT_SMALL).muted();
+	// a way out that needs neither B nor a click on the empty screen around the panel
+	GuiCard& close = Popover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
+	GuiLayout& captionColumn = ui.column().size(innerW, captionH).pad(0, 0);
+	for(int k = 0; k < captionLinesN; k++)
+	{
+		GuiLabel& line = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this, k]{ return captionLines[(size_t)k]; });
+		captionColumn.add(ui.row().size(innerW, kPopoverCaptionLineH).align(LAYOUT_ALIGN::CENTRE).add(line));
+	}
+	GuiLayout& content = ui.column().size(innerW, panelHeight - 2 * kPopoverPad)
+		.add(ui.row().size(innerW, kPopoverTitleH).align(LAYOUT_ALIGN::CENTRE).add(heading).addSpace().add(close))
+		.add(Popover_Divider(ui, innerW))
+		.addGap(6)
+		.add(list)
+		.addGap(8)
+		.add(captionColumn);
+
+	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(kPopoverPad, kPopoverPad).size(kPopoverW, panelHeight);
+	panel.add(content);
+
+	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, kPopoverW, panelHeight, anchor);
+
+	refreshCaption();
+	ui.attachTo(*this);
+	// the window steps the selection down from what is selected (or to the first control when nothing is): start just
+	// above the item in use, so the step lands on it
+	if(current > 0)
+		itemCards[(size_t)current - 1]->select();
+}
+
+void PickerView::selectItem(int index)
+{
+	if(index < 0 || (size_t)index >= itemCards.size())
+		return;
+	for(size_t i = 0; i < itemCards.size(); i++)
+		itemCards[i]->deselect();
+	itemCards[(size_t)index]->select();
+	focusItem(index);
+}
+
+void PickerView::selectInUse()
+{
+	if(itemCards.empty())
+		return;
+	for(size_t i = 0; i < itemCards.size(); i++)
+		itemCards[i]->deselect();
+	itemCards[(size_t)inUse < itemCards.size() ? (size_t)inUse : 0]->select();
+}
+
+// Splits a sentence into lines of at most `max` characters, at spaces, so it fits a pane that cannot wrap text.
+void Popover_Wrap(std::vector<std::string>& lines, const std::string& text, size_t max)
+{
+	size_t start = 0;
+	while(start < text.size())
+	{
+		size_t end = start + max;
+		if(end >= text.size())
+			end = text.size();
+		else
+		{
+			const size_t space = text.rfind(' ', end);
+			if(space != std::string::npos && space > start)
+				end = space;
+		}
+		lines.push_back(text.substr(start, end - start));
+		start = end < text.size() && text[end] == ' ' ? end + 1 : end;
+	}
 }

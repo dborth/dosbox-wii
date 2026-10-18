@@ -8,6 +8,7 @@
 #include "controlsmodel.h"
 #include "menu.h"
 #include "menustyle.h"
+#include "menuart.h"
 #include "filelist.h"
 
 namespace {
@@ -16,55 +17,18 @@ namespace {
 
 enum { ICON_NONE = -1, ICON_GAUGE, ICON_FRAMES, ICON_ASPECT, ICON_FILTER, ICON_KEYBOARD, ICON_GEAR, ICON_PULSE, ICON_DISK, ICON_POWER, ICON_INFO, ICON_PLAY, ICON_PAD };
 
-class HomeIcon : public GuiElement
+class HomeIcon : public MenuMeshElement
 {
 	public:
-		HomeIcon(int k, int size, PixelColor c) : kind(k), color(c), meshFeather(-1.0f)
-		{
-			width = size;
-			height = size;
-		}
+		HomeIcon(int k, int size, PixelColor c) : MenuMeshElement(size, size), kind(k), color(c) {}
 
 		void setColor(PixelColor c)
 		{
 			if(c.r != color.r || c.g != color.g || c.b != color.b || c.a != color.a)
 			{
 				color = c;
-				meshFeather = -1.0f;
+				invalidate();
 			}
-		}
-
-		void draw() override
-		{
-			if(!this->isVisible())
-				return;
-			const int a = this->getAlpha();
-			if(a > 0)
-			{
-				VideoDriver * video = platform->getVideo();
-				const float uiScale = video->getUIScale();
-				const float feather = uiScale > 0.0f ? 1.0f / uiScale : 1.0f;
-				if(feather != meshFeather)
-				{
-					mesh = GuiMesh(feather);
-					build();
-					meshFeather = feather;
-				}
-				const float ox = (float)this->getLeft(), oy = (float)this->getTop();
-				const std::vector<MeshVertex>& src = mesh.vertices();
-				scratch.resize(src.size());
-				for(size_t i = 0; i < src.size(); i++)
-				{
-					scratch[i] = src[i];
-					scratch[i].x += ox;
-					scratch[i].y += oy;
-					if(a < 255)
-						scratch[i].c.a = (uint8_t)((src[i].c.a * a + 127) / 255);
-				}
-				if(!scratch.empty())
-					video->getImageRenderer()->drawMesh(scratch.data(), scratch.size());
-			}
-			this->updateEffects();
 		}
 
 	private:
@@ -92,7 +56,7 @@ class HomeIcon : public GuiElement
 			mesh.addEllipse(GuiRect{ (cx - r) * u, (cy - r) * u, 2 * r * u, 2 * r * u }, fill);
 		}
 
-		void build()
+		void build() override
 		{
 			u = (float)width / 24.0f;
 			fill = GuiFill::solid(color);
@@ -184,9 +148,6 @@ class HomeIcon : public GuiElement
 
 		int kind;
 		PixelColor color;
-		GuiMesh mesh;
-		float meshFeather;
-		std::vector<MeshVertex> scratch;
 };
 
 // The tiles under the controllers: as short as they can be, to leave the controllers their room
@@ -202,9 +163,6 @@ const int DEVICE_ROW_H_CHARGE = 36;	// the row when a GamePad is there: its batt
 
 const PixelColor Dark() { return MenuPaletteCurrent().text; }
 const PixelColor Light() { return MenuChromeText(); }
-
-// the device icons, by PadType
-const unsigned char * ControllerIcon(PadType t) { return Controls_PadIcon(t); }
 
 } // namespace
 
@@ -327,7 +285,7 @@ GuiLayout& HomeView::playersStrip()
 	const PadType kinds[] = { PadType::WIIMOTE, PadType::WIIMOTE_NUNCHUK, PadType::CLASSIC, PadType::WIIU_PRO, PadType::GAMECUBE, PadType::GAMEPAD };
 	GuiImageData * images[7] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 	for(size_t k = 0; k < sizeof(kinds) / sizeof(kinds[0]); k++)
-		images[(int)kinds[k]] = &ui.own<GuiImageData>(ControllerIcon(kinds[k]));
+		images[(int)kinds[k]] = &ui.own<GuiImageData>(Controls_PadIcon(kinds[k]));
 
 	const MenuPalette& pal = MenuPaletteCurrent();
 	auto makeBattery = [this](BatteryShapes& b) -> GuiLayout& {
