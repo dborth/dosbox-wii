@@ -607,6 +607,14 @@ void HomeMenu ()
 		if(action != HomeView::Action::SETUPS)
 			home.setStatus(std::string());
 
+		// Restart closes the menu like Resume; GFX_Events() sees the request once the machine has been handed
+		// back (memory, audio and video restored), and leaves the core from there
+		if(action == HomeView::Action::RESTART)
+		{
+			RequestRestart();
+			action = HomeView::Action::RESUME;
+		}
+
 		bool leave = false;
 
 		switch(action)

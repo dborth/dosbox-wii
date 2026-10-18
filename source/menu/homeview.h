@@ -48,7 +48,7 @@ class HomeSettings
 class HomeView : public GuiOverlay
 {
 	public:
-		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, SETUPS, CREDITS };
+		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, SETUPS, CREDITS, RESTART };
 
 		HomeView(HomeSettings& settings, const char * version);
 
@@ -78,6 +78,7 @@ class HomeView : public GuiOverlay
 		std::string status;
 		GuiCard * resumeCard;
 		GuiCard * exitCard;
+		GuiCard * restartCard;
 		GuiCard * creditsCard;
 		GuiCard * setupsCard;
 		GuiCard * configureCard;

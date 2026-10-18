@@ -163,7 +163,21 @@ void ExitApp()
 int main(int argc, char* argv[])
 {
 	InitApp();
-	RunDOSBox(argc, argv);
+
+	// RunDOSBox() returns when the core has shut down: for good, or because a
+	// restart was asked for (the menu's Restart button, CONFIG -r).
+	for(;;)
+	{
+		RunDOSBox(argc, argv);
+
+		if(!TakeRestartRequest())
+			break;
+
+		// leave the display as InitApp() left it, for the next GUI_StartUp()
+		platform->getVideo()->startMenuVideo();
+		RestartLog("restarting");
+	}
+
 	ExitApp();
 	return 0;
 }

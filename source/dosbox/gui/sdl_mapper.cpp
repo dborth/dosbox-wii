@@ -2688,6 +2688,28 @@ void MAPPER_Init(void) {
 		}
 	}
 }
+/* Forgets every event, button and bind group, so that MAPPER_Init() can run again when DOSBox is restarted in the same
+ * process (it only ever adds to these lists). The objects are not deleted: bind groups, events and binds point at each
+ * other, and a few hundred small objects are cheaper than a mistake here. The count is logged to see what it leaks. */
+void MAPPER_Reset(void) {
+	LOG_MSG("MAPPER: reset, dropping %d events, %d buttons, %d bind groups, %d handlers (not freed)",
+		(int)events.size(),(int)buttons.size(),(int)bindgroups.size(),(int)handlergroup.size());
+	events.clear();
+	buttons.clear();
+	bindgroups.clear();
+	handlergroup.clear();
+	holdlist.clear();
+	for (Bitu i=0;i<MAPPER_PADS;i++) padgroups[i]=NULL;
+	caps_lock_event=NULL;
+	num_lock_event=NULL;
+	last_clicked=NULL;
+	mapper.aevent=NULL;
+	mapper.abind=NULL;
+	mapper.sticks.num=0;
+	mapper.sticks.num_groups=0;
+	for (Bitu i=0;i<MAXSTICKS;i++) mapper.sticks.stick[i]=NULL;
+}
+
 void MAPPER_StartUp(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	mapper.sticks.num=0;

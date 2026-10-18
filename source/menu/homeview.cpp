@@ -418,7 +418,7 @@ GuiLayout& HomeView::playersStrip()
 // ---- the screen
 
 HomeView::HomeView(HomeSettings& s, const char * version) :
-	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), creditsCard(nullptr), setupsCard(nullptr),
+	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), setupsCard(nullptr),
 	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), hint("Pick something, or Resume to go back to the game")
 {
 	const int sw = platform->getVideo()->getScreenWidth();
@@ -482,13 +482,14 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 
 	// footer: Exit, what the highlighted thing does, Credits
 	exitCard = &pill("Exit", ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });
+	restartCard = &pill("Restart", ICON_NONE, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; });
 	creditsCard = &pill("Credits", ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; });
 	GuiLabel& hintLabel = ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted())
 		.bind([this]{ return status.empty() ? hint : status; });
-	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 96 - 36);
+	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 96 - 108 - 36);
 	hintLabel.setScroll(SCROLL::HORIZONTAL);
 	GuiLayout& footer = ui.row().size(sw, MENU_BAR_BOTTOM_H).pad(MENU_PAGE_MARGIN, 0).gap(12).align(LAYOUT_ALIGN::CENTRE)
-		.add(*exitCard).add(hintLabel).addSpace().add(*creditsCard);
+		.add(*exitCard).add(*restartCard).add(hintLabel).addSpace().add(*creditsCard);
 
 	add(header, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
 	add(body, GuiItem().at(LAYOUT_ALIGN::START, LAYOUT_ALIGN::START));
@@ -518,6 +519,7 @@ void HomeView::select(Action which)
 	{
 		case Action::RESUME: c = resumeCard; break;
 		case Action::EXIT: c = exitCard; break;
+		case Action::RESTART: c = restartCard; break;
 		case Action::KEYBOARD: c = keyboardCard; break;
 		case Action::SETTINGS: c = settingsCard; break;
 		case Action::STATUS: c = statusCard; break;

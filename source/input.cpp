@@ -33,6 +33,7 @@
 #include "inputlogic.h"
 #include "videosupport.h"
 #include "dosboxwii.h"
+#include "dosboxsupport.h"
 
 void GFX_SetTitle(Bit32s cycles,int frameskip,bool paused);
 
@@ -275,6 +276,11 @@ void GFX_Events() {
 	{
 		EnterMenu();
 		InputHal_MenuClosed();
+
+		// Restart was pressed: the menu has closed and handed the machine back,
+		// so leave the core the way the killswitch does (see RunDOSBox())
+		if(RestartRequested())
+			throw 1;
 	}
 
 	SDL_Event event;

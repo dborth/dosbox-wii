@@ -41,6 +41,7 @@
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/Logger.h"
+#include "drivers/Time.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
 #include "input.h"
@@ -89,13 +90,40 @@ void GFX_ShowMsg(char const* format,...) {
 extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
 
+static bool restartRequested = false;
+static int runNumber = 0;	// 1 for the first RunDOSBox()
+static Ticks lastMark = 0;
+
+void RestartLog(const char * what) {
+	const Ticks now = SystemTime::now();
+	const uint32_t ms = lastMark ? SystemTime::diffMillisecs(lastMark, now) : 0;
+	lastMark = now;
+	Log_Printf(LOG_LEVEL_INFO, "RESTART run %d: %s (+%u ms) %s", runNumber, what, (unsigned)ms,
+		(platform && platform->getMemoryFreeInfo()) ? platform->getMemoryFreeInfo() : "memory unknown");
+}
+
+void RequestRestart() {
+	restartRequested = true;
+	RestartLog("restart requested");
+}
+
+bool RestartRequested() {
+	return restartRequested;
+}
+
+bool TakeRestartRequest() {
+	const bool r = restartRequested;
+	restartRequested = false;
+	return r;
+}
+
 void restart_program(std::vector<std::string> & parameters) {
-	// There is no relaunch path on this platform (see the Status and Settings
-	// pages: changes that need one take effect next launch). It used to stop
-	// the emulator audio and return, which left DOSBox running silent for
-	// good after CONFIG -r.
+	// CONFIG -r. The arguments are not used yet: the restart runs with the
+	// arguments DOSBox was started with. Leaves the core the way the
+	// killswitch does (RunDOSBox() catches it).
 	(void)parameters;
-	Log_Printf(LOG_LEVEL_INFO, "Restart is not available here; settings that need one apply next launch");
+	RequestRestart();
+	throw 1;
 }
 
 
@@ -417,6 +445,8 @@ int access(const char *path, int amode)
  * and GUI are already up. Returns when DOSBox has shut down.
  ***************************************************************************/
 void RunDOSBox(int argc, char* argv[]) {
+	runNumber++;
+	RestartLog("core starting");
 	try {
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
@@ -450,6 +480,8 @@ void RunDOSBox(int argc, char* argv[]) {
 		Cross::GetPlatformConfigDir(config_path);
 		MountDOSBoxDir('C', config_path.c_str());
 
+		RestartLog("sections initialised");
+
 		/* Start up main machine */
 		control->StartUp();
 		/* Shutdown everything */
@@ -463,4 +495,11 @@ void RunDOSBox(int argc, char* argv[]) {
 	catch(...){
 		; // Unknown error, let's just exit.
 	}
+
+	// Config (and with it every section's destroy function) is gone by now. The
+	// pointer is not, and the mapper keeps its events and bind groups in statics
+	// that MAPPER_Init() would add to again on the next run.
+	control = NULL;
+	MAPPER_Reset();
+	RestartLog("core shut down");
 }
