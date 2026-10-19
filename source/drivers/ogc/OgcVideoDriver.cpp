@@ -683,6 +683,14 @@ void OgcFreeRetiredMeshes()
 	}
 }
 
+void OgcDiscardRetiredMeshes()
+{
+	u32 level;
+	_CPU_ISR_Disable(level);
+	retiredMeshes = nullptr;
+	_CPU_ISR_Restore(level);
+}
+
 void OgcImageRenderer::drawMeshInstance(void * mesh, float x, float y, float scaleX, float scaleY)
 {
 	const OgcMesh * m = (const OgcMesh *)mesh;

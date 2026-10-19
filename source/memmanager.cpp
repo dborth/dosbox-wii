@@ -18,6 +18,10 @@
 #include "libgui/GuiImageData.h"
 #include "libgui/GuiTextRenderer.h"
 
+#ifdef HW_RVL
+#include "drivers/ogc/OgcVideoDriver.h"
+#endif
+
 static bool menuMode = false;
 
 #ifdef HW_RVL
@@ -99,6 +103,9 @@ void SwitchMemoryModeEmulator()
 	if(fontSystem)
 		fontSystem->clearGlyphCache();
 	platform->getVideo()->getEmulatorVideo()->releaseSnapshot();
+
+	// Display lists waiting to be freed live in the heap that goes now
+	OgcDiscardRetiredMeshes();
 
 	if(menuSpace)
 		destroy_mspace(menuSpace);

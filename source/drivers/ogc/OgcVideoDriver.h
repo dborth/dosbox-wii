@@ -76,6 +76,10 @@ class OgcImageRenderer : public ImageRenderer
 //!after GX_DrawDone()).
 void OgcFreeRetiredMeshes();
 
+//!Forgets the retired meshes without freeing them. For when the heap they live in is about to be
+//!destroyed wholesale (the menu heap): freeing them afterwards would write into whatever replaced it.
+void OgcDiscardRetiredMeshes();
+
 class OgcGlyphRenderer : public GlyphRenderer {
 	private:
 		uint8_t vertexIndex;
