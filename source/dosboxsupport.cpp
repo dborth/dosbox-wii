@@ -93,20 +93,9 @@ extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
 
 static bool restartRequested = false;
-static int runNumber = 0;	// 1 for the first RunDOSBox()
-static Ticks lastMark = 0;
-
-void RestartLog(const char * what) {
-	const Ticks now = SystemTime::now();
-	const uint32_t ms = lastMark ? SystemTime::diffMillisecs(lastMark, now) : 0;
-	lastMark = now;
-	Log_Printf(LOG_LEVEL_INFO, "RESTART run %d: %s (+%u ms) %s", runNumber, what, (unsigned)ms,
-		(platform && platform->getMemoryFreeInfo()) ? platform->getMemoryFreeInfo() : "memory unknown");
-}
 
 void RequestRestart() {
 	restartRequested = true;
-	RestartLog("restart requested");
 }
 
 bool RestartRequested() {
@@ -438,8 +427,6 @@ int access(const char *path, int amode)
  * and GUI are already up. Returns when DOSBox has shut down.
  ***************************************************************************/
 void RunDOSBox(int argc, char* argv[]) {
-	runNumber++;
-	RestartLog("core starting");
 	try {
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
@@ -455,8 +442,8 @@ void RunDOSBox(int argc, char* argv[]) {
 		DEBUG_SetupConsole();
 #endif
 
-		/* Display Welcometext in the console */
-		LOG_MSG("DOSBox version %s",VERSION);
+		/* Display welcome text in the console */
+		LOG_MSG("DOSBox Wii version %s",VERSION);
 		LOG_MSG("Copyright 2002-2019 DOSBox Team, published under GNU GPL.");
 		LOG_MSG("---");
 
@@ -472,8 +459,6 @@ void RunDOSBox(int argc, char* argv[]) {
 		std::string config_path;
 		Cross::GetPlatformConfigDir(config_path);
 		MountDOSBoxDir('C', config_path.c_str());
-
-		RestartLog("sections initialised");
 
 		/* Start up main machine */
 		control->StartUp();
@@ -494,5 +479,4 @@ void RunDOSBox(int argc, char* argv[]) {
 	// that MAPPER_Init() would add to again on the next run.
 	control = NULL;
 	MAPPER_Reset();
-	RestartLog("core shut down");
 }

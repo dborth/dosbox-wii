@@ -28,10 +28,6 @@ bool RestartRequested();
 //! Returns whether a restart was asked for, and clears the request. For main().
 bool TakeRestartRequest();
 
-//! Logs a restart/memory checkpoint: the run number, the time since the last
-//! checkpoint and the free memory. Used to see what a restart costs and leaks.
-void RestartLog(const char * what);
-
 //! True when DOSBox is at the DOS prompt rather than inside a program, which
 //! is when it is safe to change hardware settings (sound card, joystick, CPU
 //! core) under it. False before the first shell exists.

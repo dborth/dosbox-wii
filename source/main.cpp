@@ -175,7 +175,6 @@ int main(int argc, char* argv[])
 
 		// leave the display as InitApp() left it, for the next GUI_StartUp()
 		platform->getVideo()->startMenuVideo();
-		RestartLog("restarting");
 	}
 
 	ExitApp();
