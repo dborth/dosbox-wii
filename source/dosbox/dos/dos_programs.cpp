@@ -1638,7 +1638,11 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_MOUNT_ILL_TYPE","Illegal type %s\n");
 	MSG_Add("PROGRAM_MOUNT_ALREADY_MOUNTED","Drive %c already mounted with %s\n");
 #ifdef DOSBOX_WII
+#ifdef __WIIU__
+	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT d usb1:/windows mounts windows directory on USB as the d: drive\n");
+#else
 	MSG_Add("PROGRAM_MOUNT_USAGE","Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\nSo a MOUNT d usb:/windows mounts windows directory on USB as the d: drive\n");
+#endif
 #else
 	MSG_Add("PROGRAM_MOUNT_USAGE",
 		"Usage \033[34;1mMOUNT Drive-Letter Local-Directory\033[0m\n"

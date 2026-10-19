@@ -594,11 +594,17 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_SUBST_NO_REMOVE","Unable to remove, drive not in use.\n");
 	MSG_Add("SHELL_CMD_SUBST_FAILURE","SUBST failed. You either made an error in your commandline or the target drive is already used.\nIt's only possible to use SUBST on Local drives");
 
+#ifdef HW_RVL
+    #define SHELL_FMT "%-10s"
+#else
+    #define SHELL_FMT "%-8s"
+#endif
+
 	MSG_Add("SHELL_STARTUP_BEGIN",
 		"\033[44;1m========================"
 		"========================"
 		"======================\n"
-		"| \033[32mWelcome to DOSBox %-8s\033[37m                                        |\n"
+		"| \033[32mWelcome to DOSBox " SHELL_FMT "\033[37m                                        |\n"
 		"|                                                                    |\n"
 //		"| DOSBox runs real and protected mode games.                         |\n"
 		"| For a short introduction for new users type: \033[33mINTRO\033[37m                 |\n"

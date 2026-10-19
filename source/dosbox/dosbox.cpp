@@ -686,7 +686,7 @@ void DOSBOX_Init(void) {
 		"You can put your MOUNT lines here.\n"
 	);
 	MSG_Add("CONFIGFILE_INTRO",
-	        "# This is the configuration file for DOSBox %s. (Please use the latest version of DOSBox)\n"
+	        "# This is the configuration file for DOSBox %s.\n"
 	        "# Lines starting with a # are comment lines and are ignored by DOSBox.\n"
 	        "# They are used to (briefly) document the effect of each option.\n");
 	MSG_Add("CONFIG_SUGGESTED_VALUES", "Possible values");

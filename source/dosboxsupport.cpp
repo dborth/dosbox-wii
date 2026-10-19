@@ -476,7 +476,7 @@ void RunDOSBox(int argc, char* argv[]) {
 #endif
 
 		/* Display welcome text in the console */
-		LOG_MSG("DOSBox Wii version %s",VERSION);
+		LOG_MSG("DOSBox %s",VERSION);
 		LOG_MSG("Copyright 2002-2019 DOSBox Team, published under GNU GPL.");
 		LOG_MSG("---");
 
