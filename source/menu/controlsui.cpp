@@ -96,15 +96,15 @@ void ControllerConfigView::selectHeader(Pick which)
 		b->select();
 }
 
-PopoverAnchor ControllerConfigView::anchorFor(Pick which)
+GuiPopoverAnchor ControllerConfigView::anchorFor(Pick which)
 {
 	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
 	// A preset previews on the rows and the drawing behind it, so its popover keeps to the left (the two left-hand
 	// rows and the sticks), leaving the right-hand rows, the D-pad and the face buttons in view
-	return b ? PopoverAnchor(b->getLeft(), b->getTop(), b->getWidth(), b->getHeight(), which == Pick::PRESET ? PopoverAnchor::LEFT_MARGIN : PopoverAnchor::AUTO) : PopoverAnchor();
+	return b ? GuiPopoverAnchor(b->getLeft(), b->getTop(), b->getWidth(), b->getHeight(), which == Pick::PRESET ? GuiPopoverAnchor::LEFT_MARGIN : GuiPopoverAnchor::AUTO) : GuiPopoverAnchor();
 }
 
-PopoverAnchor ControllerConfigView::anchorForRow(int binding)
+GuiPopoverAnchor ControllerConfigView::anchorForRow(int binding)
 {
 	for(size_t i = 0; i < rowsById.size(); i++)
 		if(rowsById[i].first == binding)
@@ -112,9 +112,9 @@ PopoverAnchor ControllerConfigView::anchorForRow(int binding)
 			GuiCard * r = rowsById[i].second;
 			// the popover is wide: it goes to the other side of the screen, so the row being changed (and the line to its control) stay in view
 			const bool leftHalf = r->getLeft() + r->getWidth() / 2 < platform->getVideo()->getScreenWidth() / 2;
-			return PopoverAnchor(r->getLeft(), r->getTop(), r->getWidth(), r->getHeight(), leftHalf ? PopoverAnchor::RIGHT_MARGIN : PopoverAnchor::LEFT_MARGIN);
+			return GuiPopoverAnchor(r->getLeft(), r->getTop(), r->getWidth(), r->getHeight(), leftHalf ? GuiPopoverAnchor::RIGHT_MARGIN : GuiPopoverAnchor::LEFT_MARGIN);
 		}
-	return PopoverAnchor();
+	return GuiPopoverAnchor();
 }
 
 bool ControllerConfigView::takeRequest(ProfileRow& row)
@@ -631,19 +631,10 @@ void TargetChooserView::selectCategory()
 	kindCards[(size_t)shown < kindCards.size() ? (size_t)shown : 0]->select();
 }
 
-TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget, const PopoverAnchor& anchor) :
-	current(now), picked(), shown(0), done(false), backBtn(nullptr), hintText("Move over a kind to see its choices"),
+TargetChooserView::TargetChooserView(const char * controlName, int player, int control, const BindingTarget& now, const BindingTarget& defaultTarget, const GuiPopoverAnchor& anchor) :
+	current(now), picked(), shown(0), done(false), hintText("Move over a kind to see its choices"),
 	listen(false), listenKind(TARGET::KEY), kinds(0), keyTab(0), keyTabs(0), keyCaps(0), keyPanel(-1), panelWidth(380), panelHeight(0)
 {
-	GuiTrigger& cancel = ui.own<GuiTrigger>();
-	cancel.setSecondaryTrigger();
-
-	const int sw = platform->getVideo()->getScreenWidth();
-	const int sh = platform->getVideo()->getScreenHeight();
-	setFixedSize(sw, sh);
-	setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
-	setPosition(0, 0);
-
 	ControlsModel& m = Controls();
 	const std::vector<BindingTarget> suggested = m.suggestions(player, control);
 
@@ -721,7 +712,6 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 		bodyH = std::max(bodyH, panels[i].height);
 	const int headH = 24, footH = 26;
 	panelHeight = 2 * pad + headH + 7 + bodyH + 8 + footH;
-	place = Popover_Place(anchor, panelWidth, panelHeight, sw, sh, MenuPopover_Insets());
 
 	// the kinds: plain rows, the one showing is filled
 	GuiLayout& list = ui.column().gap(rowGap).size(leftW, bodyH);
@@ -758,7 +748,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	// the head says what is being set and what it does now; the foot says what the row under the cursor is, and offers the preset's default
 	GuiLabel& title = ui.label(GuiFormat("What should %s do?", controlName).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
-	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
+	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ dismiss(); });
 	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
 	hint.setMaxWidth(inner - 74);
 	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
@@ -778,7 +768,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(pad, pad).size(panelWidth, panelHeight);
 	panel.add(content);
-	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, panelWidth, panelHeight, anchor, MenuPaletteCurrent().surfaceRaised);
+	mount(panel, panelWidth, panelHeight, anchor, MenuPopover_Insets(), MenuPaletteCurrent().surfaceRaised);
 
 	// while listening: the first press that is a key (or mouse button) the mapper can bind is the answer
 	ui.bind([this, player]{
@@ -900,7 +890,7 @@ std::vector<PickerItem> Picker_PresetItems(int player, std::vector<int>& index)
 namespace {
 
 // The chooser is a popover over the setup screen, which the caller has disabled and which stays drawn.
-bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget, const PopoverAnchor& anchor)
+bool ChooserScreen(const char * name, int player, int control, BindingTarget& target, const BindingTarget& defaultTarget, const GuiPopoverAnchor& anchor)
 {
 	TargetChooserView view(name, player, control, target, defaultTarget, anchor);
 	MenuScreenWindow screen(view);
@@ -930,7 +920,7 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 // Runs a picker as a popover over whatever screen is running (which stays on the window, disabled by the caller: a
 // question asked in place, not a trip to another page). The index chosen, or -1 on Back. `preview` hears the index of
 // the row under the cursor; `perFrame` runs after each frame (to let a screen that is not being updated follow it).
-void EmulatedPicker(const PopoverAnchor& anchor)
+void EmulatedPicker(const GuiPopoverAnchor& anchor)
 {
 	std::vector<int> index;
 	const int chosen = MenuPopover_Pick("What does DOS see?", Picker_EmulatedItems(&index), anchor);
@@ -1020,7 +1010,7 @@ void ConfigScreen(int player)
 				// All three are popovers over this screen, which stays drawn (dimmed) where it is. The on-screen keyboard
 				// that a Save asks for is the one trip to another screen.
 				std::string said;
-				const PopoverAnchor anchor = view.anchorFor(pick);
+				const GuiPopoverAnchor anchor = view.anchorFor(pick);
 				screen.setEnabled(false);
 				if(pick == ControllerConfigView::Pick::SETUP)
 					said = Setups_Run(ScreenHooks{ [&]{ screen.hide(); }, [&]{ screen.show(); } }, anchor);

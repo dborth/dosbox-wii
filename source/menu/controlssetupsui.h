@@ -37,13 +37,13 @@ struct ScreenHooks {
 };
 
 /** The Setup button: load a setup, or save this one, in popovers beside `anchor` over the screen that called. What the hint line should say after (empty if nothing was done). */
-std::string Setups_Run(const ScreenHooks& screen, const PopoverAnchor& anchor);
+std::string Setups_Run(const ScreenHooks& screen, const GuiPopoverAnchor& anchor);
 
 /** Saves over the setup that is loaded: no questions, it is the same name and the same program. What the hint line should say after. */
 std::string Setups_SaveCurrent();
 
 /** The Setups popover (load a setup, or save this one) over the home screen, opening beside `anchor`. Blocks until it is
     closed. What the hint line should say about it (empty if nothing was done). */
-std::string Controls_SetupMenu(GuiWindow * home, const PopoverAnchor& anchor);
+std::string Controls_SetupMenu(GuiWindow * home, const GuiPopoverAnchor& anchor);
 
 #endif

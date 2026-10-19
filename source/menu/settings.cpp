@@ -552,7 +552,7 @@ static bool IsResourceProp(const char * section, const char * prop)
  * the two cannot disagree about which combinations are safe. Returns why the
  * value is refused, or NULL.
  ***************************************************************************/
-static const char * Refusal(const char * section, const char * prop, const std::string & candidate)
+static const char * RefusalReason(const char * section, const char * prop, const std::string & candidate)
 {
 	if(!strcasecmp(section, "speaker") && !strcasecmp(prop, "tandy"))
 	{
@@ -574,6 +574,27 @@ static const char * Refusal(const char * section, const char * prop, const std::
 			return why;
 	}
 	return NULL;
+}
+
+// What the last step was refused for, for Settings_TakeRefusal(): the screen
+// says why a value was skipped, rather than leaving the row to do nothing
+static const char * lastRefusal = NULL;
+
+static const char * Refusal(const char * section, const char * prop, const std::string & candidate)
+{
+	const char * why = RefusalReason(section, prop, candidate);
+
+	if(why)
+		lastRefusal = why;
+	return why;
+}
+
+const char * Settings_TakeRefusal()
+{
+	const char * why = lastRefusal;
+
+	lastRefusal = NULL;
+	return why;
 }
 
 /****************************************************************************
@@ -1668,6 +1689,8 @@ void Settings_RowHelp(int page, int row, char * buf, size_t size)
 
 bool Settings_RowStep(int page, int row, int direction)
 {
+	lastRefusal = NULL;
+
 	std::vector<AllRow> rows;
 
 	if(page >= SETTINGS_PAGE_COUNT)

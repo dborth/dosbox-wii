@@ -15,6 +15,7 @@
 
 //!Textured quad shader (images, glyphs), used by WutImageRenderer and
 //!WutGlyphRenderer. Singleton, accessed through instance().
+//!\ingroup grp_wut
 class Texture2DShader : public Shader
 {
 	private:
@@ -58,6 +59,7 @@ class Texture2DShader : public Shader
 		uint32_t texCoordLocation;
 
 	public:
+		//!\return the shared Texture2DShader, created on first use
 		static Texture2DShader * instance()
 		{
 			if(!shaderInstance)
@@ -65,12 +67,14 @@ class Texture2DShader : public Shader
 			return shaderInstance;
 		}
 
+		//!Destroys the shared instance; the next instance() call creates a new one.
 		static void destroyInstance()
 		{
 			delete shaderInstance;
 			shaderInstance = nullptr;
 		}
 
+		//!Binds the fetch, vertex and pixel shaders for subsequent draws.
 		void setShaders() const
 		{
 			fetchShader->setShader();
@@ -78,6 +82,7 @@ class Texture2DShader : public Shader
 			pixelShader.setShader();
 		}
 
+		//!Binds the quad position and texture-coordinate buffers.
 		void setAttributeBuffer() const
 		{
 			VertexShader::setAttributeBuffer(0, ciPositionVtxsSize, cuVertexAttrSize, posVtxs);
@@ -150,6 +155,7 @@ class Texture2DShader : public Shader
 			PixelShader::setUniformReg(colorIntensityLocation, 4, colorIntensity);
 		}
 
+		//!Binds the texture to sample and the sampler describing its filtering.
 		void setTextureAndSampler(const GX2Texture * texture, const GX2Sampler * sampler) const
 		{
 			GX2SetPixelTexture(texture, samplerLocation);

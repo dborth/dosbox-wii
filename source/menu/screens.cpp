@@ -355,11 +355,22 @@ class SettingsPageScreen : public ListScreen
 			return true;
 		}
 
-		bool onClick(int row) override { return Settings_RowStep(page, row, 1); }
+		bool onClick(int row) override { return step(row, 1); }
 		bool stepsWithArrows() const override { return true; }
-		bool onStep(int row, int direction) override { return Settings_RowStep(page, row, direction); }
+		bool onStep(int row, int direction) override { return step(row, direction); }
 
 	private:
+		//! Steps the row, and says why a value was skipped or refused
+		bool step(int row, int direction)
+		{
+			const bool changed = Settings_RowStep(page, row, direction);
+			const char * why = Settings_TakeRefusal();
+
+			if(why)
+				showMessage(why);
+			return changed;
+		}
+
 		static std::string Title(int pageIndex)
 		{
 			char title[64];

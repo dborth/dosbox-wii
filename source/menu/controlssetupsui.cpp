@@ -124,7 +124,7 @@ std::vector<PickerItem> Picker_AttachItems(const std::string& running, std::vect
 namespace {
 
 // Load: choose a saved setup. What the hint line should say after.
-std::string LoadFlow(const PopoverAnchor& anchor)
+std::string LoadFlow(const GuiPopoverAnchor& anchor)
 {
 	std::vector<int> index;
 	const int chosen = MenuPopover_Pick("Load a setup", Picker_SetupItems(index), anchor);
@@ -137,7 +137,7 @@ std::string LoadFlow(const PopoverAnchor& anchor)
 }
 
 // Save: a name, what program it is for, and a check before replacing one of the same name.
-std::string SaveFlow(const ScreenHooks& screen, const PopoverAnchor& anchor)
+std::string SaveFlow(const ScreenHooks& screen, const GuiPopoverAnchor& anchor)
 {
 	ControlsModel& m = Controls();
 	const std::string running = Setup_CleanProgram(m.runningProgram());
@@ -203,7 +203,7 @@ std::string Setups_SaveCurrent()
 }
 
 // The Setup button: load a setup, or save this one. What the hint line should say after.
-std::string Setups_Run(const ScreenHooks& screen, const PopoverAnchor& anchor)
+std::string Setups_Run(const ScreenHooks& screen, const GuiPopoverAnchor& anchor)
 {
 	std::vector<SetupAction> kinds;
 	const int chosen = MenuPopover_Pick(Controls().setups().empty() ? "Save a setup" : "Load or save a setup", Picker_SetupMenuItems(kinds), anchor);
@@ -220,7 +220,7 @@ std::string Setups_Run(const ScreenHooks& screen, const PopoverAnchor& anchor)
 	}
 }
 
-std::string Controls_SetupMenu(GuiWindow * home, const PopoverAnchor& anchor)
+std::string Controls_SetupMenu(GuiWindow * home, const GuiPopoverAnchor& anchor)
 {
 	// the home screen stays drawn (dimmed) under the popover; only the on-screen keyboard takes it away
 	home->setState(STATE::DISABLED);

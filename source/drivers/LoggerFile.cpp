@@ -36,7 +36,7 @@ void LoggerFile::shutdown()
 	writesSinceFlush = 0;
 }
 
-void LoggerFile::write(LogLevel, const char * line, size_t len)
+void LoggerFile::write(LogLevel /*level*/, const char * line, size_t len)
 {
 	if (!file)
 		return;

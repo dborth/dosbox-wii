@@ -316,7 +316,7 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	quickRow(quick, MENU_ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
 		stepper([hs]{ return hs->frameskip(); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, MENU_ICON_ASPECT, "Aspect", []{ return std::string("4:3 monitor"); },
+	quickRow(quick, MENU_ICON_ASPECT, "Aspect", [hs]{ return std::string(hs->aspectCorrected() ? "4:3 monitor" : "Square pixels"); },
 		choice("Corrected", "Square", [hs]{ return hs->aspectCorrected(); }, [hs](bool c){ hs->setAspectCorrected(c); }, "Corrected draws the picture 4:3 like a real monitor. Square keeps pixels square"));
 	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, MENU_ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
@@ -371,9 +371,9 @@ HomeView::Action HomeView::takeAction()
 	return a;
 }
 
-PopoverAnchor HomeView::setupsAnchor()
+GuiPopoverAnchor HomeView::setupsAnchor()
 {
-	return PopoverAnchor(setupsCard->getLeft(), setupsCard->getTop(), setupsCard->getWidth(), setupsCard->getHeight());
+	return GuiPopoverAnchor(setupsCard->getLeft(), setupsCard->getTop(), setupsCard->getWidth(), setupsCard->getHeight());
 }
 
 void HomeView::select(Action which)

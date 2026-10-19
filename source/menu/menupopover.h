@@ -4,16 +4,16 @@
  * menupopover.h
  *
  * The menu's popover look: the one light panel every question asked in place
- * uses (see popover.h for where it goes and how it closes). A row, a rule and
+ * uses (see GuiPopover.h for where it goes and how it closes). A row, a rule and
  * a close button to build a panel from, and PickerView, the list of choices.
  ***************************************************************************/
 #ifndef _MENUPOPOVER_H_
 #define _MENUPOPOVER_H_
 
-#include "popover.h"
+#include "libgui/Gui.h"
 
 /** The space the menu's popovers keep clear: the header and footer bars and the page margin. */
-PopoverInsets MenuPopover_Insets();
+GuiPopoverInsets MenuPopover_Insets();
 
 /** One row of a popover list: the name on the left, a dot on the right when `marked` (the one in use). The caller adds onClick / onFocus. */
 GuiCard& MenuPopover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool dotSlot = true);
@@ -47,12 +47,11 @@ struct PickerItem {
  * rows (the one in use has a dot), a rule where an item says so, and under the list a caption for the row under the
  * cursor: its description. Nothing else is drawn on it.
  */
-class PickerView : public GuiOverlay
+class PickerView : public GuiPopover
 {
 	public:
 		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
-		PickerView(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor = PopoverAnchor());
-		GuiButton& backButton() { return *backBtn; }
+		PickerView(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor = GuiPopoverAnchor());
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
 		/** The index of the item chosen. */
@@ -72,25 +71,22 @@ class PickerView : public GuiOverlay
 		/** The caption lines under the list (always the same number, some empty). */
 		const std::vector<std::string>& caption() const { return captionLines; }
 		/** Where the panel is, and how tall its rows are (design pixels). */
-		int panelX() const { return place.x; }
-		int panelY() const { return place.y; }
+		int panelX() const { return position().x; }
+		int panelY() const { return position().y; }
 		int panelW() const { return panelWidth; }
 		int panelH() const { return panelHeight; }
 		int rowH() const { return rowHeight; }
 	private:
 		void refreshCaption();
 
-		UiScope ui;
 		std::vector<PickerItem> items;
 		int picked;
 		bool done;
 		int focus;
-		GuiButton * backBtn;
 		std::vector<GuiCard*> itemCards;
 		std::vector<std::string> captionLines;
 		std::function<void(int)> focusCb;
 		int inUse;
-		PopoverPlace place;
 		int panelWidth, panelHeight, rowHeight;
 };
 
@@ -105,10 +101,10 @@ void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, 
  * until a choice is made or it is closed. The index chosen, or -1. `preview` is told which item has the focus; `perFrame`
  * runs every frame (for what must be checked while it is open).
  */
-int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor,
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor,
 	std::function<void(int)> preview = nullptr, std::function<void()> perFrame = nullptr);
 
 /** A question with a few answers and a line of detail, as a popover (see MenuPopover_Pick). The index of the answer, or -1. */
-int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const PopoverAnchor& anchor);
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopoverAnchor& anchor);
 
 #endif

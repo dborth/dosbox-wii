@@ -79,6 +79,15 @@ void Settings_RowHelp(int page, int row, char * buf, size_t size);
 bool Settings_RowStep(int page, int row, int direction);
 
 /**
+ * Why the last Settings_RowStep() skipped or refused a value (a Sound Blaster
+ * and Gravis Ultrasound sharing a resource, Tandy sound on the wrong machine,
+ * a DOS memory change that is unsafe now), or NULL. Reading it clears it. A
+ * step can skip one value and apply the next, so this can be set even when
+ * RowStep() returned true.
+ */
+const char * Settings_TakeRefusal();
+
+/**
  * Puts the cycles and frameskip the core is running into the config, so the
  * config says what the player is looking at. They change without the config
  * when the home screen's +/- buttons, the hotkeys (Ctrl+F7/F8, Ctrl+F11/F12)

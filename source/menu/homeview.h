@@ -59,7 +59,7 @@ class HomeView : public GuiOverlay
 		/** Says something on the footer's hint line (what a Save did); empty goes back to the button hints */
 		void setStatus(const std::string& text) { status = text; }
 		/** The Setups tile, in canvas pixels: where its popover opens beside */
-		PopoverAnchor setupsAnchor();
+		GuiPopoverAnchor setupsAnchor();
 		/** Puts the selection on a button again (after something that was open over the screen closes) */
 		void select(Action which);
 

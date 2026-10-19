@@ -13,9 +13,9 @@
 #include "menuicon.h"
 #include <algorithm>
 
-PopoverInsets MenuPopover_Insets()
+GuiPopoverInsets MenuPopover_Insets()
 {
-	PopoverInsets i = { MENU_BAR_TOP_H, MENU_BAR_BOTTOM_H, MENU_PAGE_MARGIN };
+	GuiPopoverInsets i = { MENU_BAR_TOP_H, MENU_BAR_BOTTOM_H, MENU_PAGE_MARGIN };
 	return i;
 }
 
@@ -125,17 +125,10 @@ void PickerView::refreshCaption()
 	}
 }
 
-PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const PopoverAnchor& anchor) :
-	items(itemList), picked(-1), done(false), focus(0), backBtn(nullptr), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const GuiPopoverAnchor& anchor) :
+	items(itemList), picked(-1), done(false), focus(0), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
 {
-	GuiTrigger& cancel = ui.own<GuiTrigger>();
-	cancel.setSecondaryTrigger();
-
-	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
-	setFixedSize(sw, sh);
-	setAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
-	setPosition(0, 0);
 
 	int current = 0;
 	for(size_t i = 0; i < items.size(); i++)
@@ -153,12 +146,11 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	captionLines.assign((size_t)captionLinesN, std::string());
 	const int captionH = captionLinesN * kPopoverCaptionLineH + 4;
 	const int fixedH = 2 * kPopoverPad + kPopoverTitleH + 7 + 8 + captionH;
-	const int spare = Popover_MaxHeight(sh, MenuPopover_Insets()) - fixedH - dividers * kPopoverDividerH - std::max(0, n - 1) * kPopoverRowGap;
+	const int spare = GuiPopoverMaxHeight(sh, MenuPopover_Insets()) - fixedH - dividers * kPopoverDividerH - std::max(0, n - 1) * kPopoverRowGap;
 	rowHeight = std::max(28, std::min(36, n > 0 ? spare / n : 36));
 	const int listH = n * rowHeight + std::max(0, n - 1) * kPopoverRowGap + dividers * kPopoverDividerH;
 	panelHeight = fixedH + listH;
 	const int innerW = kPopoverW - 2 * kPopoverPad;
-	place = Popover_Place(anchor, kPopoverW, panelHeight, sw, sh, MenuPopover_Insets());
 
 	// the list: plain rows, a dot on the one in use, the highlight tint on the one under the cursor
 	GuiLayout& list = ui.column().gap(kPopoverRowGap).size(innerW, listH);
@@ -177,7 +169,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	// what the popover is about, then a rule; the caption goes under the list
 	GuiLabel& heading = ui.label(title).fontSize(UI_FONT_SMALL).muted();
 	// a way out that needs neither B nor a click on the empty screen around the panel
-	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ if(backBtn) static_cast<PopoverBackdrop*>(backBtn)->dismiss(); });
+	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ dismiss(); });
 	GuiLayout& captionColumn = ui.column().size(innerW, captionH).pad(0, 0);
 	for(int k = 0; k < captionLinesN; k++)
 	{
@@ -195,7 +187,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(kPopoverPad, kPopoverPad).size(kPopoverW, panelHeight);
 	panel.add(content);
 
-	backBtn = &Popover_Mount(ui, *this, cancel, panel, place, kPopoverW, panelHeight, anchor, MenuPaletteCurrent().surfaceRaised);
+	mount(panel, kPopoverW, panelHeight, anchor, MenuPopover_Insets(), MenuPaletteCurrent().surfaceRaised);
 
 	refreshCaption();
 	ui.attachTo(*this);
@@ -246,7 +238,7 @@ void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, 
 
 // ---- running one on the menu's main window
 
-int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const PopoverAnchor& anchor,
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor,
 	std::function<void(int)> preview, std::function<void()> perFrame)
 {
 	PickerView view(title, items, anchor);
@@ -271,7 +263,7 @@ int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, c
 	}
 }
 
-int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const PopoverAnchor& anchor)
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopoverAnchor& anchor)
 {
 	std::vector<PickerItem> items;
 	for(size_t i = 0; i < answers.size(); i++)
