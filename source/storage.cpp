@@ -76,10 +76,6 @@ void FindAppDrive()
 	LOG_ERROR("No storage device with a %s folder, and none could create one", DOSBOX_DIR_NAME);
 }
 
-// Declared here rather than in a core header: the helper MOUNT -u and
-// IMGMOUNT -u share (dos_programs.cpp), which is not static for this reason.
-const char * UnmountHelper(char umount);
-
 /****************************************************************************
  * MountDOSDrive
  *

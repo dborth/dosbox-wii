@@ -32,6 +32,7 @@
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
 #include "osk.h"
+#include "dosboxsupport.h"
 #include "inputlogic.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
@@ -765,8 +766,7 @@ static bool joystickEvents = true;
 static bool dpadDrivesJoystick[NUM_JOYSTICKS];
 static bool padRoutingStale = true;
 
-// sdl_mapper.cpp: what a pad source does (the first NUM_PAD_DPAD sources after the 12 buttons are the D-pad)
-int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
+// what a pad source does is asked of the mapper (the first NUM_PAD_DPAD sources after the 12 buttons are the D-pad)
 enum { PAD_FIRST_DPAD_SOURCE = 12, PAD_DPAD_SOURCES = 4, PAD_EVENTS_MAX = 8 };
 
 static void RefreshPadRouting(void)

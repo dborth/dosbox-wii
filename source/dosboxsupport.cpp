@@ -3,9 +3,10 @@
  * Daryl Borth 2009-2026
  * dosboxsupport.cpp
  *
- * What the DOSBox core needs from the app: the GFX_* title and message
- * hooks, restart, a few libc functions, and RunDOSBox(), which is what main()
- * hands over to.
+ * The two sides of the app and the core. For the core: the GFX_* title and
+ * message hooks, restart, a few libc functions, and RunDOSBox(), which is what
+ * main() hands over to. For the menu: what is running and what it is set to,
+ * and re-initialising sections safely (declared in dosboxsupport.h).
  ***************************************************************************/
 
 #include <stdlib.h>
@@ -35,6 +36,7 @@
 #include "cross.h"
 #include "control.h"
 #include "SDL.h"
+#include "SDL_input.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/EmulatorAudioDriver.h"
@@ -215,8 +217,7 @@ bool GetRunningProgram(char * name, size_t size)
  ***************************************************************************/
 #define EMS_RESERVE	8
 
-bool DOS_UMBChainIsPristine(void);
-Bitu CALLBACK_FreeCount(void);
+Bitu CALLBACK_FreeCount(void);	// not in dosboxsupport.h: it returns the core's Bitu
 
 bool CanReinitDosSection(const char ** reason)
 {
@@ -290,12 +291,6 @@ bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * w
  * the core's own files come through small getters defined there; everything
  * else is read from what the core already exports.
  ***************************************************************************/
-const char * SBLASTER_EffectiveType(void);
-const char * SBLASTER_EffectiveOpl(void);
-int EMS_EffectiveType(void);
-void MAPPER_RebuildJoysticks(void);
-void MAPPER_PadsResync(void);
-
 const char * GetJoystickTypeName(void)
 {
 	switch(joytype)
@@ -318,8 +313,6 @@ void ReinitJoysticks(void)
 {
 	MAPPER_RebuildJoysticks();
 }
-
-void InputHal_RefreshPadRouting(void);
 
 void ResyncPadBinds(void)
 {

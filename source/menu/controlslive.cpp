@@ -127,12 +127,6 @@ ControlsHardware& Controls_Hal()
 
 // ---- mapper: the MAPPER_Pad* calls of sdl_mapper.cpp, which all run on the main thread
 
-// What the mapper offers (sdl_mapper.cpp)
-bool MAPPER_EventExists(const char * name);
-int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
-bool MAPPER_PadSetEvent(int pad, int source, const char * event);
-bool MAPPER_SaveBindsNow(void);
-
 namespace {
 
 class LiveMapper : public PadMapper

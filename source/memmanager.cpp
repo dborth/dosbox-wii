@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "memmanager.h"
+#include "dosboxsupport.h"
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
@@ -16,12 +17,6 @@
 #include "drivers/Mutex.h"
 #include "libgui/GuiImageData.h"
 #include "libgui/GuiTextRenderer.h"
-
-// dosbox/cpu/core_dynrec.cpp. C_DYNREC is always built; these are the only
-// part of the core the app touches here, declared rather than included to
-// keep DOSBox's headers out of this file.
-extern bool CPU_Core_Dynrec_LendCache(void ** base, size_t * size);
-extern void CPU_Core_Dynrec_ReclaimCache(void);
 
 static bool menuMode = false;
 

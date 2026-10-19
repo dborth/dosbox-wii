@@ -3,8 +3,8 @@
  * Daryl Borth 2009-2026
  * dosboxsupport.h
  *
- * What the DOSBox core needs from the app. Included by main.cpp, which
- * must stay free of DOSBox headers.
+ * What the DOSBox core needs from the app, and what the app asks of the core.
+ * Included by main.cpp, which must stay free of DOSBox headers.
  ***************************************************************************/
 
 #ifndef _DOSBOXSUPPORT_H_
@@ -133,5 +133,34 @@ bool GetEmulationStatus(EmulationStatus * status);
 //! enough callback slots are left for EMS, which keeps one per init. When
 //! false, *reason (if not NULL) is a short sentence saying why.
 bool CanReinitDosSection(const char ** reason);
+
+//! ---- What the app added to the core
+//!
+//! Small getters and the mapper's pad calls that the core exports but none of
+//! its own headers declares. Declared here, once, so no file repeats them and
+//! files that must stay free of DOSBox headers can still reach them.
+
+// the mapper (dosbox/gui/sdl_mapper.cpp)
+bool MAPPER_EventExists(const char * name);
+int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
+bool MAPPER_PadSetEvent(int pad, int source, const char * event);
+bool MAPPER_SaveBindsNow(void);
+void MAPPER_RebuildJoysticks(void);
+void MAPPER_PadsResync(void);
+
+// what is effectively running (hardware/sblaster.cpp, ints/ems.cpp)
+const char * SBLASTER_EffectiveType(void);
+const char * SBLASTER_EffectiveOpl(void);
+int EMS_EffectiveType(void);
+
+// whether the dos section can be set up again without harm (dos/dos_memory.cpp)
+bool DOS_UMBChainIsPristine(void);
+
+// the dynamic core's code cache, which the memory manager borrows while the menu is open (cpu/core_dynrec.cpp)
+bool CPU_Core_Dynrec_LendCache(void ** base, size_t * size);
+void CPU_Core_Dynrec_ReclaimCache(void);
+
+// the helper MOUNT -u and IMGMOUNT -u share (dos/dos_programs.cpp)
+const char * UnmountHelper(char umount);
 
 #endif
