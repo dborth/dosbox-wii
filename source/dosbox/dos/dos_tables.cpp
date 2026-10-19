@@ -73,6 +73,7 @@ static Bit8u country_info[0x22] = {
 
 void DOS_SetupTables(void) {
 	Bit16u seg;Bitu i;
+	dos_memseg=DOS_PRIVATE_SEGMENT;
 	dos.tables.tempdta=RealMake(DOS_GetMemory(4),0);
 	dos.tables.tempdta_fcbdelete=RealMake(DOS_GetMemory(4),0);
 	/* Create the DOS Info Block */
