@@ -76,11 +76,6 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
-# Icon and splash images are optional: only passed to wuhbtool if present
-export WUHB_ASSETS	:=	$(if $(wildcard $(CURDIR)/$(META)/icon.png),--icon=$(CURDIR)/$(META)/icon.png) \
-					$(if $(wildcard $(CURDIR)/$(META)/tv_splash.png),--tv-image=$(CURDIR)/$(META)/tv_splash.png) \
-					$(if $(wildcard $(CURDIR)/$(META)/drc_splash.png),--drc-image=$(CURDIR)/$(META)/drc_splash.png)
-
 #---------------------------------------------------------------------------------
 # automatically build a list of object files for our project
 #---------------------------------------------------------------------------------
@@ -143,9 +138,11 @@ $(OUTPUT).wuhb: $(OUTPUT).rpx
 	@echo packaging $@ ...
 	@$(DEVKITPRO)/tools/bin/wuhbtool $< $@ \
 		--name="DOSBox Wii U" \
-		--short-name="DOSBox" \
+		--short-name="DOSBox Wii U" \
 		--author="dborth" \
-		$(WUHB_ASSETS)
+		--icon=$(TOPDIR)/meta/icon.png \
+		--tv-image=$(TOPDIR)/meta/tv_splash.png \
+		--drc-image=$(TOPDIR)/meta/drc_splash.png
 
 $(OUTPUT).rpx: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
