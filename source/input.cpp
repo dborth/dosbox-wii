@@ -204,12 +204,23 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 	int width, height;
 	bool fullscreen;
 	GFX_GetSize(width, height, fullscreen);
-	if (MouseMotionForwarded(sdl.mouse.locked, sdl.mouse.autoenable))
+	if (!MouseMotionForwarded(sdl.mouse.locked, sdl.mouse.autoenable))
+		return;
+	if (motion->which == 1) {
+		// the Wiimote pointer: x and y are where it points across the picture (0..65535), not a count of movement, so
+		// the DOS cursor goes there (sensitivity only scales the movement a game counts)
 		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.xsensitivity/100.0f,
 						  (float)motion->yrel*sdl.mouse.ysensitivity/100.0f,
-						  (float)motion->x/(width-1)*sdl.mouse.xsensitivity/100.0f,
-						  (float)motion->y/(height-1)*sdl.mouse.ysensitivity/100.0f,
-						  sdl.mouse.locked);
+						  (float)motion->x/65535.0f,
+						  (float)motion->y/65535.0f,
+						  false);
+		return;
+	}
+	Mouse_CursorMoved((float)motion->xrel*sdl.mouse.xsensitivity/100.0f,
+					  (float)motion->yrel*sdl.mouse.ysensitivity/100.0f,
+					  (float)motion->x/(width-1)*sdl.mouse.xsensitivity/100.0f,
+					  (float)motion->y/(height-1)*sdl.mouse.ysensitivity/100.0f,
+					  sdl.mouse.locked);
 }
 
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {

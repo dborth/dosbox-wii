@@ -34,6 +34,7 @@ namespace {
 const int kContentH = 262;
 const int kGroupsH = 124;
 const int kPlayerNameW = 74;
+const int kPlayerNameH = 44;
 
 // How many controllers are connected
 int ConnectedCount()
@@ -254,7 +255,7 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 			.bind([slot]{ return Controls().player(slot).role; });
 		caption.setMaxWidth(110);
 		// a fixed width, so the arrows stay put whatever the name and caption say ("Player 1" is narrower than "Player 4")
-		GuiLayout& nameBlock = ui.column().gap(4).size(kPlayerNameW, 0).align(LAYOUT_ALIGN::START).add(who).add(caption);
+		GuiLayout& nameBlock = ui.column().gap(4).size(kPlayerNameW, kPlayerNameH).align(LAYOUT_ALIGN::START).justifyContent(LAYOUT_JUSTIFY::START).add(who).add(caption);
 		if(several)
 		{
 			// a small page-turning arrow, centred in its button (dark on the white face, white once it is highlighted)

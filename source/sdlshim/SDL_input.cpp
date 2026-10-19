@@ -511,7 +511,6 @@ static int cursorVisible = 1;
 static SDL_GrabMode grabMode = SDL_GRAB_OFF;
 
 static bool irWasValid = false;
-static float irLastX = 0, irLastY = 0;
 
 Uint8 SDL_GetMouseState(int * x, int * y)
 {
@@ -553,6 +552,33 @@ static void PostMouseMotion(int dx, int dy)
 	event.motion.state = mouseButtons;
 	event.motion.x = (Uint16)mouseX;
 	event.motion.y = (Uint16)mouseY;
+	event.motion.xrel = (Sint16)dx;
+	event.motion.yrel = (Sint16)dy;
+	SDL_PushEvent(&event);
+}
+
+// An absolute pointer position (u, v in 0..1 across the emulated picture). The event carries the position
+// (x, y as 0..65535, `which` = 1) for DOS programs that read where the pointer is, and the change as xrel / yrel
+// for the ones that count movement. The first sample after the pointer was lost moves nothing relative.
+static void PostMouseAbsolute(float u, float v, bool fresh)
+{
+	const int ix = (int)(u * (MOUSE_W - 1) + 0.5f);
+	const int iy = (int)(v * (MOUSE_H - 1) + 0.5f);
+	const int dx = fresh ? 0 : ix - mouseX;
+	const int dy = fresh ? 0 : iy - mouseY;
+	if (!fresh && dx == 0 && dy == 0)
+		return;
+
+	mouseX = ix;
+	mouseY = iy;
+
+	SDL_Event event;
+	memset(&event, 0, sizeof(event));
+	event.type = SDL_MOUSEMOTION;
+	event.motion.which = 1;
+	event.motion.state = mouseButtons;
+	event.motion.x = (Uint16)(u * 65535.0f + 0.5f);
+	event.motion.y = (Uint16)(v * 65535.0f + 0.5f);
 	event.motion.xrel = (Sint16)dx;
 	event.motion.yrel = (Sint16)dy;
 	SDL_PushEvent(&event);
@@ -715,11 +741,13 @@ static void PollMouse(void)
 	const InputPadData & pad = controller[0]->getPadData();
 	const uint32_t wm = pad.hw_buttons_h[INPUT_HW_WIIMOTE];
 
-	if (pad.hw_connected[INPUT_HW_WIIMOTE] && pad.validPointer && !pad.isTouch) {
-		if (irWasValid)
-			PostMouseMotion((int)(pad.cursor_x - irLastX), (int)(pad.cursor_y - irLastY));
-		irLastX = pad.cursor_x;
-		irLastY = pad.cursor_y;
+	// The pointer is absolute: where the Wiimote points on the picture is where the DOS cursor is. (Sending only the
+	// changes of the pointer drifted away from it whenever a sample was lost, and the edges were hard to reach.)
+	float irU = 0, irV = 0;
+	EmulatorVideoDriver * emu = platform->getVideo()->getEmulatorVideo();
+	if (pad.hw_connected[INPUT_HW_WIIMOTE] && pad.validPointer && !pad.isTouch && emu &&
+		emu->mapPointerToUnit(pad.cursor_x, pad.cursor_y, false, &irU, &irV)) {
+		PostMouseAbsolute(irU, irV, !irWasValid);
 		irWasValid = true;
 	}
 	else {

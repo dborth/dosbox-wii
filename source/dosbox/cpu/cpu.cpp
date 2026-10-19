@@ -2425,14 +2425,58 @@ void CPU_Init(Section* sec) {
 //initialize static members
 bool CPU::inited=false;
 
+/* The home menu's speed +/-. DOSBox's own cycleup / cycledown hotkeys use different amounts each way (x1.1 up, /1.2
+ * down by default), so stepping up and back down never returned to the starting value. Here both directions use the
+ * cycleup amount, and the steps taken are remembered so stepping back retraces them exactly (rounding included). */
+struct MenuCycleStep { Bit32s from, to; bool up; };
+static MenuCycleStep menuCycleSteps[32];
+static int menuCycleStepCount = 0;
+
 void MENU_CycleIncreaseOrDecrease(bool increase)
 {
-	if (increase)
+	if (CPU_CycleAutoAdjust)
 	{
-		CPU_CycleIncrease(true);
+		// percent mode: steps of 5 between 5 and 105 (the ends are reachable from each other)
+		Bit32s p = CPU_CyclePercUsed + (increase ? 5 : -5);
+		if (p > 105) p = 105;
+		if (p < 5) p = 5;
+		CPU_CyclePercUsed = p;
+		GFX_SetTitle(CPU_CyclePercUsed, -1, false);
+		return;
+	}
+
+	Bit32s target;
+	if (menuCycleStepCount > 0 && menuCycleSteps[menuCycleStepCount - 1].to == CPU_CycleMax && menuCycleSteps[menuCycleStepCount - 1].up != increase)
+	{
+		target = menuCycleSteps[--menuCycleStepCount].from; // undo the last step
 	}
 	else
 	{
-		CPU_CycleDecrease(true);
+		const Bit32s old = CPU_CycleMax;
+		const Bit32s amount = CPU_CycleUp > 0 ? CPU_CycleUp : 10;
+		double next;
+		if (amount < 100)
+			next = increase ? old * (1.0 + amount / 100.0) : old / (1.0 + amount / 100.0);
+		else
+			next = increase ? old + amount : old - amount;
+		target = (Bit32s)(next + 0.5);
+		if (increase && target <= old) target = old + 1;
+		if (!increase && target >= old) target = old - 1;
+		if (target < 1) target = 1;
+		if (target != old)
+		{
+			if (menuCycleStepCount == 32)
+			{
+				for (int i = 1; i < 32; i++) menuCycleSteps[i - 1] = menuCycleSteps[i];
+				menuCycleStepCount--;
+			}
+			menuCycleSteps[menuCycleStepCount].from = old;
+			menuCycleSteps[menuCycleStepCount].to = target;
+			menuCycleSteps[menuCycleStepCount].up = increase;
+			menuCycleStepCount++;
+		}
 	}
+	CPU_CycleMax = target;
+	CPU_CycleLeft = 0; CPU_Cycles = 0;
+	GFX_SetTitle(CPU_CycleMax, -1, false);
 }
