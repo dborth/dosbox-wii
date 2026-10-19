@@ -70,7 +70,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 - **Setups**: save every player's buttons and what DOS sees under a name, and load them again later
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
-- Our own video output: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines (on the Wii, in 480-line modes), zoom and shift, and a widescreen setting on the Wii
+- Video output adjustments: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
 - Mounts SD cards and USB drives as DOS drives from a **Drives** screen in the menu, which also picks up drives plugged in or removed while it is open
 - Saves your settings back to `dosbox.conf` from the menu (*Settings → Save*), keeping the previous version as `dosbox.conf.bak`
 - Open source
@@ -160,7 +160,7 @@ SD:/
 
 The zip does not contain a `DOSBox/` folder. DOSBox Wii creates it at the SD card root on first run, or you can make it yourself and fill it first.
 
-> ⚠️ **Run the latest Aroma.** This build is only tested against, and only intended to work on, whatever the current Aroma release is at the time you're reading this. We can't promise it'll behave, or even boot, on an old Aroma build or an outdated Wii U system version. If something looks wrong, updating Aroma first is the right move before reporting it.
+> ⚠️ **Run the latest Aroma.** This app is only tested against, and only intended to work on, whatever the current Aroma release is at the time you're reading this. We can't promise it'll behave, or even boot, on an old Aroma build or an outdated Wii U system version. If something looks wrong, updating Aroma first is the right move before reporting it.
 
 **You need an SD card in the console.** USB drives are not mounted when DOSBox Wii starts, so the `DOSBox` folder, your config and your games are on the SD card. USB drives are for extra DOS drives, mounted from *Settings → Drives* (see [Mounting other drives](#mounting-other-drives)).
 
@@ -498,7 +498,7 @@ These are the `[display]` settings, read by the picture on its next frame, so ev
 | **Scanlines** | 0% (off) to 100%, in tens | **Wii U:** always shown. **Wii:** only in a 480-line video mode, not the 240p modes |
 | **Zoom width** / **height** | 50% to 200%, in fives | Used by `fit` and `fill`; **(not used)** with `integer` |
 | **Shift X** / **Y** | −100 to +100, in fives | One unit is 1/640 of the screen width (X) or 1/480 of its height (Y) |
-| **Widescreen** | `auto`, `4x3`, `16x9` | **Wii only.** The Wii cannot tell what shape the TV is: `auto` follows the console's own aspect-ratio setting, the other two say which it is |
+| **Widescreen** | `auto`, `4x3`, `16x9` | **Wii only.** `auto` follows the console's own aspect-ratio setting, the other two are overrides |
 
 #### Audio
 
@@ -894,7 +894,6 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 - GameCube controllers are not supported on the Wii U build.
 - Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
 - A saved setup is loaded by hand (*SETUP → Load a setup*); it does not load by itself when its program starts.
-- No in-place restart. Startup-only settings (machine, memory size, mixer, `[sdl] mapperfile`) cannot be changed from the menu at all: edit `dosbox.conf` and relaunch.
 - **Exit** asks nothing and saves nothing; press *Settings → Save* first if you want your changes kept.
 - On the Wii U build the system HOME menu is switched off while DOSBox Wii runs, so Home opens DOSBox's menu and there is no way to the system one; use **Exit**.
 - A GameCube controller has no Home button, so it can open the menu (L + R + Start) but closes it only with **Resume**.
