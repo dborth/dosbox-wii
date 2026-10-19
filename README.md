@@ -94,7 +94,7 @@ DOS sees the `DOSBox` folder as drive **C:**, so put your games inside it. Every
 <device>/DOSBox/                 ← drive C:
 ├── dosbox.conf                  ← first run, when no config file is found
 ├── dosbox.conf.bak              ← after Settings → Save over an existing file
-├── mapper-SVN-r4301.map         ← after you change a controller button
+├── mapper.map         ← after you change a controller button
 ├── Setups/                      ← after you save a setup
 ├── capture/                     ← after a wave recording (Ctrl+F6, USB keyboard)
 └── ...                          ← your DOS games and files
@@ -347,7 +347,7 @@ A conf from a PC build of DOSBox still loads. A section or setting this build do
 | Setting | Meaning | Default |
 |---|---|---|
 | `sensitivity` | Mouse speed in percent: `x,y`, each -1000 to 1000 (for example `100,-50`; the second number is the vertical speed and is optional) | `100` |
-| `mapperfile` | The file the controller buttons are saved in. Read once at startup | `mapper-SVN-r4301.map` |
+| `mapperfile` | The file the controller buttons are saved in. Read once at startup | `mapper.map` |
 | `autolock` | **Ignored.** The mouse is always captured | `true` |
 
 **`[render]`** has `frameskip` only (0 to 10, default 0). An old `scaler`, `forced` or `aspect` line in `[render]` is ignored; the aspect setting is now `[display] aspect`.
@@ -361,7 +361,7 @@ Everything else in `[cpu]`, `[sblaster]`, `[dos]` and the other sections is stan
 | `dosbox.conf` | `DOSBox` folder | First launch with no config file found |
 | `dosbox.conf.bak` | Beside the config file | **Settings → Save** over an existing file. Each save replaces the older `.bak`, so it is always the version before the last save |
 | `dosbox.conf.tmp` | Beside the config file | During a save, and removed when it finishes. It is left behind only if a save was cut short, and removed by the next save |
-| `mapper-SVN-r4301.map` | Folder of the config file | You change a controller button, or save a [setup](#setups-saving-controls-per-game) |
+| `mapper.map` | Folder of the config file | You change a controller button, or save a [setup](#setups-saving-controls-per-game) |
 | `Setups/` (`name.conf`, `name.map`) | `DOSBox` folder | The first time you save a setup |
 | `capture/` | Folder of the config file (`[dosbox] captures`) | The first wave recording (**Ctrl+F6** on a USB keyboard) or raw capture. Screenshots are not built into this build |
 
