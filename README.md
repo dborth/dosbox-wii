@@ -2,7 +2,7 @@
 
 [github.com/dborth/dosbox-wii](https://github.com/dborth/dosbox-wii) — GPL licensed
 
-DOSBox Wii is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and saved setups.
+**DOSBox Wii** is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and saved setups.
 
 DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to be set up to run unsigned code first. If you haven't done that yet, jump to **[Installation](#installation)**; it links to a step-by-step guide for each console.
 
@@ -63,7 +63,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 
 ## Features
 
-- DOSBox SVN r4301 core with the PowerPC **dynamic recompiler** (dynarec), two to four times faster than the normal core on the benchmark in [`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt)
+- DOSBox SVN r4301 core with the PowerPC **dynamic recompiler** (dynarec): in the benchmark in [`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt) it runs about 4 to 10 times faster than the normal core on the Wii (see [Performance](#performance))
 - A Home menu you can open at any time (Home, or L + R + Plus, or a tap of a keyboard's Windows key): speed, frameskip, aspect and filter at a glance, plus settings pages for Performance, Video, Audio, Keyboard & Mouse and the DOS joystick, and an *All settings* editor for the rest
 - A **Status** page showing what DOSBox is configured to and what is in effect (running CPU core and whether the dynarec is active, cycles, screen mode, audio output, mounted drives, loaded config file), with anything not at DOSBox's default marked
 - Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
@@ -301,6 +301,8 @@ Normally one file is read, the first of these that exists:
 
 If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but neither launcher entry in this repository passes any. To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
 
+**Restart and game configs.** `CONFIG -r` at the DOS prompt restarts DOSBox with the options it started with, or with the ones you add. `CONFIG -r -gameconf name.conf` reads `name.conf` **after** the base config, so it only has to hold what differs and its values win. It is looked up as given, then in the `DOSBox` folder. The home screen's **Restart** keeps the game config, and `CONFIG -r -nogameconf` drops it. Nothing in the menu chooses a game config.
+
 Whichever file was read is the one **Settings → Save** writes back to, with the previous version kept as `dosbox.conf.bak` (see [Saving](#saving)).
 
 Paths inside a config file that start with a device prefix (`sd:/...`, `usb:/...`) are used as written. Any other path, including a Wii U SD path starting `/vol/external01/`, is taken as relative to the folder of the config file. On the Wii U, write a bare file name for `mapperfile`.
@@ -405,6 +407,7 @@ Nothing else opens it. (On the Wii U GamePad the **TV** button opens an on-scree
 | **L + R + Plus**, GUI key | Open the menu, but do not close it |
 | **Keyboard** tile | After **OK** with some text typed, the menu closes and the text is typed into DOS. **Cancel**, or an empty box, stays in the menu |
 | **Exit** (bottom left) | Fades out and leaves DOSBox at once. There is **no confirmation and nothing is saved** (see [Saving](#saving)). Wii: returns to the Homebrew Channel (or whatever launched it), or turns the console off if a power-off was requested. Wii U: returns to the Wii U Menu |
+| **Restart** (beside Exit) | Closes DOSBox and starts it again from the config file, as if you had launched it again, without going back to the launcher. **Whatever is running is lost.** Settings you changed but did not **Save** are lost too, and settings DOSBox reads only at startup (**(next launch)**) now take effect. A game config given with `CONFIG -r -gameconf` (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)) is kept |
 | Power button / system shutdown request | Honoured whether the menu is open or not, and ends DOSBox the same way as **Exit** |
 | `exit` at the DOS prompt, **Ctrl+F9** on a USB keyboard | Also end DOSBox, without the menu. Ctrl+F9 is DOSBox's `shutdown` hotkey and is not offered for controller buttons |
 
@@ -467,7 +470,7 @@ Other endings you may see on a value:
 | Ending | Meaning |
 |---|---|
 | **(not used)** | The row has no effect at the moment: the zoom rows with *Fit* set to `integer`, and the DOS joystick rows (all but the type) while the joystick type is `none` |
-| **(next launch)** | DOSBox only reads it at startup; the row cannot be changed from the menu. Edit `dosbox.conf` and relaunch |
+| **(next launch)** | DOSBox only reads it at startup; the row cannot be changed from the menu. Edit `dosbox.conf`, then press **Restart** (or run `CONFIG -r`) |
 | **(edit dosbox.conf)**, **(Performance page)**, **(Keyboard & Mouse page)** | Cannot be changed on an *All settings* page (free text, paths, and two-part values); the words say where, or how |
 | **(unavailable)** | A DOS memory row that cannot be changed safely right now; the help line says why |
 | **(not available here)** | An *All settings* row for something this console cannot do (the Wii U has no *Widescreen* setting) |
@@ -577,10 +580,10 @@ On numbers, a list of values is stepped in ascending order; a whole-number range
 | `[sdl] autolock` | Ignored on this build: the mouse is always captured. It is hidden on the *All settings* pages, though a saved file still contains it |
 | `[mixer] rate`, `blocksize` | The audio driver fixes both. Hidden on the *All settings* pages |
 | Everything in `[dosbox]`, `[mixer]` (`nosound`, `prebuffer`) and `[sdl] mapperfile` | Read once at startup. Shown as **(next launch)** and cannot be changed from the menu |
-| Tandy sound `on` | Refused unless the machine type is `tandy` or `pcjr`: forcing it on removes the second DMA controller until DOSBox restarts. The row skips the value |
-| A Sound Blaster or Gravis Ultrasound base port, IRQ or DMA that would clash with the other card (or put the GUS at `2c0`, which is the VGA registers, or give an SB16 the same 8- and 16-bit DMA) | Refused: the row skips that value, with no message other than a note in the help line |
+| Tandy sound `on` | Refused unless the machine type is `tandy` or `pcjr`: forcing it on removes the second DMA controller until DOSBox restarts. The row skips the value and the help line says why |
+| A Sound Blaster or Gravis Ultrasound base port, IRQ or DMA that would clash with the other card (or put the GUS at `2c0`, which is the VGA registers, or give an SB16 the same 8- and 16-bit DMA) | Refused: the row skips that value and the help line says why |
 | Any DOS memory row (XMS / EMS / UMB) | Refused while a program is using upper memory, or when DOSBox is nearly out of internal handlers (each change of EMS uses one; the help line says "Edit dosbox.conf and restart") |
-| A restart | There is none. Changes that need one take effect the next time you launch DOSBox Wii |
+| A restart | **Restart** on the home screen, or `CONFIG -r` at the DOS prompt, starts DOSBox again and reads the config file again. Save first: what is only in the running machine is lost |
 
 ### Status
 
@@ -643,7 +646,7 @@ Open **Controllers** on the home screen. **Configure** opens the setup screen, a
 - A **PRESET** chip (this player) and an **IN DOS** chip (the whole game) at the top.
 - A **SETUP** chip and **Back** at the bottom; see [Setups](#setups-saving-controls-per-game).
 
-Press **A** on a row to change what that control does. Changes apply at once and are written to the mapper file (`[sdl] mapperfile`, `mapper-<version>.map` by default).
+Press **A** on a row to change what that control does. Changes apply at once and are written to the mapper file (`[sdl] mapperfile`, `mapper.map` by default).
 
 #### What DOS sees (the IN DOS chip)
 
@@ -844,13 +847,31 @@ You can copy the pair between consoles, or edit the `.map` with a text editor (i
 
 ## Performance
 
-Most 386-era games run well; demanding 486 and Pentium-class games may not. If a game is slow:
+Three things set how fast DOSBox Wii runs a game, and all three can be changed while it runs: the CPU core, the cycles, and frameskip.
 
-1. Check the **dynarec** is on: *Status → CPU → Dynarec*. With `core=auto`, DOSBox uses the dynarec from startup if it could get memory for its code cache, and falls back to the normal core if not.
-2. **Cycles:** the default `auto` adapts to the game. Try `max`, or a fixed number such as `fixed 30000`, under *Settings → Performance*. Step up and down from the home screen.
-3. **Frameskip:** raise it from the home screen until the game runs smoothly enough.
-4. **Turn the sound down:** set the game's sound to PC speaker or none, or turn off Sound Blaster / Gravis Ultrasound under *Settings → Audio*.
-5. If it's still too slow: the Wii can only do so much!
+1. **Check the dynarec is on.** *Status → CPU → Dynarec* reads *Active* when the dynamic recompiler is the core running. With the default `core=auto`, DOSBox starts on the dynamic core (it doesn't wait for a program to enter protected mode) if it could set up the code cache. The cache is 8 MB, or as little as 1 MB if that is all there is. On the **Wii** it comes from MEM1. On the **Wii U** it comes from the area the console reserves for generated code, so if the console gives the app none, DOSBox runs the normal core and Status reads *Not active*.
+2. **Cycles.** Set them under *Settings → Performance* (at any time), and step them from the home screen's speed buttons:
+
+   | Mode | What it does | Home-screen **+** / **−** |
+   |---|---|---|
+   | `auto` (default) | Starts at 3000 cycles, and moves to `max` when a program enters protected mode | Steps the running amount |
+   | `max` | As many as the console can spare; *Settings* offers shares from 10% to 100% | Moves the share in steps of 5%, from 5% to 105% |
+   | `fixed N` | A set amount; *Settings* offers 500 to 50000 | Steps the amount by `cycleup` (default 10: a percentage below 100, a number of cycles from 100) |
+
+   The home-screen buttons and the cycle hotkeys change the running value, and the config follows it, so *Settings* shows it and **Save** writes it. The exception is `auto`: the running amount there is DOSBox's own guess, and is not written.
+3. **Frameskip** is 0 to 10 and is stepped from the home screen. The config follows it (`[render] frameskip`).
+4. **The normal core** is *Settings → Performance → CPU core* (`auto`, `dynamic` or `normal`; at the DOS prompt only). Use it to compare.
+
+### What the benchmark says
+
+[`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt) holds PCPBench 1.03c results, all at `cycles=max`, for a build of r4301 with the dynarec. It is older than this release. On the **Wii**:
+
+| Core | DOS/32A | DOS4GW |
+|---|---|---|
+| dynamic | 3.0 to 3.1 fps | 2.8 to 2.9 fps |
+| normal | 0.6 to 0.8 fps | 0.3 to 0.5 fps |
+
+The file's vWii results compare an overclocked vWii (1.24 GHz, dynamic core, 5.6 to 5.8 fps) with an unoverclocked one (729 MHz, normal core, 2.0 to 2.1 fps), so they don't show what the dynarec gains there. They are not results for the native Wii U build. Its classes list 2.5 fps as the minimum for a 486 DX/33.
 
 ---
 
@@ -858,14 +879,15 @@ Most 386-era games run well; demanding 486 and Pentium-class games may not. If a
 
 ### A game closes DOSBox, crashes, or hangs
 
+When DOSBox hits an internal error it stops and DOSBox Wii leaves, as if you had chosen **Exit**. It shows no message: the message goes to a debug log that release builds don't write. Things to try:
+
 - **Delete `dosbox.conf`** (from the `DOSBox` folder) to restore the default settings. A new one is created on next launch. (Settings → Save keeps the version before your last save as `dosbox.conf.bak`.)
-- **Disable the sound.** Use the sound setup program that came with the game, and/or set *Sound Blaster* to `none` and *Gravis Ultrasound* to off.
-- **Change some settings**, alone or in combination:
-  - Fixed cycles (for example `fixed 10000`)
-  - `memsize` in `[dosbox]` (edit `dosbox.conf`; read at startup)
-  - `ems`, `xms` and `umb` off in `[dos]`
-- **Run `loadfix`** before starting the game.
-- **Try the normal core** instead of the dynarec (*Settings → Performance → CPU core*), then compare.
+- **Turn the sound off**, alone or with the others below: *Sound Blaster* `none` and *Gravis Ultrasound* off under *Settings → Audio*. Those rows change at the DOS prompt only, so set them before you start the game (or edit `dosbox.conf` and press **Restart**).
+- **Fixed cycles**, for example `fixed 10000`, under *Settings → Performance*.
+- **`memsize`** in `[dosbox]`: 1 to 63 MB, default 16. It is read once at startup, so edit `dosbox.conf` and press **Restart**.
+- **DOS memory off** (`ems`, `xms`, `umb`), under *Settings → All settings → DOS memory and keyboard*, at the DOS prompt. A change is refused while a program is using upper memory.
+- **`LOADFIX`**: `loadfix game.exe` reserves 64 KB of memory (`loadfix -32 game.exe` for another size), runs the program, then frees it.
+- **The normal core** instead of the dynarec (*Settings → Performance → CPU core*).
 
 ### A game runs slowly
 
@@ -881,22 +903,20 @@ Open *Settings → Drives*: it only notices drives plugged in or removed while i
 
 ### A setting says "(DOS prompt only)" or "(next launch)"
 
-Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the program first). Rows marked **(next launch)** are read once at startup and cannot be changed from the menu: edit `dosbox.conf` and relaunch. See [When a row can be changed](#when-a-row-can-be-changed).
+Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the program first). Rows marked **(next launch)** are read once at startup and cannot be changed from the menu: edit `dosbox.conf`, then press **Restart** on the home screen (or run `CONFIG -r`). See [When a row can be changed](#when-a-row-can-be-changed).
 
 ---
 
 ## Known Limitations
 
-- Disc drives and network shares can't be used: there is no screen to connect a share or read a disc, so `dvd:/` and `smb:/` don't exist for `MOUNT`.
-- No CD audio, and no CD drive is reported to DOS.
+- Disc drives and network shares can't be used, and no CD drive is reported to DOS (so no CD audio): there is no screen to connect a share or read a disc, so `dvd:/` and `smb:/` don't exist for `MOUNT`.
 - No MIDI or MPU-401, no serial ports and no modem or IPX networking: none of these is compiled in, and there is no `[midi]`, `[serial]` or `[ipx]` section. A game that looks for a MIDI device finds none; use Sound Blaster FM music instead.
-- Drives are mounted from the *Drives* screen (or `MOUNT`), and the screen watches for drives being plugged in or removed only while it is open.
+- No screenshots (they are not built in).
+- Drives are mounted from *Settings → Drives* or with `MOUNT`; see [Mounting other drives](#mounting-other-drives) for what the Drives screen can and can't see.
 - GameCube controllers are not supported on the Wii U build.
 - Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
 - A saved setup is loaded by hand (*SETUP → Load a setup*); it does not load by itself when its program starts.
-- **Exit** asks nothing and saves nothing; press *Settings → Save* first if you want your changes kept.
 - On the Wii U build the system HOME menu is switched off while DOSBox Wii runs, so Home opens DOSBox's menu and there is no way to the system one; use **Exit**.
-- A GameCube controller has no Home button, so it can open the menu (L + R + Start) but closes it only with **Resume**.
 - The DOS keyboard layout (`[dos] keyboardlayout`) is shown in the menu but can only be changed in `dosbox.conf`.
 
 ---
