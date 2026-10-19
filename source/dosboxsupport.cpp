@@ -93,6 +93,20 @@ extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
 
 static bool restartRequested = false;
+static std::string gameConf;
+
+const char * GetGameConf() {
+	return gameConf.c_str();
+}
+
+void SetGameConf(const char * conf) {
+	gameConf = conf ? conf : "";
+}
+
+void RequestRestartInto(const char * conf) {
+	SetGameConf(conf);
+	RequestRestart();
+}
 
 void RequestRestart() {
 	restartRequested = true;
@@ -109,10 +123,21 @@ bool TakeRestartRequest() {
 }
 
 void restart_program(std::vector<std::string> & parameters) {
-	// CONFIG -r. The arguments are not used yet: the restart runs with the
-	// arguments DOSBox was started with. Leaves the core the way the
+	// CONFIG -r. Only two arguments mean anything here, the way to start a game
+	// from the DOS prompt: "-gameconf <file>" and "-nogameconf" (plain DOSBox).
+	// Without them the game stays as it is. Leaves the core the way the
 	// killswitch does (RunDOSBox() catches it).
-	(void)parameters;
+	// "config -r" alone passes the arguments of the current start, which include
+	// the game conf this run was started with (and would undo a SetGameConf()
+	// made since), so those are not read as a request
+	const bool implicit = control && &parameters == &control->startup_params;
+	for(size_t i = 0; !implicit && i < parameters.size(); i++)
+	{
+		if(parameters[i] == "-gameconf" && i + 1 < parameters.size())
+			SetGameConf(parameters[++i].c_str());
+		else if(parameters[i] == "-nogameconf")
+			SetGameConf(NULL);
+	}
 	RequestRestart();
 	throw 1;
 }
@@ -428,7 +453,15 @@ int access(const char *path, int amode)
  ***************************************************************************/
 void RunDOSBox(int argc, char* argv[]) {
 	try {
-		CommandLine com_line(argc,argv);
+		// The game conf travels as an argument of its own (LoadPrefs() reads it)
+		std::vector<char *> args(argv, argv + argc);
+		static const char * const gameSwitch = "-gameconf";
+		if(!gameConf.empty())
+		{
+			args.push_back(const_cast<char *>(gameSwitch));
+			args.push_back(const_cast<char *>(gameConf.c_str()));
+		}
+		CommandLine com_line((int)args.size(), &args[0]);
 		Config myconf(&com_line);
 		control=&myconf;
 		/* Init the configuration system and add default values */

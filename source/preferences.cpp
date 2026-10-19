@@ -116,7 +116,8 @@ void ResetPrefs() {
  *
  * Parses the config files: -userconf, then -conf, then dosbox.conf in the
  * working directory, then the one in the dosbox folder. Generates a default
- * if there is none.
+ * if there is none. Then the game's conf (-gameconf, see SetGameConf()), which
+ * is layered over all of that.
  ***************************************************************************/
 void LoadPrefs() {
 	/* Parse configuration files */
@@ -153,6 +154,11 @@ void LoadPrefs() {
 			}
 		}
 	}
+	// The game's conf is read after the base config below, so it only has to
+	// hold what differs from it
+	std::string game_file;
+	const bool have_game = control->cmdline->FindString("-gameconf",game_file,true);
+
 	// if none found => parse localdir conf
 	if(!control->configfiles.size()) control->ParseConfigFile("dosbox.conf");
 
@@ -175,6 +181,16 @@ void LoadPrefs() {
 			control->ParseConfigFile(config_combined.c_str());
 		} else {
 			LOG_MSG("CONFIG: Using default settings. Create a configfile to change them");
+		}
+	}
+
+	// Last, so its values win over everything above. Tried as given, then in
+	// the DOSBox folder, like -conf.
+	if(have_game && !game_file.empty()) {
+		if (!control->ParseConfigFile(game_file.c_str())) {
+			if (!control->ParseConfigFile((config_path + game_file).c_str())) {
+				LOG_MSG("CONFIG: Can't open game config file: %s",game_file.c_str());
+			}
 		}
 	}
 }

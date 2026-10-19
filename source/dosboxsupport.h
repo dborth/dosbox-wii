@@ -22,6 +22,19 @@ void RunDOSBox(int argc, char* argv[]);
 //! running is lost.
 void RequestRestart();
 
+//! The conf of the game DOSBox is set to run: a path relative to the DOSBox
+//! folder, or absolute. It is parsed after dosbox.conf, so it only has to hold
+//! what differs. Empty when there is none. Kept across restarts, so Restart
+//! starts the same game again; changing it only takes effect at the next start.
+const char * GetGameConf();
+
+//! Sets (or, with NULL or "", clears) the game conf for the next start.
+void SetGameConf(const char * conf);
+
+//! SetGameConf() and RequestRestart(): leaves what is running and starts the
+//! game (or plain DOSBox, with NULL or "").
+void RequestRestartInto(const char * conf);
+
 //! True between RequestRestart() and the core leaving.
 bool RestartRequested();
 
