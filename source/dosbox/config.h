@@ -1,4 +1,12 @@
-#define VERSION "SVN-r4301"
+#include "dosboxwii.h"
+
+#ifdef HW_RVL
+#define GAME_CONSOLE		"Wii"
+#else
+#define GAME_CONSOLE		"Wii U"
+#endif
+
+#define VERSION GAME_CONSOLE " " APPVERSION
 
 /* Define to 1 to enable internal debugger, requires libcurses */
 #define C_DEBUG 0

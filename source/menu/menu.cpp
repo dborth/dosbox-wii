@@ -32,11 +32,10 @@
 #include "controlslive.h"
 #include "controlsmapper.h"
 #include "settings.h"
+#include "dosboxwii.h"
 #include "dosboxsupport.h"
 #include "menuart.h"
 #include "homeview.h"
-
-#define APPVERSION		"2.0"
 
 static GuiImageData * pointer[4] = { NULL, NULL, NULL, NULL };
 static GuiImage cursorImg[4];

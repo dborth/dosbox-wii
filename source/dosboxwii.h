@@ -12,6 +12,8 @@
 #ifndef _DOSBOXWII_H_
 #define _DOSBOXWII_H_
 
+#define APPVERSION		"2.0"
+
 //! Emulation -> home menu -> emulation. Returns when the menu is closed.
 void EnterMenu();
 

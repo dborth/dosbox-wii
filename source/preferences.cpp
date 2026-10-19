@@ -27,7 +27,7 @@
 #include "input.h"
 #include "videosupport.h"
 
-#define MAPPERFILE "mapper-" VERSION ".map"
+#define MAPPERFILE "mapper.map"
 
 /****************************************************************************
  * Config_Add_SDL
