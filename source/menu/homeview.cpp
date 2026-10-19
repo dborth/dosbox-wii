@@ -9,146 +9,10 @@
 #include "menu.h"
 #include "menustyle.h"
 #include "menuart.h"
+#include "menuicon.h"
 #include "filelist.h"
 
 namespace {
-
-// ---- icons drawn from shapes, in a 24 x 24 box scaled to the element's size
-
-enum { ICON_NONE = -1, ICON_GAUGE, ICON_FRAMES, ICON_ASPECT, ICON_FILTER, ICON_KEYBOARD, ICON_GEAR, ICON_PULSE, ICON_DISK, ICON_POWER, ICON_INFO, ICON_PLAY, ICON_PAD };
-
-class HomeIcon : public MenuMeshElement
-{
-	public:
-		HomeIcon(int k, int size, PixelColor c) : MenuMeshElement(size, size), kind(k), color(c) {}
-
-		void setColor(PixelColor c)
-		{
-			if(c.r != color.r || c.g != color.g || c.b != color.b || c.a != color.a)
-			{
-				color = c;
-				invalidate();
-			}
-		}
-
-	private:
-		float u;
-		GuiFill fill;
-
-		GuiPoint P(float x, float y) const { return GuiPoint{ x * u, y * u }; }
-		void line(float x1, float y1, float x2, float y2, float w = 2.0f)
-		{
-			mesh.addLine(P(x1, y1), P(x2, y2), w * u, fill);
-			// round the ends, so joined lines have no notch at the corner
-			mesh.addEllipse(GuiRect{ (x1 - w / 2) * u, (y1 - w / 2) * u, w * u, w * u }, fill);
-			mesh.addEllipse(GuiRect{ (x2 - w / 2) * u, (y2 - w / 2) * u, w * u, w * u }, fill);
-		}
-		void box(float x, float y, float w, float h, float r, float lw = 2.0f)
-		{
-			mesh.strokeRoundRect(GuiRect{ x * u, y * u, w * u, h * u }, GuiCorners(r * u), lw * u, STROKE::INSIDE, fill);
-		}
-		void ring(float cx, float cy, float r, float lw = 2.0f)
-		{
-			mesh.strokeEllipse(GuiRect{ (cx - r) * u, (cy - r) * u, 2 * r * u, 2 * r * u }, lw * u, STROKE::CENTRE, fill);
-		}
-		void dot(float cx, float cy, float r)
-		{
-			mesh.addEllipse(GuiRect{ (cx - r) * u, (cy - r) * u, 2 * r * u, 2 * r * u }, fill);
-		}
-
-		void build() override
-		{
-			u = (float)width / 24.0f;
-			fill = GuiFill::solid(color);
-			switch(kind)
-			{
-				case ICON_GAUGE:
-					mesh.strokeArc(P(12, 13), 9 * u, 150.0f, 240.0f, 2.2f * u, color);
-					line(12, 13, 16.5f, 8.5f);
-					dot(12, 13, 1.8f);
-					break;
-				case ICON_FRAMES:
-					// a strip of film: the frame in the middle, a column of sprocket holes down each side. The rails stop inside
-					// the outline (not past it) and the holes sit clear of both the outline and the rails.
-					box(2, 4, 20, 16, 2.5f);
-					line(8.8f, 5.5f, 8.8f, 18.5f, 1.6f);
-					line(15.2f, 5.5f, 15.2f, 18.5f, 1.6f);
-					for(int k = 0; k < 3; k++)
-					{
-						dot(5.9f, 8.5f + 3.5f * k, 1.0f);
-						dot(18.1f, 8.5f + 3.5f * k, 1.0f);
-					}
-					break;
-				case ICON_ASPECT:
-					box(3, 4, 18, 13, 2.5f);
-					line(12, 17, 12, 20.5f);
-					line(8, 20.5f, 16, 20.5f);
-					break;
-				case ICON_FILTER:
-					box(3.5f, 3.5f, 7.5f, 7.5f, 1.5f);
-					box(13, 13, 7.5f, 7.5f, 1.5f);
-					mesh.addRoundRect(GuiRect{ 13 * u, 3.5f * u, 7.5f * u, 7.5f * u }, GuiCorners(1.5f * u), fill);
-					mesh.addRoundRect(GuiRect{ 3.5f * u, 13 * u, 7.5f * u, 7.5f * u }, GuiCorners(1.5f * u), fill);
-					break;
-				case ICON_KEYBOARD:
-					box(2, 6, 20, 12, 2.5f);
-					dot(6.5f, 10, 1.0f); dot(10.5f, 10, 1.0f); dot(14.5f, 10, 1.0f); dot(18, 10, 1.0f);
-					line(7, 14.2f, 17, 14.2f, 1.8f);
-					break;
-				case ICON_GEAR:
-					ring(12, 12, 6.2f);
-					ring(12, 12, 1.8f);
-					for(int k = 0; k < 8; k++)
-					{
-						const float t = (float)k * 3.14159265f / 4.0f;
-						line(12 + 7.4f * cosf(t), 12 + 7.4f * sinf(t), 12 + 10 * cosf(t), 12 + 10 * sinf(t), 3.0f);
-					}
-					break;
-				case ICON_PULSE:
-					line(2.5f, 12, 7, 12);
-					line(7, 12, 10, 5);
-					line(10, 5, 14, 19);
-					line(14, 19, 17, 12);
-					line(17, 12, 21.5f, 12);
-					break;
-				case ICON_DISK:
-					line(4, 4, 17, 4); line(17, 4, 20, 7); line(20, 7, 20, 20); line(20, 20, 4, 20); line(4, 20, 4, 4);
-					line(8, 4, 8, 9.5f, 1.6f); line(8, 9.5f, 16, 9.5f, 1.6f); line(16, 9.5f, 16, 4, 1.6f);
-					line(7.5f, 20, 7.5f, 14, 1.6f); line(7.5f, 14, 16.5f, 14, 1.6f); line(16.5f, 14, 16.5f, 20, 1.6f);
-					break;
-				case ICON_POWER:
-					mesh.strokeArc(P(12, 13), 7.8f * u, 310.0f, 280.0f, 2.2f * u, color);
-					line(12, 3.5f, 12, 12.5f);
-					break;
-				case ICON_INFO:
-					ring(12, 12, 9);
-					dot(12, 7.6f, 1.3f);
-					line(12, 11, 12, 17);
-					break;
-				case ICON_PAD:
-					// a gamepad: the body (as wide as the keyboard and monitor glyphs), a D-pad at the left, two buttons at the right,
-					// all well inside the outline
-					box(0.5f, 4.5f, 23, 15, 7.0f);
-					line(7.5f, 10.5f, 7.5f, 14.5f, 1.8f);
-					line(5.5f, 12.5f, 9.5f, 12.5f, 1.8f);
-					dot(16.5f, 11.0f, 1.2f);
-					dot(19.0f, 13.8f, 1.2f);
-					break;
-				case ICON_PLAY:
-				{
-					std::vector<GuiPoint> tri;
-					tri.push_back(P(6.5f, 3.5f)); tri.push_back(P(20, 12)); tri.push_back(P(6.5f, 20.5f));
-					mesh.addPolygon(tri, fill);
-					break;
-				}
-				default:
-					break;
-			}
-		}
-
-		int kind;
-		PixelColor color;
-};
 
 // The tiles under the controllers: as short as they can be, to leave the controllers their room
 const int TILE_W = 128;
@@ -175,10 +39,10 @@ GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiC
 	GuiCard& c = ui.card().size(w, h).style(MenuBarButtonStyle()).corners(GuiCorners(h / 2.0f)).pad(0, 0).onClick(onClick).onFocus(onFocus);
 	const int iconSize = font + 2;
 	GuiLayout& row = ui.row().gap(6).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).size(w, h);
-	HomeIcon * ic = nullptr;
-	if(icon != ICON_NONE)
+	MenuIcon * ic = nullptr;
+	if(icon != MENU_ICON_NONE)
 	{
-		ic = &ui.make<HomeIcon>(icon, iconSize, Dark());
+		ic = &ui.make<MenuIcon>(icon, iconSize, Dark());
 		row.add(*ic);
 	}
 	GuiLabel& label = ui.label(text).fontSize(font).textColor(Dark());
@@ -206,7 +70,7 @@ GuiCard& HomeView::tile(const char * title, const char * note, int icon, Action 
 		.onClick([this, action]{ pending = action; actionPlayer = -1; })
 		.onFocus([this, h]{ hint = h; });
 	GuiLayout& row = ui.row().gap(6).align(LAYOUT_ALIGN::CENTRE).size(TILE_W - 16, TILE_H - 12);
-	row.add(ui.make<HomeIcon>(icon, 24, Dark()));
+	row.add(ui.make<MenuIcon>(icon, 24, Dark()));
 	GuiLayout& text = ui.column().gap(4).align(LAYOUT_ALIGN::START);
 	text.add(ui.label(title).fontSize(UI_FONT_HEADING - 4));
 	text.add(ui.label(note).fontSize(12).muted());
@@ -256,7 +120,7 @@ void HomeView::quickRow(GuiLayout& column, int icon, const char * labelText, std
 	text.add(ui.label(labelText).fontSize(UI_FONT_HEADING - 4));
 	text.add(ui.label().fontSize(12).muted().bind(note));
 	column.add(ui.row().size(256, 68).gap(8).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.make<HomeIcon>(icon, 24, Dark())).add(text).addSpace().add(control));
+		.add(ui.make<MenuIcon>(icon, 24, Dark())).add(text).addSpace().add(control));
 }
 
 // A battery: a 1px casing, four bars inside it and the terminal, on whole pixels
@@ -439,40 +303,40 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.bind([]{ const std::string n = Controls().setupName(); return n.empty() ? std::string("No setup loaded") : "Setup: " + n; });
 	setupName.setMaxWidth(150);
 	GuiLayout& running = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(program).add(setupName);
-	resumeCard = &pill("Resume", ICON_PLAY, 118, 40, 20, [this]{ pending = Action::RESUME; }, [this]{ hint = "Go back to the game"; });
+	resumeCard = &pill("Resume", MENU_ICON_PLAY, 118, 40, 20, [this]{ pending = Action::RESUME; }, [this]{ hint = "Go back to the game"; });
 	GuiLayout& header = ui.row().size(sw, MENU_BAR_TOP_H).pad(MENU_PAGE_MARGIN, 0).gap(10).align(LAYOUT_ALIGN::CENTRE)
 		.add(logo).add(versionBox).add(rule).add(running).addSpace().add(*resumeCard);
 
 	// body, left: quick settings, one card
 	GuiLayout& quick = ui.column().size(256, 0).gap(0);
 	HomeSettings * hs = &settings;
-	quickRow(quick, ICON_GAUGE, "Speed", [hs]{ return hs->speedNote(); },
+	quickRow(quick, MENU_ICON_GAUGE, "Speed", [hs]{ return hs->speedNote(); },
 		stepper([hs]{ return hs->speed(); }, [hs](bool up){ hs->stepSpeed(up); }, "- slows DOS down, + speeds it up (CPU cycles)"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
+	quickRow(quick, MENU_ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
 		stepper([hs]{ return hs->frameskip(); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, ICON_ASPECT, "Aspect", []{ return std::string("4:3 monitor"); },
+	quickRow(quick, MENU_ICON_ASPECT, "Aspect", []{ return std::string("4:3 monitor"); },
 		choice("Corrected", "Square", [hs]{ return hs->aspectCorrected(); }, [hs](bool c){ hs->setAspectCorrected(c); }, "Corrected draws the picture 4:3 like a real monitor. Square keeps pixels square"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
+	quickRow(quick, MENU_ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
 		choice("Sharp", "Smooth", [hs]{ return hs->filterSharp(); }, [hs](bool sharp){ hs->setFilterSharp(sharp); }, "Sharp keeps pixel edges crisp. Smooth blends them"));
 	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, bodyH);
 	quickCard.add(quick, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
 	// body, right: controllers, then four tiles. The tiles are short, and the controllers take what they leave.
-	configureCard = &pill("Configure", ICON_NONE, 76, 26, 13, [this]{ pending = Action::CONTROLLERS; actionPlayer = -1; }, [this]{ hint = "Set up the buttons of each controller"; });
+	configureCard = &pill("Configure", MENU_ICON_NONE, 76, 26, 13, [this]{ pending = Action::CONTROLLERS; actionPlayer = -1; }, [this]{ hint = "Set up the buttons of each controller"; });
 	GuiLayout& controllersHead = ui.row().size(CONTROLLERS_INNER_W, 28).gap(6).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.make<HomeIcon>(ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
+		.add(ui.make<MenuIcon>(MENU_ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
 	GuiLayout& controllersBody = ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
 	const int controllersH = bodyH - 2 * TILE_H - 2 * 8;
 	GuiCard& controllersCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 8).size(264, controllersH);
 	controllersCard.add(controllersBody, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
-	keyboardCard = &tile("Keyboard", "On screen", ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");
-	settingsCard = &tile("Settings", "All options", ICON_GEAR, Action::SETTINGS, "Video, audio, DOS, drives and everything else");
-	statusCard = &tile("Status", "Live info", ICON_PULSE, Action::STATUS, "What DOSBox is set to and doing right now");
-	setupsCard = &tile("Setups", "Save, load", ICON_DISK, Action::SETUPS, "Save or load the buttons and settings for this game");
+	keyboardCard = &tile("Keyboard", "On screen", MENU_ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");
+	settingsCard = &tile("Settings", "All options", MENU_ICON_GEAR, Action::SETTINGS, "Video, audio, DOS, drives and everything else");
+	statusCard = &tile("Status", "Live info", MENU_ICON_PULSE, Action::STATUS, "What DOSBox is set to and doing right now");
+	setupsCard = &tile("Setups", "Save, load", MENU_ICON_DISK, Action::SETUPS, "Save or load the buttons and settings for this game");
 	GuiLayout& right = ui.column().size(264, bodyH).gap(8).align(LAYOUT_ALIGN::CENTRE).add(controllersCard)
 		.add(ui.row().gap(8).add(*keyboardCard).add(*settingsCard))
 		.add(ui.row().gap(8).add(*statusCard).add(*setupsCard));
@@ -481,9 +345,9 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(quickCard).add(right);
 
 	// footer: Exit, what the highlighted thing does, Credits
-	exitCard = &pill("Exit", ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });
-	restartCard = &pill("Restart", ICON_NONE, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; });
-	creditsCard = &pill("Credits", ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; });
+	exitCard = &pill("Exit", MENU_ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });
+	restartCard = &pill("Restart", MENU_ICON_NONE, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; });
+	creditsCard = &pill("Credits", MENU_ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; });
 	GuiLabel& hintLabel = ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted())
 		.bind([this]{ return status.empty() ? hint : status; });
 	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 96 - 108 - 36);

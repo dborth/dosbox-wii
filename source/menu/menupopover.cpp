@@ -10,6 +10,7 @@
 #include "menustyle.h"
 #include "menupage.h"
 #include "menuart.h"
+#include "menuicon.h"
 #include <algorithm>
 
 PopoverInsets MenuPopover_Insets()
@@ -25,35 +26,11 @@ GuiShape& MenuPopover_Divider(UiScope& ui, int w)
 	return line;
 }
 
-namespace {
-
-// The X of a close button: two crossed strokes, drawn from shapes like the home screen's icons
-class PopoverCross : public MenuMeshElement
-{
-	public:
-		PopoverCross(int size) : MenuMeshElement(size, size) {}
-
-	private:
-		void build() override
-		{
-			const GuiFill fill = GuiFill::solid(MenuPaletteCurrent().text);
-			const float s = (float)width, m = s * 0.3f, w = 1.8f;
-			mesh.addLine(GuiPoint{ m, m }, GuiPoint{ s - m, s - m }, w, fill);
-			mesh.addLine(GuiPoint{ s - m, m }, GuiPoint{ m, s - m }, w, fill);
-			mesh.addEllipse(GuiRect{ m - w / 2, m - w / 2, w, w }, fill);
-			mesh.addEllipse(GuiRect{ s - m - w / 2, s - m - w / 2, w, w }, fill);
-			mesh.addEllipse(GuiRect{ s - m - w / 2, m - w / 2, w, w }, fill);
-			mesh.addEllipse(GuiRect{ m - w / 2, s - m - w / 2, w, w }, fill);
-		}
-};
-
-}
-
 GuiCard& MenuPopover_CloseButton(UiScope& ui, std::function<void()> onClick)
 {
 	const int size = 22;
 	GuiCard& close = ui.card().size(size, size).style(MenuRowHighlightStyle()).corners(GuiCorners(size / 2.0f)).pad(0, 0).onClick(onClick);
-	close.add(ui.make<PopoverCross>(size), GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
+	close.add(ui.make<MenuIcon>(MENU_ICON_CLOSE, size, MenuPaletteCurrent().text), GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 	return close;
 }
 

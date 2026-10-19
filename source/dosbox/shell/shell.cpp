@@ -606,7 +606,6 @@ void SHELL_Init() {
 		"|                                                                    |\n"
 		"| To adjust the emulated CPU speed, use \033[31mctrl-F11\033[37m and \033[31mctrl-F12\033[37m.       |\n"
 		"| To activate the keymapper \033[31mctrl-F1\033[37m.                                 |\n"
-		"| For more information read the \033[36mREADME\033[37m file in the DOSBox directory. |\n"
 		"|                                                                    |\n"
 	);
 	MSG_Add("SHELL_STARTUP_CGA","| DOSBox supports Composite CGA mode.                                |\n"

@@ -16,6 +16,7 @@
 #pragma once
 #include <algorithm>
 #include <math.h>
+#include "libgui/Gui.h"
 #include "menustyle.h"
 
 //!A button face. LONG, LARGE, NORMAL, SHORT and SMALL match the sizes of the buttons

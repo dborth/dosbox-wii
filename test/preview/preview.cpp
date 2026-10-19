@@ -12,6 +12,7 @@
 #include "menu/menustyle.h"
 #include "menu/menuart.h"
 #include "menu/menupopover.h"
+#include "menu/menuicon.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -946,6 +947,25 @@ int main(int argc, char ** argv)
 			in = at(k.insideX, k.insideY);
 			EXPECT(in[2] > 150 && in[0] < 60);				// highlighted: the lit colour, at once
 		}
+	}
+	// ---- line icons: the close X crosses the middle and leaves the corners empty, and takes a new colour
+	{
+		const int S = 24, X = 100, Y = 100;
+		GuiWindow root(640, 480);
+		MenuIcon icon(MENU_ICON_CLOSE, S, PixelColor{ 220, 0, 0, 255 });
+		icon.setPosition(X, Y);
+		root.append(&icon);
+		int w = 0, h = 0;
+		auto at = [&](int dx, int dy) { const std::vector<uint8_t>& px = HostPixels(w, h); return &px[((size_t)((Y + dy) * h / 480) * w + (size_t)((X + dx) * w / 640)) * 4]; };
+		HostClear(0, 0, 0);
+		root.draw();
+		EXPECT(at(S / 2, S / 2)[0] > 150);					// the strokes cross in the middle
+		EXPECT(at(2, 2)[0] < 30 && at(S - 3, 2)[0] < 30);	// the corners are empty
+		EXPECT(at(S / 2, 2)[0] < 30 && at(2, S / 2)[0] < 30);	// so are the middles of the edges: it is an X, not a plus or a box
+		icon.setColor(PixelColor{ 0, 0, 220, 255 });
+		HostClear(0, 0, 0);
+		root.draw();
+		EXPECT(at(S / 2, S / 2)[2] > 150 && at(S / 2, S / 2)[0] < 60);
 	}
 	if(failures)
 		return 1;
