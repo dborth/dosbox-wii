@@ -55,37 +55,36 @@ jobs:
       run: |
         make -f Makefile.wiiu -j3
 
-    - name: Copy artifacts (Wii)
+    - name: Copy Wii artifacts
       if: ${{ matrix.image == 'Wii' }}
       run: |
-        mkdir -p dist/apps/dosbox-wii
-        cp hbc/* dist/apps/dosbox-wii/
-        cp executables/dosbox-wii.dol dist/apps/dosbox-wii/boot.dol
-        mkdir -p dist/DOSBox
-        touch dist/DOSBox/dosboxdir
-      
-    - name: Upload artifacts (Wii)
-      if: ${{ matrix.image == 'Wii' }}
+        mkdir -p dist/DOSBox-Wii/apps/dosbox-wii
+        mkdir -p dist/DOSBox-Wii/DOSBox
+        touch dist/DOSBox-Wii/DOSBox/dosboxdir
+        cp hbc/* dist/DOSBox-Wii/apps/dosbox-wii/
+        cp executables/dosbox-wii.dol dist/DOSBox-Wii/apps/dosbox-wii/boot.dol
+
+    - name: Upload Wii artifacts
       uses: actions/upload-artifact@v4
+      if: ${{ matrix.image == 'Wii' }}
       with:
         name: DOSBox-Wii
         path: |
-          dist/
+          dist/DOSBox-Wii/
 
-    - name: Copy artifacts (Wii U)
+    - name: Copy Wii U artifact
       if: ${{ matrix.image == 'WiiU' }}
       run: |
-        mkdir -p dist/wiiu/apps/dosbox-wiiu
-        cp executables/dosbox-wiiu.wuhb dist/wiiu/apps/dosbox-wiiu/
-        cp executables/dosbox-wiiu.rpx dist/wiiu/apps/dosbox-wiiu/
+        mkdir -p dist/DOSBox-WiiU
+        cp executables/dosbox-wiiu.wuhb dist/DOSBox-WiiU/
 
-    - name: Upload artifacts (Wii U)
-      if: ${{ matrix.image == 'WiiU' }}
+    - name: Upload Wii U artifact
       uses: actions/upload-artifact@v4
+      if: ${{ matrix.image == 'WiiU' }}
       with:
         name: DOSBox-WiiU
         path: |
-          dist/wiiu/
+          dist/DOSBox-WiiU/
 
   release:
     name: Release
@@ -104,7 +103,7 @@ jobs:
       with:
         path: dist
 
-    - name: Re-zip artifact
+    - name: Re-zip artifacts
       run: |
         cd dist/DOSBox-Wii
         rm -r DOSBox/*

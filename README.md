@@ -57,7 +57,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 [dosbox-wii]: https://github.com/dborth/dosbox-wii/releases/download/Pre-release/DOSBox-Wii.zip
 [dosbox-wiiu]: https://github.com/dborth/dosbox-wii/releases/download/Pre-release/DOSBox-WiiU.zip
 
-> The Wii U's built-in Wii mode (**vWii**) runs Wii software, so the Wii build is the one to try there; see [Wii](#wii). The Wii U build is a separate, **native** Wii U application — see [Wii U](#wii-u).
+> The Wii build also runs unmodified in **vWii** (the Wii U's built-in Wii-compatibility mode), including via VC-style injection for GamePad support. The Wii U build is a separate, **native** Wii U (Aroma) application — see [Wii U](#wii-u) below for how the three options compare.
 
 ---
 
@@ -68,7 +68,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 - A **Status** page showing what DOSBox is configured to and what is in effect (running CPU core and whether the dynarec is active, cycles, screen mode, audio output, mounted drives, loaded config file), with anything not at DOSBox's default marked
 - Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
 - **Setups**: save every player's buttons and what DOS sees under a name, and load them again later
-- Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad** on the native Wii U build
+- Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
 - Our own video output: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines (on the Wii, in 480-line modes), zoom and shift, and a widescreen setting on the Wii
 - Mounts SD cards and USB drives as DOS drives from a **Drives** screen in the menu, which also picks up drives plugged in or removed while it is open
@@ -124,35 +124,72 @@ SD:/
 
 The app is the single `boot.dol`; its font, language text and images are built into it.
 
-When it starts, the Wii build looks at the IOS it is running on. If that isn't IOS 58 or 61, and the loader's preferred IOS is one of those, it reloads into it. (The USB drive code is written for IOS 58.) It carries on with whatever IOS it has otherwise.
+When it starts, the Wii build looks at the IOS it is running on. If that isn't IOS 58 or 61, and the loader's preferred IOS is one of those, it reloads into it. This mostly matters when you launch it another way, such as a forwarder channel set to a different IOS. USB drives also work on other IOS versions, but IOS 58 has the best compatibility.
 
-**In vWii**, launch it the same way from the Homebrew Channel in Wii mode. The Wii build recognises a Wii U, and reads the Wii U GamePad as player 1 when libogc2's GamePad support (WiiDRC) starts; see [Wii and Wii U](#wii-and-wii-u). Neither this nor storage has been tested in vWii.
+Running it in vWii: see [Wii U](#wii-u).
 
 To start, a USB keyboard or any supported controller will do. DOSBox Wii opens at the DOS prompt, and the [menu](#opening-and-closing-it) opens with **Home** (or **L + R + Plus**) and has an on-screen keyboard; see [Controls](#controls) for the controllers and their buttons.
 
 ### Wii U
 
-The native Wii U build is a `.wuhb` application for Aroma, installed as **DOSBox Wii U** (short name *DOSBox*).
+Wii U support comes in **three genuinely different forms**. Pick the one that matches what you've set up on your console:
+
+|              | vWii (Homebrew Channel) | vWii (VC-style injection) | Native Wii U build |
+|--------------|-------------------------|---------------------------|--------------------|
+| What it is   | The regular **Wii** build, run inside vWii | The same Wii build, launched as its own injected Virtual-Console-style channel | A dedicated Wii U (Aroma) app, `.wuhb` |
+| Requires     | Homebrew Channel *inside vWii* | Homebrew Channel *inside vWii*, plus a channel built with **[TeconMoon's WiiVC Injector Mod](https://github.com/timefox/TeconMoon-s-WiiVC-Injector-Mod)** | **Aroma** (Wii U homebrew environment) |
+| GamePad      | Not usable | Usable as **player 1** (buttons and sticks; no touch) | **Full support**: touch, buttons |
+| Which download | `DOSBox-Wii.zip` (Wii build) | `DOSBox-Wii.zip` (Wii build) | `DOSBox-WiiU.zip` |
+
+If you're not sure which you want: the **native build** is the strongest experience on a console with Aroma installed, with full GamePad support including the touch screen. **VC injection** is the best you'll get out of vWii itself (a usable GamePad), and plain **Homebrew Channel vWii** is the simplest but weakest of the three.
+
+#### Native Wii U (Aroma)
 
 1. Follow the **[Wii U Homebrew Guide](https://wiiu.hacks.guide/)** to install **Aroma** if you haven't already. One-time setup per console.
-2. Download the Wii U build (`DOSBox-WiiU.zip` above). Copy the `dosbox-wiiu` folder from it into `wiiu/apps/` on your SD card. The folder holds `dosbox-wiiu.wuhb`.
-3. Put the SD card in the console and turn it on. **DOSBox Wii U** is then an app you can start from Aroma.
+2. Download the Wii U build (`DOSBox-WiiU.zip` above) and copy `dosbox-wiiu.wuhb` to `wiiu/apps/` on your SD card, alongside your other Aroma apps.
+3. Insert the SD card and turn on your Wii U. With Aroma installed, **DOSBox Wii U shows up as its own icon directly on the Wii U Menu**, right alongside your other software.
 
 ```text
 SD:/
 ├── wiiu/
 │   └── apps/
-│       └── dosbox-wiiu/
-│           └── dosbox-wiiu.wuhb
+│       └── dosbox-wiiu.wuhb
 └── DOSBox/
     └── ...
 ```
 
 The zip does not contain a `DOSBox/` folder. DOSBox Wii creates it at the SD card root on first run, or you can make it yourself and fill it first.
 
+> ⚠️ **Run the latest Aroma.** This build is only tested against, and only intended to work on, whatever the current Aroma release is at the time you're reading this. We can't promise it'll behave, or even boot, on an old Aroma build or an outdated Wii U system version. If something looks wrong, updating Aroma first is the right move before reporting it.
+
 **You need an SD card in the console.** USB drives are not mounted when DOSBox Wii starts, so the `DOSBox` folder, your config and your games are on the SD card. USB drives are for extra DOS drives, mounted from *Settings → Drives* (see [Mounting other drives](#mounting-other-drives)).
 
-**USB drives need Mocha.** USB storage (FAT32, exFAT and NTFS) is reached through **[Mocha](https://github.com/wiiu-env/MochaPayload)**, an optional part of an Aroma setup. If DOSBox Wii can't start it (the console isn't running Aroma or a compatible setup, or Mocha isn't installed), USB drives are not available at all; the SD card still works.
+**Recommended companions, installed through the same Wii U Homebrew Guide:**
+
+- **[Mocha](https://github.com/wiiu-env/MochaPayload)**: an Aroma component that gives the console access to USB storage (FAT32, exFAT and NTFS). Without it, USB drives are not available at all (they won't show on *Settings → Drives*); the SD card works either way.
+- **[Bloopair](https://github.com/GaryOderNichts/Bloopair)**: lets you pair non-Nintendo Bluetooth controllers (Switch Pro Controller, Joy-Con, DualShock/DualSense, Xbox controllers and others) to your Wii U as if they were a Wii U Pro Controller. Handy if you don't have a GamePad or Pro Controller. It works at the system level within the native Wii U environment and doesn't apply inside vWii.
+
+#### vWii (Wii Homebrew Channel, inside Wii U)
+
+1. Follow the **[Wii Homebrew Guide](https://wii.hacks.guide/)** to install the Homebrew Channel in vWii. The process runs from inside the Wii U's Wii mode and is otherwise the same as on a standalone Wii.
+2. Follow the [Wii instructions](#wii) above exactly, using the same SD card. The vWii build is the Wii build. SD cards and USB drives work in vWii as on a Wii.
+3. Boot into vWii on your Wii U (from the Wii U Menu) and launch it from the Homebrew Channel, same as on Wii.
+
+This is the simplest Wii U path, but also the most limited: no GamePad support. For a GamePad without going all the way to the native build, see VC-style injection below.
+
+#### vWii via VC-style injection (GamePad support)
+
+Rather than launching DOSBox Wii from the Homebrew Channel every time, you can package it as its **own injected channel** using **[TeconMoon's WiiVC Injector Mod](https://github.com/timefox/TeconMoon-s-WiiVC-Injector-Mod)**. This installs it as a Virtual-Console-style title in your vWii NAND rather than something launched through the Homebrew Channel, which is what lets you use the Wii U GamePad for display (without touch) and as player 1.
+
+At a high level:
+
+1. Install the Homebrew Channel in vWii first (see [above](#vwii-wii-homebrew-channel-inside-wii-u)). You'll still want it for updates and other homebrew.
+2. Download and run **TeconMoon's WiiVC Injector Mod** on a PC, and choose **Wii Homebrew Injection (DOL)** as the injection type.
+3. Point it at DOSBox Wii's `boot.dol` (from the Wii build), and pick one of the available **GamePad Emulation** modes so the injector configures GamePad input for the resulting channel.
+4. Build the injected package and install it to your Wii U's vWii NAND with the tool of your choice (the injector's own documentation covers this step, since it depends on your existing vWii setup).
+5. Keep the `DOSBox/` folder on your SD card exactly as described [above](#all-platforms-sd-card--folder-layout). The injected channel reads from the SD card the same way the Homebrew Channel version does.
+
+Consult the injector's own documentation for anything version-specific: it is third-party software this README doesn't track closely.
 
 ---
 
@@ -176,9 +213,7 @@ cd mygame
 game.exe
 ```
 
-The welcome banner is DOSBox's stock text. Its hints about **Ctrl+F11**, **Ctrl+F12** and **Ctrl+F1** are for a USB keyboard (cycles down, cycles up, and DOSBox's key mapper); cycles are also on the [home screen](#home-screen). It also points to a README "in the DOSBox directory" that is not there.
-
-If no storage device has a `DOSBox` folder or lets DOSBox Wii create one, DOSBox still starts, on its built-in settings, with no drive C:. It does not tell you why; check that the SD card is in and not write-protected.
+If no storage device has a `DOSBox` folder or lets DOSBox Wii create one, DOSBox still starts, on its built-in settings, with no drive C:. Nothing is shown when it starts; open **Status** (see [Status](#status)): *Config file* reads `None (defaults)` and *Drives* reads `None mounted`.
 
 Open the [Home menu](#opening-and-closing-it) at any time (press **Home**) to change settings, set up your controller, or exit.
 
@@ -568,7 +603,7 @@ On numbers, a list of values is stepped in ascending order; a whole-number range
 |---|---|---|
 | Home button | Opens the menu | Opens the menu. DOSBox Wii switches the Wii U's own HOME menu off while it runs, so the system HOME menu cannot be reached from inside it: use **Exit** |
 | GameCube controller | Yes: **L + R + Start** opens the menu | Not supported |
-| Wii U GamePad | Only if libogc2 reports one (not tested in vWii) | Yes. Shown under the player slots with its battery, if present when the menu opened |
+| Wii U GamePad | Only through [VC-style injection](#vwii-via-vc-style-injection-gamepad-support): player 1, buttons and sticks, no touch | Yes. Shown under the player slots with its battery, if present when the menu opened |
 | **TV** button on the GamePad | Nothing | Opens and closes the Wii U's on-screen keyboard on the GamePad screen; what you type goes into DOS. The TV keeps showing the game. (The home screen's **Keyboard** tile works on both) |
 | Video: **Scanlines** | Only in 480-line video modes | Always |
 | Video: **Widescreen** | Yes | No (each screen's shape is known) |
@@ -594,7 +629,7 @@ Every control on a controller can be given one **target**: a keyboard key, a DOS
 | Classic Controller | Yes | Yes |
 | Wii U Pro Controller | Yes | Yes |
 | GameCube Controller | Yes | **No** (the Wii U input driver has no GameCube support) |
-| Wii U GamePad | Only if libogc2 reports one; not tested in vWii | Yes (buttons, sticks, touch screen) |
+| Wii U GamePad | Only through [VC-style injection](#vwii-via-vc-style-injection-gamepad-support): player 1, buttons and sticks, no touch | Yes (buttons, sticks, touch screen) |
 | USB keyboard, USB mouse | Yes | Yes |
 
 A player can hold more than one device. A Wiimote with a Nunchuk or Classic attached counts as one device. A GameCube controller on the same slot is a second device, and the Wii U GamePad always shares **Player 1** with whatever is on slot 1. The setup screen shows a column of device icons so you can choose which one to look at. Everything held on a slot is merged into that one player, and the player has one set of bindings.
