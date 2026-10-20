@@ -14,9 +14,15 @@
 
 namespace {
 
-// The tiles under the controllers: as short as they can be, to leave the controllers their room
-const int TILE_W = 128;
-const int TILE_H = 48;
+// The tiles under the controllers: three across, as short as they can be, to leave the controllers their room
+const int TILE_W = 82;
+const int TILE_H = 52;
+const int TILE_GAP = 9;
+const int COLUMN_GAP = 12;
+// The Game bar across the top of the body, and the room it leaves the cards under it
+const int GAME_BAR_H = 40;
+const int BODY_GAP = 8;
+const int QUICK_ROW_H = 56;
 // The controllers card: its inner width, a player's slot, and the row of shared devices under the players
 const int CONTROLLERS_INNER_W = 244;
 const int PLAYER_SLOT_W = 58;
@@ -62,20 +68,17 @@ GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiC
 	return c;
 }
 
-// A square-ish tile: an icon, a title and a line under it
-GuiCard& HomeView::tile(const char * title, const char * note, int icon, Action action, const char * hintText)
+// A narrow tile: an icon with the title under it
+GuiCard& HomeView::tile(const char * title, int icon, Action action, const char * hintText)
 {
 	const std::string h = hintText;
-	GuiCard& c = ui.card().size(TILE_W, TILE_H).style(MenuTileStyle()).corners(GuiCorners(12.0f)).pad(8, 6)
+	GuiCard& c = ui.card().size(TILE_W, TILE_H).style(MenuTileStyle()).corners(GuiCorners(12.0f)).pad(4, 4)
 		.onClick([this, action]{ pending = action; actionPlayer = -1; })
 		.onFocus([this, h]{ hint = h; });
-	GuiLayout& row = ui.row().gap(6).align(LAYOUT_ALIGN::CENTRE).size(TILE_W - 16, TILE_H - 12);
-	row.add(ui.make<MenuIcon>(icon, 24, Dark()));
-	GuiLayout& text = ui.column().gap(4).align(LAYOUT_ALIGN::START);
-	text.add(ui.label(title).fontSize(UI_FONT_HEADING - 4));
-	text.add(ui.label(note).fontSize(12).muted());
-	row.add(text);
-	c.add(row, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
+	GuiLayout& col = ui.column().gap(2).align(LAYOUT_ALIGN::CENTRE).size(TILE_W - 8, TILE_H - 8);
+	col.add(ui.make<MenuIcon>(icon, 24, Dark()));
+	col.add(ui.label(title).fontSize(14));
+	c.add(col, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 	return c;
 }
 
@@ -119,7 +122,7 @@ void HomeView::quickRow(GuiLayout& column, int icon, const char * labelText, std
 	GuiLayout& text = ui.column().gap(4).align(LAYOUT_ALIGN::START);
 	text.add(ui.label(labelText).fontSize(UI_FONT_HEADING - 4));
 	text.add(ui.label().fontSize(12).muted().bind(note));
-	column.add(ui.row().size(256, 68).gap(8).align(LAYOUT_ALIGN::CENTRE)
+	column.add(ui.row().size(256, QUICK_ROW_H).gap(8).align(LAYOUT_ALIGN::CENTRE)
 		.add(ui.make<MenuIcon>(icon, 24, Dark())).add(text).addSpace().add(control));
 }
 
@@ -282,7 +285,7 @@ GuiLayout& HomeView::playersStrip()
 // ---- the screen
 
 HomeView::HomeView(HomeSettings& s, const char * version) :
-	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), gamesCard(nullptr),
+	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), gamesCard(nullptr), saveCard(nullptr),
 	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), hint("Pick something, or Resume to go back to the game")
 {
 	const int sw = platform->getVideo()->getScreenWidth();
@@ -327,7 +330,8 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, MENU_ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
 		choice("Sharp", "Smooth", [hs]{ return hs->filterSharp(); }, [hs](bool sharp){ hs->setFilterSharp(sharp); }, "Sharp keeps pixel edges crisp. Smooth blends them"));
-	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, bodyH);
+	const int cardsH = bodyH - GAME_BAR_H - BODY_GAP;
+	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, cardsH);
 	quickCard.add(quick, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
 	// body, right: controllers, then four tiles. The tiles are short, and the controllers take what they leave.
@@ -335,20 +339,29 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	GuiLayout& controllersHead = ui.row().size(CONTROLLERS_INNER_W, 28).gap(6).align(LAYOUT_ALIGN::CENTRE)
 		.add(ui.make<MenuIcon>(MENU_ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
 	GuiLayout& controllersBody = ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
-	const int controllersH = bodyH - 2 * TILE_H - 2 * 8;
+	const int controllersH = cardsH - TILE_H - 8;
 	GuiCard& controllersCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 8).size(264, controllersH);
 	controllersCard.add(controllersBody, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
-	keyboardCard = &tile("Keyboard", "On screen", MENU_ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");
-	settingsCard = &tile("Settings", "All options", MENU_ICON_GEAR, Action::SETTINGS, "Video, audio, DOS, drives and everything else");
-	statusCard = &tile("Status", "Live info", MENU_ICON_PULSE, Action::STATUS, "What DOSBox is set to and doing right now");
-	gamesCard = &tile("Games", "Pick one", MENU_ICON_DISK, Action::GAMES, "Pick a game to play. DOSBox restarts with that game's controls and settings");
-	GuiLayout& right = ui.column().size(264, bodyH).gap(8).align(LAYOUT_ALIGN::CENTRE).add(controllersCard)
-		.add(ui.row().gap(8).add(*keyboardCard).add(*settingsCard))
-		.add(ui.row().gap(8).add(*statusCard).add(*gamesCard));
+	keyboardCard = &tile("Keyboard", MENU_ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");
+	settingsCard = &tile("Settings", MENU_ICON_GEAR, Action::SETTINGS, "Video, audio, DOS, drives and everything else");
+	statusCard = &tile("Status", MENU_ICON_PULSE, Action::STATUS, "What DOSBox is set to and doing right now");
+	GuiLayout& right = ui.column().size(264, cardsH).gap(8).align(LAYOUT_ALIGN::CENTRE).add(controllersCard)
+		.add(ui.row().gap(TILE_GAP).add(*keyboardCard).add(*settingsCard).add(*statusCard));
 
-	GuiLayout& body = ui.row().size(sw, sh).pad(MENU_PAGE_MARGIN, MENU_BAR_TOP_H + 4, MENU_PAGE_MARGIN, MENU_BAR_BOTTOM_H + 4).gap(12)
-		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(quickCard).add(right);
+	// the Game bar: the game's icon and title at the left like the other sections, then Change and Save at the right
+	gamesCard = &pill("Change", MENU_ICON_NONE, 76, 26, 13, [this]{ pending = Action::GAMES; actionPlayer = -1; },
+		[this]{ hint = "Pick a game to play. DOSBox restarts with that game's controls and settings"; });
+	saveCard = &pill("Save", MENU_ICON_NONE, 76, 26, 13, []{}, [this]{ hint = "Save this game's controls and settings"; });
+	const int barW = 264 + COLUMN_GAP + 276;
+	GuiLayout& gameHead = ui.row().size(barW - 20, GAME_BAR_H - 12).gap(6).align(LAYOUT_ALIGN::CENTRE)
+		.add(ui.make<MenuIcon>(MENU_ICON_DISK, 24, Dark())).add(ui.label("Game").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*gamesCard).add(*saveCard);
+	GuiCard& gameCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(barW, GAME_BAR_H);
+	gameCard.add(gameHead, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
+
+	GuiLayout& cards = ui.row().gap(COLUMN_GAP).align(LAYOUT_ALIGN::CENTRE).add(quickCard).add(right);
+	GuiLayout& body = ui.column().size(sw, sh).pad(MENU_PAGE_MARGIN, MENU_BAR_TOP_H + 4, MENU_PAGE_MARGIN, MENU_BAR_BOTTOM_H + 4).gap(BODY_GAP)
+		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(gameCard).add(cards);
 
 	// footer: Exit, what the highlighted thing does, Credits
 	exitCard = &pill("Exit", MENU_ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });

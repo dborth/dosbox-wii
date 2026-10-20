@@ -6,9 +6,10 @@
  * The home screen, built from shapes with libgui's builder layer:
  *
  *   header   logo, the running program and its setup                 [Resume]
+ *   game bar Game: the game's icon and title, with Change and Save at the right
  *   body     Quick settings: speed, frameskip, aspect, filter  |  Controllers: the four
  *            players (device, battery), keyboard and mouse, and Configure
- *                                                                  |  Keyboard, Settings, Status, Games
+ *                                                                  |  Keyboard, Settings, Status
  *   footer   [Exit DOSBox]            what the highlighted thing does              [Credits]
  *
  * It is a view over two models: HomeSettings for the quick settings (the running
@@ -65,7 +66,7 @@ class HomeView : public GuiOverlay
 
 	private:
 		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus);
-		GuiCard& tile(const char * title, const char * note, int icon, Action action, const char * hint);
+		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
 		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
 		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);
 		GuiLayout& choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hint);
@@ -80,7 +81,8 @@ class HomeView : public GuiOverlay
 		GuiCard * exitCard;
 		GuiCard * restartCard;
 		GuiCard * creditsCard;
-		GuiCard * gamesCard;
+		GuiCard * gamesCard;	// the Game bar's Change button
+		GuiCard * saveCard;	// the Game bar's Save button
 		GuiCard * configureCard;
 		GuiCard * keyboardCard;
 		GuiCard * settingsCard;
