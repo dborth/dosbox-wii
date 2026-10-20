@@ -41,32 +41,10 @@ static constexpr int AX_DRC_CHANNELS = 4;
 void WutAudioDriver::init() {
 	instance = this;
 	AXInitParams params = {};
-	params.renderer = AX_INIT_RENDERER_48KHZ;
+	params.renderer = AX_INIT_RENDERER_32KHZ;
 	params.pipeline = AX_INIT_PIPELINE_SINGLE;
 	AXInitWithParams(&params);
 	AXRegisterAppFrameCallback(wut_frame_callback);
-
-	nextVoiceSlot = 0;
-
-	// Pre-allocate the 16 hardware SFX voices - mono, centered equally on
-	// both output channels of both devices.
-	AXVoiceDeviceMixData tvMixCentered[AX_TV_CHANNELS];
-	AXVoiceDeviceMixData drcMixCentered[AX_DRC_CHANNELS];
-	buildChannelMix(tvMixCentered, true, true);
-	buildChannelMix(drcMixCentered, true, true);
-
-	for (int i = 0; i < 16; i++) {
-		voices[i].voice = AXAcquireVoice(31, 0, 0);
-		voices[i].active = false;
-		if (voices[i].voice) {
-			AXVoiceBegin(voices[i].voice);
-			AXSetVoiceType(voices[i].voice, 0);
-
-			AXSetVoiceDeviceMix(voices[i].voice, AX_DEVICE_TYPE_TV, 0, tvMixCentered);
-			AXSetVoiceDeviceMix(voices[i].voice, AX_DEVICE_TYPE_DRC, 0, drcMixCentered);
-			AXVoiceEnd(voices[i].voice);
-		}
-	}
 
 	emulatorAudio = new WutEmulatorAudio();
 	emulatorAudio->init();
@@ -96,13 +74,6 @@ void WutAudioDriver::shutdown() {
 	stopEmulatorAudio();
 	emulatorAudio->shutdown();
 	AXDeregisterAppFrameCallback(wut_frame_callback);
-
-	for (int i = 0; i < 16; i++) {
-		if (voices[i].voice) {
-			AXFreeVoice(voices[i].voice);
-			voices[i].voice = nullptr;
-		}
-	}
 
 	AXQuit();
 	instance = nullptr;

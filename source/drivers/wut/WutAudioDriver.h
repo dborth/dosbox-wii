@@ -29,12 +29,5 @@ class WutAudioDriver : public AudioDriver
 		WutEmulatorAudio* getEmulatorAudio() override { return emulatorAudio; }
 
 	private:
-		struct WutVoiceSlot {
-			AXVoice* voice;
-			bool active;
-		};
-
 		WutEmulatorAudio* emulatorAudio = nullptr;
-		WutVoiceSlot voices[16];
-		int nextVoiceSlot;
 };
