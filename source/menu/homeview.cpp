@@ -40,7 +40,7 @@ const PixelColor Light() { return MenuChromeText(); }
 
 // A pill for the bars: the bar buttons' look, an icon and a word. The icon and the word go white when it is highlighted
 // (the face goes dark), as GuiTextButton does for its label.
-GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus)
+GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn)
 {
 	GuiCard& c = ui.card().size(w, h).style(MenuBarButtonStyle()).corners(GuiCorners(h / 2.0f)).pad(0, 0).onClick(onClick).onFocus(onFocus);
 	const int iconSize = font + 2;
@@ -52,6 +52,8 @@ GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiC
 		row.add(*ic);
 	}
 	GuiLabel& label = ui.label(text).fontSize(font).textColor(Dark());
+	if(textFn)
+		label.bind(textFn);
 	row.add(label);
 	c.add(row, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 	int last = -1;
@@ -350,12 +352,33 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.add(ui.row().gap(TILE_GAP).add(*keyboardCard).add(*settingsCard).add(*statusCard));
 
 	// the Game bar: the game's icon and title at the left like the other sections, then Change and Save at the right
-	gamesCard = &pill("Change", MENU_ICON_NONE, 76, 26, 13, [this]{ pending = Action::GAMES; actionPlayer = -1; },
-		[this]{ hint = "Pick a game to play. DOSBox restarts with that game's controls and settings"; });
-	saveCard = &pill("Save", MENU_ICON_NONE, 76, 26, 13, []{}, [this]{ hint = "Save this game's controls and settings"; });
+	HomeSettings * gs = &settings;
+	gamesCard = &pill("Change", MENU_ICON_NONE, 100, 26, 13, [this]{ pending = Action::GAMES; actionPlayer = -1; },
+		[this, gs]{ hint = gs->gameName().empty() ? "Pick a game to play. DOSBox restarts with that game's controls and settings"
+			: "Switch to another game. DOSBox restarts, and what is running is lost"; },
+		[gs]{ return std::string(gs->gameName().empty() ? "Pick a game" : "Change"); });
+	saveCard = &pill("Save", MENU_ICON_NONE, 100, 26, 13, [this]{ pending = Action::SAVE; actionPlayer = -1; },
+		[this, gs]{ hint = gs->gameName().empty() ? "Save what is running as a new game: its controls and settings"
+			: "Save this game: its controls and settings as they are now"; },
+		[gs]{ return std::string(gs->gameName().empty() ? "Save as game" : "Save"); });
 	const int barW = 264 + COLUMN_GAP + 276;
+	// the game's name: what DOSBox was started with, or Plain DOSBox, in a muted colour
+	GuiLabel& gameName = ui.label().fontSize(UI_FONT_HEADING - 4)
+		.bind([gs]{ const std::string n = gs->gameName(); return n.empty() ? std::string("Plain DOSBox") : n; });
+	gameName.setMaxWidth(200);
+	GuiShape& gameRule = ui.make<GuiShape>(1, 22);
+	gameRule.setPaint(GuiPaint().color(MenuRGBA(0, 0, 0, 60)));
+	int namedLast = -1;
+	ui.bind([&gameName, gs, namedLast]() mutable {
+		const int named = gs->gameName().empty() ? 0 : 1;
+		if(named == namedLast)
+			return;
+		namedLast = named;
+		gameName.textColor(named ? Dark() : MenuPaletteCurrent().textMuted);
+	});
 	GuiLayout& gameHead = ui.row().size(barW - 20, GAME_BAR_H - 12).gap(6).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.make<MenuIcon>(MENU_ICON_DISK, 24, Dark())).add(ui.label("Game").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*gamesCard).add(*saveCard);
+		.add(ui.make<MenuIcon>(MENU_ICON_DISK, 24, Dark())).add(ui.label("Game").fontSize(UI_FONT_HEADING - 4)).add(gameRule).add(gameName)
+		.addSpace().add(*gamesCard).add(*saveCard);
 	GuiCard& gameCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(barW, GAME_BAR_H);
 	gameCard.add(gameHead, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 
@@ -402,6 +425,7 @@ void HomeView::select(Action which)
 		case Action::SETTINGS: c = settingsCard; break;
 		case Action::STATUS: c = statusCard; break;
 		case Action::GAMES: c = gamesCard; break;
+		case Action::SAVE: c = saveCard; break;
 		case Action::CONTROLLERS: c = configureCard; break;
 		case Action::CREDITS: c = creditsCard; break;
 		default: break;

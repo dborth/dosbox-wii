@@ -44,14 +44,14 @@ class HomeSettings
 		/** Whether pixel edges are kept sharp and not smoothed */
 		virtual bool filterSharp() const = 0;
 		virtual void setFilterSharp(bool sharp) = 0;
-		/** The game DOSBox is running ("Keen 4"), or empty at the plain prompt */
+		/** The game DOSBox is running ("Keen 4"), or empty at the plain prompt: the Game bar shows it, and its buttons change with it */
 		virtual std::string gameName() const { return std::string(); }
 };
 
 class HomeView : public GuiOverlay
 {
 	public:
-		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, GAMES, CREDITS, RESTART };
+		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, GAMES, SAVE, CREDITS, RESTART };
 
 		HomeView(HomeSettings& settings, const char * version);
 
@@ -65,7 +65,7 @@ class HomeView : public GuiOverlay
 		void select(Action which);
 
 	private:
-		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus);
+		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr);
 		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
 		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
 		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);

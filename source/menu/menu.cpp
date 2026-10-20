@@ -37,6 +37,8 @@
 #include "dosboxsupport.h"
 #include "menuart.h"
 #include "homeview.h"
+#include "gamesave.h"
+#include "menupopover.h"
 
 static GuiImageData * pointer[4] = { NULL, NULL, NULL, NULL };
 static GuiImage cursorImg[4];
@@ -165,6 +167,60 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
 	mainWindow->remove(&kb);
 	mainWindow->setState(STATE::DEFAULT);
 	return save != 0;
+}
+
+
+/****************************************************************************
+ * SaveGame
+ *
+ * The Game bar's Save. With a game running, the running config and buttons are written back to that game (its
+ * startup and title kept). At the plain prompt it asks for a name, with the program that is running as the
+ * suggestion, and saves a new game: DOSBox is then running that game, so a restart keeps it. A name that is taken
+ * asks before replacing it. Returns what to say on the hint line; empty when the name was cancelled.
+ ***************************************************************************/
+static std::string SaveGame()
+{
+	GameSaveHost& host = GameSave_Live();
+	const char * given = GetGameConf();
+
+	if(given && given[0])
+		return Game_SaveActive(host, given).message;
+
+	char typed[64];
+	char program[64];
+	std::string suggestion = "My game";
+
+	if(GetRunningProgram(program, sizeof(program)))
+	{
+		std::string stem = program;
+		const size_t dot = stem.rfind('.');
+		if(dot != std::string::npos)
+			stem.resize(dot);
+		stem = Game_FileName(stem);
+		if(!stem.empty())
+			suggestion = stem;
+	}
+	snprintf(typed, sizeof(typed), "%s", suggestion.c_str());
+
+	if(!OnScreenKeyboard(typed, sizeof(typed)))
+		return std::string();
+
+	GameSaveResult r = Game_SaveNew(host, typed);
+
+	if(r.exists)
+	{
+		std::vector<std::string> answers;
+		answers.push_back("Replace it");
+		answers.push_back("Cancel");
+		if(MenuPopover_Ask(r.message.c_str(), answers,
+			"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopoverAnchor()) != 0)
+			return "Not saved.";
+		r = Game_SaveReplace(host, r.path, false);
+	}
+
+	if(r.ok)
+		SetGameConf(r.path.c_str());
+	return r.message;
 }
 
 /****************************************************************************
@@ -642,6 +698,14 @@ void HomeMenu ()
 			action = RestartRequested() ? HomeView::Action::RESUME : HomeView::Action::NONE;
 			if(action == HomeView::Action::NONE)
 				continue;
+		}
+
+		// Save writes the running DOSBox to its game, or to a new one; the hint line says how it went
+		if(action == HomeView::Action::SAVE)
+		{
+			home.setStatus(SaveGame());
+			home.select(HomeView::Action::SAVE);
+			continue;
 		}
 
 		bool leave = false;
