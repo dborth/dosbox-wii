@@ -16,7 +16,7 @@
 #define _CONTROLSMAPPER_H_
 
 #include "controlsmodel.h"
-#include "controlssetups.h"
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -69,26 +69,8 @@ bool Mapper_MigrateJoystickBinds(PadMapper& mapper);
  * modes, with the right player holding the joystick), and the Settings > Joystick type row goes through the same
  * path. Key and mouse capture go through the ControlsHardware (the USB keyboard and mouse drivers).
  *
- * Setups on disk (controlssetups.h) need a SetupHost; without one (null) setups() is empty, saveSetup() and
- * loadSetup() fail and runningProgram() is empty.
- *
- *  - saveSetup(): the mapper file is written (MAPPER_SaveBindsNow), copied to <name>.map in the setups folder, and
- *    <name>.conf is written beside it with [sdl] mapperfile, [joystick] joysticktype, the program and each connected
- *    player's preset. The map goes first, so a save cut short never lists a setup with no map.
- *  - loadSetup(): the joystick type is set first (the mapper's joystick groups are built again), then every player's
- *    sixteen sources are given what <name>.map holds for them (its pad_N and stick_N binds), then binds to a joystick
- *    that is not the player's own are moved (Mapper_MigrateJoystickBinds), and the result is written to the mapper
- *    file as any change is. Only the pad sources are applied: keys, hotkeys' own keys and joystick axes in the .map
- *    take effect when DOSBox starts with that file as [sdl] mapperfile, not on load.
- *  - the preset a player "started from" is not in the mapper file: a setup keeps it in its .conf, and a load puts it
- *    back; otherwise it is the closest preset to the player's buttons when first asked, then whatever applyPreset() chose.
- *
- * While the mapper file DOSBox is using lives in the setups folder (DOSBox was started with a setup's conf),
- * changes are not written through to it: that file is a setup, and a load or an edit would silently change the
- * setup it belongs to. They are held in the running mapper and kept by saveSetup(), as setupModified() shows.
- * saveSetup() itself always writes the mapper file (it is the only way to get the running binds out), so in that
- * one situation saving under another name also brings the file's own setup up to date. Closing that needs the
- * mapper to be able to write elsewhere than the file it started with (a core change).
+ * Every change is written to the mapper file DOSBox is using, whichever file that is (the base one, or the one of
+ * the game DOSBox was started with). Saving that as a game of its own is the Games screen's job (Save / Load).
  *
  * A binding the catalogs cannot hold (a joystick hat, an axis, a fifth joystick button) reads as Not assigned and is
  * left alone until the user changes that button.
@@ -96,7 +78,8 @@ bool Mapper_MigrateJoystickBinds(PadMapper& mapper);
 class MapperControlsModel : public ControlsModel
 {
 	public:
-		MapperControlsModel(ControlsHardware& hardware, PadMapper& mapper, SetupHost * setupHost = nullptr);
+		/** `program` tells what DOS is running now (empty at the prompt); without it runningProgram() is empty. */
+		MapperControlsModel(ControlsHardware& hardware, PadMapper& mapper, std::function<std::string()> program = nullptr);
 
 		int playerCount() const override { return 4; }
 		PlayerInfo player(int index) const override;
@@ -123,14 +106,9 @@ class MapperControlsModel : public ControlsModel
 		void beginCapture() override;
 		bool pollCapture(CaptureEvent& event) override;
 
-		std::vector<SetupInfo> setups() const override;
-		bool saveSetup(const std::string& name, const std::string& program) override;
-		bool loadSetup(int index) override;
 		std::string runningProgram() const override;
-		std::string setupName() const override;
-		bool setupModified() const override;
 
-		/** Forgets what was known of the running DOSBox (the setup that was loaded, what was changed since): for a DOSBox that has restarted. */
+		/** Forgets what was known of the running DOSBox (the preset each player was taken to start from, the type last seen): for a DOSBox that has restarted. */
 		void forget();
 
 		/** Whether the last change could not be written to the mapper file (it is in effect, but lost when DOSBox closes). */
@@ -145,22 +123,16 @@ class MapperControlsModel : public ControlsModel
 		bool write(int player, int control, const BindingTarget& target);
 		bool writePreset(int player, int preset);
 		int differences(int player, int preset) const;
+		/** After a change: writes the mapper file, and notes when that failed. */
 		void saved();
-		/** Whether the mapper file DOSBox is using is one of the setups' own (it is in the setups folder). */
-		bool mapperFileIsSetup() const;
-		/** Writes the mapper file unless it is a setup's own; false when it was due and failed. */
-		bool writeThrough();
-
 		ControlsHardware& hw;
 		PadMapper& mapper;
-		SetupHost * host;
-		std::string currentSetup;
+		std::function<std::string()> program;
 		/** A type change leaves a cached preset that needs a joystick the player no longer has: forget it so it is chosen again. */
 		void followJoystickType() const;
 
 		mutable int presetOf[4];
 		mutable std::string seenType;
-		bool dirty;
 		bool failedSave;
 };
 

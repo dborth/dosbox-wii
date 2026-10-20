@@ -9,8 +9,11 @@ SHARED = ../shared
 model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/menu/controllerlayout.cpp $(SRC)/inputlogic.cpp $(SHARED)/samplecontrols.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
-mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlssetups.cpp $(SRC)/menu/controlsmodel.cpp $(SHARED)/samplecontrols.cpp
+mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlsmodel.cpp $(SHARED)/samplecontrols.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
+
+dosprogram_test: dosprogram_test.cpp $(SRC)/dosprogram.cpp
+	$(CXX) $(CXXFLAGS) -I$(SRC) -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
 games_test: games_test.cpp $(SRC)/menu/games.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
@@ -21,9 +24,10 @@ gameslist_test: gameslist_test.cpp $(SRC)/menu/gameslist.cpp $(SRC)/menu/games.c
 gamesave_test: gamesave_test.cpp $(SRC)/menu/gamesave.cpp $(SRC)/menu/games.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
 
-check: model_test mapper_test games_test gameslist_test gamesave_test
+check: model_test mapper_test dosprogram_test games_test gameslist_test gamesave_test
 	./model_test
 	./mapper_test
+	./dosprogram_test
 	./games_test
 	./gameslist_test
 	./gamesave_test
@@ -31,6 +35,6 @@ check: model_test mapper_test games_test gameslist_test gamesave_test
 all: check
 
 clean:
-	rm -f model_test mapper_test games_test gameslist_test gamesave_test
+	rm -f model_test mapper_test dosprogram_test games_test gameslist_test gamesave_test
 
 .PHONY: all check clean

@@ -171,28 +171,6 @@ struct EmulatedMode {
 	bool advanced = false;		/**< Not offered in the Emulating list unless it is the one in effect (set from Settings) */
 };
 
-/** A saved setup: a name and, optionally, the program it loads for. */
-struct SetupInfo {
-	std::string name;
-	std::string program;		/**< "KEEN4E.EXE", or empty */
-	std::string emulated;		/**< What DOS sees in it ("Joystick"), for the list */
-	std::string preset;			/**< The preset it started from ("Mixed" when the players started from different ones) */
-};
-
-/**
- * A name for a setup as it will be written to a file (name.conf, name.map): surrounding spaces and characters a file
- * name cannot hold are removed, and it is cut to 24 characters. Empty when nothing usable is left.
- */
-std::string Setup_CleanName(const std::string& typed);
-/** Setup names are file names, and FAT ignores case: whether two names are the same setup. */
-bool Setup_SameName(const std::string& a, const std::string& b);
-/** A setup's name as it fits on a button: long ones are cut to `most` characters, ending "..". */
-std::string Setup_ClipName(const std::string& name, size_t most);
-/** A program name as typed ("c:\\games\\keen4e.exe"): the file name alone, upper case. Empty when there is none. */
-std::string Setup_CleanProgram(const std::string& typed);
-/** The name offered when saving: the running program without its extension ("KEEN4E"), or "My setup". */
-std::string Setup_SuggestedName(const std::string& program);
-
 /**
  * A player slot as the screens show it: the console's hardware plus what DOS does with it under an emulated mode
  * (joystick n is player n while n < mode.joysticks; everyone else is keys + mouse). Every model uses this, so the
@@ -270,17 +248,9 @@ class ControlsModel
 		/** The next key or mouse button pressed since beginCapture(); false when there is none. */
 		virtual bool pollCapture(CaptureEvent& event) = 0;
 
-		// ---- setups: a named, saved configuration, optionally tied to a program
-		virtual std::vector<SetupInfo> setups() const = 0;
-		/** Saves the current configuration under a name (replacing one of the same name). */
-		virtual bool saveSetup(const std::string& name, const std::string& program) = 0;
-		virtual bool loadSetup(int index) = 0;
+		// ---- what is running
 		/** The DOS program running now ("" at the prompt or when unknown). */
 		virtual std::string runningProgram() const = 0;
-		/** The setup last loaded or saved (empty when there is none yet). */
-		virtual std::string setupName() const = 0;
-		/** Whether anything (a button, a preset, what DOS sees) changed since that setup was loaded or saved, or since the start when there is none. */
-		virtual bool setupModified() const = 0;
 };
 
 // ---- the mapper's pad sources (CPadBindGroup in sdl_mapper.cpp)

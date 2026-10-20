@@ -4,7 +4,6 @@
 #include "libgui/Gui.h"
 #include "hostgfx.h"
 #include "menu/controlsui.h"
-#include "menu/controlssetupsui.h"
 #include "menu/homeview.h"
 #include "menu/controlsmodel.h"
 #include "samplecontrols.h"
@@ -102,8 +101,6 @@ struct SceneModel : ControlsModel
 	DeviceStatus dev;
 	int presetOf[4] = { 1, 1, 1, 1 };
 	bool edited[4] = { false, false, false, false };
-	std::string setup;
-	bool dirty = false;
 	int mode = 0;
 	SceneModel(int count)
 	{
@@ -153,20 +150,15 @@ struct SceneModel : ControlsModel
 		return { { "Compatible", "", true }, { "Arrow keys", "", false }, { "Arrows + shooter", "", false }, { "Point and click", "", false }, { "Menu keys", "", false } };
 	}
 	int currentPreset(int p) const override { return presetOf[p]; }
-	void applyPreset(int p, int i) override { presetOf[p] = i; edited[p] = false; dirty = true; }
+	void applyPreset(int p, int i) override { presetOf[p] = i; edited[p] = false; }
 	BindingTarget presetBinding(int, int) const override { return BindingTarget(); }
 	bool modified(int p) const override { return edited[p]; }
 	bool supported(int) const override { return true; }
 	BindingTarget binding(int, int) const override { return BindingTarget(TARGET::KEY, 5); }
 	void setBinding(int, int, const BindingTarget&) override {}
 	BindingTarget defaultBinding(int, int) const override { return BindingTarget(TARGET::KEY, 4); }
-	void resetBindings(int p) override { edited[p] = false; dirty = true; }
-	std::vector<SetupInfo> setups() const override { return {}; }
-	bool saveSetup(const std::string&, const std::string&) override { return false; }
-	bool loadSetup(int) override { return false; }
+	void resetBindings(int p) override { edited[p] = false; }
 	std::string runningProgram() const override { return ""; }
-	std::string setupName() const override { return setup; }
-	bool setupModified() const override { return dirty; }
 	std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
 	void beginCapture() override {}
 	bool pollCapture(CaptureEvent&) override { return false; }
@@ -210,12 +202,12 @@ int main(int argc, char ** argv)
 	}
 	{
 		SceneModel two(2);
-		two.edited[0] = true; two.dirty = true; two.setup = "KEEN4E";
+		two.edited[0] = true;
 		Controls_SetModel(&two);
 		Screen s;
 		ControllerConfigView view(0);
 		s.page.append(&view);
-		snap("config_two", s.root);					// the switcher, a preset marked edited, an unsaved setup
+		snap("config_two", s.root);					// the switcher, a preset marked edited
 	}
 	{
 		SceneModel two(2);
@@ -227,10 +219,9 @@ int main(int argc, char ** argv)
 		snap("config_two_p2", s.root);
 	}
 	{
-		// the longest strings the header and footer carry: four players, the longest preset and mode, a long setup name
+		// the longest strings the header and footer carry: four players, the longest preset and mode
 		SceneModel four(4);
-		four.presetOf[3] = 2; four.edited[3] = true; four.mode = 2; four.dirty = true;
-		four.setup = "abcdefghijklmnopqrstuvwx";
+		four.presetOf[3] = 2; four.edited[3] = true; four.mode = 2;
 		Controls_SetModel(&four);
 		Screen s;
 		ControllerConfigView view(3);
@@ -254,7 +245,6 @@ int main(int argc, char ** argv)
 		{
 			SceneModel m(counts[i]);
 			m.dev.mouse = i == 1;
-			m.setup = i == 0 ? "Keen 4" : "";
 			Controls_SetModel(&m);
 			SceneSettings settings;
 			settings.game = i == 0 ? "Commander Keen 4" : "";	// the Game bar with a game, and at the plain prompt
@@ -405,7 +395,7 @@ int main(int argc, char ** argv)
 	// Every list is a popover over the setup screen, beside the button that opened it; the screen under it is dimmed
 	// and, for presets, previews the row under the cursor
 	{
-		enum Kind { PRESET, EMULATED, SETUP, LOAD, ATTACH };
+		enum Kind { PRESET, EMULATED };
 		struct PopScene { const char * name; int hw; Kind kind; bool edited; int mode; int preset; int pick; };
 		const PopScene scenes[] = {
 			{ "modal_preset", (int)PadType::CLASSIC, PRESET, false, 0, 1, 2 },
@@ -414,9 +404,6 @@ int main(int argc, char ** argv)
 			{ "picker_preset_two", (int)PadType::CLASSIC, PRESET, false, 1, 0, 1 },
 			{ "picker_preset_nojoy", (int)PadType::CLASSIC, PRESET, false, 2, 1, -1 },
 			{ "picker_emulated", (int)PadType::GAMECUBE, EMULATED, false, 1, 1, 1 },
-			{ "picker_setup", (int)PadType::CLASSIC, SETUP, false, 0, 1, -1 },
-			{ "picker_load", (int)PadType::CLASSIC, LOAD, false, 0, 1, 1 },
-			{ "picker_attach", (int)PadType::CLASSIC, ATTACH, false, 0, 1, -1 },
 		};
 		for(size_t i = 0; i < sizeof(scenes) / sizeof(scenes[0]); i++)
 		{
@@ -426,12 +413,6 @@ int main(int argc, char ** argv)
 			SampleControls_SetHardware(0, (PadType)sc.hw, false, false);
 			Controls().setEmulated(sc.mode);
 			ApplyAll(sc.preset);
-			if(sc.kind == SETUP || sc.kind == LOAD)
-			{
-				Controls().saveSetup("Plain", "");
-				Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
-				Controls().saveSetup("abcdefghijklmnopqrstuvwx", "LONGNAME.EXE");
-			}
 			if(sc.edited)
 				Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 			Screen s;
@@ -440,8 +421,6 @@ int main(int argc, char ** argv)
 			for(int u = 0; u < 3; u++)
 				s.root.update(nullptr);
 			std::vector<int> index;
-			std::vector<SetupAction> setupKinds;
-			std::vector<AttachChoice> attachKinds;
 			std::vector<PickerItem> items;
 			const char * title = "";
 			ControllerConfigView::Pick which = ControllerConfigView::Pick::PRESET;
@@ -449,9 +428,6 @@ int main(int argc, char ** argv)
 			{
 				case PRESET: items = Picker_PresetItems(0, index); title = "Choose a preset"; break;
 				case EMULATED: items = Picker_EmulatedItems(); title = "What does DOS see?"; which = ControllerConfigView::Pick::EMULATED; break;
-				case SETUP: items = Picker_SetupMenuItems(setupKinds); title = "Load or save a setup"; which = ControllerConfigView::Pick::SETUP; break;
-				case LOAD: items = Picker_SetupItems(index); title = "Load a setup"; which = ControllerConfigView::Pick::SETUP; break;
-				case ATTACH: items = Picker_AttachItems("KEEN4E.EXE", attachKinds); title = "Load these buttons for"; which = ControllerConfigView::Pick::SETUP; break;
 			}
 			PickerView picker(title, items, config.anchorFor(which));
 			if(sc.kind == PRESET)
@@ -531,9 +507,7 @@ int main(int argc, char ** argv)
 		ApplyAll(1);
 		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		std::vector<int> index;
-		std::vector<SetupAction> sk;
-		Controls().saveSetup("Plain", "");
-		const std::vector<PickerItem> lists[] = { Picker_PresetItems(0, index), Picker_EmulatedItems(), Picker_SetupMenuItems(sk) };
+		const std::vector<PickerItem> lists[] = { Picker_PresetItems(0, index), Picker_EmulatedItems() };
 		for(size_t l = 0; l < sizeof(lists) / sizeof(lists[0]); l++)
 		{
 			Screen s;
@@ -710,43 +684,6 @@ int main(int argc, char ** argv)
 		}
 	}
 	{
-		// the Load list shows what each setup holds, and asks before replacing edited buttons
-		Controls_SetModel(nullptr);
-		Controls().setEmulated(0);
-		ApplyAll(1);
-		std::vector<int> index;
-		Controls().saveSetup("KEEN4E", "KEEN4E.EXE");
-		Controls().saveSetup("Plain", "");
-		std::vector<PickerItem> items = Picker_SetupItems(index);
-		EXPECT(items.size() >= 2 && index.size() == items.size());
-		size_t keen = 0, plain = 0;
-		for(size_t i = 0; i < items.size(); i++)
-		{
-			if(items[i].name == "KEEN4E") keen = i;
-			if(items[i].name == "Plain") plain = i;
-		}
-		EXPECT(items[keen].lines[0] == "Loads for KEEN4E.EXE.");
-		EXPECT(items[plain].lines[0] == "Not tied to a program.");
-		EXPECT(items[keen].rows.size() == 2 && items[keen].rows[0].value == "Joystick" && items[keen].rows[1].value == "Arrow keys");
-		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
-		items = Picker_SetupItems(index);
-		ApplyAll(1);
-	}
-	{
-		// what a setup can be tied to
-		std::vector<AttachChoice> kinds;
-		std::vector<PickerItem> items = Picker_AttachItems("KEEN4E.EXE", kinds);
-		EXPECT(items.size() == 3 && kinds.size() == 3);
-		EXPECT(kinds[0] == AttachChoice::RUNNING && items[0].name == "KEEN4E.EXE" && items[0].current);
-		EXPECT(kinds[1] == AttachChoice::NONE && !items[1].current);
-		EXPECT(kinds[2] == AttachChoice::TYPED);
-		items = Picker_AttachItems("", kinds);									// at the prompt: nothing to offer but none or typed
-		EXPECT(items.size() == 2 && kinds[0] == AttachChoice::NONE && items[0].current && kinds[1] == AttachChoice::TYPED);
-		for(size_t i = 0; i < items.size(); i++)
-			for(size_t k = 0; k < items[i].lines.size(); k++)
-				EXPECT(items[i].lines[k].size() <= 44);
-	}
-	{
 		// the preset list for a player who changed buttons starts with Undo, and the preset is that player's own
 		Controls_SetModel(nullptr);
 		Controls().setEmulated(0);
@@ -764,22 +701,6 @@ int main(int argc, char ** argv)
 		Controls().resetBindings(1);
 		EXPECT(!Controls().modified(1));
 		ApplyAll(1);
-
-		// the Setup button: loading always, saving over the current one only when there is one
-		std::vector<SetupAction> kinds;
-		Controls_SetModel(nullptr);
-		ApplyAll(1);
-		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
-		items = Picker_SetupMenuItems(kinds);
-		EXPECT(kinds.size() == items.size() && kinds.back() == SetupAction::SAVE_NEW);
-		// Load is only offered when something is saved
-		EXPECT((kinds[0] == SetupAction::LOAD) == !Controls().setups().empty());
-		Controls().saveSetup("PLAIN", "");
-		items = Picker_SetupMenuItems(kinds);
-		EXPECT(kinds.size() == 3 && kinds[0] == SetupAction::LOAD && kinds[1] == SetupAction::SAVE_CURRENT && items[1].name == "Save as PLAIN");
-		for(size_t i = 0; i < items.size(); i++)
-			for(size_t k = 0; k < items[i].lines.size(); k++)
-				EXPECT(items[i].lines[k].size() <= 44);
 		ApplyAll(1);
 	}
 	{

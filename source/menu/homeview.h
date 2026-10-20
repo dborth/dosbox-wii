@@ -5,7 +5,7 @@
  *
  * The home screen, built from shapes with libgui's builder layer:
  *
- *   header   logo, the running program and its setup                 [Resume]
+ *   header   logo, the running program and its game                  [Resume]
  *   game bar Game: the game's icon and title, with Change and Save at the right
  *   body     Quick settings: speed, frameskip, aspect, filter  |  Controllers: the four
  *            players (device, battery), keyboard and mouse, and Configure
@@ -14,7 +14,7 @@
  *
  * It is a view over two models: HomeSettings for the quick settings (the running
  * cycles and frameskip, the display choices) and the ControlsModel for the
- * players, devices, program and setup. It has no DOSBox or HAL types, so the
+ * players, devices and program. It has no DOSBox or HAL types, so the
  * host preview can draw it. The loop that runs it (HomeMenu) asks what was
  * pressed with takeAction().
  ***************************************************************************/

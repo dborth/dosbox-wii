@@ -7,11 +7,10 @@
  * HAL and the DOSBox core (so the host tests use fakes instead):
  *   - the controllers, keyboard and mouse (ControlsHardware)
  *   - the mapper's pad sources and the joystick type (PadMapper)
- *   - the setups folder, the mapper file and the running program (SetupHost)
+ *   - the program DOS is running (for the home header)
  ***************************************************************************/
 #include "controlslive.h"
 #include "controlsmapper.h"
-#include "controlssetups.h"
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"
 #include "drivers/InputDriver.h"
@@ -168,36 +167,10 @@ void Controls_JoystickTypeChanged()
 		Mapper_Live().save();
 }
 
-// ---- setups: the folder beside dosbox.conf, the mapper file the core is using, the program the DOS PSP says is running
+// ---- the program the DOS PSP says is running
 
-namespace {
-
-class LiveSetups : public FileSetupHost
+std::string Controls_RunningProgram()
 {
-	public:
-		// <app drive>/DOSBox/Setups: next to dosbox.conf, so -conf finds a setup's conf there too
-		std::string directory() const override
-		{
-			return appDrive[0] ? std::string(appDrive) + "/" DOSBOX_DIR_NAME "/Setups" : std::string();
-		}
-
-		std::string mapperFile() const override
-		{
-			char path[256];
-			return GetMapperFilePath(path, sizeof(path)) ? std::string(path) : std::string();
-		}
-
-		std::string runningProgram() const override
-		{
-			char name[64];
-			return GetRunningProgram(name, sizeof(name)) ? std::string(name) : std::string();
-		}
-};
-
-} // namespace
-
-SetupHost& Setups_Live()
-{
-	static LiveSetups live;
-	return live;
+	char name[64];
+	return GetRunningProgram(name, sizeof(name)) ? std::string(name) : std::string();
 }

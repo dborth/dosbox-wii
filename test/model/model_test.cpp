@@ -512,125 +512,10 @@ static void testPerPlayerPresets()
 	applyAll(m, 1);
 }
 
-static int setupIndex(ControlsModel& m, const char * name)
-{
-	const std::vector<SetupInfo> v = m.setups();
-	for(size_t i = 0; i < v.size(); i++)
-		if(v[i].name == name)
-			return (int)i;
-	return -1;
-}
-
-// Last: it saves setups, and the sample model keeps what it is given.
-static void testSetupState()
-{
-	ControlsModel& m = fresh();
-	applyAll(m, 1);
-	CHECK(m.saveSetup("Keen", "KEEN4E.EXE"));
-	CHECK_EQ(m.setupName(), "Keen");
-	CHECK(!m.setupModified());					// just saved
-	m.setBinding(0, INPUT_BTN_A, key("F2"));
-	CHECK(m.setupModified());					// changed since
-	CHECK(m.saveSetup("Keen", "KEEN4E.EXE"));
-	CHECK(!m.setupModified());
-	m.setBinding(0, INPUT_BTN_A, key("F2"));
-	CHECK(!m.setupModified());					// the same value again is not a change
-	m.setEmulated(2);
-	CHECK(m.setupModified());
-	m.setEmulated(0);							// back where it was: still counts (it is not compared with the file)
-	CHECK(m.setupModified());
-	CHECK(m.loadSetup(setupIndex(m, "Keen")));
-	CHECK(!m.setupModified());
-	CHECK_EQ(m.setupName(), "Keen");
-	CHECK_EQ(m.setups()[(size_t)setupIndex(m, "Keen")].preset, "Arrow keys");
-	m.applyPreset(1, 3);
-	CHECK(m.setupModified());
-	m.saveSetup("Mix", "");
-	CHECK_EQ(m.setups()[(size_t)setupIndex(m, "Mix")].preset, "Mixed");	// the players started from different presets
-	applyAll(m, 1);
-}
-
-static void testSetupNames()
-{
-	// a name becomes a file name: nothing a file system rejects, no dots, no padding, a sane length
-	CHECK_EQ(Setup_CleanName("Keen 4"), "Keen 4");
-	CHECK_EQ(Setup_CleanName("  Keen 4  "), "Keen 4");
-	CHECK_EQ(Setup_CleanName("a/b\\c:d*e?f\"g<h>i|j"), "abcdefghij");
-	CHECK_EQ(Setup_CleanName("keen4e.exe"), "keen4eexe");
-	CHECK_EQ(Setup_CleanName(""), "");
-	CHECK_EQ(Setup_ClipName("Keen 4", 16), "Keen 4");
-	CHECK_EQ(Setup_ClipName("1234567890123456", 16), "1234567890123456");	// exactly as long as allowed: untouched
-	CHECK_EQ(Setup_ClipName("12345678901234567", 16), "12345678901234..");	// one over: cut to 16 with the ".."
-	CHECK_EQ(Setup_ClipName("", 16), "");
-	CHECK_EQ(Setup_CleanName("   "), "");
-	CHECK_EQ(Setup_CleanName("///"), "");
-	CHECK_EQ(Setup_CleanName("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwx");		// 24 characters
-	CHECK_EQ(Setup_CleanName("abcdefghijklmnopqrstuvw yz"), "abcdefghijklmnopqrstuvw");		// no trailing space left by the cut
-	CHECK_EQ(Setup_CleanName("Caf\x01x"), "Cafx");												// control characters go
-
-	// a program name: the file alone, upper case
-	CHECK_EQ(Setup_CleanProgram("keen4e.exe"), "KEEN4E.EXE");
-	CHECK_EQ(Setup_CleanProgram("c:\\games\\keen4\\keen4e.exe"), "KEEN4E.EXE");
-	CHECK_EQ(Setup_CleanProgram("/games/doom/doom.exe"), "DOOM.EXE");
-	CHECK_EQ(Setup_CleanProgram(" keen4e.exe "), "KEEN4E.EXE");
-	CHECK_EQ(Setup_CleanProgram("c:"), "");
-	CHECK_EQ(Setup_CleanProgram(""), "");
-	CHECK_EQ(Setup_CleanProgram("a b.exe"), "AB.EXE");
-
-	// the name offered when saving
-	CHECK_EQ(Setup_SuggestedName("KEEN4E.EXE"), "KEEN4E");
-	CHECK_EQ(Setup_SuggestedName("c:\\x\\doom.exe"), "DOOM");
-	CHECK_EQ(Setup_SuggestedName(""), "My setup");
-	CHECK_EQ(Setup_SuggestedName(".EXE"), "My setup");
-	CHECK_EQ(Setup_SuggestedName("GAME"), "GAME");
-}
-
-static void testSetups()
-{
-	ControlsModel& m = fresh();
-	CHECK(m.setups().empty());
-	CHECK(!m.saveSetup("", "X.EXE"));	// a setup needs a name
-	CHECK(!m.loadSetup(0));				// and there is nothing to load yet
-	CHECK_EQ(m.runningProgram(), "KEEN4E.EXE");
-
-	m.setEmulated(1);
-	applyAll(m, 2);
-	m.setBinding(0, INPUT_BTN_A, key("F5"));
-	CHECK(m.saveSetup("Keen", m.runningProgram()));
-	CHECK(m.setups().size() == 1);
-	CHECK_EQ(m.setups()[0].name, "Keen");
-	CHECK_EQ(m.setups()[0].program, "KEEN4E.EXE");
-	CHECK_EQ(m.setups()[0].emulated, "Two joysticks");	// what it holds, for the list
-	CHECK_EQ(m.setups()[0].preset, "Arrows + shooter");
-
-	// change everything, load, and it all comes back
-	m.setEmulated(0);
-	applyAll(m, 4);
-	CHECK(m.loadSetup(0));
-	CHECK(m.currentEmulated() == 1);
-	CHECK(m.currentPreset(0) == 2);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F5");
-	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Key: Space"); // the preset's own default
-
-	// saving under the same name replaces; a different name adds
-	m.setBinding(0, INPUT_BTN_A, key("F6"));
-	CHECK(m.saveSetup("Keen", ""));
-	CHECK(m.setups().size() == 1 && m.setups()[0].program.empty());
-	CHECK(m.saveSetup("Doom", "DOOM.EXE"));
-	CHECK(m.setups().size() == 2);
-	applyAll(m, 0);
-	CHECK(m.loadSetup(0));
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F6");
-
-	CHECK(!m.loadSetup(-1) && !m.loadSetup(2));
-	m.setEmulated(0);
-	applyAll(m, 1);
-	m.resetBindings(0);
-}
-
 static void testHeldAndInstall()
 {
 	ControlsModel& m = fresh();
+	CHECK_EQ(m.runningProgram(), "KEEN4E.EXE");
 	for(int p = 0; p < 4; p++)
 		CHECK(m.held(p) == 0);
 
@@ -654,12 +539,7 @@ static void testHeldAndInstall()
 		void setBinding(int, int, const BindingTarget&) override {}
 		void resetBindings(int) override {}
 		BindingTarget defaultBinding(int, int) const override { return BindingTarget(); }
-		std::vector<SetupInfo> setups() const override { return {}; }
-		bool saveSetup(const std::string&, const std::string&) override { return false; }
-		bool loadSetup(int) override { return false; }
 		std::string runningProgram() const override { return ""; }
-		std::string setupName() const override { return ""; }
-		bool setupModified() const override { return false; }
 		std::vector<BindingTarget> suggestions(int, int) const override { return {}; }
 		void beginCapture() override {}
 		bool pollCapture(CaptureEvent&) override { return false; }
@@ -1102,8 +982,6 @@ int main()
 	testPresetPreview();
 	testModified();
 	testPerPlayerPresets();
-	testSetupNames();
-	testSetups();
 	testHeldAndInstall();
 	testProfilesAreConsistent();
 	testProfilesPerHardware();
@@ -1111,7 +989,6 @@ int main()
 	testDeviceList();
 	testDpadForDos();
 	testHardwareSeam();
-	testSetupState();
 	testDpadRouting();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;

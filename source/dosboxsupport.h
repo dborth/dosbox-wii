@@ -36,7 +36,7 @@ void SetGameConf(const char * conf);
 void RequestRestartInto(const char * conf);
 
 //! Which start of DOSBox this is: 1 for the first, one more for each restart. What the menu keeps about the
-//! running DOSBox (the setup that was loaded) is not true of the next one.
+//! running DOSBox (the game that was loaded) is not true of the next one.
 int RunNumber();
 
 //! True between RequestRestart() and the core leaving.

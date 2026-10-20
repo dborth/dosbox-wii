@@ -8,8 +8,7 @@
  *   Controller setup   where Controllers opens: a controller drawing with its controls listed
  *                      around it, each showing what it does; the selected row is highlighted
  *                      on the drawing. Arrows in the header switch between connected players.
- *                      Header: Preset (this player) and In DOS (the whole game); footer: Setup
- *                      (load or save, the whole game) and Back
+ *                      Header: Preset (this player) and In DOS (the whole game); footer: Back
  *   Target chooser     pick what a control does: key, joystick button, mouse,
  *                      DOSBox function, or nothing
  *
@@ -60,14 +59,14 @@ class ControllerConfigView : public GuiOverlay
 		/** Whether a row was clicked since the last call; fills `row` with it. */
 		bool takeRequest(ProfileRow& row);
 		/** Which list the user asked to open from the header, if any (then it is forgotten). */
-		enum class Pick { NONE, EMULATED, PRESET, SETUP };
+		enum class Pick { NONE, EMULATED, PRESET };
 		Pick takePick() { const Pick p = pickRequest; pickRequest = Pick::NONE; return p; }
 		/** Says something on the hint line (what a Save or Load did). */
 		void setStatus(const std::string& text) { status = text; }
 		/** The control highlighted on the drawing (0 = none). */
 		int highlighted() const;
 		PadType type() const { return padType; }
-		/** Whether the slot has no controller (the screen then says so, and offers only what DOS sees and Setup). */
+		/** Whether the slot has no controller (the screen then says so, and offers only what DOS sees). */
 		bool isEmpty() const { return padType == PadType::NONE; }
 		/** The player slot being set up (0-3). */
 		int player() const { return playerSlot; }
@@ -104,7 +103,6 @@ class ControllerConfigView : public GuiOverlay
 		GuiTextButton * backBtn;
 		GuiCard * emulatedButton;
 		GuiCard * presetButton;
-		GuiCard * setupButton;
 		int previewPreset;
 };
 

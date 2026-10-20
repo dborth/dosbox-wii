@@ -29,7 +29,6 @@
 #include "osk.h"
 #include "menu.h"
 #include "controlsui.h"
-#include "controlssetupsui.h"
 #include "controlslive.h"
 #include "controlsmapper.h"
 #include "settings.h"
@@ -638,12 +637,12 @@ void HomeMenu ()
 
 	// the controller screens read the real controllers, keyboard and mouse, and what a button does is what the
 	// mapper has for it (all four players); the model keeps its state between visits
-	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), &Setups_Live());
+	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), Controls_RunningProgram);
 	static int modelRun = 0;
 	if(modelRun != RunNumber())
 	{
-		// DOSBox has restarted since: its mapper is new, so what the model knew of the last one (the setup that
-		// was loaded) is not true of this one
+		// DOSBox has restarted since: its mapper is new, so what the model knew of the last one (the preset each
+		// player was taken to start from) is not true of this one
 		mapperModel.forget();
 		modelRun = RunNumber();
 	}

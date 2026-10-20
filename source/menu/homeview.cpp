@@ -304,16 +304,13 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	GuiLabel& program = ui.label().fontSize(UI_FONT_HEADING - 2).textColor(MenuChromeText())
 		.bind([]{ const std::string p = Controls().runningProgram(); return p.empty() ? std::string("DOS prompt") : p; });
 	program.setMaxWidth(150);
-	GuiLabel& setupName = ui.label().fontSize(13).textColor(MenuChromeTextMuted())
+	GuiLabel& headerGame = ui.label().fontSize(13).textColor(MenuChromeTextMuted())
 		.bind([this]{
 			const std::string game = settings.gameName();
-			if(!game.empty())
-				return "Game: " + game;
-			const std::string n = Controls().setupName();
-			return n.empty() ? std::string("No game or setup") : "Setup: " + n;
+			return game.empty() ? std::string("No game") : "Game: " + game;
 		});
-	setupName.setMaxWidth(150);
-	GuiLayout& running = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(program).add(setupName);
+	headerGame.setMaxWidth(150);
+	GuiLayout& running = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(program).add(headerGame);
 	resumeCard = &pill("Resume", MENU_ICON_PLAY, 118, 40, 20, [this]{ pending = Action::RESUME; }, [this]{ hint = "Go back to the game"; });
 	GuiLayout& header = ui.row().size(sw, MENU_BAR_TOP_H).pad(MENU_PAGE_MARGIN, 0).gap(10).align(LAYOUT_ALIGN::CENTRE)
 		.add(logo).add(versionBox).add(rule).add(running).addSpace().add(*resumeCard);

@@ -173,8 +173,8 @@ bool Mapper_MigrateJoystickBinds(PadMapper& mapper)
 	return changed;
 }
 
-MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& m, SetupHost * setupHost)
-	: hw(hardware), mapper(m), host(setupHost), dirty(false), failedSave(false)
+MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& m, std::function<std::string()> runningProgram)
+	: hw(hardware), mapper(m), program(runningProgram), failedSave(false)
 {
 	for(int i = 0; i < 4; i++)
 		presetOf[i] = -1;
@@ -182,8 +182,6 @@ MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& 
 
 void MapperControlsModel::forget()
 {
-	currentSetup.clear();
-	dirty = false;
 	failedSave = false;
 	seenType.clear();
 	for(int i = 0; i < 4; i++)
@@ -269,25 +267,9 @@ bool MapperControlsModel::write(int player, int control, const BindingTarget& t)
 	return mapper.setEvent(player, source, event.c_str());
 }
 
-bool MapperControlsModel::mapperFileIsSetup() const
-{
-	if(!host)
-		return false;
-	const std::string dir = host->directory(), file = host->mapperFile();
-	if(dir.empty() || file.size() <= dir.size() + 1 || file[dir.size()] != '/')
-		return false;
-	return Setup_SameName(file.substr(0, dir.size()), dir);
-}
-
-bool MapperControlsModel::writeThrough()
-{
-	return mapperFileIsSetup() || mapper.save();
-}
-
 void MapperControlsModel::saved()
 {
-	dirty = true;
-	failedSave = !writeThrough();
+	failedSave = !mapper.save();
 }
 
 bool MapperControlsModel::supported(int control) const { return Pad_SourceOfControl(control) >= 0; }
@@ -373,7 +355,6 @@ void MapperControlsModel::applyPreset(int player, int index)
 	presetOf[player] = index;
 	if(changed)
 		saved();
-	dirty = true;
 }
 
 bool MapperControlsModel::modified(int player) const
@@ -406,177 +387,9 @@ std::vector<BindingTarget> MapperControlsModel::suggestions(int player, int cont
 void MapperControlsModel::beginCapture() { hw.beginCapture(); }
 bool MapperControlsModel::pollCapture(CaptureEvent& event) { return hw.pollCapture(event); }
 
-// ---- setups on disk
-
-namespace {
-
-// the preset names the setup recorded, as one word for the list
-std::string presetSummary(const SetupRecord& r)
-{
-	std::string first;
-	for(int p = 0; p < 4; p++)
-	{
-		if(r.presets[p].empty())
-			continue;
-		if(first.empty())
-			first = r.presets[p];
-		else if(r.presets[p] != first)
-			return "Mixed";
-	}
-	return first.empty() ? "Not recorded" : first;
-}
-
-// A joystick type the Emulating list knows by name (not "auto": DOSBox would read that as something else)
-bool knownType(const std::string& type)
-{
-	const std::vector<EmulatedMode>& modes = Emulated_Modes();
-	for(size_t i = 0; i < modes.size(); i++)
-		if(modes[i].type == type)
-			return true;
-	return false;
-}
-
-} // namespace
-
-std::vector<SetupInfo> MapperControlsModel::setups() const
-{
-	std::vector<SetupInfo> out;
-	if(!host)
-		return out;
-	const std::vector<SetupRecord> list = Setups_List(*host);
-	for(size_t i = 0; i < list.size(); i++)
-	{
-		SetupInfo s;
-		s.name = list[i].name;
-		s.program = list[i].program;
-		const int mode = Emulated_IndexOfType(list[i].joystickType);
-		s.emulated = list[i].joystickType.empty() ? "As now" : mode < 0 ? list[i].joystickType : Emulated_Modes()[(size_t)mode].name;
-		s.preset = presetSummary(list[i]);
-		out.push_back(s);
-	}
-	return out;
-}
-
-bool MapperControlsModel::saveSetup(const std::string& typedName, const std::string& program)
-{
-	const std::string name = Setup_CleanName(typedName);
-	if(!host || name.empty() || name != typedName || host->directory().empty() || !host->makeDirectory())
-		return false;
-
-	// the mapper file as it is now (the only way to get the running binds out), then a copy of it beside the conf
-	failedSave = !mapper.save();
-	if(failedSave)
-		return false;
-	const std::string mapperPath = host->mapperFile();
-	std::string map;
-	if(mapperPath.empty() || !host->read(mapperPath, map))
-		return false;
-
-	SetupRecord r;
-	r.name = name;
-	r.program = Setup_CleanProgram(program);
-	r.joystickType = mapper.joystickType();
-	r.mapperFile = name + ".map";
-	for(int p = 0; p < 4; p++)
-		if(hw.player(p).connected)
-			r.presets[p] = Presets_All()[(size_t)currentPreset(p)].name;
-
-	const std::string dir = host->directory();
-	if(!host->write(dir + "/" + r.mapperFile, map) || !host->write(dir + "/" + name + ".conf", Setup_FormatConf(r)))
-		return false;
-
-	currentSetup = name;
-	dirty = false;
-	return true;
-}
-
-bool MapperControlsModel::loadSetup(int index)
-{
-	if(!host)
-		return false;
-	const std::vector<SetupRecord> list = Setups_List(*host);
-	if(index < 0 || (size_t)index >= list.size())
-		return false;
-	const SetupRecord& r = list[(size_t)index];
-	const std::string dir = host->directory();
-
-	// read everything before anything changes: a setup that cannot be read leaves the buttons as they were
-	std::string map;
-	if(r.mapperFile.empty() || !host->read(Setup_ResolveFile(dir, r.mapperFile), map))
-		return false;
-	if(!r.joystickType.empty() && !knownType(r.joystickType))
-		return false;
-	MapPadBinds binds;
-	Setup_ParsePadBinds(map, binds);
-
-	// the type first: the joystick groups are built again for it, and what DOS sees decides who has a joystick
-	if(!r.joystickType.empty() && r.joystickType != mapper.joystickType() && !mapper.setJoystickType(r.joystickType))
-		return false;
-
-	int failed = 0;
-	for(int p = 0; p < 4; p++)
-		for(int s = 0; s < PAD_SOURCE_COUNT; s++)
-		{
-			// what the map gives the source: the first event the catalogs can hold, else the first the mapper has
-			const std::vector<std::string>& found = binds.events[p][s];
-			std::string firstKnown, holdable;
-			for(size_t i = 0; i < found.size() && holdable.empty(); i++)
-			{
-				if(!mapper.eventExists(found[i].c_str()))
-					continue;
-				BindingTarget t;
-				if(firstKnown.empty())
-					firstKnown = found[i];
-				if(Mapper_TargetFor(joystickSlot(p), found[i], t))
-					holdable = found[i];
-			}
-			const std::string want = holdable.empty() ? firstKnown : holdable;
-			std::vector<std::string> wanted;
-			if(!want.empty())
-				wanted.push_back(want);
-			if(mapper.events(p, s) == wanted)
-				continue;	// already so: leaves a shipped joystick bind as it is
-			if(!mapper.setEvent(p, s, want.c_str()))
-				failed++;
-		}
-
-	Mapper_MigrateJoystickBinds(mapper);
-
-	for(int p = 0; p < 4; p++)
-	{
-		presetOf[p] = -1;
-		for(int i = 0; i < PRESET_COUNT && !r.presets[p].empty(); i++)
-			if(Presets_All()[(size_t)i].name == r.presets[p])
-				presetOf[p] = i;
-	}
-	followJoystickType();
-
-	failedSave = !writeThrough();
-	if(failed > 0)
-	{
-		dirty = true;
-		return false;
-	}
-	currentSetup = r.name;
-	dirty = false;
-	return true;
-}
+// ---- what is running
 
 std::string MapperControlsModel::runningProgram() const
 {
-	if(!host)
-		return std::string();
-	std::string program = host->runningProgram();
-	if(!program.empty() && program.find('.') == std::string::npos)
-	{
-		// only DOS's short name is known: a saved setup for the same program has the full file name
-		const std::vector<SetupRecord> list = Setups_List(*host);
-		const int found = Setups_IndexForProgram(list, program);
-		if(found >= 0 && !list[(size_t)found].program.empty())
-			program = list[(size_t)found].program;
-	}
-	return program;
+	return program ? program() : std::string();
 }
-
-std::string MapperControlsModel::setupName() const { return currentSetup; }
-bool MapperControlsModel::setupModified() const { return dirty; }

@@ -7,7 +7,6 @@
 #include <algorithm>
 #include "menu.h"
 #include "menupage.h"
-#include "controlssetupsui.h"
 #include "menustyle.h"
 #include "menuart.h"
 #include "filelist.h"
@@ -91,14 +90,14 @@ int ControllerConfigView::highlighted() const
 
 void ControllerConfigView::selectHeader(Pick which)
 {
-	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
+	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : nullptr);
 	if(b)
 		b->select();
 }
 
 GuiPopoverAnchor ControllerConfigView::anchorFor(Pick which)
 {
-	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : (which == Pick::SETUP ? setupButton : nullptr));
+	GuiCard * b = which == Pick::EMULATED ? emulatedButton : (which == Pick::PRESET ? presetButton : nullptr);
 	// A preset previews on the rows and the drawing behind it, so its popover keeps to the left (the two left-hand
 	// rows and the sticks), leaving the right-hand rows, the D-pad and the face buttons in view
 	return b ? GuiPopoverAnchor(b->getLeft(), b->getTop(), b->getWidth(), b->getHeight(), which == Pick::PRESET ? GuiPopoverAnchor::LEFT_MARGIN : GuiPopoverAnchor::AUTO) : GuiPopoverAnchor();
@@ -223,7 +222,7 @@ static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::funct
 }
 
 ControllerConfigView::ControllerConfigView(int player, PadType show) :
-	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr), emulatedButton(nullptr), presetButton(nullptr), setupButton(nullptr), previewPreset(-1)
+	playerSlot(player), padType(PadType::NONE), shownIndex(0), flipRequest(PadType::NONE), sideways(false), view(nullptr), status("Move over a control to see what it does"), hasRequest(false), pickRequest(Pick::NONE), switchRequest(0), shownPlayers(ConnectedCount()), backBtn(nullptr), emulatedButton(nullptr), presetButton(nullptr), previewPreset(-1)
 {
 	GuiTrigger& cancel = ui.own<GuiTrigger>();
 	cancel.setSecondaryTrigger();
@@ -242,8 +241,8 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 		status = "Press a button on a controller to connect it";
 
 	// Header: who (this player: the switcher, only with two or more controllers; else just the page name), then what
-	// the buttons start from (Preset: this player) and what DOS sees (In DOS: the whole game). The footer has Setup
-	// (whole game) and Back. Left of the middle is about the player, right of it about the game.
+	// the buttons start from (Preset: this player) and what DOS sees (In DOS: the whole game). The footer has Back.
+	// Left of the middle is about the player, right of it about the game.
 	MenuPageFrame f = MenuPage_Build(ui, *this, "Controls", [this]{ return status; }, 250);
 	if(!empty)
 	{
@@ -398,17 +397,11 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 			f.content->add(groups.size(MENU_PAGE_CONTENT_W, kGroupsH));
 	}
 
-	// Footer: Setup is the whole game (every player's buttons and what DOS sees), so it sits under In DOS; Back is last.
-	// The chip says which setup is loaded.
-	GuiCard& setupBtn = PickerChip(ui, 190, "SETUP",
-		[]{ ControlsModel& m = Controls(); return m.setupName().empty() ? std::string("None") : Setup_ClipName(m.setupName(), 16); }, true);
-	setupBtn.onClick([this]{ pickRequest = Pick::SETUP; });
-	setupBtn.onFocus([this]{ status = "A loads or saves a setup: every player's buttons and what DOS sees"; });
-	setupButton = &setupBtn;
+	// Footer: Back. (Saving what the controls do is the Games screen's Save: the whole game, controls included.)
 	GuiTextButton& back = MenuPage_Button(ui, "Back", 76);
 	back.setTrigger(1, &cancel);
 	backBtn = &back;
-	f.footerRight->add(setupBtn).add(back);
+	f.footerRight->add(back);
 
 	ui.attachTo(*this);
 	// When the page takes focus its window steps the selection down from whatever is selected, or goes to the first
@@ -1007,14 +1000,11 @@ void ConfigScreen(int player)
 			const ControllerConfigView::Pick pick = view.takePick();
 			if(pick != ControllerConfigView::Pick::NONE)
 			{
-				// All three are popovers over this screen, which stays drawn (dimmed) where it is. The on-screen keyboard
-				// that a Save asks for is the one trip to another screen.
+				// Both are popovers over this screen, which stays drawn (dimmed) where it is.
 				std::string said;
 				const GuiPopoverAnchor anchor = view.anchorFor(pick);
 				screen.setEnabled(false);
-				if(pick == ControllerConfigView::Pick::SETUP)
-					said = Setups_Run(ScreenHooks{ [&]{ screen.hide(); }, [&]{ screen.show(); } }, anchor);
-				else if(pick == ControllerConfigView::Pick::EMULATED)
+				if(pick == ControllerConfigView::Pick::EMULATED)
 					EmulatedPicker(anchor);
 				else
 					said = PresetPicker(view.player(), view);

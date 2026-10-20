@@ -110,7 +110,7 @@ const ControlsHardware& hardware()
 class SampleControlsModel : public ControlsModel
 {
 	public:
-		SampleControlsModel() : mode(0), dirty(false)
+		SampleControlsModel() : mode(0)
 		{
 			for(int i = 0; i < 4; i++)
 				preset[i] = PRESET_ARROWS;
@@ -134,10 +134,7 @@ class SampleControlsModel : public ControlsModel
 		void setEmulated(int index) override
 		{
 			if(index >= 0 && index < (int)Emulated_Modes().size() && index != mode)
-			{
 				mode = index;
-				dirty = true;
-			}
 		}
 
 		std::vector<PresetInfo> presets() const override { return Presets_All(); }
@@ -148,7 +145,6 @@ class SampleControlsModel : public ControlsModel
 				return;
 			preset[player] = index;
 			dropEdits(player); // a preset brings its own defaults, for this player only
-			dirty = true;
 		}
 
 		bool supported(int control) const override { return hasSource(control); }
@@ -178,70 +174,14 @@ class SampleControlsModel : public ControlsModel
 			if(!hasSource(control) || binding(player, control) == t)
 				return;
 			edits[editKey(player, control)] = t;
-			dirty = true;
 		}
 		void resetBindings(int player) override
 		{
 			if(modified(player))
-			{
 				dropEdits(player);
-				dirty = true;
-			}
 		}
 
-		std::vector<SetupInfo> setups() const override
-		{
-			std::vector<SetupInfo> v;
-			for(size_t i = 0; i < saved.size(); i++)
-			{
-				SetupInfo s;
-				s.name = saved[i].name;
-				s.program = saved[i].program;
-				s.emulated = Emulated_Modes()[(size_t)saved[i].mode].name;
-				s.preset = presetSummary(saved[i].preset);
-				v.push_back(s);
-			}
-			return v;
-		}
-		bool saveSetup(const std::string& name, const std::string& program) override
-		{
-			if(name.empty())
-				return false;
-			Setup s;
-			s.name = name;
-			s.program = program;
-			s.mode = mode;
-			for(int i = 0; i < 4; i++)
-				s.preset[i] = preset[i];
-			s.edits = edits;
-			current = name;
-			dirty = false;
-			for(size_t i = 0; i < saved.size(); i++)
-			{
-				if(saved[i].name == name)
-				{
-					saved[i] = s;
-					return true;
-				}
-			}
-			saved.push_back(s);
-			return true;
-		}
-		bool loadSetup(int index) override
-		{
-			if(index < 0 || (size_t)index >= saved.size())
-				return false;
-			mode = saved[(size_t)index].mode;
-			for(int i = 0; i < 4; i++)
-				preset[i] = saved[(size_t)index].preset[i];
-			edits = saved[(size_t)index].edits;
-			current = saved[(size_t)index].name;
-			dirty = false;
-			return true;
-		}
 		std::string runningProgram() const override { return "KEEN4E.EXE"; }
-		std::string setupName() const override { return current; }
-		bool setupModified() const override { return dirty; }
 
 		std::vector<BindingTarget> suggestions(int player, int control) const override { return Presets_Suggestions(*this, player, control); }
 
@@ -257,14 +197,6 @@ class SampleControlsModel : public ControlsModel
 		void pushCapture(const CaptureEvent& e) { pending.push_back(e); }
 
 	private:
-		struct Setup
-		{
-			std::string name, program;
-			int mode;
-			int preset[4];
-			std::map<int64_t, BindingTarget> edits;
-		};
-
 		static bool validPlayer(int player) { return player >= 0 && player < 4; }
 
 		void dropEdits(int player)
@@ -278,31 +210,12 @@ class SampleControlsModel : public ControlsModel
 			}
 		}
 
-		// the preset every connected player started from, or "Mixed" when they differ
-		std::string presetSummary(const int (&p)[4]) const
-		{
-			int first = -1;
-			for(int i = 0; i < 4; i++)
-			{
-				if(!player(i).connected)
-					continue;
-				if(first < 0)
-					first = p[i];
-				else if(p[i] != first)
-					return "Mixed";
-			}
-			return Presets_All()[(size_t)(first < 0 ? p[0] : first)].name;
-		}
-
 		static const int64_t kStride = (int64_t)1 << 32;
 		static int64_t editKey(int player, int control) { return (int64_t)player * kStride + (int64_t)(uint32_t)control; }
 
 		int mode;
 		int preset[4];
-		bool dirty;
-		std::string current;
 		std::map<int64_t, BindingTarget> edits;
-		std::vector<Setup> saved;
 		std::deque<CaptureEvent> pending;
 };
 
