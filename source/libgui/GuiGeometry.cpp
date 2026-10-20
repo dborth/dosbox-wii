@@ -26,6 +26,10 @@ struct Ring {
 
 typedef std::function<Ring(float)> RingFn; //offset from the shape's edge (+ outward) -> ring
 
+//The chord of a segment spanning `step` radians strays from a circle of radius r by r * (1 - cos(step / 2)), so the
+//largest step that stays within a tolerance t is 2 * acos(1 - t / r). Aim for half the tolerance, which leaves the rest
+//for the feather. (acos(1 - t / r) alone is only half that angle: it held the error to a quarter of the tolerance and
+//spent about 40% more segments than the tolerance needs.)
 const float kCurveMargin = 0.5f;
 
 //Number of segments for a quarter circle of radius r within the tolerance

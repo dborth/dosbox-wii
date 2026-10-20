@@ -73,11 +73,11 @@ GuiShapeStyle GuiTheme::buttonStyle() const
 		.stroke(strokeWidth, outlineStrong);
 	GuiPaint lit = GuiPaint()
 		.gradient(accentLight, accent)
-		.stroke(strokeWidth, rgb(255, 220, 160))
+		.stroke(strokeWidth, GuiMixColor(accentLight, rgb(255, 255, 255), 0.35f))
 		.glow(10.0f, rgb(accent.r, accent.g, accent.b, 90));
 	GuiPaint pressed = GuiPaint()
 		.gradient(accent, accentDark)
-		.stroke(strokeWidth, rgb(255, 220, 160));
+		.stroke(strokeWidth, GuiMixColor(accentLight, rgb(255, 255, 255), 0.35f));
 	GuiPaint off = GuiPaint()
 		.color(rgb(surface.r, surface.g, surface.b, 150))
 		.stroke(strokeWidth, rgb(outline.r, outline.g, outline.b, 150));
@@ -98,5 +98,5 @@ GuiShapeStyle GuiTheme::rowStyle() const
 
 GuiShapeStyle GuiTheme::barStyle() const
 {
-	return GuiShapeStyle(GuiPaint().color(rgb(8, 10, 14)));
+	return GuiShapeStyle(GuiPaint().color(GuiMixColor(background, rgb(0, 0, 0), 0.55f)));
 }
