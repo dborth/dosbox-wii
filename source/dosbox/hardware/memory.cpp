@@ -28,11 +28,19 @@
 #include <string.h>
 
 #define PAGES_IN_BLOCK	((1024*1024)/MEM_PAGE_SIZE)
+#ifdef HW_RVL
+#define SAFE_MEMORY	16
+#define MAX_MEMORY	16
+#define MAX_PAGE_ENTRIES (MAX_MEMORY*1024*1024/4096)
+#define LFB_PAGES	512
+#define MAX_LINKS	((MAX_MEMORY*1024/4)+4096)
+#else
 #define SAFE_MEMORY	32
 #define MAX_MEMORY	64
 #define MAX_PAGE_ENTRIES (MAX_MEMORY*1024*1024/4096)
 #define LFB_PAGES	512
 #define MAX_LINKS	((MAX_MEMORY*1024/4)+4096)		//Hopefully enough
+#endif
 
 struct LinkBlock {
 	Bitu used;
@@ -551,6 +559,12 @@ public:
 		Bitu memsize=section->Get_int("memsize");
 	
 		if (memsize < 1) memsize = 1;
+
+#ifdef HW_RVL
+		if (memsize > MAX_MEMORY) {
+			memsize = MAX_MEMORY;
+		}
+#else
 		/* max 63 to solve problems with certain xms handlers */
 		if (memsize > MAX_MEMORY-1) {
 			LOG_MSG("Maximum memory size is %d MB",MAX_MEMORY - 1);
@@ -560,6 +574,7 @@ public:
 			LOG_MSG("Memory sizes above %d MB are NOT recommended.",SAFE_MEMORY - 1);
 			LOG_MSG("Stick with the default values unless you are absolutely certain.");
 		}
+#endif
 		MemBase = (Bit8u*)BulkMemory::allocate(memsize*1024*1024);
 		if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);
 		/* Clear the memory, as new doesn't always give zeroed memory
