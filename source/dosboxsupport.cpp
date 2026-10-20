@@ -499,7 +499,12 @@ void RunDOSBox(int argc, char* argv[]) {
 	runNumber++;
 	try {
 		// The game conf travels as an argument of its own (LoadPrefs() reads it)
+		// CommandLine treats argv[0] as the program name and never parses it, so
+		// there must be one (argc is 0 when the app is started without arguments)
+		static char programName[] = "dosbox";
 		std::vector<char *> args(argv, argv + argc);
+		if(args.empty())
+			args.push_back(programName);
 		static const char * const gameSwitch = "-gameconf";
 		if(!gameConf.empty())
 		{
