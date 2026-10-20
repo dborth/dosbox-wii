@@ -125,6 +125,12 @@ bool GetMapperFilePath(char * path, size_t size);
 //! Main thread, between decoder runs (as the menu is).
 bool GetRunningProgram(char * name, size_t size);
 
+//! The same program's whole DOS path, as DOS recorded it ("C:\GAMES\KEEN4\KEEN4E.EXE"):
+//! what saving a game needs to write the lines that start it. False at the DOS
+//! prompt, or when the environment block does not have it. Main thread, between
+//! decoder runs.
+bool GetRunningProgramPath(char * path, size_t size);
+
 //! Makes the joystick settings in the config take effect: builds the mapper's
 //! joystick bind groups again, as the type, button wrapping and the like are
 //! read when they are built. Call after the joystick section has been

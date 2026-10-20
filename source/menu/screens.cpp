@@ -30,6 +30,8 @@
 #include "dosboxsupport.h"
 #include "gameslist.h"
 #include "gameslive.h"
+#include "gamesave.h"
+#include "menupopover.h"
 
 /****************************************************************************
  * ListBrowser
@@ -479,7 +481,7 @@ class StatusScreen : public ListScreen
 class GamesScreen : public ListScreen
 {
 	public:
-		GamesScreen() : ListScreen("Games", "A: restart into game    B: back", "Rescan") {}
+		GamesScreen() : ListScreen("Games", "A: choose    B: back", "Save / Load") {}
 
 	protected:
 		void onOpen() override
@@ -500,10 +502,10 @@ class GamesScreen : public ListScreen
 		{
 			GamesScanner& scanner = Games_Scanner();
 
-			// Rescan was pressed: the list says it is looking
-			if(rescanning)
+			// the mode was switched, or a game was saved: the rows are different
+			if(changed)
 			{
-				rescanning = false;
+				changed = false;
 				return true;
 			}
 
@@ -535,28 +537,113 @@ class GamesScreen : public ListScreen
 		{
 			const GamesList::Click c = list.click(row);
 
-			if(c.what == GamesList::Click::MESSAGE)
-				showMessage(c.message.c_str());
-			else if(c.what == GamesList::Click::LAUNCH)
+			switch(c.what)
 			{
-				// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
-				RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
-				close();
+				case GamesList::Click::MESSAGE:
+					showMessage(c.message.c_str());
+					break;
+				case GamesList::Click::LAUNCH:
+					// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
+					RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
+					close();
+					return true;
+				case GamesList::Click::SAVE_NEW:
+					saveNew();
+					break;
+				case GamesList::Click::SAVE_REPLACE:
+					finishSave(Game_SaveReplace(GameSave_Live(), c.conf, c.running));
+					break;
+				default:
+					break;
 			}
 
-			return c.what == GamesList::Click::LAUNCH;
+			return false;
 		}
 
+		// Switches between launching a game and saving what is running
 		void onExtraButton() override
 		{
-			list.setScanning(true);
-			Games_Scanner().start();
-			rescanning = true;
+			list.setSaving(!list.isSaving());
+			changed = true;
+			showMessage(list.isSaving() ? "Saving what is running. Pick New game, or a game to replace. Press Save / Load to go back"
+				: "Pick a game to restart into. Press Save / Load to save what is running");
 		}
 
 	private:
+		// A name on the on-screen keyboard, the program that is running as the suggestion
+		void saveNew()
+		{
+			char typed[64];
+			char program[64];
+			std::string suggestion = "My game";
+
+			if(GetRunningProgram(program, sizeof(program)))
+			{
+				std::string stem = program;
+				const size_t dot = stem.rfind('.');
+				if(dot != std::string::npos)
+					stem.resize(dot);
+				stem = Game_FileName(stem);
+				if(!stem.empty())
+					suggestion = stem;
+			}
+			snprintf(typed, sizeof(typed), "%s", suggestion.c_str());
+
+			putAway();		// the on-screen keyboard is a screen of its own
+			const bool named = OnScreenKeyboard(typed, sizeof(typed));
+
+			if(!named)
+			{
+				bringBack();
+				return;
+			}
+
+			GameSaveResult r = Game_SaveNew(GameSave_Live(), typed);
+
+			if(r.exists)
+			{
+				// the same name: Replace asks the question and goes ahead
+				std::vector<std::string> answers;
+				answers.push_back("Replace it");
+				answers.push_back("Cancel");
+				const bool replace = MenuPopover_Ask(r.message.c_str(), answers,
+					"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopoverAnchor()) == 0;
+
+				bringBack();
+				if(replace)
+					finishSave(Game_SaveReplace(GameSave_Live(), r.path, sameGame(r.path)));
+				else
+					showMessage("Not saved.");
+				return;
+			}
+
+			bringBack();
+			finishSave(r);
+		}
+
+		// The game that is running was saved: the list shows it, and it is the one running
+		void finishSave(const GameSaveResult& r)
+		{
+			if(r.ok)
+			{
+				SetGameConf(r.path.c_str());
+				list.setCurrent(r.path);
+				list.setScanning(true);
+				Games_Scanner().start();
+				changed = true;
+			}
+			showMessage(r.message.c_str());
+		}
+
+		bool sameGame(const std::string& path) const
+		{
+			GameRecord g;
+			g.path = path;
+			return GamesList::sameConf(g, GetGameConf());
+		}
+
 		GamesList list;
-		bool rescanning = false;
+		bool changed = false;
 };
 
 /****************************************************************************

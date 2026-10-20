@@ -50,6 +50,16 @@ std::string ConfigSavePath();
  */
 bool ConfigSave(const char * path, std::string * error);
 
+/**
+ * The running config as ConfigSave() would write it, as text: for a game conf, which is that text with a few things
+ * changed (menu/gamesave.h). Goes through a temporary file next to the config, as PrintConfig() only writes to files,
+ * and has the same completeness check.
+ *
+ * @param text   the config; left as it was on failure
+ * @param error  on failure, one line saying why. May be NULL.
+ */
+bool ConfigText(std::string * text, std::string * error);
+
 /* ---- The [display] section ---- */
 
 //! Declares the [display] section. After Config_Add_SDL(), before DOSBOX_Init().

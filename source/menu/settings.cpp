@@ -27,6 +27,7 @@
 #include "setup.h"
 #include "control.h"
 #include "settings.h"
+#include "gamesave.h"
 #include "controlslive.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
@@ -1777,6 +1778,17 @@ bool Settings_Save(char * message, size_t size)
 {
 	if(size == 0)
 		return false;
+
+	// With a game active the game is what is saved: its conf and its map, whole, and dosbox.conf is left as it is
+	const std::string game = GetGameConf();
+
+	if(!game.empty())
+	{
+		const GameSaveResult r = Game_SaveActive(GameSave_Live(), game);
+
+		snprintf(message, size, "%s", r.message.c_str());
+		return r.ok;
+	}
 
 	const std::string path = ConfigSavePath();
 	std::string error;

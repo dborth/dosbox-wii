@@ -164,6 +164,46 @@ bool IsShellIdle() {
  * is, and which program is running.
  ***************************************************************************/
 std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size);	// menu/controlssetups.cpp
+std::string Setup_ProgramPathFromEnvironment(const unsigned char * env, size_t size);	// menu/controlssetups.cpp
+
+// The program's whole path as DOS recorded it in the environment block DOS_Execute writes; empty if it is not there
+static std::string RunningProgramPath()
+{
+	const Bit16u envseg = DOS_PSP(dos.psp()).GetEnvironment();
+
+	if(envseg == 0)
+		return std::string();
+
+	Bitu bytes = (Bitu)DOS_MCB((Bit16u)(envseg - 1)).GetSize() * 16;
+
+	if(bytes > 32768)
+		bytes = 32768;
+
+	std::vector<unsigned char> env(bytes);
+
+	for(Bitu i = 0; i < bytes; i++)
+		env[i] = mem_readb(PhysMake(envseg, 0) + i);
+
+	return Setup_ProgramPathFromEnvironment(env.empty() ? NULL : &env[0], env.size());
+}
+
+bool GetRunningProgramPath(char * path, size_t size)
+{
+	if(!path || size == 0)
+		return false;
+	path[0] = 0;
+
+	if(first_shell == NULL || IsShellIdle())
+		return false;
+
+	const std::string full = RunningProgramPath();
+
+	if(full.empty())
+		return false;
+
+	safe_strncpy(path, full.c_str(), size);
+	return true;
+}
 
 bool GetMapperFilePath(char * path, size_t size)
 {

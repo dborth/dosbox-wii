@@ -39,7 +39,7 @@ bool GamesList::sameConf(const GameRecord& g, const std::string& cur)
 		return false;
 	if(strcasecmp(g.path.c_str(), cur.c_str()) == 0)
 		return true;
-	// typed (config -r -gameconf Setups/keen.conf) relative to the DOSBox folder: where the game is below it, and its file name
+	// typed (config -r -gameconf Games/keen.conf) relative to the DOSBox folder: where the game is below it, and its file name
 	const std::string relative = (g.where.empty() ? std::string() : g.where + "/") + g.name + ".conf";
 	return strcasecmp(relative.c_str(), cur.c_str()) == 0;
 }
@@ -53,8 +53,8 @@ void GamesList::setGames(const std::vector<GameRecord>& found)
 std::vector<GamesList::Row> GamesList::rows() const
 {
 	std::vector<Row> r;
-	Row plain = { PLAIN, -1 };
-	r.push_back(plain);
+	Row first = { saving ? NEW_GAME : PLAIN, -1 };
+	r.push_back(first);
 
 	const size_t shown = games.size() < limit ? games.size() : limit;
 	for(size_t i = 0; i < shown; i++)
@@ -99,16 +99,20 @@ void GamesList::rowText(int row, std::string& name, std::string& value) const
 			name = "Plain DOSBox";
 			value = current.empty() ? "RUNNING" : "";
 			break;
+		case NEW_GAME:
+			name = "New game";
+			value = "Save new";
+			break;
 		case GAME:
 		{
 			const GameRecord& g = games[(size_t)r[(size_t)row].game];
 			name = fit(g.title, kNameChars);
-			if(isCurrent(g))
+			if(saving)
+				value = isCurrent(g) ? "Save here" : "Replace";
+			else if(isCurrent(g))
 				value = "RUNNING";
 			else if(!g.program.empty())
 				value = fit(g.program, kValueChars);
-			else if(g.isSetup)
-				value = "Controls only";
 			break;
 		}
 		case MORE:
@@ -127,14 +131,15 @@ std::string GamesList::gameHelp(const GameRecord& g) const
 {
 	std::vector<std::string> parts;
 
-	if(g.program.empty())
+	if(saving)
+		parts.push_back(isCurrent(g) ? "Saves what is running over this game, which started it. Its startup is kept"
+			: "Replaces this game with what is running: its controls, settings and startup");
+	else if(g.program.empty())
 		parts.push_back("No program named");
 	else
 		parts.push_back("Runs " + g.program + (g.programInferred ? " (from autoexec)" : ""));
 
 	parts.push_back((g.where.empty() ? std::string() : g.where + "/") + g.name + ".conf");
-	if(g.isSetup)
-		parts.push_back("controls setup");
 	if(!g.autoexec.empty())
 		parts.push_back("autoexec: " + join(g.autoexec, " | "));
 
@@ -153,6 +158,8 @@ std::string GamesList::rowHelp(int row)
 	{
 		case PLAIN:
 			return "dosbox.conf alone, with no game on top of it. A restarts DOSBox";
+		case NEW_GAME:
+			return "Saves what is running under a name you type: its controls, settings and what starts it. dosbox.conf is not changed";
 		case GAME:
 			return gameHelp(games[(size_t)r[(size_t)row].game]);
 		case MORE:
@@ -160,7 +167,8 @@ std::string GamesList::rowHelp(int row)
 		case SCANNING:
 			return "Reading the DOSBox folder";
 		case NONE_FOUND:
-			return "Put a .conf in the DOSBox folder, or a folder inside it, and press Rescan. Add a # title= line to name it";
+			return saving ? "No games yet. New game saves what is running as the first"
+				: "No games yet. Save one from Save / Load, or put a .conf in the DOSBox folder or a folder inside it. A # title= line names it";
 	}
 	return std::string();
 }
@@ -187,6 +195,10 @@ GamesList::Click GamesList::click(int row)
 			}
 			name = "plain DOSBox";
 			break;
+		case NEW_GAME:
+			c.what = Click::SAVE_NEW;
+			armed = -1;
+			return c;
 		case GAME:
 		{
 			const GameRecord& g = games[(size_t)chosen.game];
@@ -203,11 +215,19 @@ GamesList::Click GamesList::click(int row)
 	{
 		armed = row;
 		c.what = Click::MESSAGE;
-		c.message = "Press A again to restart into " + fit(name, 40) + ". Progress in what is running is lost";
+		c.message = saving ? "Press A again to replace " + fit(name, 40) + " with what is running. Its saved controls, settings and startup are overwritten"
+			: "Press A again to restart into " + fit(name, 40) + ". Progress in what is running is lost";
 		return c;
 	}
 
 	armed = -1;
+	if(saving)
+	{
+		c.what = Click::SAVE_REPLACE;
+		c.conf = conf;
+		c.running = isCurrent(games[(size_t)chosen.game]);
+		return c;
+	}
 	c.what = Click::LAUNCH;
 	c.conf = conf;
 	return c;

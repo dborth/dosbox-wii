@@ -199,7 +199,7 @@ std::string Setup_ProgramKey(const std::string& program)
 	return file;
 }
 
-std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size)
+std::string Setup_ProgramPathFromEnvironment(const unsigned char * env, size_t size)
 {
 	if(!env || size < 4)
 		return std::string();
@@ -222,7 +222,12 @@ std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size)
 		path += (char)env[pos++];
 	if(pos >= size)
 		return std::string();	// no end to the name: not a block we understand
-	return Setup_CleanProgram(path);
+	return path;
+}
+
+std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size)
+{
+	return Setup_CleanProgram(Setup_ProgramPathFromEnvironment(env, size));
 }
 
 void Setup_ParsePadBinds(const std::string& mapText, MapPadBinds& out)

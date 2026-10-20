@@ -53,7 +53,6 @@ static void testParse()
 	CHECK_EQ(g.title, "Commander Keen 4");
 	CHECK_EQ(g.program, "KEEN4E.EXE");
 	CHECK(!g.programInferred);
-	CHECK(!g.isSetup);
 	CHECK(g.autoexec.empty());
 
 	// no title: the name; program from [autoexec]
@@ -103,11 +102,10 @@ static void testParse()
 	CHECK(m.autoexec.size() == GAME_AUTOEXEC_LINES);
 	CHECK_EQ(m.program, "LAST.EXE");
 
-	// our setups are recognised, and take their program from the comment they carry
+	// a file an older version of the menu saved as a setup is an ordinary game: its program comes from its comment
 	GameRecord s;
 	s.name = "keen";
 	Game_ParseConf("\n# DOSBox Wii setup\n# program=KEEN4E.EXE\n[sdl]\nmapperfile=keen.map\n", s);
-	CHECK(s.isSetup);
 	CHECK_EQ(s.program, "KEEN4E.EXE");
 	CHECK_EQ(s.title, "keen");
 
@@ -216,7 +214,6 @@ static void testScan()
 	{
 		if(g[i].path == "sd:/DOSBox/Setups/wolf.conf")
 		{
-			CHECK(g[i].isSetup);
 			CHECK_EQ(g[i].where, "Setups");
 			CHECK_EQ(g[i].name, "wolf");
 			CHECK_EQ(g[i].program, "WOLF3D.EXE");
@@ -264,7 +261,7 @@ static void testScan()
 	u.add("sd:/DOSBox/good.conf");
 	CHECK_EQ(names(Games_Scan(u)), "good.conf");
 
-	// "Setups" in another case is still the setups folder, and is read first
+	// folders below the DOSBox folder are all read, Games (in any case) or not
 	FakeHost c;
 	c.add("sd:/DOSBox/SETUPS/z.conf", "# title=Z\n");
 	c.add("sd:/DOSBox/GAMES/y.conf", "# title=Y\n");
@@ -351,7 +348,6 @@ static void testFiles()
 		CHECK_EQ(g[1].title, "Prince");
 		CHECK_EQ(g[1].where, "GAMES");
 		CHECK_EQ(g[2].title, "s");
-		CHECK(g[2].isSetup);
 	}
 
 	// a folder that is not there: nothing

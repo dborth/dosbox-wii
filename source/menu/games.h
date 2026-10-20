@@ -4,14 +4,15 @@
  * games.h
  *
  * Games on disk. A game is a .conf that DOSBox layers over dosbox.conf (see
- * SetGameConf()), so it only holds what differs. Nothing has to be registered:
- * the scan picks up every .conf in the DOSBox folder, whoever wrote it, by
- * hand or from the menu (our own controls setups are games too).
+ * SetGameConf()), so it only has to hold what differs: a hand-made one can be
+ * as small as it likes. Nothing has to be registered: the scan picks up every
+ * .conf in the DOSBox folder, whoever wrote it, by hand or from the menu
+ * (gamesave.h writes them, into DOSBox/Games).
  *
  * Where it looks, and no further, so it stays quick on a slow card:
  *
  *     <app drive>/DOSBox/                 every .conf in it, except dosbox.conf
- *     <app drive>/DOSBox/Setups/          the same
+ *     <app drive>/DOSBox/Games/           the same: where the menu saves games
  *     <app drive>/DOSBox/<any folder>/    the same, one level down
  *
  * What a conf can say about itself is read from its comment lines, which DOSBox
@@ -69,18 +70,17 @@ struct GameRecord
 	std::string title;			/**< "# title=", or the name */
 	std::string program;			/**< "KEEN4E.EXE" (as written, upper case): "# program=", else what [autoexec] runs; empty when neither says */
 	bool programInferred;			/**< program came from [autoexec], not from a comment */
-	bool isSetup;				/**< One of our controls setups (it starts with our marker line) */
-	std::string path;			/**< The whole path, which is what SetGameConf() takes ("sd:/DOSBox/Setups/keen.conf") */
-	std::string where;			/**< The folder below the DOSBox folder it was found in; empty for the DOSBox folder itself ("Setups", "GAMES") */
+	std::string path;			/**< The whole path, which is what SetGameConf() takes ("sd:/DOSBox/Games/keen.conf") */
+	std::string where;			/**< The folder below the DOSBox folder it was found in; empty for the DOSBox folder itself ("Games", "GAMES") */
 	std::vector<std::string> autoexec;	/**< The first lines of [autoexec], for showing what it will run */
 
-	GameRecord() : programInferred(false), isSetup(false) {}
+	GameRecord() : programInferred(false) {}
 };
 
 /** How many [autoexec] lines are kept per game. */
 #define GAME_AUTOEXEC_LINES 6
 
-/** Fills title, program, programInferred, isSetup and autoexec from a conf's text. `out.name` is used for the title when the conf has none. */
+/** Fills title, program, programInferred and autoexec from a conf's text. `out.name` is used for the title when the conf has none. */
 void Game_ParseConf(const std::string& text, GameRecord& out);
 
 /**

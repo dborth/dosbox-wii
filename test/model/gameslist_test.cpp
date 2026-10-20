@@ -7,14 +7,13 @@ static int checks = 0, failures = 0;
 #define CHECK(cond) do { checks++; if(!(cond)) { failures++; printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while(0)
 #define CHECK_EQ(a, b) do { checks++; const std::string x = (a), y = (b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n   got  [%s]\n   want [%s]\n", __FILE__, __LINE__, #a, x.c_str(), y.c_str()); } } while(0)
 
-static GameRecord game(const char * name, const char * title, const char * program, const char * where = "", bool setup = false, bool inferred = false)
+static GameRecord game(const char * name, const char * title, const char * program, const char * where = "", bool inferred = false)
 {
 	GameRecord g;
 	g.name = name;
 	g.title = title;
 	g.program = program;
 	g.where = where;
-	g.isSetup = setup;
 	g.programInferred = inferred;
 	g.path = std::string("sd:/DOSBox/") + (*where ? std::string(where) + "/" : "") + name + ".conf";
 	return g;
@@ -31,8 +30,8 @@ static std::vector<GameRecord> three()
 {
 	std::vector<GameRecord> g;
 	g.push_back(game("keen4", "Commander Keen 4", "KEEN4E.EXE"));
-	g.push_back(game("prince", "Prince of Persia", "PRINCE.EXE", "GAMES", false, true));
-	g.push_back(game("my-setup", "my-setup", "", "Setups", true));
+	g.push_back(game("prince", "Prince of Persia", "PRINCE.EXE", "GAMES", true));
+	g.push_back(game("my-setup", "my-setup", "", "Setups"));
 	return g;
 }
 
@@ -54,7 +53,7 @@ static void testRows()
 	CHECK_EQ(text(l, 0), "Plain DOSBox|RUNNING");
 	CHECK_EQ(text(l, 1), "Commander Keen 4|KEEN4E.EXE");
 	CHECK_EQ(text(l, 2), "Prince of Persia|PRINCE.EXE");
-	CHECK_EQ(text(l, 3), "my-setup|Controls only");
+	CHECK_EQ(text(l, 3), "my-setup|");
 
 	// the one running says so, and plain does not
 	l.setCurrent("sd:/DOSBox/keen4.conf");
@@ -84,7 +83,7 @@ static void testRows()
 	CHECK(v.size() <= 16);
 
 	// a conf named in another way than the scan's full path
-	GameRecord setup = game("keen", "keen", "", "Setups", true);
+	GameRecord setup = game("keen", "keen", "", "Setups");
 	GameRecord top = game("keen", "keen", "");
 	CHECK(GamesList::sameConf(setup, "sd:/DOSBox/Setups/keen.conf"));
 	CHECK(GamesList::sameConf(setup, "SD:/dosbox/setups/KEEN.CONF"));
@@ -130,7 +129,7 @@ static void testHelp()
 
 	CHECK_EQ(l.rowHelp(1), "Runs KEEN4E.EXE  -  keen4.conf  -  autoexec: mount c . | c: | keen4e.exe");
 	CHECK_EQ(l.rowHelp(2), "Runs PRINCE.EXE (from autoexec)  -  GAMES/prince.conf");
-	CHECK_EQ(l.rowHelp(3), "No program named  -  Setups/my-setup.conf  -  controls setup");
+	CHECK_EQ(l.rowHelp(3), "No program named  -  Setups/my-setup.conf");
 	CHECK(l.rowHelp(0).find("dosbox.conf") != std::string::npos);
 	CHECK(l.rowHelp(-1).empty());
 	CHECK(l.rowHelp(40).empty());
@@ -218,12 +217,69 @@ static void testClick()
 	CHECK(empty.click(1).what == GamesList::Click::NOTHING);
 }
 
+static void testSaving()
+{
+	GamesList l;
+	l.setGames(three());
+	l.setSaving(true);
+	CHECK(l.isSaving());
+
+	// a New game row first, no Plain DOSBox, then the games with what A does to them
+	CHECK(l.rowCount() == 4);
+	CHECK_EQ(text(l, 0), "New game|Save new");
+	CHECK_EQ(text(l, 1), "Commander Keen 4|Replace");
+	CHECK_EQ(text(l, 3), "my-setup|Replace");
+	CHECK(l.rowHelp(0).find("name you type") != std::string::npos);
+	CHECK(l.rowHelp(1).find("Replaces this game") != std::string::npos);
+
+	// the game that is running is the one it saves over
+	l.setCurrent("sd:/DOSBox/keen4.conf");
+	CHECK_EQ(text(l, 1), "Commander Keen 4|Save here");
+	CHECK_EQ(text(l, 2), "Prince of Persia|Replace");
+	CHECK(l.rowHelp(1).find("Its startup is kept") != std::string::npos);
+
+	// New game is one press
+	GamesList::Click c = l.click(0);
+	CHECK(c.what == GamesList::Click::SAVE_NEW);
+
+	// replacing is two, as it overwrites a file; whether it is the running game goes with it
+	c = l.click(2);
+	CHECK(c.what == GamesList::Click::MESSAGE);
+	CHECK(c.message.find("Press A again to replace Prince of Persia") != std::string::npos);
+	c = l.click(2);
+	CHECK(c.what == GamesList::Click::SAVE_REPLACE);
+	CHECK_EQ(c.conf, "sd:/DOSBox/GAMES/prince.conf");
+	CHECK(!c.running);
+	l.click(1);
+	c = l.click(1);
+	CHECK(c.what == GamesList::Click::SAVE_REPLACE);
+	CHECK(c.running);
+
+	// another row starts it over
+	l.click(1);
+	l.click(2);
+	c = l.click(1);
+	CHECK(c.what == GamesList::Click::MESSAGE);
+
+	// nothing found: the New game row is still there to start with
+	GamesList e;
+	e.setSaving(true);
+	CHECK(e.rowCount() == 2);
+	CHECK_EQ(text(e, 0), "New game|Save new");
+	CHECK(e.rowHelp(1).find("No games yet") != std::string::npos);
+
+	// back to launching
+	l.setSaving(false);
+	CHECK_EQ(text(l, 0), "Plain DOSBox|");
+}
+
 int main()
 {
 	testRows();
 	testLimit();
 	testHelp();
 	testClick();
+	testSaving();
 	if(failures)
 	{
 		printf("%d of %d checks FAILED\n", failures, checks);

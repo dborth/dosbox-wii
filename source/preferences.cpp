@@ -338,6 +338,46 @@ bool ConfigSave(const char * path, std::string * error)
 	return true;
 }
 
+bool ConfigText(std::string * text, std::string * error)
+{
+	std::string ignored;
+
+	if(!error)
+		error = &ignored;
+
+	if(!control || !text)
+	{
+		*error = "There is no config to read.";
+		return false;
+	}
+
+	// PrintConfig only writes to a file: it goes next to the config it would replace, and is read back
+	const std::string tmp = ConfigSavePath() + ".text.tmp";
+
+	remove(tmp.c_str());
+
+	if(!control->PrintConfig(tmp.c_str()))
+	{
+		*error = "Could not write " + tmp + ".";
+		return false;
+	}
+
+	const bool complete = LooksComplete(tmp);
+	std::string read;
+	const bool ok = complete && ReadAll(tmp, &read);
+
+	remove(tmp.c_str());
+
+	if(!ok)
+	{
+		*error = "The config was not written in full. Is the card full?";
+		return false;
+	}
+
+	*text = read;
+	return true;
+}
+
 /****************************************************************************
  * The [display] section
  ***************************************************************************/

@@ -101,6 +101,9 @@ std::string Setup_ProgramKey(const std::string& program);
  */
 std::string Setup_ProgramFromEnvironment(const unsigned char * env, size_t size);
 
+/** The same block's program as DOS wrote it, whole ("C:\\GAMES\\KEEN4\\KEEN4E.EXE"); empty when the block is not in that shape. */
+std::string Setup_ProgramPathFromEnvironment(const unsigned char * env, size_t size);
+
 /** Every pad source's events found in a mapper file, by player: `pad_N button B` and `pad_N hat 0 M`, and the stick group's `stick_N button B` and `stick_N hat 0 M` for the same player, in file order. */
 struct MapPadBinds
 {

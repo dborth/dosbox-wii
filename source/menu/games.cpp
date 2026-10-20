@@ -14,9 +14,6 @@
 
 namespace {
 
-// The first line of a controls setup (controlssetups.cpp kMarker)
-const char kSetupMarker[] = "# DOSBox Wii setup";
-
 // Enough for any conf DOSBox writes (a full dosbox.conf with its comments is about 15 KB)
 const size_t kMaxConfBytes = 64 * 1024;
 
@@ -151,14 +148,7 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 	out.title.clear();
 	out.program.clear();
 	out.programInferred = false;
-	out.isSetup = false;
 	out.autoexec.clear();
-
-	size_t first = 0;
-	while(first < all.size() && trim(all[first]).empty())
-		first++;
-	if(first < all.size() && trim(all[first]) == kSetupMarker)
-		out.isSetup = true;
 
 	std::string section;
 	std::vector<std::string> autoexec;	// all of it, for working out the program
@@ -260,13 +250,13 @@ std::vector<GameRecord> Games_Scan(const GamesHost& host)
 	const std::vector<std::string> top = host.list(base);
 	scanFolder(host, base, std::string(), top, games);
 
-	// The folders below it, Setups first (whatever its case on disk), the rest as they are listed
+	// The folders below it, Games first (whatever its case on disk: it is where the menu saves games), the rest as they are listed
 	std::vector<std::string> folders;
 	for(size_t i = 0; i < top.size() && folders.size() < GAMES_MAX_FOLDERS; i++)
 	{
 		if(top[i][0] == '.' || !host.isDirectory(base + "/" + top[i]))
 			continue;
-		if(strcasecmp(top[i].c_str(), "Setups") == 0)
+		if(strcasecmp(top[i].c_str(), "Games") == 0)
 			folders.insert(folders.begin(), top[i]);
 		else
 			folders.push_back(top[i]);
