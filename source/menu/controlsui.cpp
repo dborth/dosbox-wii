@@ -907,12 +907,12 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 			target = view.result();
 			return true;
 		}
-		if(view.backButton().getState() == STATE::CLICKED)
+		if(view.isDismissed())
 		{
 			if(!view.listening())
 				return false;
 			view.stopListening(); // B while waiting for a key only stops waiting
-			view.backButton().setState(STATE::DEFAULT);
+			view.reopen();
 		}
 	}
 }

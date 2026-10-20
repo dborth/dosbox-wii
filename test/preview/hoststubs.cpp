@@ -2,17 +2,23 @@
 // controller and the text translator.
 #include "libgui/Gui.h"
 
-GuiTrigger::GuiTrigger() {}
-void GuiTrigger::setPrimaryTrigger(int) {}
-void GuiTrigger::setSecondaryTrigger(int) {}
+GuiTrigger::GuiTrigger() : type(TRIGGER_TYPE::SIMPLE), action(TRIGGER_ACTION::NONE), chan(-1), conditionMask(0) {}
+void GuiTrigger::setPrimaryTrigger(int) { action = TRIGGER_ACTION::PRIMARY; }
+void GuiTrigger::setSecondaryTrigger(int) { action = TRIGGER_ACTION::SECONDARY; }
 void GuiTrigger::setSimpleTrigger(int, uint32_t) {}
 void GuiTrigger::setHeldTrigger(int, uint32_t) {}
 void GuiTrigger::setButtonOnlyTrigger(int, uint32_t) {}
 void GuiTrigger::setButtonOnlyInFocusTrigger(int, uint32_t) {}
 // which controller channels have a trigger pressed this frame (a test sets it; nothing set means no presses)
-static int hostPressMask = 0;
+// (a secondary trigger, B, has a mask of its own)
+static int hostPressMask = 0, hostSecondaryMask = 0;
 void Host_SetPressMask(int mask) { hostPressMask = mask; }
-bool GuiTrigger::isClicked(const InputController * c) const { return c && c->getChannel() >= 0 && ((hostPressMask >> c->getChannel()) & 1) != 0; }
+void Host_SetSecondaryMask(int mask) { hostSecondaryMask = mask; }
+bool GuiTrigger::isClicked(const InputController * c) const
+{
+	const int mask = action == TRIGGER_ACTION::SECONDARY ? hostSecondaryMask : hostPressMask;
+	return c && c->getChannel() >= 0 && ((mask >> c->getChannel()) & 1) != 0;
+}
 bool GuiTrigger::isHeld(const InputController *) const { return false; }
 bool GuiTrigger::isReleased(const InputController *) const { return false; }
 

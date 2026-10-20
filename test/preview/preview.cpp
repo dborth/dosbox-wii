@@ -28,6 +28,7 @@ static void ApplyAll(int preset)
 
 // The main window as HomeMenu builds it: the header and footer bars, with a page on top
 void Host_SetPressMask(int mask);
+void Host_SetSecondaryMask(int mask);
 struct Screen
 {
 	GuiWindow root;
@@ -843,46 +844,52 @@ int main(int argc, char ** argv)
 		SampleControls_ResetHardware();
 	}
 	{
-		// the popover backdrop covers the whole screen, so every pointer is always over it. With two pointers either
-		// player can click away, whichever controller the screen happens to update first (player 4 down to player 1)
-		GuiPopoverBackdrop backdrop(640, 480);
-		struct Box : public GuiElement
+		// the popover covers the whole screen, so every pointer is always over it. With two pointers either player can
+		// click away, whichever controller the screen happens to update first (player 4 down to player 1)
+		struct Ask : public GuiPopover
 		{
-			Box() { width = 100; height = 100; }
-			void draw() override {}
+			GuiCard * card;
+			Ask() : GuiPopover(640, 480), card(nullptr)
+			{
+				GuiCard& panel = ui.card().selectable(false).size(100, 100);
+				card = &panel;
+				mount(panel, 100, 100, GuiPopoverAnchor(), MenuPopover_Insets());
+				ui.attachTo(*this);
+			}
 		};
-		Box panel;
-		panel.setPosition(200, 100);
-		backdrop.setPanel(&panel);
-		backdrop.setCancel(nullptr);
-		GuiTrigger click;
-		backdrop.setPrimary(&click);
+		Ask pop;
+		pop.layout();
 		InputController p1(0), p2(1);
 		InputPadData off, on;
 		off.validPointer = true; off.cursor_x = 40; off.cursor_y = 40;			// outside the panel
-		on.validPointer = true; on.cursor_x = 250; on.cursor_y = 150;			// over the panel
+		on.validPointer = true; on.cursor_x = pop.position().x + 50; on.cursor_y = pop.position().y + 50;	// over the panel
 		const auto frame = [&](const InputPadData& a, const InputPadData& b, int pressed) {
 			p1.update(a, 0.016f);
 			p2.update(b, 0.016f);
 			Host_SetPressMask(pressed);
-			backdrop.update(&p2);												// the screen updates the later players first
-			backdrop.update(&p1);
+			pop.update(&p2);													// the screen updates the later players first
+			pop.update(&p1);
 			Host_SetPressMask(0);
 		};
 		frame(off, off, 1);														// player 1 clicks, both pointers off the panel
-		EXPECT(backdrop.getState() == STATE::CLICKED);
-		backdrop.resetState();
+		EXPECT(pop.isDismissed());
+		pop.reopen();
 		frame(off, off, 2);														// player 2 clicks
-		EXPECT(backdrop.getState() == STATE::CLICKED);
-		backdrop.resetState();
+		EXPECT(pop.isDismissed());
+		pop.reopen();
 		frame(on, off, 1);														// player 1 clicks on the panel: not a click away
-		EXPECT(backdrop.getState() != STATE::CLICKED);
+		EXPECT(!pop.isDismissed());
 		frame(off, on, 1);														// player 1 clicks away while player 2 points at the panel
-		EXPECT(backdrop.getState() == STATE::CLICKED);
-		backdrop.resetState();
+		EXPECT(pop.isDismissed());
+		pop.reopen();
 		InputPadData lost = off; lost.validPointer = false;
 		frame(lost, off, 1);													// no pointer: a press is not a click away
-		EXPECT(backdrop.getState() != STATE::CLICKED);
+		EXPECT(!pop.isDismissed());
+		Host_SetSecondaryMask(2);											// player 2 presses B, with the pointer on the panel
+		p2.update(on, 0.016f);
+		pop.update(&p2);
+		Host_SetSecondaryMask(0);
+		EXPECT(pop.isDismissed());
 	}
 	{
 		// a hidden layout takes neither input nor the D-pad's selection (the chooser stacks its panels, and the hidden

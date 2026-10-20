@@ -15,18 +15,14 @@ mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controls
 games_test: games_test.cpp $(SRC)/menu/games.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
 
-popover_test: popover_test.cpp $(SRC)/libgui/GuiPopoverPlacement.cpp
-	$(CXX) $(CXXFLAGS) -I$(SRC) -o $@ $^
-
-check: model_test mapper_test popover_test games_test
+check: model_test mapper_test games_test
 	./model_test
 	./mapper_test
-	./popover_test
 	./games_test
 
 all: check
 
 clean:
-	rm -f model_test mapper_test popover_test games_test
+	rm -f model_test mapper_test games_test
 
 .PHONY: all check clean

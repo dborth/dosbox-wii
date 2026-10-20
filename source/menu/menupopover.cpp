@@ -258,7 +258,7 @@ int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, c
 			perFrame();
 		if(view.chosen())
 			return view.result();
-		if(view.backButton().getState() == STATE::CLICKED)
+		if(view.isDismissed())
 			return -1;
 	}
 }

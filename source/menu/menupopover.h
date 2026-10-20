@@ -20,7 +20,7 @@ GuiCard& MenuPopover_Row(UiScope& ui, int width, int height, const std::string& 
 
 /**
  * A small round close button (an X) for the right end of a popover's title row: a way out that does not depend on
- * B or on finding empty space to click. `onClick` is what it does; pass the backdrop's dismiss().
+ * B or on finding empty space to click. `onClick` is what it does; pass the popover's dismiss().
  */
 GuiCard& MenuPopover_CloseButton(UiScope& ui, std::function<void()> onClick);
 
@@ -50,7 +50,7 @@ struct PickerItem {
 class PickerView : public GuiPopover
 {
 	public:
-		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (backButton()). */
+		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (isDismissed()). */
 		PickerView(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor = GuiPopoverAnchor());
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
