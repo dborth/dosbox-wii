@@ -63,7 +63,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 
 ## Features
 
-- DOSBox SVN r4301 core with the PowerPC **dynamic recompiler** (dynarec): in the benchmark in [`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt) it runs about 4 to 10 times faster than the normal core on the Wii (see [Performance](#performance))
+- DOSBox SVN r4301 core with the PowerPC **dynamic recompiler** (see [Performance](#performance))
 - A Home menu you can open at any time (Home, or L + R + Plus, or a tap of a keyboard's Windows key): speed, frameskip, aspect and filter at a glance, plus settings pages for Performance, Video, Audio, Keyboard & Mouse and the DOS joystick, and an *All settings* editor for the rest
 - A **Status** page showing what DOSBox is configured to and what is in effect (running CPU core and whether the dynarec is active, cycles, screen mode, audio output, mounted drives, loaded config file), with anything not at DOSBox's default marked
 - Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
@@ -861,17 +861,6 @@ Three things set how fast DOSBox Wii runs a game, and all three can be changed w
    The home-screen buttons and the cycle hotkeys change the running value, and the config follows it, so *Settings* shows it and **Save** writes it. The exception is `auto`: the running amount there is DOSBox's own guess, and is not written.
 3. **Frameskip** is 0 to 10 and is stepped from the home screen. The config follows it (`[render] frameskip`).
 4. **The normal core** is *Settings → Performance → CPU core* (`auto`, `dynamic` or `normal`; at the DOS prompt only). Use it to compare.
-
-### What the benchmark says
-
-[`docs/Benchmark_Wii_WiiU.txt`](docs/Benchmark_Wii_WiiU.txt) holds PCPBench 1.03c results, all at `cycles=max`, for a build of r4301 with the dynarec. It is older than this release. On the **Wii**:
-
-| Core | DOS/32A | DOS4GW |
-|---|---|---|
-| dynamic | 3.0 to 3.1 fps | 2.8 to 2.9 fps |
-| normal | 0.6 to 0.8 fps | 0.3 to 0.5 fps |
-
-The file's vWii results compare an overclocked vWii (1.24 GHz, dynamic core, 5.6 to 5.8 fps) with an unoverclocked one (729 MHz, normal core, 2.0 to 2.1 fps), so they don't show what the dynarec gains there. They are not results for the native Wii U build. Its classes list 2.5 fps as the minimum for a 486 DX/33.
 
 ---
 
