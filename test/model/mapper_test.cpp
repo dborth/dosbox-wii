@@ -1087,6 +1087,11 @@ static void testSaveSetup()
 	CHECK_EQ(rec.presets[0], r.model.presets()[(size_t)r.model.currentPreset(0)].name);
 	CHECK_EQ(r.model.setupName(), "Keen 4");
 	CHECK(!r.model.setupModified());
+	// DOSBox restarting is a new mapper: the model forgets which setup was loaded
+	r.model.forget();
+	CHECK(r.model.setupName().empty() && !r.model.setupModified());
+	r.model.saveSetup("Keen 4", "KEEN4E.EXE");
+	CHECK_EQ(r.model.setupName(), "Keen 4");
 	CHECK(r.host.fs.size() == 3);													// the mapper file, .map, .conf: nothing else left behind
 
 	// the list shows it

@@ -8,7 +8,7 @@
  *   header   logo, the running program and its setup                 [Resume]
  *   body     Quick settings: speed, frameskip, aspect, filter  |  Controllers: the four
  *            players (device, battery), keyboard and mouse, and Configure
- *                                                                  |  Keyboard, Settings, Status, Setups
+ *                                                                  |  Keyboard, Settings, Status, Games
  *   footer   [Exit DOSBox]            what the highlighted thing does              [Credits]
  *
  * It is a view over two models: HomeSettings for the quick settings (the running
@@ -43,12 +43,14 @@ class HomeSettings
 		/** Whether pixel edges are kept sharp and not smoothed */
 		virtual bool filterSharp() const = 0;
 		virtual void setFilterSharp(bool sharp) = 0;
+		/** The game DOSBox is running ("Keen 4"), or empty at the plain prompt */
+		virtual std::string gameName() const { return std::string(); }
 };
 
 class HomeView : public GuiOverlay
 {
 	public:
-		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, SETUPS, CREDITS, RESTART };
+		enum class Action { NONE, RESUME, EXIT, KEYBOARD, CONTROLLERS, SETTINGS, STATUS, GAMES, CREDITS, RESTART };
 
 		HomeView(HomeSettings& settings, const char * version);
 
@@ -58,8 +60,6 @@ class HomeView : public GuiOverlay
 		int takePlayer() const { return actionPlayer; }
 		/** Says something on the footer's hint line (what a Save did); empty goes back to the button hints */
 		void setStatus(const std::string& text) { status = text; }
-		/** The Setups tile, in canvas pixels: where its popover opens beside */
-		GuiPopoverAnchor setupsAnchor();
 		/** Puts the selection on a button again (after something that was open over the screen closes) */
 		void select(Action which);
 
@@ -80,7 +80,7 @@ class HomeView : public GuiOverlay
 		GuiCard * exitCard;
 		GuiCard * restartCard;
 		GuiCard * creditsCard;
-		GuiCard * setupsCard;
+		GuiCard * gamesCard;
 		GuiCard * configureCard;
 		GuiCard * keyboardCard;
 		GuiCard * settingsCard;

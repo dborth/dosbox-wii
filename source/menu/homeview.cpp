@@ -282,7 +282,7 @@ GuiLayout& HomeView::playersStrip()
 // ---- the screen
 
 HomeView::HomeView(HomeSettings& s, const char * version) :
-	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), setupsCard(nullptr),
+	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), gamesCard(nullptr),
 	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), hint("Pick something, or Resume to go back to the game")
 {
 	const int sw = platform->getVideo()->getScreenWidth();
@@ -300,7 +300,13 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.bind([]{ const std::string p = Controls().runningProgram(); return p.empty() ? std::string("DOS prompt") : p; });
 	program.setMaxWidth(150);
 	GuiLabel& setupName = ui.label().fontSize(13).textColor(MenuChromeTextMuted())
-		.bind([]{ const std::string n = Controls().setupName(); return n.empty() ? std::string("No setup loaded") : "Setup: " + n; });
+		.bind([this]{
+			const std::string game = settings.gameName();
+			if(!game.empty())
+				return "Game: " + game;
+			const std::string n = Controls().setupName();
+			return n.empty() ? std::string("No game or setup") : "Setup: " + n;
+		});
 	setupName.setMaxWidth(150);
 	GuiLayout& running = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(program).add(setupName);
 	resumeCard = &pill("Resume", MENU_ICON_PLAY, 118, 40, 20, [this]{ pending = Action::RESUME; }, [this]{ hint = "Go back to the game"; });
@@ -336,10 +342,10 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	keyboardCard = &tile("Keyboard", "On screen", MENU_ICON_KEYBOARD, Action::KEYBOARD, "Type into DOS with an on-screen keyboard");
 	settingsCard = &tile("Settings", "All options", MENU_ICON_GEAR, Action::SETTINGS, "Video, audio, DOS, drives and everything else");
 	statusCard = &tile("Status", "Live info", MENU_ICON_PULSE, Action::STATUS, "What DOSBox is set to and doing right now");
-	setupsCard = &tile("Setups", "Save, load", MENU_ICON_DISK, Action::SETUPS, "Save or load the buttons and settings for this game");
+	gamesCard = &tile("Games", "Pick one", MENU_ICON_DISK, Action::GAMES, "Pick a game to play. DOSBox restarts with that game's controls and settings");
 	GuiLayout& right = ui.column().size(264, bodyH).gap(8).align(LAYOUT_ALIGN::CENTRE).add(controllersCard)
 		.add(ui.row().gap(8).add(*keyboardCard).add(*settingsCard))
-		.add(ui.row().gap(8).add(*statusCard).add(*setupsCard));
+		.add(ui.row().gap(8).add(*statusCard).add(*gamesCard));
 
 	GuiLayout& body = ui.row().size(sw, sh).pad(MENU_PAGE_MARGIN, MENU_BAR_TOP_H + 4, MENU_PAGE_MARGIN, MENU_BAR_BOTTOM_H + 4).gap(12)
 		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(quickCard).add(right);
@@ -371,11 +377,6 @@ HomeView::Action HomeView::takeAction()
 	return a;
 }
 
-GuiPopoverAnchor HomeView::setupsAnchor()
-{
-	return GuiPopoverAnchor(setupsCard->getLeft(), setupsCard->getTop(), setupsCard->getWidth(), setupsCard->getHeight());
-}
-
 void HomeView::select(Action which)
 {
 	GuiCard * c = nullptr;
@@ -387,7 +388,7 @@ void HomeView::select(Action which)
 		case Action::KEYBOARD: c = keyboardCard; break;
 		case Action::SETTINGS: c = settingsCard; break;
 		case Action::STATUS: c = statusCard; break;
-		case Action::SETUPS: c = setupsCard; break;
+		case Action::GAMES: c = gamesCard; break;
 		case Action::CONTROLLERS: c = configureCard; break;
 		case Action::CREDITS: c = creditsCard; break;
 		default: break;

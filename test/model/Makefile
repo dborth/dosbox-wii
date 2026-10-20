@@ -15,14 +15,18 @@ mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controls
 games_test: games_test.cpp $(SRC)/menu/games.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
 
-check: model_test mapper_test games_test
+gameslist_test: gameslist_test.cpp $(SRC)/menu/gameslist.cpp $(SRC)/menu/games.cpp
+	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
+
+check: model_test mapper_test games_test gameslist_test
 	./model_test
 	./mapper_test
 	./games_test
+	./gameslist_test
 
 all: check
 
 clean:
-	rm -f model_test mapper_test games_test
+	rm -f model_test mapper_test games_test gameslist_test
 
 .PHONY: all check clean

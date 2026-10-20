@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/param.h>
 #include <unistd.h>
 
@@ -423,6 +424,19 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 class LiveHomeSettings : public HomeSettings
 {
 	public:
+		// the file name of the game's conf, without its folder and ".conf" (the title is in the file, which the
+		// home screen does not read)
+		std::string gameName() const override
+		{
+			std::string name = GetGameConf();
+			const size_t slash = name.find_last_of("/\\");
+			if(slash != std::string::npos)
+				name = name.substr(slash + 1);
+			if(name.size() > 5 && strcasecmp(name.c_str() + name.size() - 5, ".conf") == 0)
+				name.resize(name.size() - 5);
+			return name;
+		}
+
 		std::string speed() const override
 		{
 			bool autoAdjust;
@@ -569,6 +583,14 @@ void HomeMenu ()
 	// the controller screens read the real controllers, keyboard and mouse, and what a button does is what the
 	// mapper has for it (all four players); the model keeps its state between visits
 	static MapperControlsModel mapperModel(Controls_Hal(), Mapper_Live(), &Setups_Live());
+	static int modelRun = 0;
+	if(modelRun != RunNumber())
+	{
+		// DOSBox has restarted since: its mapper is new, so what the model knew of the last one (the setup that
+		// was loaded) is not true of this one
+		mapperModel.forget();
+		modelRun = RunNumber();
+	}
 	Controls_SetModel(&mapperModel);
 
 	LiveHomeSettings homeSettings;
@@ -603,8 +625,7 @@ void HomeMenu ()
 
 		if(action == HomeView::Action::NONE)
 			continue;
-		if(action != HomeView::Action::SETUPS)
-			home.setStatus(std::string());
+		home.setStatus(std::string());
 
 		// Restart closes the menu like Resume; GFX_Events() sees the request once the machine has been handed
 		// back (memory, audio and video restored), and leaves the core from there
@@ -612,6 +633,15 @@ void HomeMenu ()
 		{
 			RequestRestart();
 			action = HomeView::Action::RESUME;
+		}
+
+		// A game chosen from the list restarts DOSBox: the menu closes like Resume, and GFX_Events() does the rest
+		if(action == HomeView::Action::GAMES)
+		{
+			GamesMenu(&w);
+			action = RestartRequested() ? HomeView::Action::RESUME : HomeView::Action::NONE;
+			if(action == HomeView::Action::NONE)
+				continue;
 		}
 
 		bool leave = false;
@@ -657,10 +687,6 @@ void HomeMenu ()
 
 			case HomeView::Action::STATUS:
 				StatusMenu(&w);
-				break;
-
-			case HomeView::Action::SETUPS:
-				home.setStatus(Controls_SetupMenu(&w, home.setupsAnchor()));
 				break;
 
 			case HomeView::Action::CREDITS:

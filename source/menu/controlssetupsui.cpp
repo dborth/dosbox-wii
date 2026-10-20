@@ -219,15 +219,3 @@ std::string Setups_Run(const ScreenHooks& screen, const GuiPopoverAnchor& anchor
 			return SaveFlow(screen, anchor);
 	}
 }
-
-std::string Controls_SetupMenu(GuiWindow * home, const GuiPopoverAnchor& anchor)
-{
-	// the home screen stays drawn (dimmed) under the popover; only the on-screen keyboard takes it away
-	home->setState(STATE::DISABLED);
-	const ScreenHooks hooks = { [home]{ mainWindow->remove(home); }, [home]{ mainWindow->append(home); } };
-	const std::string said = Setups_Run(hooks, anchor);
-	home->setState(STATE::DEFAULT);
-	mainWindow->changeFocus(home);
-	home->resetState();
-	return said;
-}

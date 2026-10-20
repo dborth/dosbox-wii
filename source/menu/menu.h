@@ -34,6 +34,10 @@ void SettingsMenu(GuiWindow * home);
 /** Opens the status page in place of the home screen's window. Returns when it is closed. */
 void StatusMenu(GuiWindow * home);
 
+/** The games list in place of the home screen (`home` comes off the main window while it is up). Afterwards
+    RestartRequested() is true if a game was chosen. */
+void GamesMenu(GuiWindow * home);
+
 
 /**
  * Increase or decrease the current CPU cycles.

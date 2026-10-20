@@ -180,6 +180,16 @@ MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& 
 		presetOf[i] = -1;
 }
 
+void MapperControlsModel::forget()
+{
+	currentSetup.clear();
+	dirty = false;
+	failedSave = false;
+	seenType.clear();
+	for(int i = 0; i < 4; i++)
+		presetOf[i] = -1;
+}
+
 // ---- players and devices
 
 PlayerInfo MapperControlsModel::player(int index) const

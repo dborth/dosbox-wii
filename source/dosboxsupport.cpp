@@ -93,6 +93,11 @@ extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
 
 static bool restartRequested = false;
+static int runNumber = 0;
+
+int RunNumber() {
+	return runNumber;
+}
 static std::string gameConf;
 
 const char * GetGameConf() {
@@ -452,6 +457,7 @@ int access(const char *path, int amode)
  * and GUI are already up. Returns when DOSBox has shut down.
  ***************************************************************************/
 void RunDOSBox(int argc, char* argv[]) {
+	runNumber++;
 	try {
 		// The game conf travels as an argument of its own (LoadPrefs() reads it)
 		std::vector<char *> args(argv, argv + argc);

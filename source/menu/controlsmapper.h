@@ -130,6 +130,9 @@ class MapperControlsModel : public ControlsModel
 		std::string setupName() const override;
 		bool setupModified() const override;
 
+		/** Forgets what was known of the running DOSBox (the setup that was loaded, what was changed since): for a DOSBox that has restarted. */
+		void forget();
+
 		/** Whether the last change could not be written to the mapper file (it is in effect, but lost when DOSBox closes). */
 		bool saveFailed() const { return failedSave; }
 

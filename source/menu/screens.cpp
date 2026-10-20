@@ -27,6 +27,9 @@
 #include "storage.h"
 #include "status.h"
 #include "memmanager.h"
+#include "dosboxsupport.h"
+#include "gameslist.h"
+#include "gameslive.h"
 
 /****************************************************************************
  * ListBrowser
@@ -465,6 +468,98 @@ class StatusScreen : public ListScreen
 };
 
 /****************************************************************************
+ * GamesScreen
+ *
+ * Plain DOSBox, then a row per game found in the DOSBox folder (see games.h),
+ * with the program it runs; the one DOSBox was started with says Playing. A
+ * restarts DOSBox into the game, after a second press that says what it costs
+ * (gameslist.h). The folder is read on the scanner's thread (gameslive.h) while
+ * the list is up, and again with Rescan.
+ ***************************************************************************/
+class GamesScreen : public ListScreen
+{
+	public:
+		GamesScreen() : ListScreen("Games", "A: restart into game    B: back", "Rescan") {}
+
+	protected:
+		void onOpen() override
+		{
+			GamesScanner& scanner = Games_Scanner();
+
+			// what the last scan found is there at once; a new scan replaces it
+			if(scanner.scannedOnce())
+				list.setGames(scanner.games());
+			list.setCurrent(GetGameConf());
+			list.setScanning(true);
+			scanner.start();
+		}
+
+		void onClose() override { Games_Scanner().finish(); }
+
+		bool onFrame() override
+		{
+			GamesScanner& scanner = Games_Scanner();
+
+			// Rescan was pressed: the list says it is looking
+			if(rescanning)
+			{
+				rescanning = false;
+				return true;
+			}
+
+			if(!scanner.poll())
+				return false;
+
+			list.setGames(scanner.games());
+			list.setScanning(false);
+			return true;
+		}
+
+		int rowCount() override { return list.rowCount(); }
+
+		void rowText(int row, char * name, size_t nameSize, char * value, size_t valueSize) override
+		{
+			std::string n, v;
+			list.rowText(row, n, v);
+			snprintf(name, nameSize, "%s", n.c_str());
+			snprintf(value, valueSize, "%s", v.c_str());
+		}
+
+		bool rowHelp(int row, char * help, size_t size) override
+		{
+			snprintf(help, size, "%s", list.rowHelp(row).c_str());
+			return true;
+		}
+
+		bool onClick(int row) override
+		{
+			const GamesList::Click c = list.click(row);
+
+			if(c.what == GamesList::Click::MESSAGE)
+				showMessage(c.message.c_str());
+			else if(c.what == GamesList::Click::LAUNCH)
+			{
+				// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
+				RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
+				close();
+			}
+
+			return c.what == GamesList::Click::LAUNCH;
+		}
+
+		void onExtraButton() override
+		{
+			list.setScanning(true);
+			Games_Scanner().start();
+			rescanning = true;
+		}
+
+	private:
+		GamesList list;
+		bool rescanning = false;
+};
+
+/****************************************************************************
  * SettingsListScreen
  *
  * A list of settings pages, one row per page. A (or clicking) opens the page.
@@ -549,6 +644,24 @@ void SettingsMenu(GuiWindow * home)
 	{
 		SettingsListScreen list(false);
 		list.run();
+	}
+
+	mainWindow->append(home);
+}
+
+/****************************************************************************
+ * GamesMenu
+ *
+ * Opens the games list in place of the home screen, as SettingsMenu does for the
+ * settings. When a game was chosen RestartRequested() is true afterwards.
+ ***************************************************************************/
+void GamesMenu(GuiWindow * home)
+{
+	mainWindow->remove(home);
+
+	{
+		GamesScreen screen;
+		screen.run();
 	}
 
 	mainWindow->append(home);
