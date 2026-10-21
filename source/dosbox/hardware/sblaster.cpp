@@ -1656,6 +1656,11 @@ public:
 		Bitu i;
 		Section_prop * section=static_cast<Section_prop *>(configuration);
 
+		/* the state of a first boot: after a restart "sb" still held the last
+		 * run's DMA channel, mixer channel, IRQ and DSP state */
+		memset(&sb,0,sizeof(sb));
+		last_dma_callback=0.0f;
+
 		sb.hw.base=section->Get_hex("sbbase");
 		sb.hw.irq=section->Get_int("irq");
 		Bitu dma8bit=section->Get_int("dma");

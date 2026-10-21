@@ -20,6 +20,7 @@
 	Based of sn76496.c of the M.A.M.E. project
 */
 
+#include <string.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
@@ -269,6 +270,7 @@ private:
 public:
 	TANDYSOUND(Section* configuration):Module_base(configuration){
 		Section_prop * section=static_cast<Section_prop *>(configuration);
+		memset(&tandy,0,sizeof(tandy));	/* first boot state: channel pointers, DAC and DMA state */
 
 		bool enable_hw_tandy_dac=true;
 		Bitu sbport, sbirq, sbdma;

@@ -313,6 +313,16 @@ public:
 		autofire = section->Get_bool("autofire");
 		swap34 = section->Get_bool("swap34");
 		button_wrapping_enabled = section->Get_bool("buttonwrap");
+		/* first boot state for what the lines below do not set ("enabled" is the
+		 * mapper's and is left alone) */
+		last_write = 0;
+		write_active = false;
+		for (int j=0;j<2;j++) {
+			stick[j].button[0] = stick[j].button[1] = false;
+			stick[j].xcount = stick[j].ycount = 0;
+			stick[j].xfinal = stick[j].yfinal = 0.0f;
+			stick[j].transformed = false;
+		}
 		stick[0].xtick = stick[0].ytick = stick[1].xtick =
 		                 stick[1].ytick = PIC_FullIndex();
 		stick[0].xpos = stick[0].ypos = stick[1].xpos = stick[1].ypos = 0.0f;

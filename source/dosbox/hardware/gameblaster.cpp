@@ -130,6 +130,7 @@ public:
 		Section_prop * section = static_cast<Section_prop *>(configuration);
 		Bitu sampleRate = section->Get_int( "oplrate" );
 		cmsBase = section->Get_hex("sbbase");
+		cms_detect_register = 0xff;	/* first boot value, a restart must not keep the last one */
 		WriteHandler.Install( cmsBase, write_cms, IO_MB, 4 );
 
 		// A standalone Gameblaster has a magic chip on it which is

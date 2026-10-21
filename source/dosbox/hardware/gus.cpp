@@ -30,6 +30,7 @@
 #include "math.h"
 #include "regs.h"
 #include "drivers/BulkMemory.h"
+#include "keepalloc.h"
 using namespace std;
 
 //Extra bits of precision over normal gus
@@ -826,12 +827,13 @@ public:
 		if(!section->Get_bool("gus")) return;
 	
 		memset(&myGUS,0,sizeof(myGUS));
-		GUSRam=(Bit8u *)BulkMemory::allocate(GUS_RAM_SIZE);
+		/* the 1 MB is taken once and reused (zeroed) by every run, see keepalloc.h */
+		static KeepBlock gus_ram_block;
+		GUSRam=(Bit8u *)Keep_Get(gus_ram_block,GUS_RAM_SIZE,0,true);
 		if (!GUSRam) {
 			LOG_MSG("GUS: no memory for the %d KB of GUS RAM, the GUS is disabled",GUS_RAM_SIZE/1024);
 			return;
 		}
-		memset(GUSRam,0,GUS_RAM_SIZE);
 	
 		myGUS.rate=section->Get_int("gusrate");
 	
@@ -917,8 +919,7 @@ public:
 		}
 
 		memset(&myGUS,0,sizeof(myGUS));
-		BulkMemory::release(GUSRam);
-		GUSRam=NULL;
+		GUSRam=NULL;	/* the block itself is kept for the next run */
 	}
 };
 

@@ -365,6 +365,7 @@ private:
 public:
 	DISNEY(Section* configuration):Module_base(configuration) {
 		Section_prop * section=static_cast<Section_prop *>(configuration);
+		memset(&disney,0,sizeof(disney));	/* first boot state */
 		if(!section->Get_bool("disney")) return;
 	
 		WriteHandler.Install(DISNEY_BASE,disney_write,IO_MB,3);

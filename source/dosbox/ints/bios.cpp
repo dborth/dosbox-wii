@@ -17,6 +17,7 @@
  */
 
 
+#include <string.h>
 #include "dosbox.h"
 #include "mem.h"
 #include "bios.h"
@@ -927,6 +928,9 @@ private:
 	CALLBACK_HandlerObject callback[11];
 public:
 	BIOS(Section* configuration):Module_base(configuration){
+		/* first boot state: the last run's Tandy DAC / SB ports must not survive */
+		memset(&tandy_sb,0,sizeof(tandy_sb));
+		memset(&tandy_dac,0,sizeof(tandy_dac));
 		/* tandy DAC can be requested in tandy_sound.cpp by initializing this field */
 		bool use_tandyDAC=(real_readb(0x40,0xd4)==0xff);
 
