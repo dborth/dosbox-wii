@@ -150,7 +150,12 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	// (while a preset popover is open, a button shows what that preset would give it)
 	const std::function<std::string()> text = [this, pl, id, fixed, stick]() -> std::string {
 		if(stick)
-			return Controls().joystickAxes(pl) >= (stick == 1 ? 2 : 4) ? "Joystick axes" : "Not used";
+		{
+			// a stick the DOS joystick does not use can move the mouse instead
+			if(!Controls().stickFree(pl, stick - 1))
+				return "Joystick axes";
+			return Controls().stickMouse(pl, stick - 1) ? "Mouse" : "Off";
+		}
 		if(fixed)
 			return std::string(fixed);
 		return previewPreset >= 0 ? Controls().describeTarget(pl, Controls().presetBinding(previewPreset, id)) : Controls().describe(pl, id);
@@ -171,7 +176,13 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	row.size(width, 0).style(MenuRowHighlightStyle()).pad(padX, 4);
 	row.corners(GuiCorners(9.0f));
 	const int control = r.control;
-	row.onFocus([this, &row, control, side, name, info, text]{
+	// the hint for the row: a stick the DOS joystick leaves alone says what A does; one it uses, a button's change, a fixed row its text
+	const std::function<std::string()> hint = [this, pl, stick, name, info, text]() -> std::string {
+		if(stick && Controls().stickFree(pl, stick - 1))
+			return GuiFormat("%s: %s. A turns it %s", name, text().c_str(), Controls().stickMouse(pl, stick - 1) ? "off" : "on");
+		return info ? GuiFormat("%s: %s", name, text().c_str()) : GuiFormat("A changes what %s does", name);
+	};
+	row.onFocus([this, &row, control, side, hint]{
 		view->setHighlight(control);
 		const float midY = (float)(row.getTop() + row.getHeight() / 2);
 		if(side == Side::LEFT)
@@ -181,7 +192,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		else
 			view->setLeader(true, (float)(row.getLeft() + row.getWidth() / 2), (float)row.getTop());
 		// the hint holds about 30 characters beside the footer buttons (it scrolls when longer), so just the facts
-		status = info ? GuiFormat("%s: %s", name, text().c_str()) : GuiFormat("A changes what %s does", name);
+		status = hint();
 	});
 	if(!info)
 	{
@@ -189,6 +200,16 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 		row.onClick([this, copy]{
 			request = copy;
 			hasRequest = true;
+		});
+	}
+	else if(stick)
+	{
+		// a stick: A turns moving the mouse on or off where the DOS joystick leaves it free; otherwise it only shows what it is
+		row.onClick([this, pl, stick, hint]{
+			if(!Controls().stickFree(pl, stick - 1))
+				return;
+			Controls().setStickMouse(pl, stick - 1, !Controls().stickMouse(pl, stick - 1));
+			status = hint();
 		});
 	}
 	else

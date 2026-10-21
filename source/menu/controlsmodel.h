@@ -209,6 +209,13 @@ class ControlsModel
 		/** Whether a target does anything for a player under the current emulated mode (a joystick button the joystick lacks does not). */
 		bool usable(int player, const BindingTarget& target) const;
 
+		// ---- sticks as the mouse (stickmouse.h holds the setting, which is a conf property so a game carries its own)
+		/** Whether a player's stick (STICK_LEFT / STICK_RIGHT) is left over by the DOS joystick, and so can move the mouse instead: the joystick uses the left stick's two axes, and the right stick's two more only when it has four. */
+		bool stickFree(int player, int stick) const;
+		/** Whether the stick is set to move the mouse (whether or not it is free: a setting kept for when the joystick lets go of it). */
+		bool stickMouse(int player, int stick) const;
+		void setStickMouse(int player, int stick, bool on);
+
 		// ---- presets
 		virtual std::vector<PresetInfo> presets() const = 0;
 		/** The preset a player's buttons started from. Each player has their own. */
@@ -284,6 +291,8 @@ std::vector<BindingTarget> Presets_Suggestions(const ControlsModel& model, int p
  * the Emulating list; see EmulatedMode::advanced.
  */
 const std::vector<EmulatedMode>& Emulated_Modes();
+/** Whether a mode's DOS joystick for that player (0-based) takes the stick's axes (stick: 0 left, 1 right): the left stick drives axes 0-1, the right axes 2-3 where there are four. */
+bool Emulated_StickUsed(const EmulatedMode& mode, int player, int stick);
 /** The mode for a joystick.joysticktype value (auto is 4axis), or -1 for a value none of them stands for. */
 int Emulated_IndexOfType(const std::string& type);
 

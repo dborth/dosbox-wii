@@ -53,6 +53,16 @@ void Config_Add_SDL() {
 	Pint = Pmulti->GetSection()->Add_int("ysens",Property::Changeable::Always,100);
 	Pint->SetMinMax(-1000,1000);
 
+	// One per player (the controller screens set them): which of the player's analog sticks move the mouse
+	static const char * const stickMouseValues[] = { "off", "left", "right", "both", 0 };
+	for(int player = 1; player <= 4; player++) {
+		char name[16];
+		snprintf(name, sizeof(name), "stickmouse%d", player);
+		Pstring = sdl_sec->Add_string(name,Property::Changeable::Always,"off");
+		Pstring->Set_values(stickMouseValues);
+		Pstring->Set_help("Which of this player's analog sticks move the mouse: off, left, right or both. A stick the DOS joystick uses does not.");
+	}
+
 	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,MAPPERFILE);
 	Pstring->Set_help("File used to load/save the key/event mappings from. Resetmapper only works with the default value.");
 }

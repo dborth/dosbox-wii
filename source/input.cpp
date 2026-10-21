@@ -25,6 +25,7 @@
 #include "control.h"
 #include "cpu.h"
 #include "SDL.h"
+#include "stickmouse.h"
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
@@ -127,6 +128,27 @@ static void ReadSensitivity(Section_prop * section) {
 	sdl.mouse.ysensitivity = sensitivity->GetSection()->Get_int("ysens");
 }
 
+//! Takes which sticks move the mouse from the [sdl] section (NULL is no section), and has later changes written back to it.
+static void StickMouseSave(int player, const char * value) {
+	Section_prop * sec = Config_GetSection("sdl");
+	char line[40];
+
+	if(!sec)
+		return;
+	snprintf(line, sizeof(line), "stickmouse%d=%s", player + 1, value);
+	sec->HandleInputline(line);
+}
+
+static void ReadStickMouse(Section_prop * section) {
+	StickMouse_SetSaver(NULL);	// reading is not a change
+	for(int player = 0; player < STICKMOUSE_PLAYERS; player++) {
+		char name[16];
+		snprintf(name, sizeof(name), "stickmouse%d", player + 1);
+		StickMouse_SetValue(player, section ? section->Get_string(name) : "off");
+	}
+	StickMouse_SetSaver(&StickMouseSave);
+}
+
 /****************************************************************************
  * The [sdl] config section: start up and shut down
  ***************************************************************************/
@@ -161,6 +183,7 @@ void GUI_StartUp(Section * sec) {
 	sdl.mouse.autolock=false;
 
 	ReadSensitivity(section);
+	ReadStickMouse(section);
 
 	/* Setup Mouse correctly if fullscreen */
 	if(GFX_IsFullscreen()) GFX_CaptureMouse();

@@ -4,6 +4,7 @@
  * controlsmodel.cpp
  ***************************************************************************/
 #include "controlsmodel.h"
+#include "stickmouse.h"
 #include <ctype.h>
 #include "controllerlayout.h"
 #include "drivers/InputData.h"
@@ -251,6 +252,21 @@ int ControlsModel::joystickAxes(int player) const
 	return joystickSlot(player) < 0 ? 0 : emulatedModes()[(size_t)currentEmulated()].axes;
 }
 
+bool ControlsModel::stickFree(int player, int stick) const
+{
+	return joystickAxes(player) < (stick == 0 ? 2 : 4);
+}
+
+bool ControlsModel::stickMouse(int player, int stick) const
+{
+	return StickMouse_Get(player, stick);
+}
+
+void ControlsModel::setStickMouse(int player, int stick, bool on)
+{
+	StickMouse_Set(player, stick, on);
+}
+
 bool ControlsModel::usable(int player, const BindingTarget& target) const
 {
 	if(target.kind == TARGET::JOYSTICK)
@@ -451,6 +467,14 @@ const std::vector<EmulatedMode>& Emulated_Modes()
 		{ "Flight stick (CH)", "One joystick with six buttons and a hat, for player 1", 1, 6, 4, "ch", 0, true, true },
 	};
 	return modes;
+}
+
+bool Emulated_StickUsed(const EmulatedMode& mode, int player, int stick)
+{
+	const int slot = player - mode.firstPlayer;
+	if(player < 0 || slot < 0 || slot >= mode.joysticks)
+		return false;
+	return mode.axes >= (stick == 0 ? 2 : 4);
 }
 
 int Emulated_IndexOfType(const std::string& type)

@@ -5,6 +5,7 @@
 #include "controllerprofile.h"
 #include "drivers/InputData.h"
 #include "inputlogic.h"
+#include "stickmouse.h"
 #include <set>
 #include <fstream>
 #include <sstream>
@@ -963,6 +964,166 @@ static void testDpadRouting()
 	CHECK(readText("dosboxsupport.cpp").find("InputHal_RefreshPadRouting();") != std::string::npos);
 }
 
+
+// ---- sticks as the mouse
+
+static int savedCalls = 0;
+static int savedPlayer = -1;
+static std::string savedValue;
+static void saveSpy(int player, const char * value) { savedCalls++; savedPlayer = player; savedValue = value; }
+
+static void testStickMouseSetting()
+{
+	StickMouse_SetSaver(nullptr);
+	for(int p = 0; p < STICKMOUSE_PLAYERS; p++)
+		StickMouse_SetValue(p, "off");
+	CHECK(!StickMouse_Any());
+
+	// the four property values, and what a stranger does
+	CHECK(StickMouse_SetValue(1, "left"));
+	CHECK(StickMouse_Get(1, STICK_LEFT) && !StickMouse_Get(1, STICK_RIGHT));
+	CHECK_EQ(StickMouse_Value(1), "left");
+	CHECK(StickMouse_SetValue(1, "right"));
+	CHECK(!StickMouse_Get(1, STICK_LEFT) && StickMouse_Get(1, STICK_RIGHT));
+	CHECK(StickMouse_SetValue(1, "both"));
+	CHECK_EQ(StickMouse_Value(1), "both");
+	CHECK(StickMouse_Any());
+	CHECK(!StickMouse_SetValue(1, "sideways"));
+	CHECK_EQ(StickMouse_Value(1), "off");
+	CHECK(!StickMouse_SetValue(1, nullptr));
+	CHECK(!StickMouse_SetValue(7, "left") && !StickMouse_Get(7, STICK_LEFT) && !StickMouse_Get(-1, STICK_LEFT) && !StickMouse_Get(0, 2));
+	CHECK(!StickMouse_Any());
+
+	// the saver hears of a change, once, with the player's whole value; loading and no-op sets are silent
+	StickMouse_SetSaver(saveSpy);
+	savedCalls = 0;
+	StickMouse_SetValue(2, "left");
+	CHECK(savedCalls == 0);
+	StickMouse_Set(2, STICK_RIGHT, true);
+	CHECK(savedCalls == 1 && savedPlayer == 2 && savedValue == "both");
+	StickMouse_Set(2, STICK_RIGHT, true);
+	CHECK(savedCalls == 1);
+	StickMouse_Set(2, STICK_LEFT, false);
+	CHECK(savedCalls == 2 && savedValue == "right");
+	StickMouse_Set(9, STICK_LEFT, true);
+	CHECK(savedCalls == 2);
+	StickMouse_SetSaver(nullptr);
+	for(int p = 0; p < STICKMOUSE_PLAYERS; p++)
+		StickMouse_SetValue(p, "off");
+}
+
+static void testStickFree()
+{
+	ControlsModel& m = fresh();
+
+	// Joystick (4axis): player 1's joystick takes both sticks, everyone else's are free
+	m.setEmulated(0);
+	CHECK(!m.stickFree(0, STICK_LEFT) && !m.stickFree(0, STICK_RIGHT));
+	CHECK(m.stickFree(1, STICK_LEFT) && m.stickFree(1, STICK_RIGHT));
+	// Two joysticks (2axis): each takes only its left stick, so the right is free for the mouse
+	m.setEmulated(1);
+	CHECK(!m.stickFree(0, STICK_LEFT) && m.stickFree(0, STICK_RIGHT));
+	CHECK(!m.stickFree(1, STICK_LEFT) && m.stickFree(1, STICK_RIGHT));
+	CHECK(m.stickFree(2, STICK_LEFT) && m.stickFree(2, STICK_RIGHT));
+	// Keyboard + mouse: all free
+	m.setEmulated(2);
+	for(int p = 0; p < 4; p++)
+		CHECK(m.stickFree(p, STICK_LEFT) && m.stickFree(p, STICK_RIGHT));
+	m.setEmulated(0);
+
+	// the same answer from the table the shim uses (it has only the type name)
+	const std::vector<EmulatedMode>& modes = Emulated_Modes();
+	CHECK(Emulated_StickUsed(modes[0], 0, STICK_LEFT) && Emulated_StickUsed(modes[0], 0, STICK_RIGHT) && !Emulated_StickUsed(modes[0], 1, STICK_LEFT));
+	CHECK(Emulated_StickUsed(modes[1], 1, STICK_LEFT) && !Emulated_StickUsed(modes[1], 1, STICK_RIGHT));
+	CHECK(!Emulated_StickUsed(modes[2], 0, STICK_LEFT));
+	// 4axis_2 hands the joystick to player 2, so player 1's sticks are free
+	CHECK(!Emulated_StickUsed(modes[3], 0, STICK_LEFT) && Emulated_StickUsed(modes[3], 1, STICK_RIGHT));
+	CHECK(!Emulated_StickUsed(modes[0], -1, STICK_LEFT));
+	for(int p = 0; p < 4; p++)
+		for(int s = 0; s < 2; s++)
+			for(size_t i = 0; i < modes.size(); i++)
+			{
+				m.setEmulated((int)i);
+				CHECK(m.stickFree(p, s) == !Emulated_StickUsed(modes[i], p, s));
+			}
+	m.setEmulated(0);
+}
+
+static void testStickMouseActive()
+{
+	for(int p = 0; p < STICKMOUSE_PLAYERS; p++)
+		StickMouse_SetValue(p, "off");
+	StickMouse_SetValue(0, "both");
+	StickMouse_SetValue(1, "both");
+
+	// Joystick: player 1's sticks belong to the joystick; player 2's move the mouse
+	CHECK(!StickMouse_Active(0, STICK_LEFT, "4axis") && !StickMouse_Active(0, STICK_RIGHT, "4axis"));
+	CHECK(StickMouse_Active(1, STICK_LEFT, "4axis") && StickMouse_Active(1, STICK_RIGHT, "4axis"));
+	// auto is 4axis; 2axis frees the right sticks; none frees everything
+	CHECK(!StickMouse_Active(0, STICK_LEFT, "auto") && StickMouse_Active(1, STICK_LEFT, "auto"));
+	CHECK(!StickMouse_Active(0, STICK_LEFT, "2axis") && StickMouse_Active(0, STICK_RIGHT, "2axis"));
+	CHECK(StickMouse_Active(0, STICK_LEFT, "none") && StickMouse_Active(0, STICK_RIGHT, "none"));
+	// a player who did not set it never moves the mouse; a type nobody knows leaves the sticks to the joystick
+	CHECK(!StickMouse_Active(2, STICK_LEFT, "none"));
+	CHECK(!StickMouse_Active(0, STICK_LEFT, "mystery") && !StickMouse_Active(0, STICK_LEFT, nullptr));
+	for(int p = 0; p < STICKMOUSE_PLAYERS; p++)
+		StickMouse_SetValue(p, "off");
+}
+
+static void testStickMouseStep()
+{
+	StickMouseMotion m;
+	int dx = 99, dy = 99;
+
+	// inside the deadzone: nothing, and the carried remainder is dropped
+	m.remX = m.remY = 0.7f;
+	StickMouse_Step(m, 0.1f, -0.1f, 0.016f, 640, dx, dy);
+	CHECK(dx == 0 && dy == 0 && m.remX == 0 && m.remY == 0);
+
+	// a full push right crosses the width in about a second (60 steps of 1/60 s)
+	int total = 0;
+	for(int i = 0; i < 60; i++)
+	{
+		StickMouse_Step(m, 1.0f, 0.0f, 1.0f / 60.0f, 640, dx, dy);
+		CHECK(dy == 0);
+		total += dx;
+	}
+	CHECK(total >= 630 && total <= 640);
+
+	// stick up is the cursor up (negative y), stick right is positive x
+	m.reset();
+	StickMouse_Step(m, 0.0f, 1.0f, 0.05f, 640, dx, dy);
+	CHECK(dx == 0 && dy < 0);
+	m.reset();
+	StickMouse_Step(m, 1.0f, 0.0f, 0.05f, 640, dx, dy);
+	CHECK(dx > 0 && dy == 0);
+
+	// a light push is much slower than a full one (the speed follows the square of the push), and a small
+	// step is carried over rather than lost
+	m.reset();
+	float light = 0;
+	for(int i = 0; i < 60; i++)
+	{
+		StickMouse_Step(m, 0.5f, 0.0f, 1.0f / 60.0f, 640, dx, dy);
+		light += (float)dx;
+	}
+	CHECK(light > 0 && light < 100);
+
+	// a long gap between steps (a hitch, or the menu) is not a jump
+	m.reset();
+	StickMouse_Step(m, 1.0f, 0.0f, 5.0f, 640, dx, dy);
+	CHECK(dx <= 33);
+	m.reset();
+	StickMouse_Step(m, 1.0f, 0.0f, -1.0f, 640, dx, dy);
+	CHECK(dx == 0);
+
+	// a corner push is no faster than a full one: the push is the stick's distance from centre, however it is clipped
+	m.reset();
+	int cornerX = 0, cornerY = 0;
+	StickMouse_Step(m, 1.0f, 1.0f, 0.05f, 640, cornerX, cornerY);
+	CHECK(abs(cornerX) <= 33 && abs(cornerY) <= 33 && cornerX > 0 && cornerY < 0);
+}
+
 int main()
 {
 	SampleControls_Use();
@@ -990,6 +1151,10 @@ int main()
 	testDpadForDos();
 	testHardwareSeam();
 	testDpadRouting();
+	testStickMouseSetting();
+	testStickFree();
+	testStickMouseActive();
+	testStickMouseStep();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

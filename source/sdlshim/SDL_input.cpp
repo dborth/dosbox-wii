@@ -34,6 +34,7 @@
 #include "osk.h"
 #include "dosboxsupport.h"
 #include "inputlogic.h"
+#include "stickmouse.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
  * often than the hardware updates, and a scan is not free. */
@@ -735,6 +736,60 @@ static void PollTouch(void)
 	SetMouseButton(&touchButtons, SDL_BUTTON_RIGHT, (buttons & INPUT_TRIGGER_ZL) != 0);
 }
 
+//! The GamePad's controls belong to the system keyboard while it is open
+static bool drcIgnored = false;
+
+/****************************************************************************
+ * Analog sticks as the mouse
+ *
+ * A stick set to it (the controller screens; stickmouse.h) moves the DOS
+ * cursor while pushed, unless the DOS joystick in effect already uses that
+ * stick (then it would steer both). The buttons are the player's own buttons,
+ * bound to the mouse buttons there. Not while the on-screen keyboard is open
+ * or while the GamePad's controls belong to the system keyboard.
+ ***************************************************************************/
+static void PollSticksAsMouse(void)
+{
+	static StickMouseMotion motion[STICKMOUSE_PLAYERS];
+	static Ticks last = 0;
+
+	if (!StickMouse_Any() || OSK_IsActive()) {
+		last = 0;
+		for (int i = 0; i < STICKMOUSE_PLAYERS; i++)
+			motion[i].reset();
+		return;
+	}
+
+	const Ticks now = SystemTime::now();
+	const float seconds = last == 0 ? 0.0f : SystemTime::diffMillisecs(last, now) / 1000.0f;
+	last = now;
+
+	const char * type = GetJoystickTypeName();
+
+	for (int ch = 0; ch < STICKMOUSE_PLAYERS; ch++) {
+		const bool left = StickMouse_Active(ch, STICK_LEFT, type);
+		const bool right = StickMouse_Active(ch, STICK_RIGHT, type);
+		const InputPadData & pad = controller[ch]->getPadData();
+
+		// the GamePad's controls are not ours while it has the system keyboard (as ReadPlayer())
+		if ((!left && !right) || (pad.hw_connected[INPUT_HW_DRC] && drcIgnored)) {
+			motion[ch].reset();
+			continue;
+		}
+
+		// both set: the larger push is the one that moves
+		float x = left ? pad.stickX : 0.0f, y = left ? pad.stickY : 0.0f;
+		if (right && (!left || fabsf(pad.substickX) + fabsf(pad.substickY) > fabsf(x) + fabsf(y))) {
+			x = pad.substickX;
+			y = pad.substickY;
+		}
+
+		int dx, dy;
+		StickMouse_Step(motion[ch], x, y, seconds, MOUSE_W, dx, dy);
+		PostMouseMotion(dx, dy);
+	}
+}
+
 static void PollMouse(void)
 {
 	// Wiimote 0 pointer
@@ -761,6 +816,9 @@ static void PollMouse(void)
 
 	// GamePad touch screen
 	PollTouch();
+
+	// Analog sticks set to move the mouse
+	PollSticksAsMouse();
 
 	// USB mouse
 	MouseEvent me;
@@ -844,8 +902,6 @@ static inline Sint16 StickWithDpad(float stick, bool negative, bool positive)
 	return AxisValue(stick);
 }
 
-//! The GamePad's controls belong to the system keyboard while it is open
-static bool drcIgnored = false;
 
 // Builds the player's joystick from the channel's merged HAL pad data, so
 // every controller type (Wiimote, Nunchuk, Classic, WUPC, GameCube, GamePad)

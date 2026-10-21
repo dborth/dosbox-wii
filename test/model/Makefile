@@ -6,10 +6,10 @@ ROOT = ../..
 SRC = $(ROOT)/source
 SHARED = ../shared
 
-model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/menu/controllerlayout.cpp $(SRC)/inputlogic.cpp $(SHARED)/samplecontrols.cpp
+model_test: model_test.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/menu/controllerprofile.cpp $(SRC)/menu/controllerlayout.cpp $(SRC)/inputlogic.cpp $(SRC)/stickmouse.cpp $(SHARED)/samplecontrols.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
-mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlsmodel.cpp $(SHARED)/samplecontrols.cpp
+mapper_test: mapper_test.cpp $(SRC)/menu/controlsmapper.cpp $(SRC)/menu/controlsmodel.cpp $(SRC)/stickmouse.cpp $(SHARED)/samplecontrols.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) -DSRC_DIR='"$(abspath $(SRC))"' -o $@ $^
 
 dosprogram_test: dosprogram_test.cpp $(SRC)/dosprogram.cpp

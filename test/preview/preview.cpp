@@ -6,6 +6,7 @@
 #include "menu/controlsui.h"
 #include "menu/homeview.h"
 #include "menu/controlsmodel.h"
+#include "stickmouse.h"
 #include "samplecontrols.h"
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
@@ -310,6 +311,9 @@ int main(int argc, char ** argv)
 		{ "hw_gamepad", 0, 0, 1, 0, (int)PadType::GAMEPAD, false, true },
 		{ "hw_gamepad_pressed", 0, 0, 1, INPUT_TRIGGER_L | INPUT_BTN_Y | INPUT_THUMB_R, (int)PadType::GAMEPAD, false, true },
 	};
+	// sticks set to move the mouse: player 1 the left one, player 3 both (the rows show Mouse where the DOS joystick leaves them free)
+	StickMouse_SetValue(0, "left");
+	StickMouse_SetValue(2, "both");
 	for(size_t i = 0; i < sizeof(scenes) / sizeof(scenes[0]); i++)
 	{
 		Controls_SetModel(nullptr);
@@ -328,6 +332,8 @@ int main(int argc, char ** argv)
 	}
 	SampleControls_ResetHardware();
 	SampleControls_SetHeld(0);
+	StickMouse_SetValue(0, "off");
+	StickMouse_SetValue(2, "off");
 	// two devices on one channel: the rail of icons, with each of them drawn
 	{
 		struct RailScene { const char * name; PadType primary, second, show; bool clicks; uint32_t held; };
