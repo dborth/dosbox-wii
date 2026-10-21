@@ -20,6 +20,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "dosbox.h"
+#include "keepalloc.h"
 #include "mem.h"
 #include "dos_inc.h"
 #include "regs.h"
@@ -309,13 +310,14 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 			if (imagesize+headersize<512) imagesize = 512-headersize;
 		}
 	}
-	Bit8u * loadbuf=(Bit8u *)new Bit8u[0x10000];
+	static KeepBlock loadbuf_block;	/* kept for the life of the process */
+	Bit8u * loadbuf=(Bit8u *)Keep_Get(loadbuf_block,0x10000,0,true);
+	if (!loadbuf) E_Exit("DOS: out of memory for the program loader");
 	if (flags!=OVERLAY) {
 		/* Create an environment block */
 		envseg=block.exec.envseg;
 		if (!MakeEnv(name,&envseg)) {
 			DOS_CloseFile(fhandle);
-			delete [] loadbuf;
 			return false;
 		}
 		/* Get Memory */		
@@ -398,7 +400,6 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 			mem_writew(address,mem_readw(address)+relocate);
 		}
 	}
-	delete[] loadbuf;
 	DOS_CloseFile(fhandle);
 
 	/* Setup a psp */

@@ -82,6 +82,29 @@ static CacheBlockDynRec link_blocks[2];		// default linking (specially marked)
 
 // the CodePageHandlerDynRec class provides access to the contained
 // cache blocks and intercepts writes to the code for special treatment
+/* Invalidation maps (4096 bytes, one per code page that is written to) come
+ * from a pool and go back to it: nothing here is freed, so restarts and cache
+ * flushes do not churn the heap. The link goes through the first bytes of a
+ * pooled block. */
+static Bit8u * invalidation_pool=NULL;
+
+static Bit8u * InvalidationMap_Get(void) {
+	Bit8u * map=invalidation_pool;
+	if (map) {
+		invalidation_pool=*(Bit8u **)map;
+		memset(map,0,4096);
+		return map;
+	}
+	map=(Bit8u*)malloc(4096);
+	if (map) memset(map,0,4096);
+	return map;
+}
+
+static void InvalidationMap_Put(Bit8u * map) {
+	*(Bit8u **)map=invalidation_pool;
+	invalidation_pool=map;
+}
+
 class CodePageHandlerDynRec : public PageHandler {
 public:
 	CodePageHandlerDynRec() {
@@ -106,7 +129,7 @@ public:
 		memset(&hash_map,0,sizeof(hash_map));
 		memset(&write_map,0,sizeof(write_map));
 		if (invalidation_map!=NULL) {
-			free(invalidation_map);
+			InvalidationMap_Put(invalidation_map);
 			invalidation_map=NULL;
 		}
 	}
@@ -151,7 +174,7 @@ public:
 			if (!active_count) Release();	// delay page releasing until active_count is zero
 			return;
 		} else if (!invalidation_map) {
-			invalidation_map=(Bit8u*)malloc(4096);
+			invalidation_map=InvalidationMap_Get();
 			memset(invalidation_map,0,4096);
 		}
 		invalidation_map[addr]++;
@@ -168,7 +191,7 @@ public:
 			if (!active_count) Release();	// delay page releasing until active_count is zero
 			return;
 		} else if (!invalidation_map) {
-			invalidation_map=(Bit8u*)malloc(4096);
+			invalidation_map=InvalidationMap_Get();
 			memset(invalidation_map,0,4096);
 		}
 #if !defined(C_UNALIGNED_MEMORY)
@@ -190,7 +213,7 @@ public:
 			if (!active_count) Release();	// delay page releasing until active_count is zero
 			return;
 		} else if (!invalidation_map) {
-			invalidation_map=(Bit8u*)malloc(4096);
+			invalidation_map=InvalidationMap_Get();
 			memset(invalidation_map,0,4096);
 		}
 #if !defined(C_UNALIGNED_MEMORY)
@@ -213,7 +236,7 @@ public:
 			}
 		} else {
 			if (!invalidation_map) {
-				invalidation_map=(Bit8u*)malloc(4096);
+				invalidation_map=InvalidationMap_Get();
 				memset(invalidation_map,0,4096);
 			}
 			invalidation_map[addr]++;
@@ -237,7 +260,7 @@ public:
 			}
 		} else {
 			if (!invalidation_map) {
-				invalidation_map=(Bit8u*)malloc(4096);
+				invalidation_map=InvalidationMap_Get();
 				memset(invalidation_map,0,4096);
 			}
 #if !defined(C_UNALIGNED_MEMORY)
@@ -266,7 +289,7 @@ public:
 			}
 		} else {
 			if (!invalidation_map) {
-				invalidation_map=(Bit8u*)malloc(4096);
+				invalidation_map=InvalidationMap_Get();
 				memset(invalidation_map,0,4096);
 			}
 #if !defined(C_UNALIGNED_MEMORY)

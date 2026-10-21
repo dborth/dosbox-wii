@@ -41,6 +41,7 @@
 #include "pic.h"
 #include "videosupport.h"
 #include "input.h"
+#include "keepalloc.h"
 
 enum {
 	CLR_BLACK=0,
@@ -2623,9 +2624,10 @@ void MAPPER_RunInternal() {
 	GFX_EndUpdate( 0 );
 	static MapperSurface surface;
 	surface.pitch=MAPPER_W;
-	surface.pixels=new Bit8u[MAPPER_W*MAPPER_H];
+	static KeepBlock surface_block,rgb_block;	/* kept for the life of the process */
+	surface.pixels=(Bit8u *)Keep_Get(surface_block,MAPPER_W*MAPPER_H,0,false);
 	mapper.surface=&surface;
-	map_rgb=(Bit16u *)memalign(32,MAPPER_W*MAPPER_H*2);
+	map_rgb=(Bit16u *)Keep_Get(rgb_block,MAPPER_W*MAPPER_H*2,0,false);
 	if (!surface.pixels || !map_rgb) E_Exit("Out of memory for the mapper screen");
 	for (int i=0;i<6;i++) map_pal565[i]=(Bit16u)GFX_GetRGB(map_pal[i][0],map_pal[i][1],map_pal[i][2]);
 	if (last_clicked) {
@@ -2656,10 +2658,8 @@ void MAPPER_RunInternal() {
 #if defined (REDUCE_JOYSTICK_POLLING)
 	SDL_JoystickEventState(SDL_DISABLE);
 #endif
-	delete [] surface.pixels;
 	surface.pixels=NULL;
 	mapper.surface=NULL;
-	free(map_rgb);
 	map_rgb=NULL;
 	map_cursor_x=map_cursor_y=-1;
 	if(mousetoggle) GFX_CaptureMouse();

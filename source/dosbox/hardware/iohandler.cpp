@@ -38,6 +38,27 @@
 #define IO_PAGE_MASK	(IO_PAGE_SIZE - 1)
 #define IO_PAGES		((IO_MAX + IO_PAGE_SIZE - 1) >> IO_PAGE_BITS)
 
+/* Pages of their own (copy of the default page with a few handlers changed)
+ * are handed back to this pool at the next start instead of freed, and handed
+ * out again from it; read and write pages are the same size. The pool is never
+ * emptied or freed. The link goes through the first element of a pooled page. */
+static void ** io_page_pool;
+
+static void * IO_PageGet(void) {
+	void ** page=io_page_pool;
+	if (page) {
+		io_page_pool=(void **)page[0];
+		return page;
+	}
+	return malloc(IO_PAGE_SIZE*sizeof(void *));
+}
+
+static void IO_PagePut(void * page) {
+	void ** p=(void **)page;
+	p[0]=(void *)io_page_pool;
+	io_page_pool=p;
+}
+
 static IO_ReadHandler ** io_read_pages[3][IO_PAGES];
 static IO_WriteHandler ** io_write_pages[3][IO_PAGES];
 static IO_ReadHandler * io_read_default_page[IO_PAGE_SIZE];
@@ -54,7 +75,7 @@ static bool IO_SetReadHandler(Bitu width,Bitu port,IO_ReadHandler * handler) {
 	IO_ReadHandler ** & page=io_read_pages[width][port >> IO_PAGE_BITS];
 	if (page==io_read_default_page) {
 		if (handler==IO_ReadDefault) return true;	// that is what the shared page says
-		IO_ReadHandler ** own=(IO_ReadHandler **)malloc(IO_PAGE_SIZE*sizeof(IO_ReadHandler *));
+		IO_ReadHandler ** own=(IO_ReadHandler **)IO_PageGet();
 		if (!own) return false;
 		for (Bitu i=0;i<IO_PAGE_SIZE;i++) own[i]=IO_ReadDefault;
 		page=own;
@@ -67,7 +88,7 @@ static bool IO_SetWriteHandler(Bitu width,Bitu port,IO_WriteHandler * handler) {
 	IO_WriteHandler ** & page=io_write_pages[width][port >> IO_PAGE_BITS];
 	if (page==io_write_default_page) {
 		if (handler==IO_WriteDefault) return true;
-		IO_WriteHandler ** own=(IO_WriteHandler **)malloc(IO_PAGE_SIZE*sizeof(IO_WriteHandler *));
+		IO_WriteHandler ** own=(IO_WriteHandler **)IO_PageGet();
 		if (!own) return false;
 		for (Bitu i=0;i<IO_PAGE_SIZE;i++) own[i]=IO_WriteDefault;
 		page=own;
@@ -87,8 +108,8 @@ static void IO_InitPages(void) {
 	}
 	for (Bitu w=0;w<3;w++) {
 		for (Bitu p=0;p<IO_PAGES;p++) {
-			if (io_read_pages[w][p] && io_read_pages[w][p]!=io_read_default_page) free(io_read_pages[w][p]);
-			if (io_write_pages[w][p] && io_write_pages[w][p]!=io_write_default_page) free(io_write_pages[w][p]);
+			if (io_read_pages[w][p] && io_read_pages[w][p]!=io_read_default_page) IO_PagePut(io_read_pages[w][p]);
+			if (io_write_pages[w][p] && io_write_pages[w][p]!=io_write_default_page) IO_PagePut(io_write_pages[w][p]);
 			io_read_pages[w][p]=io_read_default_page;
 			io_write_pages[w][p]=io_write_default_page;
 		}

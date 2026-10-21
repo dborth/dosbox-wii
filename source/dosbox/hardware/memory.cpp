@@ -24,6 +24,7 @@
 #include "paging.h"
 #include "regs.h"
 #include "drivers/BulkMemory.h"
+#include "keepalloc.h"
 
 #include <string.h>
 
@@ -546,6 +547,19 @@ void PreparePCJRCartRom(void) {
 
 HostPt GetMemBase(void) { return MemBase; }
 
+/* Guest RAM and its page tables are taken once, at the largest size this
+ * platform allows, and kept across restarts (see keepalloc.h). A smaller
+ * memsize just uses the front of them. 63 MB on Wii U ("max 63 to solve
+ * problems with certain xms handlers"), MAX_MEMORY on Wii. */
+#ifdef HW_RVL
+#define MEM_LARGEST_MB	MAX_MEMORY
+#else
+#define MEM_LARGEST_MB	(MAX_MEMORY-1)
+#endif
+static KeepBlock guest_ram;
+static PageHandler * phandlers_store[MAX_PAGE_ENTRIES];
+static MemHandle mhandles_store[MAX_PAGE_ENTRIES];
+
 class MEMORY:public Module_base{
 private:
 	IO_ReadHandleObject ReadHandler;
@@ -575,15 +589,14 @@ public:
 			LOG_MSG("Stick with the default values unless you are absolutely certain.");
 		}
 #endif
-		MemBase = (Bit8u*)BulkMemory::allocate(memsize*1024*1024);
+		/* Zeroed: the guest expects cleared memory, and on a restart this
+		 * is last run's RAM */
+		MemBase = (Bit8u*)Keep_Get(guest_ram,(size_t)memsize*1024*1024,(size_t)MEM_LARGEST_MB*1024*1024,true);
 		if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);
-		/* Clear the memory, as new doesn't always give zeroed memory
-		 * (Visual C debug mode). We want zeroed memory though. */
-		memset((void*)MemBase,0,memsize*1024*1024);
 		memory.pages = (memsize*1024*1024)/4096;
-		/* Allocate the data for the different page information blocks */
-		memory.phandlers=new  PageHandler * [memory.pages];
-		memory.mhandles=new MemHandle [memory.pages];
+		/* The data for the different page information blocks */
+		memory.phandlers=phandlers_store;
+		memory.mhandles=mhandles_store;
 		for (i = 0;i < memory.pages;i++) {
 			memory.phandlers[i] = &ram_page_handler;
 			memory.mhandles[i] = 0;				//Set to 0 for memory allocation
@@ -610,9 +623,7 @@ public:
 		MEM_A20_Enable(false);
 	}
 	~MEMORY(){
-		BulkMemory::release(MemBase);
-		delete [] memory.phandlers;
-		delete [] memory.mhandles;
+		/* RAM and page tables are kept for the next run */
 	}
 };	
 

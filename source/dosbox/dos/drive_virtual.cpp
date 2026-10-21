@@ -39,6 +39,14 @@ struct VFILE_Block {
 static VFILE_Block * first_file;	
 
 void VFILE_Register(const char * name,Bit8u * data,Bit32u size) {
+	/* The list outlives a restart: a name registered again replaces its entry */
+	for (VFILE_Block * old=first_file;old;old=old->next) {
+		if (strcmp(old->name,name)==0) {
+			old->data=data;
+			old->size=size;
+			return;
+		}
+	}
 	VFILE_Block * new_file=new VFILE_Block;
 	new_file->name=name;
 	new_file->data=data;

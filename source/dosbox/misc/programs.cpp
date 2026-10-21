@@ -51,16 +51,34 @@ static Bit8u exe_block[]={
 
 static std::vector<PROGRAMS_Main*> internal_progs;
 
+/* The core is started again on every restart and registers the same programs
+ * each time. One slot per program name, kept for the life of the process, so
+ * a restart reuses its slot and its 32 bytes instead of growing the vector
+ * (it is limited to 256 entries) and leaking a block per program per run. */
+#define PROGRAMS_MAX_SLOTS 64
+static struct {
+	const char * name;
+	Bit8u comdata[32];
+} program_slots[PROGRAMS_MAX_SLOTS];
+
 void PROGRAMS_MakeFile(char const * const name,PROGRAMS_Main * main) {
-	Bit8u * comdata=(Bit8u *)malloc(32); //MEM LEAK
+	size_t slot=0;
+	while (slot<internal_progs.size() && strcmp(program_slots[slot].name,name)) slot++;
+	if (slot==internal_progs.size()) {
+		if (slot>=PROGRAMS_MAX_SLOTS || slot>255) E_Exit("PROGRAMS_MakeFile program size too large (%d)",static_cast<int>(slot));
+		program_slots[slot].name=name;
+		internal_progs.push_back(main);
+	} else {
+		internal_progs[slot]=main;
+	}
+	Bit8u * comdata=program_slots[slot].comdata;
+	memset(comdata,0,sizeof(program_slots[slot].comdata));
 	memcpy(comdata,&exe_block,sizeof(exe_block));
 	comdata[CB_POS]=(Bit8u)(call_program&0xff);
 	comdata[CB_POS+1]=(Bit8u)((call_program>>8)&0xff);
 
-	/* Copy save the pointer in the vector and save it's index */
-	if (internal_progs.size()>255) E_Exit("PROGRAMS_MakeFile program size too large (%d)",static_cast<int>(internal_progs.size()));
-	Bit8u index = (Bit8u)internal_progs.size();
-	internal_progs.push_back(main);
+	/* Save the index of the slot */
+	Bit8u index = (Bit8u)slot;
 
 	memcpy(&comdata[sizeof(exe_block)],&index,sizeof(index));
 	Bit32u size=sizeof(exe_block)+sizeof(index);	

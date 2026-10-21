@@ -26,6 +26,7 @@
 #include "pic.h"
 #include "inout.h"
 #include "setup.h"
+#include "keepalloc.h"
 
 
 #ifndef C_VGARAM_CHECKED
@@ -946,12 +947,17 @@ void VGA_StartUpdateLFB(void) {
 	MEM_SetLFB(vga.s3.la_window << 4 ,vga.vmemsize/4096, vga.lfb.handler, &vgaph.mmio);
 }
 
-static void VGA_Memory_ShutDown(Section * /*sec*/) {
-	delete[] vga.mem.linear_orgptr;
-	delete[] vga.fastmem_orgptr;
+/* Video memory is taken once at its largest (the S3 card tops out at 4 MB;
+ * 2 KB extra for one scan line) and kept across restarts, see keepalloc.h */
+#define VGA_LARGEST_ALLOC	(4096*1024+2048)
+static KeepBlock vga_linear_block;
+static KeepBlock vga_fastmem_block;
 #ifdef VGA_KEEP_CHANGES
-	delete[] vga.changes.map;
+static KeepBlock vga_changes_block;
 #endif
+
+static void VGA_Memory_ShutDown(Section * /*sec*/) {
+	/* nothing is freed: the blocks above stay valid and the next run reuses them */
 }
 
 void VGA_SetupMemory(Section* sec) {
@@ -963,12 +969,13 @@ void VGA_SetupMemory(Section* sec) {
 	if (vga_allocsize<512*1024) vga_allocsize=512*1024;
 	// We reserve extra 2K for one scan line
 	vga_allocsize+=2048;
-	vga.mem.linear_orgptr = new Bit8u[vga_allocsize+16];
-	vga.mem.linear=(Bit8u*)(((Bitu)vga.mem.linear_orgptr + 16-1) & ~(16-1));
-	memset(vga.mem.linear,0,vga_allocsize);
+	vga.mem.linear_orgptr = (Bit8u*)Keep_Get(vga_linear_block,vga_allocsize,VGA_LARGEST_ALLOC,true);
+	if (!vga.mem.linear_orgptr) E_Exit("Can't allocate video memory (%d KB)",(int)(vga_allocsize/1024));
+	vga.mem.linear=vga.mem.linear_orgptr;	/* 32 byte aligned, zeroed */
 
-	vga.fastmem_orgptr = new Bit8u[VGA_FASTMEM_SIZE+4096+16];
-	vga.fastmem=(Bit8u*)(((Bitu)vga.fastmem_orgptr + 16-1) & ~(16-1));
+	vga.fastmem_orgptr = (Bit8u*)Keep_Get(vga_fastmem_block,VGA_FASTMEM_SIZE+4096+16,0,true);
+	if (!vga.fastmem_orgptr) E_Exit("Can't allocate video fast memory");
+	vga.fastmem=vga.fastmem_orgptr;
 
 	// In most cases these values stay the same. Assumptions: vmemwrap is power of 2,
 	// vmemwrap <= vmemsize. fastmem wraps at twice that, up to VGA_FASTMEM_SIZE
@@ -978,8 +985,7 @@ void VGA_SetupMemory(Section* sec) {
 #ifdef VGA_KEEP_CHANGES
 	memset( &vga.changes, 0, sizeof( vga.changes ));
 	int changesMapSize = (vga.vmemsize >> VGA_CHANGE_SHIFT) + 32;
-	vga.changes.map = new Bit8u[changesMapSize];
-	memset(vga.changes.map, 0, changesMapSize);
+	vga.changes.map = (Bit8u*)Keep_Get(vga_changes_block,changesMapSize,0,false);
 #endif
 	vga.svga.bank_read = vga.svga.bank_write = 0;
 	vga.svga.bank_read_full = vga.svga.bank_write_full = 0;

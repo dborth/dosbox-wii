@@ -50,6 +50,7 @@
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/EmulatorAudioDriver.h"
+#include "keepalloc.h"
 
 #define MIXER_SSIZE 4
 
@@ -617,12 +618,14 @@ static void MIXER_Pump(void) {
 	}
 }
 
+static KeepBlock mixer_dropbuf;	/* allocated once, see keepalloc.h */
+
 static void MIXER_Stop(Section* sec) {
 	if (mixer.audio) {
 		mixer.audio=0;
 		platform->getAudio()->stopEmulatorAudio();
 	}
-	delete [] mixer.dropbuf;
+	/* the drop buffer is kept for the next run (mixer_dropbuf) */
 	mixer.dropbuf=0;
 }
 
@@ -747,7 +750,8 @@ void MIXER_Init(Section* sec) {
 		mixer.freq=freq;
 		mixer.blocksize=blocksize;
 		mixer.tick_add=calc_tickadd(mixer.freq);
-		mixer.dropbuf=new Bit16s[2*mixer.blocksize];
+		mixer.dropbuf=(Bit16s*)Keep_Get(mixer_dropbuf,2*mixer.blocksize*sizeof(Bit16s),0,false);
+		if (!mixer.dropbuf) E_Exit("MIXER: out of memory for the drop buffer");
 		mixer.audio=audio;
 		TIMER_AddTickHandler(MIXER_Mix);
 		/* Take the audio interface over from the menu (replaces SDL_PauseAudio(0)) */
