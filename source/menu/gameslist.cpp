@@ -167,6 +167,15 @@ std::string GamesList::gameHelp(const GameRecord& g) const
 	else
 		parts.push_back("Runs " + g.program + (g.programInferred ? " (from autoexec)" : ""));
 
+	std::vector<std::string> tags;
+	if(g.ownControls)
+		tags.push_back("its own controls");
+	const std::string cycles = Game_CyclesTag(g.cycles);
+	if(!cycles.empty())
+		tags.push_back(cycles);
+	if(!tags.empty())
+		parts.push_back(join(tags, ", "));
+
 	parts.push_back((g.where.empty() ? std::string() : g.where + "/") + g.name + ".conf");
 	if(!g.autoexec.empty())
 		parts.push_back("autoexec: " + join(g.autoexec, " | "));

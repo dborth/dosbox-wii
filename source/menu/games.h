@@ -74,13 +74,18 @@ struct GameRecord
 	std::string title;			/**< "# title=", or the name */
 	std::string program;			/**< "KEEN4E.EXE" (as written, upper case): "# program=", else what [autoexec] runs; empty when neither says */
 	bool programInferred;			/**< program came from [autoexec], not from a comment */
+	bool ownControls;			/**< [sdl] mapperfile names a map of its own (not the shared mapper-<version>.map) */
+	std::string cycles;			/**< [cpu] cycles as written ("fixed 6000", "max"); empty when the conf does not say */
 	std::string path;			/**< The whole path, which is what SetGameConf() takes ("sd:/DOSBox/Games/keen.conf") */
 	std::string where;			/**< The folder below the DOSBox folder it was found in; empty for the DOSBox folder itself ("Games", "GAMES") */
 	std::vector<std::string> autoexec;	/**< The first lines of [autoexec], for showing what it will run */
 	std::vector<std::string> folders;	/**< Lower-case names of the folders its [autoexec] goes into (cd) or mounts; see Game_AutoexecFolders() */
 
-	GameRecord() : programInferred(false) {}
+	GameRecord() : programInferred(false), ownControls(false) {}
 };
+
+/** A short phrase for a cycles setting ("6000 cycles", "max cycles"); empty for "auto" or none, which is nothing to say. */
+std::string Game_CyclesTag(const std::string& cycles);
 
 /** How many [autoexec] lines are kept per game. */
 #define GAME_AUTOEXEC_LINES 6

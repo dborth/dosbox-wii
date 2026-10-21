@@ -148,6 +148,8 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 	out.title.clear();
 	out.program.clear();
 	out.programInferred = false;
+	out.ownControls = false;
+	out.cycles.clear();
 	out.autoexec.clear();
 	out.folders.clear();
 
@@ -180,6 +182,15 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 			section = lower(line.substr(1, close == std::string::npos ? std::string::npos : close - 1));
 			continue;
 		}
+
+		// "key=value"
+		const size_t equals = line.find('=');
+		const std::string key = equals == std::string::npos ? std::string() : lower(trim(line.substr(0, equals)));
+		const std::string value = equals == std::string::npos ? std::string() : trim(line.substr(equals + 1));
+		if(section == "sdl" && key == "mapperfile")
+			out.ownControls = !value.empty() && lower(value).compare(0, 7, "mapper-") != 0;
+		else if(section == "cpu" && key == "cycles")
+			out.cycles = value;
 
 		if(section == "autoexec")
 		{
@@ -621,4 +632,14 @@ bool FileGamesHost::read(const std::string& path, std::string& text, size_t maxB
 	if(ok)
 		text = all;
 	return ok;
+}
+
+std::string Game_CyclesTag(const std::string& cycles)
+{
+	std::string c = lower(trim(cycles));
+	if(c.empty() || c == "auto")
+		return std::string();
+	if(c.compare(0, 6, "fixed ") == 0)
+		return trim(c.substr(6)) + " cycles";
+	return c + " cycles";
 }

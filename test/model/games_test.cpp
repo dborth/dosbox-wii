@@ -67,6 +67,34 @@ static void testParse()
 	CHECK(h.autoexec.size() == 5);
 	CHECK_EQ(h.autoexec[3], "doom.exe");
 
+	// its own controls and its cycles: what a card can say about a game at a glance
+	GameRecord t;
+	t.name = "t";
+	Game_ParseConf("[sdl]\nmapperfile=KEEN4E.map\n[cpu]\ncycles=fixed 6000\n", t);
+	CHECK(t.ownControls);
+	CHECK_EQ(t.cycles, "fixed 6000");
+	CHECK_EQ(Game_CyclesTag(t.cycles), "6000 cycles");
+	// the shared mapper file is nobody's own; auto says nothing; a game with neither says nothing
+	GameRecord u;
+	u.name = "u";
+	Game_ParseConf("[sdl]\nmapperfile=mapper-2.0.map\n[cpu]\ncycles=auto\n", u);
+	CHECK(!u.ownControls);
+	CHECK_EQ(Game_CyclesTag(u.cycles), "");
+	GameRecord v;
+	v.name = "v";
+	Game_ParseConf("[autoexec]\nx.exe\n", v);
+	CHECK(!v.ownControls);
+	CHECK(v.cycles.empty());
+	CHECK_EQ(Game_CyclesTag("max"), "max cycles");
+	CHECK_EQ(Game_CyclesTag("max 80%"), "max 80% cycles");
+	CHECK_EQ(Game_CyclesTag(""), "");
+	// a [sdl] or [cpu] line outside its section means nothing
+	GameRecord w;
+	w.name = "w";
+	Game_ParseConf("[render]\nmapperfile=x.map\ncycles=fixed 1\n", w);
+	CHECK(!w.ownControls);
+	CHECK(w.cycles.empty());
+
 	// a comment says the program, and wins over the autoexec
 	GameRecord i;
 	i.name = "x";

@@ -707,7 +707,7 @@ class GamesScreen : public ListScreen
 		}
 
 		// A folder found on the card, as a game. The question is a popover over the list: the name, the program when the
-		// folder has several, and what is written. Add and play restarts into it; Add leaves the list to show it.
+		// folder has several, and what is written. Add leaves the list up with the new game in it, so several can be added in a row.
 		// True when the rows changed or the screen is closing.
 		bool addFound(const FoundGame& found)
 		{
@@ -721,12 +721,6 @@ class GamesScreen : public ListScreen
 				const std::string runs = found.programs[program];
 
 				std::vector<PickerItem> items;
-				PickerItem play;
-				play.name = "Add and play";
-				play.current = false;
-				MenuPopover_Wrap(play.lines, "Adds " + confName + " and restarts DOSBox into " + runs + ". What is running is lost", 44);
-				items.push_back(play);
-
 				PickerItem add;
 				add.name = "Add";
 				add.current = false;
@@ -760,8 +754,8 @@ class GamesScreen : public ListScreen
 				const int choice = MenuPopover_Pick(question.c_str(), items, GuiPopover::Anchor());
 				setEnabled(true);
 
-				// the choices that follow Add and play, Add, Name are Runs (when there is one), then Cancel
-				if(choice == 2)
+				// the choices are Add, Name, Runs (when there is one), then Cancel
+				if(choice == 1)
 				{
 					char typed[64];
 					snprintf(typed, sizeof(typed), "%s", title.c_str());
@@ -775,7 +769,7 @@ class GamesScreen : public ListScreen
 					continue;
 				}
 
-				if(several && choice == 3)
+				if(several && choice == 2)
 				{
 					std::vector<PickerItem> programs;
 					for(size_t i = 0; i < found.programs.size(); i++)
@@ -793,7 +787,7 @@ class GamesScreen : public ListScreen
 					continue;
 				}
 
-				if(choice != 0 && choice != 1)
+				if(choice != 0)
 					return false;		// Cancel, or the popover was closed
 
 				const GameSaveResult r = Game_AddFound(GameSave_Live(), found, title, found.programs[program]);
@@ -801,14 +795,6 @@ class GamesScreen : public ListScreen
 				{
 					showMessage(r.message.c_str());
 					return false;
-				}
-
-				if(choice == 0)
-				{
-					// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
-					RequestRestartInto(r.path.c_str());
-					close();
-					return true;
 				}
 
 				list.setScanning(true);

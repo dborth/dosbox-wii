@@ -199,6 +199,23 @@ static void testClick()
 	CHECK(empty.click(1).what == GamesList::Click::NOTHING);
 }
 
+static void testTags()
+{
+	// the help line says what a game has of its own: its controls and its cycles, when its conf says them
+	GameRecord g = game("keen4", "Commander Keen 4", "KEEN4E.EXE");
+	g.ownControls = true;
+	g.cycles = "fixed 6000";
+	GameRecord plain = game("doom", "Doom", "DOOM.EXE");
+	GamesList l;
+	std::vector<GameRecord> both;
+	both.push_back(g);
+	both.push_back(plain);
+	l.setGames(both);
+	CHECK(l.rowHelp(1).find("Runs KEEN4E.EXE  -  its own controls, 6000 cycles  -  ") == 0);
+	CHECK(l.rowHelp(2).find("its own controls") == std::string::npos);
+	CHECK(l.rowHelp(2).find("cycles") == std::string::npos);
+}
+
 static void testSaving()
 {
 	GamesList l;
@@ -373,6 +390,7 @@ int main()
 	testHelp();
 	testClick();
 	testSaving();
+	testTags();
 	testFound();
 	testFoundLimit();
 	if(failures)
