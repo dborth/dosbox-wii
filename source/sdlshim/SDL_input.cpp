@@ -940,10 +940,13 @@ static void ReadPlayer(int ch, SDL_Joystick & js)
 	js.buttons[10] = Held(b, INPUT_THUMB_L);
 	js.buttons[11] = Held(b, INPUT_THUMB_R);
 
+	// The hat is always the whole D-pad: the mapper's pad sources for the four directions read it (CPadBindGroup),
+	// so a D-pad bound to a key or anything else reaches its bind through it. Clearing it when the D-pad is
+	// rebound, as the axes are below, left those binds with nothing to read.
+	js.hat = DpadToHat(b);
+
 	// a D-pad with its own job (a key, say) is not also a joystick direction
 	const uint32_t dpad = dpadDrivesJoystick[ch] ? b : (b & ~(INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT));
-
-	js.hat = DpadToHat(dpad);
 
 	js.axes[0] = StickWithDpad(pad.stickX, (dpad & INPUT_BTN_LEFT) != 0, (dpad & INPUT_BTN_RIGHT) != 0);
 	js.axes[1] = StickWithDpad(-pad.stickY, (dpad & INPUT_BTN_UP) != 0, (dpad & INPUT_BTN_DOWN) != 0);
