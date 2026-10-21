@@ -26,6 +26,7 @@
 #include "cpu.h"
 #include "SDL.h"
 #include "stickmouse.h"
+#include "stickkeys.h"
 #include "drivers/Platform.h"
 #include "drivers/InputData.h"
 #include "drivers/InputController.h"
@@ -149,6 +150,27 @@ static void ReadStickMouse(Section_prop * section) {
 	StickMouse_SetSaver(&StickMouseSave);
 }
 
+//! The same for the sticks that press the arrow keys.
+static void StickKeysSave(int player, const char * value) {
+	Section_prop * sec = Config_GetSection("sdl");
+	char line[40];
+
+	if(!sec)
+		return;
+	snprintf(line, sizeof(line), "stickkeys%d=%s", player + 1, value);
+	sec->HandleInputline(line);
+}
+
+static void ReadStickKeys(Section_prop * section) {
+	StickKeys_SetSaver(NULL);	// reading is not a change
+	for(int player = 0; player < STICKKEYS_PLAYERS; player++) {
+		char name[16];
+		snprintf(name, sizeof(name), "stickkeys%d", player + 1);
+		StickKeys_SetValue(player, section ? section->Get_string(name) : "off");
+	}
+	StickKeys_SetSaver(&StickKeysSave);
+}
+
 /****************************************************************************
  * The [sdl] config section: start up and shut down
  ***************************************************************************/
@@ -184,6 +206,7 @@ void GUI_StartUp(Section * sec) {
 
 	ReadSensitivity(section);
 	ReadStickMouse(section);
+	ReadStickKeys(section);
 
 	/* Setup Mouse correctly if fullscreen */
 	if(GFX_IsFullscreen()) GFX_CaptureMouse();

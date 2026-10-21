@@ -35,6 +35,7 @@
 #include "dosboxsupport.h"
 #include "inputlogic.h"
 #include "stickmouse.h"
+#include "stickkeys.h"
 
 /* Pad state is rescanned at most this often. GFX_Events() runs far more
  * often than the hardware updates, and a scan is not free. */
@@ -466,9 +467,14 @@ int InputHal_TakeMenuKeyTap(void)
 	return menuKeyTap.consume() ? 1 : 0;
 }
 
+static void ReleaseStickKeys(void);
+
 void InputHal_MenuClosed(void)
 {
 	discardMenuTaps = true;
+	// Arrow keys a stick was holding when the menu opened are let go, and it must ease off
+	// before it presses one again
+	ReleaseStickKeys();
 }
 
 static void PollKeyboard(void)
@@ -767,8 +773,8 @@ static void PollSticksAsMouse(void)
 	const char * type = GetJoystickTypeName();
 
 	for (int ch = 0; ch < STICKMOUSE_PLAYERS; ch++) {
-		const bool left = StickMouse_Active(ch, STICK_LEFT, type);
-		const bool right = StickMouse_Active(ch, STICK_RIGHT, type);
+		const bool left = StickMouse_Active(ch, STICK_LEFT, type) && !StickKeys_Get(ch, STICK_LEFT);
+		const bool right = StickMouse_Active(ch, STICK_RIGHT, type) && !StickKeys_Get(ch, STICK_RIGHT);
 		const InputPadData & pad = controller[ch]->getPadData();
 
 		// the GamePad's controls are not ours while it has the system keyboard (as ReadPlayer())
@@ -787,6 +793,98 @@ static void PollSticksAsMouse(void)
 		int dx, dy;
 		StickMouse_Step(motion[ch], x, y, seconds, MOUSE_W, dx, dy);
 		PostMouseMotion(dx, dy);
+	}
+}
+
+/****************************************************************************
+ * Analog sticks as the arrow keys
+ *
+ * A stick set to it (the controller screens; stickkeys.h) presses Up, Right,
+ * Down and Left as it is pushed past the threshold, whatever the DOS joystick
+ * is doing: ReadPlayer() takes a stick set to this off the joystick's axes, so
+ * it does not steer both. Only changes are posted. Not while the on-screen
+ * keyboard is open or while the GamePad's controls belong to the system keyboard.
+ ***************************************************************************/
+static StickKeysState stickKeysState[STICKKEYS_PLAYERS][2];
+static bool stickKeysWait[STICKKEYS_PLAYERS][2];	// let go by the menu: the stick has to come back under the threshold first
+
+struct ArrowKey { unsigned dir; SDLKey sym; Uint8 hid; };
+static const ArrowKey arrowKeys[] =
+{
+	{ STICKDIR_UP,    SDLK_UP,    82 },
+	{ STICKDIR_RIGHT, SDLK_RIGHT, 79 },
+	{ STICKDIR_DOWN,  SDLK_DOWN,  81 },
+	{ STICKDIR_LEFT,  SDLK_LEFT,  80 },
+};
+
+static void PostArrowKey(const ArrowKey & key, bool pressed)
+{
+	SDL_Event event;
+	memset(&event, 0, sizeof(event));
+	event.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
+	event.key.state = pressed ? SDL_PRESSED : SDL_RELEASED;
+	event.key.keysym.scancode = key.hid;
+	event.key.keysym.sym = key.sym;
+	event.key.keysym.mod = modState;
+	SDL_PushEvent(&event);
+}
+
+// Moves one stick's held directions to `now`, posting what changed
+static void SetStickKeys(StickKeysState & state, unsigned now)
+{
+	const unsigned before = state.held;
+	for (size_t i = 0; i < sizeof(arrowKeys) / sizeof(arrowKeys[0]); i++) {
+		const unsigned bit = arrowKeys[i].dir;
+		if ((before & bit) != (now & bit))
+			PostArrowKey(arrowKeys[i], (now & bit) != 0);
+	}
+	state.held = now;
+}
+
+static void ReleaseStickKeys(void)
+{
+	for (int ch = 0; ch < STICKKEYS_PLAYERS; ch++)
+		for (int s = 0; s < 2; s++) {
+			SetStickKeys(stickKeysState[ch][s], 0);
+			stickKeysWait[ch][s] = true;
+		}
+}
+
+static void PollSticksAsKeys(void)
+{
+	if (OSK_IsActive()) {
+		// the keyboard has the controls: what the sticks held is let go, as when the menu opens
+		ReleaseStickKeys();
+		return;
+	}
+
+	for (int ch = 0; ch < STICKKEYS_PLAYERS; ch++) {
+		const InputPadData & pad = controller[ch]->getPadData();
+		const bool ignored = pad.hw_connected[INPUT_HW_DRC] && drcIgnored;
+
+		for (int s = 0; s < 2; s++) {
+			StickKeysState & state = stickKeysState[ch][s];
+
+			if (!StickKeys_Get(ch, s) || ignored) {
+				if (state.held)
+					SetStickKeys(state, 0);	// turned off (or taken away) while pushed
+				continue;
+			}
+
+			const float x = s == STICK_LEFT ? pad.stickX : pad.substickX;
+			const float y = s == STICK_LEFT ? pad.stickY : pad.substickY;
+			StickKeysState trial;
+			unsigned now = StickKeys_Step(trial, x, y);
+
+			if (stickKeysWait[ch][s]) {
+				if (now != 0)
+					continue;	// still held from before the menu
+				stickKeysWait[ch][s] = false;
+			}
+
+			now = StickKeys_Step(state, x, y);
+			SetStickKeys(state, now);
+		}
 	}
 }
 
@@ -948,10 +1046,13 @@ static void ReadPlayer(int ch, SDL_Joystick & js)
 	// a D-pad with its own job (a key, say) is not also a joystick direction
 	const uint32_t dpad = dpadDrivesJoystick[ch] ? b : (b & ~(INPUT_BTN_UP | INPUT_BTN_DOWN | INPUT_BTN_LEFT | INPUT_BTN_RIGHT));
 
-	js.axes[0] = StickWithDpad(pad.stickX, (dpad & INPUT_BTN_LEFT) != 0, (dpad & INPUT_BTN_RIGHT) != 0);
-	js.axes[1] = StickWithDpad(-pad.stickY, (dpad & INPUT_BTN_UP) != 0, (dpad & INPUT_BTN_DOWN) != 0);
-	js.axes[2] = AxisValue(pad.substickX);
-	js.axes[3] = AxisValue(-pad.substickY);
+	// a stick set to press the arrow keys is not also a joystick (the D-pad still is: it has its own rule above)
+	const bool leftKeys = StickKeys_Get(ch, STICK_LEFT), rightKeys = StickKeys_Get(ch, STICK_RIGHT);
+
+	js.axes[0] = StickWithDpad(leftKeys ? 0.0f : pad.stickX, (dpad & INPUT_BTN_LEFT) != 0, (dpad & INPUT_BTN_RIGHT) != 0);
+	js.axes[1] = StickWithDpad(leftKeys ? 0.0f : -pad.stickY, (dpad & INPUT_BTN_UP) != 0, (dpad & INPUT_BTN_DOWN) != 0);
+	js.axes[2] = rightKeys ? 0 : AxisValue(pad.substickX);
+	js.axes[3] = rightKeys ? 0 : AxisValue(-pad.substickY);
 }
 
 static void PostJoyEvent(Uint8 type, int which, int number, int value)
@@ -1125,5 +1226,6 @@ void InputHal_Update(void)
 		discardMenuTaps = false;
 	}
 
+	PollSticksAsKeys();
 	PollMouse();
 }

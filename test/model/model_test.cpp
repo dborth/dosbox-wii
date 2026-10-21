@@ -6,6 +6,7 @@
 #include "drivers/InputData.h"
 #include "inputlogic.h"
 #include "stickmouse.h"
+#include "stickkeys.h"
 #include <set>
 #include <fstream>
 #include <sstream>
@@ -958,14 +959,14 @@ static void testDpadRouting()
 	CHECK(shim.find("DpadEventKeepsJoystick(names[i])") != std::string::npos);
 	CHECK(shim.find("PAD_FIRST_DPAD_SOURCE = 12") != std::string::npos);
 	CHECK(shim.find("dpadDrivesJoystick[ch] ? b :") != std::string::npos);
-	CHECK(shim.find("js.hat = DpadToHat(dpad);") != std::string::npos);
-	CHECK(shim.find("StickWithDpad(pad.stickX, (dpad & INPUT_BTN_LEFT)") != std::string::npos);
+	CHECK(shim.find("js.hat = DpadToHat(b);") != std::string::npos);
+	CHECK(shim.find("StickWithDpad(leftKeys ? 0.0f : pad.stickX, (dpad & INPUT_BTN_LEFT)") != std::string::npos);
 	// refreshed when the menu closes
 	CHECK(readText("dosboxsupport.cpp").find("InputHal_RefreshPadRouting();") != std::string::npos);
 }
 
 
-// ---- sticks as the mouse
+// ---- sticks as the mouse and the arrow keys
 
 static int savedCalls = 0;
 static int savedPlayer = -1;
@@ -1010,6 +1011,141 @@ static void testStickMouseSetting()
 	StickMouse_SetSaver(nullptr);
 	for(int p = 0; p < STICKMOUSE_PLAYERS; p++)
 		StickMouse_SetValue(p, "off");
+}
+
+static void testStickKeysWiring()
+{
+	// the shim polls the sticks every scan, posts the four arrows, lets them go when the menu closes, and takes a stick set to keys off the joystick and the mouse
+	const std::string shim = readText("sdlshim/SDL_input.cpp");
+	CHECK(shim.find("\tPollSticksAsKeys();\n\tPollMouse();") != std::string::npos);
+	CHECK(shim.find("SDLK_UP,    82") != std::string::npos && shim.find("SDLK_RIGHT, 79") != std::string::npos);
+	CHECK(shim.find("SDLK_DOWN,  81") != std::string::npos && shim.find("SDLK_LEFT,  80") != std::string::npos);
+	CHECK(shim.find("\tReleaseStickKeys();\n}") != std::string::npos);
+	CHECK(shim.find("&& !StickKeys_Get(ch, STICK_LEFT)") != std::string::npos);
+	CHECK(shim.find("rightKeys ? 0 : AxisValue(pad.substickX)") != std::string::npos);
+	// the setting is read from and written to [sdl] stickkeysN
+	CHECK(readText("input.cpp").find("ReadStickKeys(section);") != std::string::npos);
+	CHECK(readText("preferences.cpp").find("\"stickkeys%d\"") != std::string::npos);
+}
+
+static void testStickKeysSetting()
+{
+	StickKeys_SetSaver(nullptr);
+	for(int p = 0; p < STICKKEYS_PLAYERS; p++)
+		StickKeys_SetValue(p, "off");
+	CHECK(!StickKeys_Any());
+
+	CHECK(StickKeys_SetValue(1, "left"));
+	CHECK(StickKeys_Get(1, STICK_LEFT) && !StickKeys_Get(1, STICK_RIGHT));
+	CHECK_EQ(StickKeys_Value(1), "left");
+	CHECK(StickKeys_SetValue(1, "both"));
+	CHECK_EQ(StickKeys_Value(1), "both");
+	CHECK(StickKeys_Any());
+	CHECK(!StickKeys_SetValue(1, "diagonal"));
+	CHECK_EQ(StickKeys_Value(1), "off");
+	CHECK(!StickKeys_SetValue(1, nullptr));
+	CHECK(!StickKeys_SetValue(7, "left") && !StickKeys_Get(7, STICK_LEFT) && !StickKeys_Get(-1, STICK_LEFT) && !StickKeys_Get(0, 2));
+	CHECK(!StickKeys_Any());
+
+	// the saver hears of a change, once, with the player's whole value
+	StickKeys_SetSaver(saveSpy);
+	savedCalls = 0;
+	StickKeys_SetValue(2, "left");
+	CHECK(savedCalls == 0);
+	StickKeys_Set(2, STICK_RIGHT, true);
+	CHECK(savedCalls == 1 && savedPlayer == 2 && savedValue == "both");
+	StickKeys_Set(2, STICK_RIGHT, true);
+	CHECK(savedCalls == 1);
+	StickKeys_SetSaver(nullptr);
+	for(int p = 0; p < STICKKEYS_PLAYERS; p++)
+		StickKeys_SetValue(p, "off");
+}
+
+static void testStickKeysStep()
+{
+	StickKeysState st;
+	// inside the threshold nothing is pressed; the menu's engage point is 0.39
+	CHECK(StickKeys_Step(st, 0.0f, 0.0f) == 0);
+	CHECK(StickKeys_Step(st, 0.38f, 0.0f) == 0);
+	CHECK(StickKeys_Step(st, 0.39f, 0.0f) == STICKDIR_RIGHT);
+	// y is up
+	st.reset();
+	CHECK(StickKeys_Step(st, 0.0f, 0.5f) == STICKDIR_UP);
+	st.reset();
+	CHECK(StickKeys_Step(st, 0.0f, -0.5f) == STICKDIR_DOWN);
+	st.reset();
+	CHECK(StickKeys_Step(st, -0.5f, 0.0f) == STICKDIR_LEFT);
+	// a corner holds two directions
+	st.reset();
+	CHECK(StickKeys_Step(st, -0.6f, 0.6f) == (STICKDIR_LEFT | STICKDIR_UP));
+	st.reset();
+	CHECK(StickKeys_Step(st, 0.6f, -0.6f) == (STICKDIR_RIGHT | STICKDIR_DOWN));
+	// a held direction stays until the axis falls under the release point, so a stick near the edge does not chatter
+	st.reset();
+	CHECK(StickKeys_Step(st, 0.5f, 0.0f) == STICKDIR_RIGHT);
+	CHECK(StickKeys_Step(st, 0.30f, 0.0f) == STICKDIR_RIGHT);
+	CHECK(StickKeys_Step(st, 0.21f, 0.0f) == STICKDIR_RIGHT);
+	CHECK(StickKeys_Step(st, 0.19f, 0.0f) == 0);
+	// and once let go it needs the press point again
+	CHECK(StickKeys_Step(st, 0.30f, 0.0f) == 0);
+	// swinging straight across lets go of one and presses the other
+	st.reset();
+	StickKeys_Step(st, 0.9f, 0.0f);
+	CHECK(StickKeys_Step(st, -0.9f, 0.0f) == STICKDIR_LEFT);
+	// a stick past 1.0 (a worn gate) is still just the direction
+	st.reset();
+	CHECK(StickKeys_Step(st, 1.3f, 0.0f) == STICKDIR_RIGHT);
+}
+
+static void testStickUse()
+{
+	ControlsModel& m = fresh();
+	for(int p = 0; p < 4; p++)
+	{
+		StickMouse_SetValue(p, "off");
+		StickKeys_SetValue(p, "off");
+	}
+
+	// Joystick (4axis): player 1's sticks are the joystick's, player 2's are free
+	m.setEmulated(0);
+	CHECK(m.stickUse(0, STICK_LEFT) == ControlsModel::StickUse::DEFAULT);
+	// not free: the mouse is skipped, the keys are offered, then back to the joystick
+	CHECK(m.nextStickUse(0, STICK_LEFT) == ControlsModel::StickUse::KEYS);
+	m.setStickUse(0, STICK_LEFT, ControlsModel::StickUse::KEYS);
+	CHECK(StickKeys_Get(0, STICK_LEFT) && !StickKeys_Get(0, STICK_RIGHT));
+	CHECK(m.stickUse(0, STICK_LEFT) == ControlsModel::StickUse::KEYS);
+	CHECK(m.stickUse(0, STICK_RIGHT) == ControlsModel::StickUse::DEFAULT);
+	CHECK(m.nextStickUse(0, STICK_LEFT) == ControlsModel::StickUse::DEFAULT);
+	m.setStickUse(0, STICK_LEFT, ControlsModel::StickUse::DEFAULT);
+	CHECK(!StickKeys_Get(0, STICK_LEFT) && !StickMouse_Get(0, STICK_LEFT));
+
+	// a free stick goes Off -> Mouse -> Arrow keys -> Off
+	CHECK(m.stickUse(1, STICK_LEFT) == ControlsModel::StickUse::DEFAULT);
+	CHECK(m.nextStickUse(1, STICK_LEFT) == ControlsModel::StickUse::MOUSE);
+	m.setStickUse(1, STICK_LEFT, ControlsModel::StickUse::MOUSE);
+	CHECK(StickMouse_Get(1, STICK_LEFT) && !StickKeys_Get(1, STICK_LEFT));
+	CHECK(m.nextStickUse(1, STICK_LEFT) == ControlsModel::StickUse::KEYS);
+	m.setStickUse(1, STICK_LEFT, ControlsModel::StickUse::KEYS);
+	CHECK(!StickMouse_Get(1, STICK_LEFT) && StickKeys_Get(1, STICK_LEFT));
+	CHECK(m.nextStickUse(1, STICK_LEFT) == ControlsModel::StickUse::DEFAULT);
+	m.setStickUse(1, STICK_LEFT, ControlsModel::StickUse::DEFAULT);
+	CHECK(!StickMouse_Get(1, STICK_LEFT) && !StickKeys_Get(1, STICK_LEFT));
+
+	// keys win over a mouse setting a hand-edited conf left on the same stick
+	StickMouse_SetValue(1, "left");
+	StickKeys_SetValue(1, "left");
+	CHECK(m.stickUse(1, STICK_LEFT) == ControlsModel::StickUse::KEYS);
+
+	// the other stick and the other players are not touched
+	m.setStickUse(2, STICK_RIGHT, ControlsModel::StickUse::KEYS);
+	CHECK(StickKeys_Get(2, STICK_RIGHT) && !StickKeys_Get(2, STICK_LEFT) && !StickKeys_Get(3, STICK_RIGHT));
+
+	for(int p = 0; p < 4; p++)
+	{
+		StickMouse_SetValue(p, "off");
+		StickKeys_SetValue(p, "off");
+	}
+	m.setEmulated(0);
 }
 
 static void testStickFree()
@@ -1153,6 +1289,10 @@ int main()
 	testDpadRouting();
 	testStickMouseSetting();
 	testStickFree();
+	testStickKeysWiring();
+	testStickKeysSetting();
+	testStickKeysStep();
+	testStickUse();
 	testStickMouseActive();
 	testStickMouseStep();
 	printf("%d checks, %d failed\n", checks, failures);

@@ -216,6 +216,15 @@ class ControlsModel
 		bool stickMouse(int player, int stick) const;
 		void setStickMouse(int player, int stick, bool on);
 
+		// ---- sticks as the arrow keys (stickkeys.h; also a conf property). Allowed whatever the DOS joystick does: the stick then stops driving it.
+		/** What a stick does: the DOS joystick's axes (or nothing where the joystick leaves it free), the mouse, or the arrow keys. */
+		enum class StickUse { DEFAULT, MOUSE, KEYS };
+		StickUse stickUse(int player, int stick) const;
+		/** What A on the stick gives next: Off / Joystick axes -> Mouse (only where the stick is free) -> Arrow keys -> back to the first. */
+		StickUse nextStickUse(int player, int stick) const;
+		/** Sets it; a stick is one thing, so the other settings are cleared. */
+		void setStickUse(int player, int stick, StickUse use);
+
 		// ---- presets
 		virtual std::vector<PresetInfo> presets() const = 0;
 		/** The preset a player's buttons started from. Each player has their own. */

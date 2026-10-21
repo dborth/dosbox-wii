@@ -5,6 +5,7 @@
  ***************************************************************************/
 #include "controlsmodel.h"
 #include "stickmouse.h"
+#include "stickkeys.h"
 #include <ctype.h>
 #include "controllerlayout.h"
 #include "drivers/InputData.h"
@@ -265,6 +266,32 @@ bool ControlsModel::stickMouse(int player, int stick) const
 void ControlsModel::setStickMouse(int player, int stick, bool on)
 {
 	StickMouse_Set(player, stick, on);
+}
+
+ControlsModel::StickUse ControlsModel::stickUse(int player, int stick) const
+{
+	if(StickKeys_Get(player, stick))
+		return StickUse::KEYS;
+	return stickFree(player, stick) && StickMouse_Get(player, stick) ? StickUse::MOUSE : StickUse::DEFAULT;
+}
+
+ControlsModel::StickUse ControlsModel::nextStickUse(int player, int stick) const
+{
+	switch(stickUse(player, stick))
+	{
+		case StickUse::DEFAULT:
+			return stickFree(player, stick) ? StickUse::MOUSE : StickUse::KEYS;
+		case StickUse::MOUSE:
+			return StickUse::KEYS;
+		default:
+			return StickUse::DEFAULT;
+	}
+}
+
+void ControlsModel::setStickUse(int player, int stick, StickUse use)
+{
+	StickMouse_Set(player, stick, use == StickUse::MOUSE);
+	StickKeys_Set(player, stick, use == StickUse::KEYS);
 }
 
 bool ControlsModel::usable(int player, const BindingTarget& target) const

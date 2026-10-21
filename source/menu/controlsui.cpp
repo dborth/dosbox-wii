@@ -134,6 +134,21 @@ bool ControllerConfigView::outOfDate() const
 		(now.connected ? now.devices : std::vector<PadType>()) != deviceList;
 }
 
+// What a stick row says it does
+static std::string stickUseText(int player, int stick, ControlsModel::StickUse use)
+{
+	switch(use)
+	{
+		case ControlsModel::StickUse::MOUSE:
+			return "Mouse";
+		case ControlsModel::StickUse::KEYS:
+			return "Arrow keys";
+		default:
+			// a stick the DOS joystick uses drives it; one it leaves alone does nothing
+			return Controls().stickFree(player, stick) ? "Off" : "Joystick axes";
+	}
+}
+
 // A list row: the control's icon and what it does. The control's name is on the hint line while the row is
 // highlighted, along with a line drawn to the control on the picture. Clicking asks to change it.
 GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int width)
@@ -151,10 +166,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	const std::function<std::string()> text = [this, pl, id, fixed, stick]() -> std::string {
 		if(stick)
 		{
-			// a stick the DOS joystick does not use can move the mouse instead
-			if(!Controls().stickFree(pl, stick - 1))
-				return "Joystick axes";
-			return Controls().stickMouse(pl, stick - 1) ? "Mouse" : "Off";
+			// a stick the DOS joystick does not use can move the mouse; any stick can press the arrow keys instead
+			return stickUseText(pl, stick - 1, Controls().stickUse(pl, stick - 1));
 		}
 		if(fixed)
 			return std::string(fixed);
@@ -178,8 +191,8 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	const int control = r.control;
 	// the hint for the row: a stick the DOS joystick leaves alone says what A does; one it uses, a button's change, a fixed row its text
 	const std::function<std::string()> hint = [this, pl, stick, name, info, text]() -> std::string {
-		if(stick && Controls().stickFree(pl, stick - 1))
-			return GuiFormat("%s: %s. A turns it %s", name, text().c_str(), Controls().stickMouse(pl, stick - 1) ? "off" : "on");
+		if(stick)
+			return GuiFormat("%s: %s. A: %s", name, text().c_str(), stickUseText(pl, stick - 1, Controls().nextStickUse(pl, stick - 1)).c_str());
 		return info ? GuiFormat("%s: %s", name, text().c_str()) : GuiFormat("A changes what %s does", name);
 	};
 	row.onFocus([this, &row, control, side, hint]{
@@ -204,11 +217,9 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	}
 	else if(stick)
 	{
-		// a stick: A turns moving the mouse on or off where the DOS joystick leaves it free; otherwise it only shows what it is
+		// a stick: A steps through what it can do (the DOS joystick or off, the mouse where the joystick leaves it free, the arrow keys)
 		row.onClick([this, pl, stick, hint]{
-			if(!Controls().stickFree(pl, stick - 1))
-				return;
-			Controls().setStickMouse(pl, stick - 1, !Controls().stickMouse(pl, stick - 1));
+			Controls().setStickUse(pl, stick - 1, Controls().nextStickUse(pl, stick - 1));
 			status = hint();
 		});
 	}

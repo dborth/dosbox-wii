@@ -7,6 +7,7 @@
 #include "menu/homeview.h"
 #include "menu/controlsmodel.h"
 #include "stickmouse.h"
+#include "stickkeys.h"
 #include "samplecontrols.h"
 #include "menu/menupage.h"
 #include "menu/menustyle.h"
@@ -334,6 +335,20 @@ int main(int argc, char ** argv)
 	SampleControls_SetHeld(0);
 	StickMouse_SetValue(0, "off");
 	StickMouse_SetValue(2, "off");
+	// sticks set to press the arrow keys: the left one under the DOS joystick (it stops driving it), the right one on a free stick
+	{
+		StickKeys_SetValue(0, "both");
+		Controls_SetModel(nullptr);
+		SampleControls_ResetHardware();
+		Controls().setEmulated(1);
+		ApplyAll(1);
+		Screen s;
+		ControllerConfigView view(0);
+		s.page.append(&view);
+		snap("config_stick_keys", s.root, 0, 0, 0);
+		StickKeys_SetValue(0, "off");
+		SampleControls_ResetHardware();
+	}
 	// two devices on one channel: the rail of icons, with each of them drawn
 	{
 		struct RailScene { const char * name; PadType primary, second, show; bool clicks; uint32_t held; };
