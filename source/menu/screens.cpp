@@ -124,6 +124,18 @@ class ListScreen
 		void putAway() { detach(); }
 		void bringBack() { attach(); }
 
+		//! Around a popover opened over the screen (MenuPopover_Pick / _Ask): off, the screen stays drawn, dimmed, and
+		//! takes no input, so the popover is all the D-pad and pointer reach. On again it takes the focus back, with
+		//! the highlight where it was.
+		void setEnabled(bool on)
+		{
+			const STATE state = on ? STATE::DEFAULT : STATE::DISABLED;
+			browser->setState(state);
+			w.setState(state);
+			if(on)
+				mainWindow->changeFocus(browser);
+		}
+
 	private:
 		ListScreen(const ListScreen &) = delete;
 		ListScreen & operator=(const ListScreen &) = delete;
@@ -597,12 +609,10 @@ class GamesScreen : public ListScreen
 
 			putAway();		// the on-screen keyboard is a screen of its own
 			const bool named = OnScreenKeyboard(typed, sizeof(typed));
+			bringBack();
 
 			if(!named)
-			{
-				bringBack();
 				return;
-			}
 
 			GameSaveResult r = Game_SaveNew(GameSave_Live(), typed);
 
@@ -612,10 +622,11 @@ class GamesScreen : public ListScreen
 				std::vector<std::string> answers;
 				answers.push_back("Replace it");
 				answers.push_back("Cancel");
+				setEnabled(false);
 				const bool replace = MenuPopover_Ask(r.message.c_str(), answers,
 					"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopoverAnchor()) == 0;
+				setEnabled(true);
 
-				bringBack();
 				if(replace)
 					finishSave(Game_SaveReplace(GameSave_Live(), r.path, sameGame(r.path)));
 				else
@@ -623,7 +634,6 @@ class GamesScreen : public ListScreen
 				return;
 			}
 
-			bringBack();
 			finishSave(r);
 		}
 
@@ -677,7 +687,9 @@ class GamesScreen : public ListScreen
 				items.push_back(cancel);
 
 				const std::string question = "Add " + (title.size() > 28 ? title.substr(0, 26) + ".." : title) + " as a game?";
-				int choice = MenuPopover_Pick(question.c_str(), items, GuiPopoverAnchor());
+				setEnabled(false);
+				const int choice = MenuPopover_Pick(question.c_str(), items, GuiPopoverAnchor());
+				setEnabled(true);
 
 				// the choices that follow Add and play, Add, Name are Runs (when there is one), then Cancel
 				if(choice == 2)
@@ -704,7 +716,9 @@ class GamesScreen : public ListScreen
 						p.current = i == program;
 						programs.push_back(p);
 					}
+					setEnabled(false);
 					const int chosen = MenuPopover_Pick("Program to run", programs, GuiPopoverAnchor());
+					setEnabled(true);
 					if(chosen >= 0)
 						program = (size_t)chosen;
 					continue;
