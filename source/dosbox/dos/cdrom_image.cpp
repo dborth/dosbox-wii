@@ -139,6 +139,7 @@ CDROM_Interface_Image::CDROM_Interface_Image(Bit8u subUnit)
 {
 	images[subUnit] = this;
 	if (refCount == 0) {
+		memset(&player, 0, sizeof(player));	/* first boot state: playing / paused flags of the last run */
 		player.mutex = SDL_CreateMutex();
 		/* Look the channel up rather than trusting the static: MIXER_Init()
 		 * forgets every channel on a restart, so a pointer kept from the last
@@ -159,7 +160,12 @@ CDROM_Interface_Image::~CDROM_Interface_Image()
 	ClearTracks();
 	if (refCount == 0) {
 		SDL_DestroyMutex(player.mutex);
+		player.mutex = NULL;
 		player.channel->Enable(false);
+		/* Taken out of the mixer again: the next image looks it up or makes a new one.
+		 * Kept, it was orphaned by the next restart and leaked. */
+		MIXER_DelChannel(player.channel);
+		player.channel = NULL;
 	}
 }
 
