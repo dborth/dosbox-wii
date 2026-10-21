@@ -15,8 +15,6 @@
 #include <malloc.h>
 
 #include "WutPlatform.h"
-#include "../../libgui/GuiImageDataCache.h"
-#include "imagelist.h"
 
 void WutPlatform::init(const PlatformConfig& config)
 {
@@ -62,14 +60,10 @@ void WutPlatform::init(const PlatformConfig& config)
 	}
 	this->logger->init(logConfig);
 #endif
-
-	GuiImageDataCache::preload(guiImageAssets, guiImageAssetCount);
 }
 
 void WutPlatform::shutdown()
 {
-	GuiImageDataCache::shutdown();
-
 	// Before the audio driver: nn::swkbd's sounds need AX until it is destroyed
 	if(systemKeyboard)
 	{

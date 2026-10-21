@@ -56,4 +56,3 @@ void Mutex::lock() {}
 void Mutex::unlock() {}
 void * memspace_malloc(size_t size) { return malloc(size); }
 void memspace_free(void * p) { free(p); }
-GuiImageData * GuiImageDataCache::tryGet(const uint8_t *, int, int) { return nullptr; }
