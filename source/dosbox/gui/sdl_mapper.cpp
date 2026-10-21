@@ -2703,6 +2703,8 @@ void MAPPER_Reset(void) {
 	caps_lock_event=NULL;
 	num_lock_event=NULL;
 	last_clicked=NULL;
+	map_cursor_x=-1;
+	map_cursor_y=-1;
 	mapper.aevent=NULL;
 	mapper.abind=NULL;
 	mapper.sticks.num=0;

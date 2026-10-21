@@ -119,6 +119,11 @@ static LoopHandler * loop;
 
 bool SDLNetInited;
 
+static Bit32s lastsleepDone = -1;	/* these three were local statics of increaseticks() */
+static Bitu sleep1count = 0;
+static Bit32u sleepindex = 0;
+static bool unlock_autoadjust = false;	/* was a local static of DOSBOX_UnlockSpeed() */
+
 static Bit32u ticksRemain;
 static Bit32u ticksLast;
 static Bit32u ticksAdded;
@@ -165,8 +170,6 @@ void increaseticks() { //Make it return ticksRemain and set it in the function a
 		return;
 	}
 	
-	static Bit32s lastsleepDone = -1;
-	static Bitu sleep1count = 0;
 
 	Bit32u ticksNew;
 	ticksNew = GetTicks();
@@ -182,7 +185,6 @@ void increaseticks() { //Make it return ticksRemain and set it in the function a
 			   This code introduces some randomness to the time slept, which improves stability on those configurations
 			 */
 			static const Bit32u sleeppattern[] = { 2, 2, 3, 2, 2, 4, 2};
-			static Bit32u sleepindex = 0;
 			if (ticksDone != lastsleepDone) sleepindex = 0;
 			wrap_delay(sleeppattern[sleepindex++]);
 			sleepindex %= sizeof(sleeppattern) / sizeof(sleeppattern[0]);
@@ -319,7 +321,7 @@ void DOSBOX_RunMachine(void){
 }
 
 static void DOSBOX_UnlockSpeed( bool pressed ) {
-	static bool autoadjust = false;
+	bool & autoadjust = unlock_autoadjust;
 	if (pressed) {
 		LOG_MSG("Fast Forward ON");
 		ticksLocked = true;
@@ -345,7 +347,14 @@ static void DOSBOX_RealInit(Section * sec) {
 
 	ticksRemain=0;
 	ticksLast=GetTicks();
+	ticksAdded=0;
+	ticksDone=0;
+	ticksScheduled=0;
 	ticksLocked = false;
+	lastsleepDone=-1;
+	sleep1count=0;
+	sleepindex=0;
+	unlock_autoadjust=false;
 	DOSBOX_SetLoop(&Normal_Loop);
 	MSG_Init(section);
 

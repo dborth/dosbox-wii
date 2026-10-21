@@ -1627,6 +1627,7 @@ static void KEYB_ProgramStart(Program * * make) {
 
 
 void DOS_SetupPrograms(void) {
+	ZDRIVE_NUM = 25;	/* "mount -z" of the last run must not carry over */
 	/*Add Messages */
 
 	MSG_Add("PROGRAM_MOUNT_CDROMS_FOUND","CDROMs found: %d\n");

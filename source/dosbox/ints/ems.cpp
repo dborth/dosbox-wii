@@ -1307,6 +1307,10 @@ private:
 	/* location in protected unfreeable memory where the ems name and callback are
 	 * stored  32 bytes.*/
 	static Bit16u ems_baseseg;
+public:
+	/* the segment comes from the DOS private area, which starts over on a restart */
+	static void ForgetBaseSeg(void) { ems_baseseg=0; }
+private:
 	RealPt old4b_pointer,old67_pointer;
 	CALLBACK_HandlerObject call_vdma,call_vcpi,call_v86mon;
 	Bitu call_int67;
@@ -1462,9 +1466,20 @@ void EMS_ShutDown(Section* /*sec*/) {
 	delete test;
 }
 
+static bool ems_seg_hooked=false;
+
+static void EMS_ForgetSeg(Section* /*sec*/) {
+	EMS::ForgetBaseSeg();
+	ems_seg_hooked=false;
+}
+
 void EMS_Init(Section* sec) {
 	test = new EMS(sec);
 	sec->AddDestroyFunction(&EMS_ShutDown,true);
+	if (!ems_seg_hooked) {	/* only when the whole core shuts down, not on a runtime change */
+		ems_seg_hooked=true;
+		sec->AddDestroyFunction(&EMS_ForgetSeg,false);
+	}
 }
 
 /* What the section ended up with, which is not what ems asks for on a PCjr

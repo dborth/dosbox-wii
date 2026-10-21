@@ -1346,6 +1346,9 @@ void MSCDEX_ShutDown(Section* /*sec*/) {
 }
 
 void MSCDEX_Init(Section* sec) {
+	/* first boot values: "mount -ioctl" of the last run must not carry over */
+	useCdromInterface = CDROM_USE_SDL;
+	forceCD = -1;
 	// AddDestroy func
 	sec->AddDestroyFunction(&MSCDEX_ShutDown);
 	/* Register the mscdex device */

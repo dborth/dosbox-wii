@@ -626,8 +626,11 @@ static Bitu INT14_Handler(void) {
 	return CBRET_NONE;
 }
 
+/* segment of the INT 15h configuration table, from the DOS private area: it is
+ * allocated again after a restart, so the old value must not be kept */
+static Bit16u biosConfigSeg=0;
+
 static Bitu INT15_Handler(void) {
-	static Bit16u biosConfigSeg=0;
 	switch (reg_ah) {
 	case 0xC0:	/* Get Configuration*/
 		{
@@ -931,6 +934,7 @@ public:
 		/* first boot state: the last run's Tandy DAC / SB ports must not survive */
 		memset(&tandy_sb,0,sizeof(tandy_sb));
 		memset(&tandy_dac,0,sizeof(tandy_dac));
+		biosConfigSeg=0;
 		/* tandy DAC can be requested in tandy_sound.cpp by initializing this field */
 		bool use_tandyDAC=(real_readb(0x40,0xd4)==0xff);
 

@@ -218,6 +218,9 @@ void DriveManager::Init(Section* /* sec */) {
 	// setup driveInfos structure
 	currentDrive = 0;
 	for(int i = 0; i < DOS_DRIVES; i++) {
+		/* the drives of the last run are deleted by now: forget them, or a drive
+		 * mounted again would be replaced by the old pointer in InitializeDrive */
+		driveInfos[i].disks.clear();
 		driveInfos[i].currentDisk = 0;
 	}
 	

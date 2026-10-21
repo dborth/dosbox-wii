@@ -31,6 +31,7 @@
 #include "support.h"
 
 DOS_Block dos;
+static Bitu time_start = 0; //For emulating temporary time changes (was a local static; reset when DOS starts).
 DOS_InfoBlock dos_infoblock;
 
 #define DOS_COPYBUFSIZE 0x10000
@@ -113,8 +114,6 @@ static Bitu DOS_21Handler(void) {
 	char name1[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
 	char name2[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
 	
-	static Bitu time_start = 0; //For emulating temporary time changes.
-
 	switch (reg_ah) {
 	case 0x00:		/* Terminate Program */
 		DOS_Terminate(mem_readw(SegPhys(ss)+reg_sp+2),false,0);
@@ -1225,6 +1224,7 @@ public:
 		//	pop ax
 		//	iret
 
+		time_start=0;
 		DOS_SetupFiles();								/* Setup system File tables */
 		DOS_SetupDevices();							/* Setup dos devices */
 		DOS_SetupTables();

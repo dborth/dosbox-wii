@@ -600,4 +600,6 @@ void BIOS_SetupDisks(void) {
 	MAPPER_AddHandler(swapInNextDisk,MK_f4,MMOD1,"swapimg","Swap Image");
 	killRead = false;
 	swapping_requested = false;
+	last_status = 0;
+	last_drive = 0;
 }
