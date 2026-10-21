@@ -58,7 +58,8 @@ class ListBrowser : public GuiOptionBrowser
  *
  * A title, a list of rows (a name and a value), and the same header and footer
  * as every other page (menupage.h): what the highlighted row does at the left of
- * the footer, the key hints at the right of the header, Back (A or B) at the
+ * the footer, the key hints at the right of the header, Back (A, or B when there is no
+ * extra button; otherwise B moves between the list and the footer buttons) at the
  * right of the footer; optionally one more button beside Back. run() puts it up in place of whatever is on the main
  * window and returns when Back is clicked.
  *
@@ -194,7 +195,12 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 		chrome.headerRight->add(ui.label(hintStr.c_str()).fontSize(14).textColor(MenuChromeTextMuted()));
 
 	GuiTextButton& back = MenuPage_Button(ui, "Back");
-	back.setTrigger(1, &cancel);
+
+	// B is the main window's focus toggle (browser <-> footer buttons). With a button beside Back (Save, Rescan)
+	// a pad has to be able to reach it, so there B must not also click Back: it would close the screen on the same
+	// press. With Back alone, B is Back, as on every other page.
+	if(!hasExtra)
+		back.setTrigger(1, &cancel);
 	backBtn = &back;
 	if(hasExtra)
 	{
@@ -848,7 +854,7 @@ class SettingsListScreen : public ListScreen
 {
 	public:
 		SettingsListScreen(bool allSettings)
-			: ListScreen(allSettings ? "Settings - All settings" : "Settings", "A: open", allSettings ? NULL : "Save"),
+			: ListScreen(allSettings ? "Settings - All settings" : "Settings", allSettings ? "A: open" : "A: open    B: Save / Back", allSettings ? NULL : "Save"),
 			  sections(allSettings),
 			  pageCount(allSettings ? Settings_AllSectionCount() : SETTINGS_PAGE_COUNT) {}
 
