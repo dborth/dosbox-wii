@@ -136,6 +136,7 @@ AutoexecObject::~AutoexecObject(){
 				char* test = strpbrk(after_set,"=");
 				if (!test) {
 					delete [] buf2;
+					it++; // prevent an endless loop
 					continue;
 				}
 				*test = 0;
@@ -496,8 +497,17 @@ public:
 
 static AUTOEXEC* test;
 
+/* Never destroyed before: the object and the lines it installed stayed in
+ * autoexec_strings, so after a restart AUTOEXEC.BAT held the previous run's
+ * lines as well (and overflowed its 4 KB after a few runs). */
+static void AUTOEXEC_ShutDown(Section * /*sec*/) {
+	delete test;
+	test = 0;
+}
+
 void AUTOEXEC_Init(Section * sec) {
 	test = new AUTOEXEC(sec);
+	sec->AddDestroyFunction(&AUTOEXEC_ShutDown);
 }
 
 static Bitu INT2E_Handler(void) {

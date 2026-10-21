@@ -430,19 +430,29 @@ static void DecreaseFrameSkip(bool pressed) {
 	GFX_SetTitle(-1,render.frameskip.max,false);
 }
 
+static bool render_running = false;
+
+static void RENDER_ShutDown(Section * /*sec*/) {
+	render_running = false;
+}
+
 void RENDER_Init(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 
-	//For restarting the renderer.
-	static bool running = false;
+	//For restarting the renderer (a runtime change of the section).
+	//A restart of the whole core clears it in RENDER_ShutDown, so it starts like the first time.
+	if (!render_running) {
+		memset(&render,0,sizeof(render));
+		sec->AddDestroyFunction(&RENDER_ShutDown);
+	}
 
 	render.pal.first=256;
 	render.pal.last=0;
 	render.frameskip.max=section->Get_int("frameskip");
 	render.frameskip.count=0;
 
-	if(!running) render.updating=true;
-	running = true;
+	if(!render_running) render.updating=true;
+	render_running = true;
 
 	MAPPER_AddHandler(DecreaseFrameSkip,MK_f7,MMOD1,"decfskip","Dec Fskip");
 	MAPPER_AddHandler(IncreaseFrameSkip,MK_f8,MMOD1,"incfskip","Inc Fskip");

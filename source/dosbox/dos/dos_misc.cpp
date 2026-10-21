@@ -31,6 +31,8 @@ static std::list<MultiplexHandler*> Multiplex;
 typedef std::list<MultiplexHandler*>::iterator Multiplex_it;
 
 void DOS_AddMultiplexHandler(MultiplexHandler * handler) {
+	/* the list outlives a restart and nothing removes most handlers: add each once */
+	for(Multiplex_it it=Multiplex.begin();it != Multiplex.end();it++) if (*it==handler) return;
 	Multiplex.push_front(handler);
 }
 

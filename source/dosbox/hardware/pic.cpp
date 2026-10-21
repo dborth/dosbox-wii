@@ -513,6 +513,7 @@ struct TickerBlock {
 };
 
 static TickerBlock * firstticker=0;
+static TickerBlock * tickerpool=0;	/* blocks of removed handlers, reused, never freed */
 
 
 void TIMER_DelTickHandler(TIMER_TickHandler handler) {
@@ -521,7 +522,8 @@ void TIMER_DelTickHandler(TIMER_TickHandler handler) {
 	while (ticker) {
 		if (ticker->handler==handler) {
 			*tick_where=ticker->next;
-			delete ticker;
+			ticker->next=tickerpool;
+			tickerpool=ticker;
 			return;
 		}
 		tick_where=&ticker->next;
@@ -529,8 +531,24 @@ void TIMER_DelTickHandler(TIMER_TickHandler handler) {
 	}
 }
 
+/* Nothing took the handlers out when the core shut down, so each restart added
+ * a second MIXER_Mix (and keyboard handler) to the list and the mixer ran once
+ * more per tick every time: audio produced too fast, then dropped. */
+static void TIMER_ClearTickHandlers(void) {
+	while (firstticker) {
+		TickerBlock * ticker=firstticker;
+		firstticker=ticker->next;
+		ticker->next=tickerpool;
+		tickerpool=ticker;
+	}
+}
+
 void TIMER_AddTickHandler(TIMER_TickHandler handler) {
-	TickerBlock * newticker=new TickerBlock;
+	/* a handler is only ever in the list once */
+	for (TickerBlock * t=firstticker;t;t=t->next) if (t->handler==handler) return;
+	TickerBlock * newticker=tickerpool;
+	if (newticker) tickerpool=newticker->next;
+	else newticker=new TickerBlock;
 	newticker->next=firstticker;
 	newticker->handler=handler;
 	firstticker=newticker;
@@ -616,6 +634,7 @@ static PIC_8259A* test;
 
 void PIC_Destroy(Section* sec){
 	delete test;
+	TIMER_ClearTickHandlers();
 }
 
 void PIC_Init(Section* sec) {

@@ -17,6 +17,7 @@
  */
 
 
+#include <string.h>
 #include "dosbox.h"
 #include "keyboard.h"
 #include "inout.h"
@@ -381,6 +382,9 @@ static void KEYBOARD_TickHandler(void) {
 }
 
 void KEYBOARD_Init(Section* sec) {
+	/* the state of a first boot: after a restart "scheduled" could still be set
+	 * from the last run, and its event is gone, so no key would ever arrive */
+	memset(&keyb,0,sizeof(keyb));
 	IO_RegisterWriteHandler(0x60,write_p60,IO_MB);
 	IO_RegisterReadHandler(0x60,read_p60,IO_MB);
 	IO_RegisterWriteHandler(0x61,write_p61,IO_MB);

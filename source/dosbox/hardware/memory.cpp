@@ -589,6 +589,7 @@ public:
 			LOG_MSG("Stick with the default values unless you are absolutely certain.");
 		}
 #endif
+		memset(&memory,0,sizeof(memory));	/* first boot state (lfb, links, a20) */
 		/* Zeroed: the guest expects cleared memory, and on a restart this
 		 * is last run's RAM */
 		MemBase = (Bit8u*)Keep_Get(guest_ram,(size_t)memsize*1024*1024,(size_t)MEM_LARGEST_MB*1024*1024,true);

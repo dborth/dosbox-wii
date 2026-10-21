@@ -18,6 +18,7 @@
  
 
 #include <math.h>
+#include <string.h>
 #include "dosbox.h"
 #include "mixer.h"
 #include "timer.h"
@@ -325,6 +326,7 @@ private:
 	MixerObject MixerChan;
 public:
 	PCSPEAKER(Section* configuration):Module_base(configuration){
+		memset(&spkr,0,sizeof(spkr));	/* first boot state: volume ramp, delay queue */
 		spkr.chan=0;
 		Section_prop * section=static_cast<Section_prop *>(configuration);
 		if(!section->Get_bool("pcspeaker")) return;

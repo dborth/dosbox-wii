@@ -294,6 +294,7 @@ private:
 	IO_WriteHandleObject WriteHandler[2];	
 public:
 	CMOS(Section* configuration):Module_base(configuration){
+		memset(&cmos,0,sizeof(cmos));	/* first boot state */
 		WriteHandler[0].Install(0x70,cmos_selreg,IO_MB);
 		WriteHandler[1].Install(0x71,cmos_writereg,IO_MB);
 		ReadHandler[0].Install(0x71,cmos_readreg,IO_MB);
