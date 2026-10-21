@@ -140,6 +140,10 @@ CDROM_Interface_Image::CDROM_Interface_Image(Bit8u subUnit)
 	images[subUnit] = this;
 	if (refCount == 0) {
 		player.mutex = SDL_CreateMutex();
+		/* Look the channel up rather than trusting the static: MIXER_Init()
+		 * forgets every channel on a restart, so a pointer kept from the last
+		 * run is orphaned and would leave CD audio silent. */
+		player.channel = MIXER_FindChannel("CDAUDIO");
 		if (!player.channel) {
 			player.channel = MIXER_AddChannel(&CDAudioCallBack, 44100, "CDAUDIO");
 		}
