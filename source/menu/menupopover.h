@@ -13,7 +13,7 @@
 #include "libgui/Gui.h"
 
 /** The space the menu's popovers keep clear: the header and footer bars and the page margin. */
-GuiPopoverInsets MenuPopover_Insets();
+GuiPopover::Insets MenuPopover_Insets();
 
 /** One row of a popover list: the name on the left, a dot on the right when `marked` (the one in use). The caller adds onClick / onFocus. */
 GuiCard& MenuPopover_Row(UiScope& ui, int width, int height, const std::string& title, bool marked, bool dotSlot = true);
@@ -51,7 +51,7 @@ class PickerView : public GuiPopover
 {
 	public:
 		/** `anchor` is the control it opens beside; with none it is centred. B or a click outside closes it (isDismissed()). */
-		PickerView(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor = GuiPopoverAnchor());
+		PickerView(const char * title, const std::vector<PickerItem>& items, const GuiPopover::Anchor& anchor = GuiPopover::Anchor());
 		/** Whether a choice was made (after any confirmation). */
 		bool chosen() const { return done; }
 		/** The index of the item chosen. */
@@ -101,10 +101,10 @@ void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, 
  * until a choice is made or it is closed. The index chosen, or -1. `preview` is told which item has the focus; `perFrame`
  * runs every frame (for what must be checked while it is open).
  */
-int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor,
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopover::Anchor& anchor,
 	std::function<void(int)> preview = nullptr, std::function<void()> perFrame = nullptr);
 
 /** A question with a few answers and a line of detail, as a popover (see MenuPopover_Pick). The index of the answer, or -1. */
-int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopoverAnchor& anchor);
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopover::Anchor& anchor);
 
 #endif

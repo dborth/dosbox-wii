@@ -13,9 +13,9 @@
 #include "menuicon.h"
 #include <algorithm>
 
-GuiPopoverInsets MenuPopover_Insets()
+GuiPopover::Insets MenuPopover_Insets()
 {
-	GuiPopoverInsets i = { MENU_BAR_TOP_H, MENU_BAR_BOTTOM_H, MENU_PAGE_MARGIN };
+	GuiPopover::Insets i = { MENU_BAR_TOP_H, MENU_BAR_BOTTOM_H, MENU_PAGE_MARGIN };
 	return i;
 }
 
@@ -125,11 +125,10 @@ void PickerView::refreshCaption()
 	}
 }
 
-PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const GuiPopoverAnchor& anchor) :
+PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemList, const GuiPopover::Anchor& anchor) :
+	GuiPopover(anchor, MenuPopover_Insets()),
 	items(itemList), picked(-1), done(false), focus(0), inUse(0), panelWidth(kPopoverW), panelHeight(0), rowHeight(0)
 {
-	const int sh = platform->getVideo()->getScreenHeight();
-
 	int current = 0;
 	for(size_t i = 0; i < items.size(); i++)
 		if(items[i].current)
@@ -146,7 +145,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	captionLines.assign((size_t)captionLinesN, std::string());
 	const int captionH = captionLinesN * kPopoverCaptionLineH + 4;
 	const int fixedH = 2 * kPopoverPad + kPopoverTitleH + 7 + 8 + captionH;
-	const int spare = GuiPopoverMaxHeight(sh, MenuPopover_Insets()) - fixedH - dividers * kPopoverDividerH - std::max(0, n - 1) * kPopoverRowGap;
+	const int spare = maxPanelHeight() - fixedH - dividers * kPopoverDividerH - std::max(0, n - 1) * kPopoverRowGap;
 	rowHeight = std::max(28, std::min(36, n > 0 ? spare / n : 36));
 	const int listH = n * rowHeight + std::max(0, n - 1) * kPopoverRowGap + dividers * kPopoverDividerH;
 	panelHeight = fixedH + listH;
@@ -187,10 +186,9 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	GuiCard& panel = ui.card().selectable(false).style(MenuPopoverStyle()).corners(GuiCorners(12.0f)).pad(kPopoverPad, kPopoverPad).size(kPopoverW, panelHeight);
 	panel.add(content);
 
-	mount(panel, kPopoverW, panelHeight, anchor, MenuPopover_Insets(), MenuPaletteCurrent().surfaceRaised);
+	setPanel(panel, MenuPaletteCurrent().surfaceRaised);
 
 	refreshCaption();
-	ui.attachTo(*this);
 	// the window steps the selection down from what is selected (or to the first control when nothing is): start just
 	// above the item in use, so the step lands on it
 	if(current > 0)
@@ -238,7 +236,7 @@ void MenuPopover_Wrap(std::vector<std::string>& lines, const std::string& text, 
 
 // ---- running one on the menu's main window
 
-int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopoverAnchor& anchor,
+int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, const GuiPopover::Anchor& anchor,
 	std::function<void(int)> preview, std::function<void()> perFrame)
 {
 	PickerView view(title, items, anchor);
@@ -263,7 +261,7 @@ int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, c
 	}
 }
 
-int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopoverAnchor& anchor)
+int MenuPopover_Ask(const char * title, const std::vector<std::string>& answers, const std::string& detail, const GuiPopover::Anchor& anchor)
 {
 	std::vector<PickerItem> items;
 	for(size_t i = 0; i < answers.size(); i++)

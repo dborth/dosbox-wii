@@ -213,7 +213,7 @@ static std::string SaveGame()
 		answers.push_back("Replace it");
 		answers.push_back("Cancel");
 		if(MenuPopover_Ask(r.message.c_str(), answers,
-			"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopoverAnchor()) != 0)
+			"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopover::Anchor()) != 0)
 			return "Not saved.";
 		r = Game_SaveReplace(host, r.path, false);
 	}

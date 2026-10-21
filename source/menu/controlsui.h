@@ -73,13 +73,13 @@ class ControllerConfigView : public GuiOverlay
 		/** Puts the selection on the header button that opens `which` (Pick::EMULATED or PRESET): where it was when a modal was open over it. */
 		void selectHeader(Pick which);
 		/** The button that opens `which`, in canvas pixels: where its popover opens beside. */
-		GuiPopoverAnchor anchorFor(Pick which);
+		GuiPopover::Anchor anchorFor(Pick which);
 		/** While a preset popover is open: the rows show what this preset would give them (-1 = what they do now). */
 		void setPreview(int preset) { previewPreset = preset; }
 		/** Runs the screen's bindings now (a screen under a popover is not updated, but should follow what the popover previews). */
 		void refresh() { ui.runBindings(); }
 		/** The row for a control (the id its binding is stored under), in canvas pixels: the popover opens on the opposite side of the screen, leaving it in view. */
-		GuiPopoverAnchor anchorForRow(int binding);
+		GuiPopover::Anchor anchorForRow(int binding);
 	private:
 		enum class Side { LEFT, RIGHT, GROUP };
 		GuiCard& bindingRow(const ProfileRow& row, Side side, int width);
@@ -132,7 +132,7 @@ class TargetChooserView : public GuiPopover
 		 * @param anchor The row it opens beside
 		 */
 		TargetChooserView(const char * controlName, int player, int control, const BindingTarget& current, const BindingTarget& defaultTarget,
-			const GuiPopoverAnchor& anchor = GuiPopoverAnchor());
+			const GuiPopover::Anchor& anchor = GuiPopover::Anchor());
 		/** Whether the user picked something. */
 		bool chosen() const { return done; }
 		BindingTarget result() const { return picked; }

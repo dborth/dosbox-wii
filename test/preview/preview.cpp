@@ -469,39 +469,39 @@ int main(int argc, char ** argv)
 	// ---- popovers: placement, size and what they show
 	{
 		// below its anchor when it fits, lined up with the nearer edge, inside the margins
-		GuiPopoverPosition p = GuiPopoverPlace(GuiPopoverAnchor(400, 60, 150, 32), 280, 200, 640, 480, MenuPopover_Insets());
+		GuiPopover::Position p = GuiPopover::place(GuiPopover::Anchor(400, 60, 150, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.y == 60 + 32 + 6);
 		EXPECT(p.x == 400 + 150 - 280);				// right half: right edges line up
-		p = GuiPopoverPlace(GuiPopoverAnchor(60, 40, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(60, 40, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 60);								// left half: left edges line up
-		p = GuiPopoverPlace(GuiPopoverAnchor(60, 40, 100, 32, GuiPopoverAnchor::RIGHT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(60, 40, 100, 32, GuiPopover::Anchor::RIGHT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);
-		p = GuiPopoverPlace(GuiPopoverAnchor(300, 40, 100, 32, GuiPopoverAnchor::LEFT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(300, 40, 100, 32, GuiPopover::Anchor::LEFT_MARGIN), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == MENU_PAGE_MARGIN);
-		p = GuiPopoverPlace(GuiPopoverAnchor(560, 400, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(560, 400, 100, 32), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 640 - MENU_PAGE_MARGIN - 280);	// kept inside the margin
 		EXPECT(p.y == 400 - 200 - 6);						// no room below a footer chip: it comes out of the top of it
-		p = GuiPopoverPlace(GuiPopoverAnchor(100, 200, 120, 30), 280, 280, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(100, 200, 120, 30), 280, 280, 640, 480, MenuPopover_Insets());
 		EXPECT(p.y >= MENU_BAR_TOP_H && p.y + 280 <= 480 - MENU_BAR_BOTTOM_H);	// a row in the middle of the page: kept in the band
 		// the tail points at the anchor: up from a panel under it, down from one over it, sideways from one beside it
 		{
-			GuiPopoverPosition under = GuiPopoverPlace(GuiPopoverAnchor(400, 20, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
-			GuiPopoverTail t = GuiPopoverTailAt(GuiPopoverAnchor(400, 20, 150, 40), under, 280, 200);
-			EXPECT(t.shown && t.direction == POPOVER_TAIL::UP && t.y + t.h == under.y + 1);
+			GuiPopover::Position under = GuiPopover::place(GuiPopover::Anchor(400, 20, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
+			GuiPopover::Tail t = GuiPopover::tailAt(GuiPopover::Anchor(400, 20, 150, 40), under, 280, 200);
+			EXPECT(t.shown && t.direction == GuiPopover::TAIL::UP && t.y + t.h == under.y + 1);
 			EXPECT(t.x >= under.x && t.x + t.w <= under.x + 280);
-			GuiPopoverPosition over = GuiPopoverPlace(GuiPopoverAnchor(400, 420, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
-			t = GuiPopoverTailAt(GuiPopoverAnchor(400, 420, 150, 40), over, 280, 200);
-			EXPECT(t.shown && t.direction == POPOVER_TAIL::DOWN && t.y == over.y + 200 - 1);
-			GuiPopoverAnchor row(60, 200, 170, 30, GuiPopoverAnchor::RIGHT_MARGIN);
-			GuiPopoverPosition beside = GuiPopoverPlace(row, 380, 270, 640, 480, MenuPopover_Insets());
-			t = GuiPopoverTailAt(row, beside, 380, 270);
-			EXPECT(t.shown && t.direction == POPOVER_TAIL::LEFT);
+			GuiPopover::Position over = GuiPopover::place(GuiPopover::Anchor(400, 420, 150, 40), 280, 200, 640, 480, MenuPopover_Insets());
+			t = GuiPopover::tailAt(GuiPopover::Anchor(400, 420, 150, 40), over, 280, 200);
+			EXPECT(t.shown && t.direction == GuiPopover::TAIL::DOWN && t.y == over.y + 200 - 1);
+			GuiPopover::Anchor row(60, 200, 170, 30, GuiPopover::Anchor::RIGHT_MARGIN);
+			GuiPopover::Position beside = GuiPopover::place(row, 380, 270, 640, 480, MenuPopover_Insets());
+			t = GuiPopover::tailAt(row, beside, 380, 270);
+			EXPECT(t.shown && t.direction == GuiPopover::TAIL::LEFT);
 			EXPECT(t.y >= beside.y && t.y + t.h <= beside.y + 270);
-			GuiPopoverAnchor covered(300, 200, 170, 30, GuiPopoverAnchor::RIGHT_MARGIN);
-			EXPECT(!GuiPopoverTailAt(covered, GuiPopoverPlace(covered, 380, 270, 640, 480, MenuPopover_Insets()), 380, 270).shown);	// the panel covers the anchor: no tail
-			EXPECT(!GuiPopoverTailAt(GuiPopoverAnchor(), under, 280, 200).shown);
+			GuiPopover::Anchor covered(300, 200, 170, 30, GuiPopover::Anchor::RIGHT_MARGIN);
+			EXPECT(!GuiPopover::tailAt(covered, GuiPopover::place(covered, 380, 270, 640, 480, MenuPopover_Insets()), 380, 270).shown);	// the panel covers the anchor: no tail
+			EXPECT(!GuiPopover::tailAt(GuiPopover::Anchor(), under, 280, 200).shown);
 		}
-		p = GuiPopoverPlace(GuiPopoverAnchor(), 280, 200, 640, 480, MenuPopover_Insets());
+		p = GuiPopover::place(GuiPopover::Anchor(), 280, 200, 640, 480, MenuPopover_Insets());
 		EXPECT(p.x == 180 && p.y == 140);				// no anchor: centred
 
 		// every list fits the band between the bars, with rows at least 28 px tall, and its caption fits its lines
@@ -515,7 +515,7 @@ int main(int argc, char ** argv)
 		for(size_t l = 0; l < sizeof(lists) / sizeof(lists[0]); l++)
 		{
 			Screen s;
-			PickerView pv("Title", lists[l], GuiPopoverAnchor(300, 40, 170, 32, GuiPopoverAnchor::LEFT_MARGIN));
+			PickerView pv("Title", lists[l], GuiPopover::Anchor(300, 40, 170, 32, GuiPopover::Anchor::LEFT_MARGIN));
 			EXPECT(pv.panelY() >= 0);
 			EXPECT(pv.panelY() + pv.panelH() <= 480 - MENU_BAR_BOTTOM_H);
 			EXPECT(pv.rowH() >= 28 && pv.rowH() <= 36);
@@ -777,12 +777,10 @@ int main(int argc, char ** argv)
 		struct Ask : public GuiPopover
 		{
 			GuiCard * card;
-			Ask() : GuiPopover(640, 480), card(nullptr)
+			Ask() : GuiPopover(GuiPopover::Anchor(), MenuPopover_Insets(), 640, 480), card(nullptr)
 			{
-				GuiCard& panel = ui.card().selectable(false).size(100, 100);
-				card = &panel;
-				mount(panel, 100, 100, GuiPopoverAnchor(), MenuPopover_Insets());
-				ui.attachTo(*this);
+				card = &ui.card().selectable(false).size(100, 100);
+				setPanel(*card);
 			}
 		};
 		Ask pop;

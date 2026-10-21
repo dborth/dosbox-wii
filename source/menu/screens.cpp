@@ -624,7 +624,7 @@ class GamesScreen : public ListScreen
 				answers.push_back("Cancel");
 				setEnabled(false);
 				const bool replace = MenuPopover_Ask(r.message.c_str(), answers,
-					"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopoverAnchor()) == 0;
+					"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopover::Anchor()) == 0;
 				setEnabled(true);
 
 				if(replace)
@@ -688,7 +688,7 @@ class GamesScreen : public ListScreen
 
 				const std::string question = "Add " + (title.size() > 28 ? title.substr(0, 26) + ".." : title) + " as a game?";
 				setEnabled(false);
-				const int choice = MenuPopover_Pick(question.c_str(), items, GuiPopoverAnchor());
+				const int choice = MenuPopover_Pick(question.c_str(), items, GuiPopover::Anchor());
 				setEnabled(true);
 
 				// the choices that follow Add and play, Add, Name are Runs (when there is one), then Cancel
@@ -717,7 +717,7 @@ class GamesScreen : public ListScreen
 						programs.push_back(p);
 					}
 					setEnabled(false);
-					const int chosen = MenuPopover_Pick("Program to run", programs, GuiPopoverAnchor());
+					const int chosen = MenuPopover_Pick("Program to run", programs, GuiPopover::Anchor());
 					setEnabled(true);
 					if(chosen >= 0)
 						program = (size_t)chosen;
