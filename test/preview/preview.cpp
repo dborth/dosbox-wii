@@ -170,8 +170,10 @@ struct SceneSettings : HomeSettings
 {
 	int cycles = 3000, skip = 0;
 	bool corrected = true, sharp = false;
-	std::string game;
+	std::string game, title, program;
 	std::string gameName() const override { return game; }
+	std::string gameTitle() const override { return title; }
+	std::string gameProgram() const override { return program; }
 	std::string speed() const override { return std::to_string(cycles); }
 	std::string speedNote() const override { return "Dynamic core"; }
 	void stepSpeed(bool up) override { cycles += up ? 500 : -500; }
@@ -247,7 +249,9 @@ int main(int argc, char ** argv)
 			m.dev.mouse = i == 1;
 			Controls_SetModel(&m);
 			SceneSettings settings;
-			settings.game = i == 0 ? "Commander Keen 4" : "";	// the Game bar with a game, and at the plain prompt
+			settings.game = i == 0 ? "KEEN4E" : "";
+			settings.title = i == 0 ? "Commander Keen 4" : "";
+			settings.program = i == 0 ? "KEEN4E.EXE" : "";	// the Game bar with a game, and at the plain prompt
 			Screen s;
 			HomeView view(settings, "2.0");
 			s.page.append(&view);

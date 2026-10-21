@@ -44,8 +44,12 @@ class HomeSettings
 		/** Whether pixel edges are kept sharp and not smoothed */
 		virtual bool filterSharp() const = 0;
 		virtual void setFilterSharp(bool sharp) = 0;
-		/** The game DOSBox is running ("Keen 4"), or empty at the plain prompt: the Game bar shows it, and its buttons change with it */
+		/** The game DOSBox is running ("Keen 4"), or empty at the plain prompt: the Game card shows it, and its buttons change with it */
 		virtual std::string gameName() const { return std::string(); }
+		/** The game's title ("Commander Keen 4": its conf's # title=, else gameName()); empty at the plain prompt. Read once per game, not per frame. */
+		virtual std::string gameTitle() const { return gameName(); }
+		/** The program the game runs ("KEEN4E.EXE"); empty when its conf does not say */
+		virtual std::string gameProgram() const { return std::string(); }
 };
 
 class HomeView : public GuiOverlay
@@ -65,7 +69,7 @@ class HomeView : public GuiOverlay
 		void select(Action which);
 
 	private:
-		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr);
+		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr, bool marked = false);
 		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
 		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
 		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);
@@ -81,8 +85,8 @@ class HomeView : public GuiOverlay
 		GuiCard * exitCard;
 		GuiCard * restartCard;
 		GuiCard * creditsCard;
-		GuiCard * gamesCard;	// the Game bar's Change button
-		GuiCard * saveCard;	// the Game bar's Save button
+		GuiCard * gamesCard;	// the Game card's Games button
+		GuiCard * saveCard;	// the Game card's Save button
 		GuiCard * configureCard;
 		GuiCard * keyboardCard;
 		GuiCard * settingsCard;

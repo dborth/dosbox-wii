@@ -37,6 +37,7 @@
 #include "menuart.h"
 #include "homeview.h"
 #include "gamesave.h"
+#include "gameslive.h"
 #include "menupopover.h"
 
 static GuiImageData * pointer[4] = { NULL, NULL, NULL, NULL };
@@ -479,8 +480,7 @@ static void * CreateGameBackground(int screenwidth, int screenheight)
 class LiveHomeSettings : public HomeSettings
 {
 	public:
-		// the file name of the game's conf, without its folder and ".conf" (the title is in the file, which the
-		// home screen does not read)
+		// the file name of the game's conf, without its folder and ".conf" (the title is in the file: gameTitle() reads it)
 		std::string gameName() const override
 		{
 			std::string name = GetGameConf();
@@ -491,6 +491,10 @@ class LiveHomeSettings : public HomeSettings
 				name.resize(name.size() - 5);
 			return name;
 		}
+
+		// the game's title and program, from its conf: read when the game changes, not every frame
+		std::string gameTitle() const override { loadGameInfo(); return infoTitle.empty() ? gameName() : infoTitle; }
+		std::string gameProgram() const override { loadGameInfo(); return infoProgram; }
 
 		std::string speed() const override
 		{
@@ -537,6 +541,29 @@ class LiveHomeSettings : public HomeSettings
 		void setFilterSharp(bool sharp) override { choose("Filter", sharp ? "sharp" : "bilinear", sharp ? "nearest" : nullptr); }
 
 	private:
+		void loadGameInfo() const
+		{
+			const std::string conf = GetGameConf() ? GetGameConf() : "";
+			if(conf == infoConf)
+				return;
+			infoConf = conf;
+			infoTitle.clear();
+			infoProgram.clear();
+			if(conf.empty())
+				return;
+			// the path as given, or in the DOSBox folder: the same two places LoadPrefs() looks
+			GamesHost& host = Games_Live();
+			std::string text;
+			if(!host.read(conf, text, 64 * 1024) && !host.read(host.directory() + "/" + conf, text, 64 * 1024))
+				return;
+			GameRecord game;
+			game.name = gameName();
+			Game_ParseConf(text, game);
+			infoTitle = game.title;
+			infoProgram = game.program;
+		}
+
+		mutable std::string infoConf, infoTitle, infoProgram;
 		//! The Video page's row with this label, if it is there
 		static bool find(const char * label, int& page, int& row)
 		{
