@@ -136,6 +136,10 @@ class ListScreen
 				mainWindow->changeFocus(browser);
 		}
 
+		//! For a screen that puts its own controls in the header, beside the title (the Games screen's Load | Save)
+		UiScope& uiScope() { return ui; }
+		GuiLayout& headerRight() { return *chrome.headerRight; }
+
 	private:
 		ListScreen(const ListScreen &) = delete;
 		ListScreen & operator=(const ListScreen &) = delete;
@@ -486,14 +490,22 @@ class StatusScreen : public ListScreen
  *
  * Plain DOSBox, then a row per game found in the DOSBox folder (see games.h),
  * with the program it runs; the one DOSBox was started with says Playing. A
- * restarts DOSBox into the game, after a second press that says what it costs
- * (gameslist.h). The folder is read on the scanner's thread (gameslive.h) while
- * the list is up, and again with Rescan.
+ * asks, in a popover, before it restarts DOSBox into the game or replaces one
+ * (gameslist.h). Load and Save, at the right of the header, switch what A does
+ * (Left and Right on a row switch them too). The folder is read on the scanner's
+ * thread (gameslive.h) while the list is up, and again with Rescan.
  ***************************************************************************/
 class GamesScreen : public ListScreen
 {
 	public:
-		GamesScreen() : ListScreen("Games", "A: choose    B: back", "Save / Load") {}
+		GamesScreen() : ListScreen("Games", "Left / Right: Load or Save", "Rescan")
+		{
+			loadBtn = &MenuPage_Button(uiScope(), "Load", 72).onClick([this]{ pendingMode = 0; });
+			saveBtn = &MenuPage_Button(uiScope(), "Save", 72).onClick([this]{ pendingMode = 1; });
+			showMode();
+			headerRight().add(*loadBtn);
+			headerRight().add(*saveBtn);
+		}
 
 	protected:
 		void onOpen() override
@@ -517,7 +529,13 @@ class GamesScreen : public ListScreen
 		{
 			GamesScanner& scanner = Games_Scanner();
 
-			// the mode was switched, or a game was saved: the rows are different
+			// the mode was switched (a button was clicked), or a game was saved: the rows are different
+			if(pendingMode >= 0)
+			{
+				setMode(pendingMode == 1);
+				pendingMode = -1;
+			}
+
 			if(changed)
 			{
 				changed = false;
@@ -558,16 +576,23 @@ class GamesScreen : public ListScreen
 				case GamesList::Click::MESSAGE:
 					showMessage(c.message.c_str());
 					break;
-				case GamesList::Click::LAUNCH:
-					// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
-					RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
-					close();
-					return true;
+				case GamesList::Click::ASK_LAUNCH:
+					if(ask(c, "Restart"))
+					{
+						// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
+						RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
+						close();
+						return true;
+					}
+					break;
 				case GamesList::Click::SAVE_NEW:
 					saveNew();
 					break;
-				case GamesList::Click::SAVE_REPLACE:
-					finishSave(Game_SaveReplace(GameSave_Live(), c.conf, c.running));
+				case GamesList::Click::ASK_REPLACE:
+					if(ask(c, "Replace"))
+						finishSave(Game_SaveReplace(GameSave_Live(), c.conf, c.running));
+					else
+						showMessage("Not saved.");
 					break;
 				case GamesList::Click::ADD_FOUND:
 					return addFound(c.found);
@@ -578,16 +603,60 @@ class GamesScreen : public ListScreen
 			return false;
 		}
 
-		// Switches between launching a game and saving what is running
+		// Rescan: read the DOSBox folder again (after copying a game to the card, say)
 		void onExtraButton() override
 		{
-			list.setSaving(!list.isSaving());
+			list.setScanning(true);
+			Games_Scanner().start();
 			changed = true;
-			showMessage(list.isSaving() ? "Saving what is running. Pick New game, or a game to replace. Press Save / Load to go back"
-				: "Pick a game to restart into. Press Save / Load to save what is running");
+		}
+
+		// Left is Load and Right is Save, on any row
+		bool stepsWithArrows() const override { return true; }
+
+		bool onStep(int, int direction) override
+		{
+			const bool wantSaving = direction > 0;
+
+			if(wantSaving == list.isSaving())
+				return false;
+
+			setMode(wantSaving);
+			return true;
 		}
 
 	private:
+		// Loading (A restarts into a game) or saving (A saves what is running): the rows, the buttons and the help line follow
+		void setMode(bool saving)
+		{
+			if(list.isSaving() == saving)
+				return;
+
+			list.setSaving(saving);
+			showMode();
+			changed = true;
+			showMessage(saving ? "Saving what is running. Pick New game, or a game to replace" : "Pick a game to restart into");
+		}
+
+		// The one that is on has the marked outline
+		void showMode()
+		{
+			loadBtn->style(MenuBarButtonStyle(!list.isSaving()));
+			saveBtn->style(MenuBarButtonStyle(list.isSaving()));
+		}
+
+		// The question in a popover over the list, which stays drawn and takes no input meanwhile. True for the first answer.
+		bool ask(const GamesList::Click& c, const char * yes)
+		{
+			std::vector<std::string> answers;
+			answers.push_back(yes);
+			answers.push_back("Cancel");
+			setEnabled(false);
+			const int answer = MenuPopover_Ask(c.message.c_str(), answers, c.detail, GuiPopover::Anchor());
+			setEnabled(true);
+			return answer == 0;
+		}
+
 		// A name on the on-screen keyboard, the program that is running as the suggestion
 		void saveNew()
 		{
@@ -773,6 +842,9 @@ class GamesScreen : public ListScreen
 
 		GamesList list;
 		bool changed = false;
+		int pendingMode = -1;			//!< 0 or 1 when Load or Save was clicked: done at the next frame
+		GuiTextButton * loadBtn = NULL;
+		GuiTextButton * saveBtn = NULL;
 };
 
 /****************************************************************************

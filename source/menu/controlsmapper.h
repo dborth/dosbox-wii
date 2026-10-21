@@ -70,7 +70,7 @@ bool Mapper_MigrateJoystickBinds(PadMapper& mapper);
  * path. Key and mouse capture go through the ControlsHardware (the USB keyboard and mouse drivers).
  *
  * Every change is written to the mapper file DOSBox is using, whichever file that is (the base one, or the one of
- * the game DOSBox was started with). Saving that as a game of its own is the Games screen's job (Save / Load).
+ * the game DOSBox was started with). Saving that as a game of its own is the Games screen's job (its Save tab).
  *
  * A binding the catalogs cannot hold (a joystick hat, an axis, a fifth joystick button) reads as Not assigned and is
  * left alone until the user changes that button.

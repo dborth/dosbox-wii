@@ -157,58 +157,38 @@ static void testClick()
 	c = l.click(0);
 	CHECK(c.what == GamesList::Click::MESSAGE);
 
-	// a game: first A says what it costs, second launches it
+	// a game: A asks, with the question and what it costs; the screen does the launching
 	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	CHECK(c.message.find("Press A again") != std::string::npos);
-	CHECK(c.message.find("Commander Keen 4") != std::string::npos);
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::LAUNCH);
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK_EQ(c.conf, "sd:/DOSBox/keen4.conf");
+	CHECK_EQ(c.message, "Restart into Commander Keen 4?");
+	CHECK(c.detail.find("KEEN4E.EXE") != std::string::npos);
+	CHECK(c.detail.find("What is running is lost") != std::string::npos);
 
-	// and it is asked again next time
+	// every time, with nothing to undo: moving about changes nothing
+	l.rowHelp(2);
 	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-
-	// another row starts over
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	c = l.click(2);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	c = l.click(2);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	c = l.click(2);
-	CHECK(c.what == GamesList::Click::LAUNCH);
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK_EQ(c.conf, "sd:/DOSBox/GAMES/prince.conf");
 
-	// moving the highlight undoes the first press, even back onto the same row
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	l.rowHelp(2);
-	l.rowHelp(1);
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
+	// a game with no program named still asks
+	c = l.click(3);
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
+	CHECK(c.detail.find("saved controls and settings") != std::string::npos);
 
 	// the game that is running can be restarted: that is what Restart does
 	l.setCurrent("sd:/DOSBox/keen4.conf");
 	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::LAUNCH);
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 
 	// plain DOSBox is a choice when a game is running; it launches no conf
 	c = l.click(0);
-	CHECK(c.what == GamesList::Click::MESSAGE);
+	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK(c.message.find("plain DOSBox") != std::string::npos);
-	c = l.click(0);
-	CHECK(c.what == GamesList::Click::LAUNCH);
 	CHECK(c.conf.empty());
-
-	// a change of what is shown starts over too
-	c = l.click(1);
-	l.setScanning(true);
-	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
+	CHECK(c.detail.find("dosbox.conf alone") != std::string::npos);
 
 	// rows that are not choices
 	l.setScanning(true);
@@ -244,24 +224,23 @@ static void testSaving()
 	GamesList::Click c = l.click(0);
 	CHECK(c.what == GamesList::Click::SAVE_NEW);
 
-	// replacing is two, as it overwrites a file; whether it is the running game goes with it
+	// replacing asks, as it overwrites a file; whether it is the running game goes with it
 	c = l.click(2);
-	CHECK(c.what == GamesList::Click::MESSAGE);
-	CHECK(c.message.find("Press A again to replace Prince of Persia") != std::string::npos);
-	c = l.click(2);
-	CHECK(c.what == GamesList::Click::SAVE_REPLACE);
+	CHECK(c.what == GamesList::Click::ASK_REPLACE);
+	CHECK_EQ(c.message, "Replace Prince of Persia?");
+	CHECK(c.detail.find("overwritten") != std::string::npos);
 	CHECK_EQ(c.conf, "sd:/DOSBox/GAMES/prince.conf");
 	CHECK(!c.running);
-	l.click(1);
 	c = l.click(1);
-	CHECK(c.what == GamesList::Click::SAVE_REPLACE);
+	CHECK(c.what == GamesList::Click::ASK_REPLACE);
 	CHECK(c.running);
+	CHECK(c.detail.find("startup is kept") != std::string::npos);
 
-	// another row starts it over
+	// the same question every time, whatever was clicked before
 	l.click(1);
 	l.click(2);
 	c = l.click(1);
-	CHECK(c.what == GamesList::Click::MESSAGE);
+	CHECK(c.what == GamesList::Click::ASK_REPLACE);
 
 	// nothing found: the New game row is still there to start with
 	GamesList e;
@@ -316,10 +295,9 @@ static void testFound()
 	// the header does nothing
 	CHECK(l.click(4).what == GamesList::Click::NOTHING);
 
-	// a press on a game does not carry over to a found one
-	l.click(1);
+	// a game asks to restart; a found one asks to add
+	CHECK(l.click(1).what == GamesList::Click::ASK_LAUNCH);
 	CHECK(l.click(5).what == GamesList::Click::ADD_FOUND);
-	CHECK(l.click(1).what == GamesList::Click::MESSAGE);
 
 	// with games and nothing else found, nothing changes; with found and no games the list is not "No games found"
 	GamesList only;

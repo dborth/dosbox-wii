@@ -47,13 +47,11 @@ bool GamesList::sameConf(const GameRecord& g, const std::string& cur)
 void GamesList::setGames(const std::vector<GameRecord>& found)
 {
 	games = found;
-	armed = -1;
 }
 
 void GamesList::setFound(const std::vector<FoundGame>& folders)
 {
 	found = folders;
-	armed = -1;
 }
 
 std::vector<GamesList::Row> GamesList::rows() const
@@ -187,7 +185,6 @@ std::string GamesList::foundHelp(const FoundGame& f) const
 
 std::string GamesList::rowHelp(int row)
 {
-	armed = -1;
 	const std::vector<Row> r = rows();
 	if(row < 0 || (size_t)row >= r.size())
 		return std::string();
@@ -210,7 +207,7 @@ std::string GamesList::rowHelp(int row)
 			return "Reading the DOSBox folder";
 		case NONE_FOUND:
 			return saving ? "No games yet. New game saves what is running as the first"
-				: "No games yet. Save one from Save / Load, or put a .conf in the DOSBox folder or a folder inside it. A # title= line names it";
+				: "No games yet. Save one from the Save tab, or put a .conf in the DOSBox folder or a folder inside it. A # title= line names it";
 	}
 	return std::string();
 }
@@ -232,14 +229,12 @@ GamesList::Click GamesList::click(int row)
 			{
 				c.what = Click::MESSAGE;
 				c.message = "Plain DOSBox is what is running";
-				armed = -1;
 				return c;
 			}
 			name = "plain DOSBox";
 			break;
 		case NEW_GAME:
 			c.what = Click::SAVE_NEW;
-			armed = -1;
 			return c;
 		case GAME:
 		{
@@ -251,31 +246,33 @@ GamesList::Click GamesList::click(int row)
 		case FOUND:
 			c.what = Click::ADD_FOUND;
 			c.found = found[(size_t)chosen.game];
-			armed = -1;
 			return c;
 		default:
 			// a row that says something, not a choice
 			return c;
 	}
 
-	if(armed != row)
-	{
-		armed = row;
-		c.what = Click::MESSAGE;
-		c.message = saving ? "Press A again to replace " + fit(name, 40) + " with what is running. Its saved controls, settings and startup are overwritten"
-			: "Press A again to restart into " + fit(name, 40) + ". Progress in what is running is lost";
-		return c;
-	}
-
-	armed = -1;
+	// launching restarts DOSBox and replacing overwrites a game: the screen asks first, in a popover, with this as the question
 	if(saving)
 	{
-		c.what = Click::SAVE_REPLACE;
+		c.what = Click::ASK_REPLACE;
 		c.conf = conf;
 		c.running = isCurrent(games[(size_t)chosen.game]);
+		c.message = "Replace " + fit(name, 24) + "?";
+		c.detail = c.running ? "Saves what is running over it, the game that started it. Its startup is kept."
+			: "Its saved controls, settings and startup are overwritten with what is running.";
 		return c;
 	}
-	c.what = Click::LAUNCH;
+	c.what = Click::ASK_LAUNCH;
 	c.conf = conf;
+	c.message = "Restart into " + fit(name, 20) + "?";
+	if(conf.empty())
+		c.detail = "DOSBox restarts with dosbox.conf alone, with no game's controls or settings. What is running is lost.";
+	else
+	{
+		const std::string program = games[(size_t)chosen.game].program;
+		c.detail = (program.empty() ? std::string("DOSBox restarts with its saved controls and settings.")
+			: "DOSBox restarts and runs " + program + " with its saved controls and settings.") + " What is running is lost.";
+	}
 	return c;
 }
