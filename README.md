@@ -44,7 +44,7 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
 
 ## Nightly Builds
 
-Every push and pull request is built by [`build.yml`](.github/workflows/build.yml). Each push to `master` also replaces the **Pre-release** downloads below, so these are the latest `master` builds:
+Every push builds automatically. Grab the latest continuous-integration build:
 
 | Platform    | Status                            | Download                          |
 |-------------|-----------------------------------|-----------------------------------|
@@ -67,7 +67,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 - A Home menu you can open at any time (Home, or L + R + Plus, or a tap of a keyboard's Windows key): speed, frameskip, aspect and filter at a glance, plus settings pages for Performance, Video, Audio, Keyboard & Mouse and the DOS joystick, and an *All settings* editor for the rest
 - A **Status** page showing what DOSBox is configured to and what is in effect (running CPU core and whether the dynarec is active, cycles, screen mode, audio output, mounted drives, loaded config file), with anything not at DOSBox's default marked
 - Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
-- **Setups**: save every player's buttons and what DOS sees under a name, and load them again later
+- **Games**: save every player's buttons and what DOS sees under a name, and load them again later
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
 - Video output adjustments: original (4:3) or uncorrected (square-pixel) aspect, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
