@@ -546,6 +546,137 @@ class BareFiles : public FileGameSaveHost
 		std::vector<GameDrive> drives() const override { return std::vector<GameDrive>(); }
 };
 
+static FoundGame foundGame(const char * folder, std::vector<std::string> programs)
+{
+	FoundGame f;
+	f.folder = folder;
+	f.title = Game_SuggestTitle(folder);
+	f.programs = programs;
+	return f;
+}
+
+static void testAddFound()
+{
+	FakeHost h;
+	const FoundGame wolf = foundGame("WOLF3D", V("WOLF3D.EXE", "SETUP.EXE"));
+
+	// the file name comes from the folder, the title is whatever was typed
+	CHECK_EQ(Game_FoundConfPath(h, wolf, "Wolfenstein 3D"), "sd:/DOSBox/Games/WOLF3D.conf");
+
+	const GameSaveResult r = Game_AddFound(h, wolf, "Wolfenstein 3D", "WOLF3D.EXE");
+	CHECK(r.ok);
+	CHECK(!r.exists);
+	CHECK_EQ(r.path, "sd:/DOSBox/Games/WOLF3D.conf");
+	CHECK(has(r.message, "Added WOLF3D.conf"));
+	CHECK(has(r.message, "defaults"));
+	CHECK(h.made.count("sd:/DOSBox/Games") > 0);
+
+	// a small conf: title, program, startup; no map, no settings; only that one file written
+	const std::string conf = h.files["sd:/DOSBox/Games/WOLF3D.conf"];
+	CHECK_EQ(conf, "# title=Wolfenstein 3D\n# program=WOLF3D.EXE\n\n[autoexec]\nc:\ncd \\WOLF3D\nWOLF3D.EXE\n");
+	CHECK_N(h.written.size(), 1);
+	CHECK(!has(conf, "mapperfile"));
+	CHECK(!has(conf, "[cpu]"));
+	CHECK(h.files.count("sd:/DOSBox/Games/WOLF3D.map") == 0);
+	CHECK_EQ(h.files["sd:/DOSBox/dosbox.conf"], "[autoexec]\nmount d sd:/CD\n");
+
+	// the scan reads it back as that game, covering the folder: it is no longer offered
+	GameRecord g;
+	g.name = "WOLF3D";
+	Game_ParseConf(conf, g);
+	CHECK_EQ(g.title, "Wolfenstein 3D");
+	CHECK_EQ(g.program, "WOLF3D.EXE");
+	CHECK(!g.programInferred);
+	CHECK_EQ(join(Game_AutoexecFolders(Conf_SectionLines(conf, "autoexec"))), "wolf3d");
+	CHECK_EQ(Game_InferProgram(Conf_SectionLines(conf, "autoexec")), "WOLF3D.EXE");
+
+	// the program chosen, the first by default, a BAT run by its name
+	CHECK_EQ(Game_FoundConfText(wolf, "W", ""), "# title=W\n# program=WOLF3D.EXE\n\n[autoexec]\nc:\ncd \\WOLF3D\nWOLF3D.EXE\n");
+	CHECK(has(Game_FoundConfText(wolf, "W", "setup.exe"), "# program=SETUP.EXE\n"));
+	CHECK(has(Game_FoundConfText(foundGame("KEEN", V("KEEN.BAT")), "Keen", "KEEN.BAT"), "cd \\KEEN\nKEEN.BAT\n"));
+	// the folder as it is on the card, in lower case, is written the DOS way
+	CHECK(has(Game_FoundConfText(foundGame("keen", V("keen4e.exe")), "K", ""), "cd \\KEEN\nKEEN4E.EXE\n"));
+}
+
+static void testAddFoundNames()
+{
+	FakeHost h;
+	const FoundGame doom = foundGame("DOOM", V("DOOM.EXE"));
+
+	// the folder's name is taken (a conf by hand with no program): the title's name, then the folder numbered
+	h.files["sd:/DOSBox/Games/DOOM.conf"] = "[cpu]\n";
+	CHECK_EQ(Game_FoundConfPath(h, doom, "Doom Shareware"), "sd:/DOSBox/Games/Doom Shareware.conf");
+	h.files["sd:/DOSBox/Games/Doom Shareware.conf"] = "";
+	CHECK_EQ(Game_FoundConfPath(h, doom, "Doom Shareware"), "sd:/DOSBox/Games/DOOM 2.conf");
+	for(int n = 2; n <= 8; n++)
+		h.files["sd:/DOSBox/Games/DOOM " + std::to_string(n) + ".conf"] = "";
+	CHECK_EQ(Game_FoundConfPath(h, doom, "Doom Shareware"), "sd:/DOSBox/Games/DOOM 9.conf");
+
+	const GameSaveResult r = Game_AddFound(h, doom, "Doom Shareware", "DOOM.EXE");
+	CHECK(r.ok);
+	CHECK_EQ(r.path, "sd:/DOSBox/Games/DOOM 9.conf");
+	// what was there is untouched
+	CHECK_EQ(h.files["sd:/DOSBox/Games/DOOM.conf"], "[cpu]\n");
+
+	// every name taken: nothing is written
+	h.files["sd:/DOSBox/Games/DOOM 9.conf"] = "keep";
+	const size_t before = h.written.size();
+	const GameSaveResult none = Game_AddFound(h, doom, "Doom Shareware", "DOOM.EXE");
+	CHECK(!none.ok);
+	CHECK(none.exists);
+	CHECK(has(none.message, "Not added"));
+	CHECK_N(h.written.size(), before);
+	CHECK_EQ(h.files["sd:/DOSBox/Games/DOOM 9.conf"], "keep");
+
+	// a title with nothing the card can hold uses the folder; the file name never has a character the card cannot
+	FakeHost g;
+	CHECK_EQ(Game_FoundConfPath(g, doom, "???"), "sd:/DOSBox/Games/DOOM.conf");
+	CHECK_EQ(Game_FoundConfText(doom, "  \t ", ""), "# title=DOOM\n# program=DOOM.EXE\n\n[autoexec]\nc:\ncd \\DOOM\nDOOM.EXE\n");
+	// a title cannot start a new setting, and is kept to the length a title has
+	CHECK(has(Game_FoundConfText(doom, "A\n[cpu]\ncycles=1", ""), "# title=A [cpu] cycles=1\n"));
+	CHECK(!has(Game_FoundConfText(doom, "A\n[cpu]", ""), "\n[cpu]"));
+	CHECK(has(Game_FoundConfText(doom, std::string(80, 'x'), ""), "# title=" + std::string(40, 'x') + "\n"));
+}
+
+static void testAddFoundFailures()
+{
+	const FoundGame wolf = foundGame("WOLF3D", V("WOLF3D.EXE"));
+
+	// no program
+	FoundGame bare = wolf;
+	bare.programs.clear();
+	FakeHost a;
+	GameSaveResult r = Game_AddFound(a, bare, "W", "");
+	CHECK(!r.ok);
+	CHECK(a.written.empty());
+	// ...unless one is given
+	CHECK(Game_AddFound(a, bare, "W", "X.EXE").ok);
+	CHECK(has(a.files["sd:/DOSBox/Games/WOLF3D.conf"], "# program=X.EXE\n"));
+
+	// no folder to make
+	FakeHost b;
+	b.mkdirOk = false;
+	r = Game_AddFound(b, wolf, "W", "");
+	CHECK(!r.ok);
+	CHECK(!r.exists);
+	CHECK(has(r.message, "Not saved"));
+	CHECK(b.written.empty());
+
+	// the write fails
+	FakeHost c;
+	c.failWrite.insert("WOLF3D.conf");
+	r = Game_AddFound(c, wolf, "W", "");
+	CHECK(!r.ok);
+	CHECK(has(r.message, "Could not write WOLF3D.conf"));
+	CHECK(c.files.count("sd:/DOSBox/Games/WOLF3D.conf") == 0);
+
+	// nothing is asked of the running core: a found game is added with nothing running (no config, no mapper, no program)
+	FakeHost d;
+	d.configOk = false;
+	d.saveMapperOk = false;
+	CHECK(Game_AddFound(d, wolf, "W", "").ok);
+}
+
 static void testFileHost()
 {
 	char tmpl[] = "/tmp/gamesaveXXXXXX";
@@ -608,6 +739,9 @@ int main()
 	testReplace();
 	testMapper();
 	testFailures();
+	testAddFound();
+	testAddFoundNames();
+	testAddFoundFailures();
 	testFileHost();
 
 	if(failures)

@@ -4,7 +4,7 @@
  * gameslive.h
  *
  * The games scan on this console: the DOSBox folder on the app drive, and a
- * scanner that does the listing and reading on a worker thread, so a slow card
+ * scanner that does the listing (the games, and the folders that could be games) and reading on a worker thread, so a slow card
  * or a long list does not stall the menu. The menu starts it when the Games
  * page opens and polls it from its own loop (UpdateGui() keeps running).
  ***************************************************************************/
@@ -31,6 +31,8 @@ class GamesScanner
 		bool poll();
 		/** The result of the last finished scan; empty until there was one. */
 		const std::vector<GameRecord>& games() const { return current; }
+		/** The folders the last finished scan found that could be games (games.h, FoundGame). */
+		const std::vector<FoundGame>& found() const { return currentFound; }
 		/** Whether a scan has finished since the app started, even if it found nothing. */
 		bool scannedOnce() const { return scanned; }
 		/** Stops waiting for a running scan (joins it; a scan is short and cannot be cut off mid-listing). For shutting down. */
@@ -43,7 +45,9 @@ class GamesScanner
 		Mutex lock;
 		std::vector<GameRecord> pending;	// the worker's result, until poll() takes it
 		bool finished;				// the worker is done (under lock)
+		std::vector<FoundGame> pendingFound;
 		std::vector<GameRecord> current;
+		std::vector<FoundGame> currentFound;
 		bool scanned;
 };
 

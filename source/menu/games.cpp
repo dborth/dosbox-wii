@@ -149,6 +149,7 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 	out.program.clear();
 	out.programInferred = false;
 	out.autoexec.clear();
+	out.folders.clear();
 
 	std::string section;
 	std::vector<std::string> autoexec;	// all of it, for working out the program
@@ -188,6 +189,8 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 		}
 	}
 
+	out.folders = Game_AutoexecFolders(autoexec);
+
 	if(out.title.empty())
 		out.title = out.name;
 
@@ -196,6 +199,240 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 		out.program = Game_InferProgram(autoexec);
 		out.programInferred = !out.program.empty();
 	}
+}
+
+
+// ---- folders an autoexec uses, and names
+
+namespace {
+
+// Splits a path on both separators into its parts, leaving out empty ones
+std::vector<std::string> pathParts(const std::string& path)
+{
+	std::vector<std::string> parts;
+	std::string part;
+	for(size_t i = 0; i <= path.size(); i++)
+	{
+		if(i == path.size() || path[i] == '/' || path[i] == '\\')
+		{
+			if(!part.empty())
+				parts.push_back(part);
+			part.clear();
+		}
+		else
+			part += path[i];
+	}
+	return parts;
+}
+
+// A command's arguments as words, a quoted path being one
+std::vector<std::string> words(const std::string& text)
+{
+	std::vector<std::string> out;
+	std::string word;
+	bool quoted = false, any = false;
+	for(size_t i = 0; i < text.size(); i++)
+	{
+		const char c = text[i];
+		if(c == '"')
+		{
+			quoted = !quoted;
+			any = true;
+		}
+		else if((c == ' ' || c == '\t') && !quoted)
+		{
+			if(any)
+				out.push_back(word);
+			word.clear();
+			any = false;
+		}
+		else
+		{
+			word += c;
+			any = true;
+		}
+	}
+	if(any)
+		out.push_back(word);
+	return out;
+}
+
+void addUnique(std::vector<std::string>& v, const std::string& s)
+{
+	for(size_t i = 0; i < v.size(); i++)
+		if(v[i] == s)
+			return;
+	v.push_back(s);
+}
+
+} // namespace
+
+std::vector<std::string> Game_AutoexecFolders(const std::vector<std::string>& autoexec)
+{
+	std::vector<std::string> out;
+
+	for(size_t i = 0; i < autoexec.size(); i++)
+	{
+		std::string line = trim(autoexec[i]);
+		if(line.empty() || isComment(line))
+			continue;
+		if(line[0] == '@')
+			line = trim(line.substr(1));
+
+		std::string rest;
+		const std::string word = lower(firstWord(line, &rest));
+
+		if(word == "cd" || word == "chdir" || (word.size() > 2 && word.compare(0, 2, "cd") == 0 && (word[2] == '\\' || word[2] == '/')))
+		{
+			// "cd \keen", "cd\keen", "cd keen", "cd c:\keen"
+			std::string path = word.size() > 2 && word[0] == 'c' && word[1] == 'd' && word != "chdir" ? word.substr(2) + rest : rest;
+			if(path.size() > 1 && path[1] == ':')
+				path = path.substr(2);
+			const std::vector<std::string> parts = pathParts(path);
+			if(!parts.empty() && parts[0] != "." && parts[0] != "..")
+				addUnique(out, lower(parts[0]));
+		}
+		else if(word == "mount")
+		{
+			// mount <drive> <path> [options]: every folder in the path (a device such as "sd:" is not one)
+			const std::vector<std::string> args = words(rest);
+			if(args.size() < 2)
+				continue;
+			const std::vector<std::string> parts = pathParts(args[1]);
+			for(size_t p = 0; p < parts.size(); p++)
+				if(parts[p].find(':') == std::string::npos && parts[p] != "." && parts[p] != "..")
+					addUnique(out, lower(parts[p]));
+		}
+	}
+	return out;
+}
+
+bool Game_IsDosName(const std::string& name)
+{
+	if(name.empty())
+		return false;
+
+	const size_t dot = name.find('.');
+	if(dot != std::string::npos && name.find('.', dot + 1) != std::string::npos)
+		return false;
+
+	const std::string base = dot == std::string::npos ? name : name.substr(0, dot);
+	const std::string ext = dot == std::string::npos ? std::string() : name.substr(dot + 1);
+	if(base.empty() || base.size() > 8 || ext.size() > 3 || (dot != std::string::npos && ext.empty()))
+		return false;
+
+	for(size_t i = 0; i < name.size(); i++)
+	{
+		const unsigned char c = (unsigned char)name[i];
+		if(c == '.' || isalnum(c) || (c < 128 && strchr("_-!#$%&'(){}@^", c) != nullptr && c != 0))
+			continue;
+		return false;
+	}
+	return true;
+}
+
+std::string Game_SuggestTitle(const std::string& folder)
+{
+	bool hasUpper = false, hasLower = false;
+	for(size_t i = 0; i < folder.size(); i++)
+	{
+		if(isupper((unsigned char)folder[i]))
+			hasUpper = true;
+		else if(islower((unsigned char)folder[i]))
+			hasLower = true;
+	}
+	if(hasUpper && hasLower)
+		return folder;
+
+	std::string out;
+	bool start = true;
+	for(size_t i = 0; i < folder.size(); i++)
+	{
+		const char c = folder[i];
+		if(c == '_' || c == '-' || c == ' ')
+		{
+			if(!out.empty() && out[out.size() - 1] != ' ')
+				out += ' ';
+			start = true;
+			continue;
+		}
+		out += start ? (char)toupper((unsigned char)c) : (char)tolower((unsigned char)c);
+		start = false;
+	}
+	return out.empty() ? folder : out;
+}
+
+namespace {
+
+// Programs that are not the game: set-up, installers, drivers and the like
+bool isUtility(const std::string& stem)
+{
+	static const char * const names[] = {
+		"setup", "install", "installer", "inst", "uninst", "uninstal", "uninstall", "config", "configure", "cfg", "sound",
+		"setsound", "sndsetup", "soundset", "setblast", "dos4gw", "dos32a", "cwsdpmi", "pmodew", "mouse", "ctmouse",
+		"vendor", "order", "help", "readme", "convert", "patch", "update", "pkunzip", "pkzip", "unzip", "arj", "lha", nullptr
+	};
+	const std::string s = lower(stem);
+	for(int i = 0; names[i]; i++)
+		if(s == names[i])
+			return true;
+	return s.compare(0, 5, "unins") == 0 || s.compare(0, 5, "setup") == 0 || s.compare(0, 6, "instal") == 0;
+}
+
+// Lower is better
+int programScore(const std::string& folder, const std::string& stem, const std::string& ext)
+{
+	const bool bat = ext == "bat";
+	int base;
+	if(isUtility(stem))
+		base = 100;
+	else
+	{
+		const std::string f = lower(folder), s = lower(stem);
+		const bool same = f == s;
+		const std::string& shorter = f.size() < s.size() ? f : s;
+		const std::string& longer = f.size() < s.size() ? s : f;
+		const bool related = shorter.size() >= 3 && longer.compare(0, shorter.size(), shorter) == 0;
+		base = same ? (bat ? 0 : 1) : related ? (bat ? 2 : 3) : (bat ? 4 : 5);
+	}
+	return base * 10 + (ext == "com" ? 1 : 0);
+}
+
+} // namespace
+
+std::vector<std::string> Game_RankPrograms(const std::string& folder, const std::vector<std::string>& names)
+{
+	struct Entry { int score; std::string name; };
+	std::vector<Entry> entries;
+
+	for(size_t i = 0; i < names.size(); i++)
+	{
+		const std::string name = upper(names[i]);
+		const size_t dot = name.rfind('.');
+		if(dot == std::string::npos || !Game_IsDosName(name))
+			continue;
+		const std::string ext = lower(name.substr(dot + 1)), stem = name.substr(0, dot);
+		if(ext != "exe" && ext != "com" && ext != "bat")
+			continue;
+
+		bool repeat = false;
+		for(size_t e = 0; e < entries.size(); e++)
+			repeat = repeat || entries[e].name == name;
+		if(repeat)
+			continue;
+
+		Entry entry = { programScore(folder, stem, ext), name };
+		entries.push_back(entry);
+	}
+
+	std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+		return a.score != b.score ? a.score < b.score : a.name < b.name;
+	});
+
+	std::vector<std::string> out;
+	for(size_t i = 0; i < entries.size() && out.size() < FOUND_PROGRAMS_MAX; i++)
+		out.push_back(entries[i].name);
+	return out;
 }
 
 // ---- the scan
@@ -240,12 +477,50 @@ bool byTitle(const GameRecord& a, const GameRecord& b)
 
 } // namespace
 
-std::vector<GameRecord> Games_Scan(const GamesHost& host)
+namespace {
+
+bool sameNoCase(const std::string& a, const std::string& b)
 {
-	std::vector<GameRecord> games;
+	return strcasecmp(a.c_str(), b.c_str()) == 0;
+}
+
+// Whether a game already covers a folder that holds these programs (upper case)
+bool covered(const std::string& folder, const std::vector<std::string>& programs, const std::vector<GameRecord>& games)
+{
+	const std::string f = lower(folder);
+	for(size_t g = 0; g < games.size(); g++)
+	{
+		const GameRecord& game = games[g];
+
+		// its startup goes into the folder or mounts it
+		for(size_t i = 0; i < game.folders.size(); i++)
+			if(game.folders[i] == f)
+				return true;
+
+		// otherwise its program is one of the folder's (a game with a cd of its own is somewhere else), or it is a conf kept in the folder
+		if(game.program.empty())
+			continue;
+		const bool listed = std::find(programs.begin(), programs.end(), upper(game.program)) != programs.end();
+		if(listed && (game.folders.empty() || sameNoCase(game.where, folder)))
+			return true;
+	}
+	return false;
+}
+
+bool byFolder(const FoundGame& a, const FoundGame& b)
+{
+	return strcasecmp(a.folder.c_str(), b.folder.c_str()) < 0;
+}
+
+} // namespace
+
+GamesScan Games_ScanAll(const GamesHost& host)
+{
+	GamesScan result;
+	std::vector<GameRecord>& games = result.games;
 	const std::string base = host.directory();
 	if(base.empty())
-		return games;
+		return result;
 
 	const std::vector<std::string> top = host.list(base);
 	scanFolder(host, base, std::string(), top, games);
@@ -262,11 +537,44 @@ std::vector<GameRecord> Games_Scan(const GamesHost& host)
 			folders.push_back(top[i]);
 	}
 
-	for(size_t f = 0; f < folders.size() && games.size() < GAMES_MAX; f++)
-		scanFolder(host, base + "/" + folders[f], folders[f], host.list(base + "/" + folders[f]), games);
+	// Each folder is listed once, for its confs and for its programs
+	struct Candidate { std::string folder; std::vector<std::string> programs; };
+	std::vector<Candidate> candidates;
+
+	for(size_t f = 0; f < folders.size(); f++)
+	{
+		const std::vector<std::string> names = host.list(base + "/" + folders[f]);
+		scanFolder(host, base + "/" + folders[f], folders[f], names, games);
+
+		if(sameNoCase(folders[f], "Games") || !Game_IsDosName(folders[f]))
+			continue;
+		Candidate c;
+		c.folder = folders[f];
+		c.programs = Game_RankPrograms(folders[f], names);
+		if(!c.programs.empty())
+			candidates.push_back(c);
+	}
+
+	// Which of them no game covers is known once every conf has been read
+	for(size_t i = 0; i < candidates.size() && result.found.size() < FOUND_MAX; i++)
+	{
+		if(covered(candidates[i].folder, candidates[i].programs, games))
+			continue;
+		FoundGame found;
+		found.folder = candidates[i].folder;
+		found.title = Game_SuggestTitle(candidates[i].folder);
+		found.programs = candidates[i].programs;
+		result.found.push_back(found);
+	}
 
 	std::stable_sort(games.begin(), games.end(), byTitle);
-	return games;
+	std::stable_sort(result.found.begin(), result.found.end(), byFolder);
+	return result;
+}
+
+std::vector<GameRecord> Games_Scan(const GamesHost& host)
+{
+	return Games_ScanAll(host).games;
 }
 
 // ---- FileGamesHost

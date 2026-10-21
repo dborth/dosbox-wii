@@ -93,10 +93,11 @@ GameSaveHost& GameSave_Live()
 void * GamesScanner::Main(void * self)
 {
 	GamesScanner * s = (GamesScanner *)self;
-	std::vector<GameRecord> found = Games_Scan(Games_Live());
+	GamesScan scan = Games_ScanAll(Games_Live());
 
 	MutexLock guard(s->lock);
-	s->pending.swap(found);
+	s->pending.swap(scan.games);
+	s->pendingFound.swap(scan.found);
 	s->finished = true;
 	return nullptr;
 }
@@ -135,6 +136,8 @@ bool GamesScanner::poll()
 		MutexLock guard(lock);
 		current.swap(pending);
 		pending.clear();
+		currentFound.swap(pendingFound);
+		pendingFound.clear();
 		finished = false;
 	}
 	scanned = true;

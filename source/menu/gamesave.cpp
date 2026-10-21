@@ -696,3 +696,79 @@ GameSaveResult Game_SaveActive(GameSaveHost& host, const std::string& given)
 	what.keepStartup = true;
 	return Game_Save(host, what);
 }
+
+// ---- adding a found game
+
+std::string Game_FoundConfPath(const GameSaveHost& host, const FoundGame& found, const std::string& title)
+{
+	const std::string dir = Game_Directory(host);
+	if(dir.empty())
+		return std::string();
+
+	std::vector<std::string> names;
+	names.push_back(Game_FileName(found.folder));
+	names.push_back(Game_FileName(title));
+	for(int n = 2; n <= 9; n++)
+		names.push_back(Game_FileName(found.folder) + " " + std::to_string(n));
+
+	for(size_t i = 0; i < names.size(); i++)
+	{
+		if(names[i].empty())
+			continue;
+		const std::string path = dir + "/" + names[i] + ".conf";
+		if(!host.exists(path))
+			return path;
+	}
+	return std::string();
+}
+
+std::string Game_FoundConfText(const FoundGame& found, const std::string& title, const std::string& program)
+{
+	std::string name = trim(oneLine(title));
+	if(name.size() > kMaxTitle)
+		name.resize(kMaxTitle);
+	if(name.empty())
+		name = found.folder;
+
+	const std::string prog = upper(oneLine(program.empty() && !found.programs.empty() ? found.programs[0] : program));
+
+	std::string text = "# title=" + name + "\n";
+	if(!prog.empty())
+		text += "# program=" + prog + "\n";
+	text += "\n[autoexec]\nc:\ncd \\" + upper(oneLine(found.folder)) + "\n";
+	if(!prog.empty())
+		text += prog + "\n";
+	return text;
+}
+
+GameSaveResult Game_AddFound(GameSaveHost& host, const FoundGame& found, const std::string& title, const std::string& program)
+{
+	if(found.folder.empty() || (program.empty() && found.programs.empty()))
+		return fail(std::string(), "There is no program to run.");
+
+	const std::string dir = Game_Directory(host);
+	if(dir.empty())
+		return fail(std::string(), "There is nowhere to save it.");
+
+	const std::string path = Game_FoundConfPath(host, found, title);
+	if(path.empty())
+	{
+		GameSaveResult r;
+		r.exists = true;
+		r.path = Game_ConfPath(host, found.folder);
+		r.message = "Not added. Every name for it is taken in " + dir + ".";
+		return r;
+	}
+
+	if(!host.makeDirectory(dir))
+		return fail(path, "Could not make the folder " + dir + ".");
+
+	if(!host.write(path, Game_FoundConfText(found, title, program)))
+		return fail(path, "Could not write " + fileOf(path) + ".");
+
+	GameSaveResult r;
+	r.ok = true;
+	r.path = path;
+	r.message = "Added " + fileOf(path) + ". Its controls start from the defaults.";
+	return r;
+}

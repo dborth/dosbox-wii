@@ -490,7 +490,10 @@ class GamesScreen : public ListScreen
 
 			// what the last scan found is there at once; a new scan replaces it
 			if(scanner.scannedOnce())
+			{
 				list.setGames(scanner.games());
+				list.setFound(scanner.found());
+			}
 			list.setCurrent(GetGameConf());
 			list.setScanning(true);
 			scanner.start();
@@ -513,6 +516,7 @@ class GamesScreen : public ListScreen
 				return false;
 
 			list.setGames(scanner.games());
+			list.setFound(scanner.found());
 			list.setScanning(false);
 			return true;
 		}
@@ -553,6 +557,8 @@ class GamesScreen : public ListScreen
 				case GamesList::Click::SAVE_REPLACE:
 					finishSave(Game_SaveReplace(GameSave_Live(), c.conf, c.running));
 					break;
+				case GamesList::Click::ADD_FOUND:
+					return addFound(c.found);
 				default:
 					break;
 			}
@@ -619,6 +625,115 @@ class GamesScreen : public ListScreen
 
 			bringBack();
 			finishSave(r);
+		}
+
+		// A folder found on the card, as a game. The question is a popover over the list: the name, the program when the
+		// folder has several, and what is written. Add and play restarts into it; Add leaves the list to show it.
+		// True when the rows changed or the screen is closing.
+		bool addFound(const FoundGame& found)
+		{
+			std::string title = found.title;
+			size_t program = 0;
+
+			while(true)
+			{
+				const std::string confPath = Game_FoundConfPath(GameSave_Live(), found, title);
+				const std::string confName = confPath.empty() ? std::string("a game") : confPath.substr(confPath.find_last_of('/') + 1);
+				const std::string runs = found.programs[program];
+
+				std::vector<PickerItem> items;
+				PickerItem play;
+				play.name = "Add and play";
+				play.current = false;
+				MenuPopover_Wrap(play.lines, "Adds " + confName + " and restarts DOSBox into " + runs + ". What is running is lost", 44);
+				items.push_back(play);
+
+				PickerItem add;
+				add.name = "Add";
+				add.current = false;
+				MenuPopover_Wrap(add.lines, "Adds " + confName + ": a startup that runs " + runs + ". Its controls and settings start from your defaults", 44);
+				items.push_back(add);
+
+				PickerItem rename;
+				rename.name = "Name   " + title;
+				rename.current = false;
+				MenuPopover_Wrap(rename.lines, "A to rename. It is the name in the Games list", 44);
+				items.push_back(rename);
+
+				const bool several = found.programs.size() > 1;
+				if(several)
+				{
+					PickerItem pick;
+					pick.name = "Runs   " + runs;
+					pick.current = false;
+					MenuPopover_Wrap(pick.lines, "A to choose (" + std::to_string(found.programs.size()) + " found in DOSBox/" + found.folder + ")", 44);
+					items.push_back(pick);
+				}
+
+				PickerItem cancel;
+				cancel.name = "Cancel";
+				cancel.current = false;
+				MenuPopover_Wrap(cancel.lines, "Nothing is added", 44);
+				items.push_back(cancel);
+
+				const std::string question = "Add " + (title.size() > 28 ? title.substr(0, 26) + ".." : title) + " as a game?";
+				int choice = MenuPopover_Pick(question.c_str(), items, GuiPopoverAnchor());
+
+				// the choices that follow Add and play, Add, Name are Runs (when there is one), then Cancel
+				if(choice == 2)
+				{
+					char typed[64];
+					snprintf(typed, sizeof(typed), "%s", title.c_str());
+					putAway();		// the on-screen keyboard is a screen of its own
+					const bool named = OnScreenKeyboard(typed, 41);
+					bringBack();
+					const std::string trimmed = typed;
+					const size_t first = trimmed.find_first_not_of(' ');
+					if(named && first != std::string::npos)
+						title = trimmed.substr(first, trimmed.find_last_not_of(' ') - first + 1);
+					continue;
+				}
+
+				if(several && choice == 3)
+				{
+					std::vector<PickerItem> programs;
+					for(size_t i = 0; i < found.programs.size(); i++)
+					{
+						PickerItem p;
+						p.name = found.programs[i];
+						p.current = i == program;
+						programs.push_back(p);
+					}
+					const int chosen = MenuPopover_Pick("Program to run", programs, GuiPopoverAnchor());
+					if(chosen >= 0)
+						program = (size_t)chosen;
+					continue;
+				}
+
+				if(choice != 0 && choice != 1)
+					return false;		// Cancel, or the popover was closed
+
+				const GameSaveResult r = Game_AddFound(GameSave_Live(), found, title, found.programs[program]);
+				if(!r.ok)
+				{
+					showMessage(r.message.c_str());
+					return false;
+				}
+
+				if(choice == 0)
+				{
+					// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
+					RequestRestartInto(r.path.c_str());
+					close();
+					return true;
+				}
+
+				list.setScanning(true);
+				Games_Scanner().start();
+				changed = true;
+				showMessage(r.message.c_str());
+				return true;
+			}
 		}
 
 		// The game that is running was saved: the list shows it, and it is the one running

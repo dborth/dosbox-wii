@@ -50,13 +50,26 @@ void GamesList::setGames(const std::vector<GameRecord>& found)
 	armed = -1;
 }
 
+void GamesList::setFound(const std::vector<FoundGame>& folders)
+{
+	found = folders;
+	armed = -1;
+}
+
 std::vector<GamesList::Row> GamesList::rows() const
 {
 	std::vector<Row> r;
 	Row first = { saving ? NEW_GAME : PLAIN, -1 };
 	r.push_back(first);
 
-	const size_t shown = games.size() < limit ? games.size() : limit;
+	// The rows for games and found folders share `limit`; the found ones are at most a quarter of it and take a header too
+	size_t foundShown = saving ? 0 : found.size();
+	if(foundShown > limit / 4)
+		foundShown = limit / 4;
+	const size_t reserved = foundShown ? foundShown + 1 : 0;
+	const size_t room = limit > reserved ? limit - reserved : 0;
+
+	const size_t shown = games.size() < room ? games.size() : room;
 	for(size_t i = 0; i < shown; i++)
 	{
 		Row g = { GAME, (int)i };
@@ -67,12 +80,22 @@ std::vector<GamesList::Row> GamesList::rows() const
 		Row more = { MORE, (int)(games.size() - shown) };
 		r.push_back(more);
 	}
+	if(foundShown)
+	{
+		Row header = { FOUND_HEADER, -1 };
+		r.push_back(header);
+		for(size_t i = 0; i < foundShown; i++)
+		{
+			Row f = { FOUND, (int)i };
+			r.push_back(f);
+		}
+	}
 	if(scanning)
 	{
 		Row s = { SCANNING, -1 };
 		r.push_back(s);
 	}
-	else if(games.empty())
+	else if(games.empty() && !foundShown)
 	{
 		Row none = { NONE_FOUND, -1 };
 		r.push_back(none);
@@ -115,6 +138,13 @@ void GamesList::rowText(int row, std::string& name, std::string& value) const
 				value = fit(g.program, kValueChars);
 			break;
 		}
+		case FOUND_HEADER:
+			name = "Found on your card";
+			break;
+		case FOUND:
+			name = fit(found[(size_t)r[(size_t)row].game].folder, kNameChars);
+			value = "Add";
+			break;
 		case MORE:
 			name = fit(std::to_string(r[(size_t)row].game) + " more not shown", kNameChars);
 			break;
@@ -147,6 +177,14 @@ std::string GamesList::gameHelp(const GameRecord& g) const
 	return fit(text, kHelpChars);
 }
 
+std::string GamesList::foundHelp(const FoundGame& f) const
+{
+	std::string text = "Not set up yet. DOSBox/" + f.folder + " holds " + f.programs[0];
+	if(f.programs.size() > 1)
+		text += " and " + std::to_string(f.programs.size() - 1) + " more";
+	return fit(text + ". A adds it as a game", kHelpChars);
+}
+
 std::string GamesList::rowHelp(int row)
 {
 	armed = -1;
@@ -162,6 +200,10 @@ std::string GamesList::rowHelp(int row)
 			return "Saves what is running under a name you type: its controls, settings and what starts it. dosbox.conf is not changed";
 		case GAME:
 			return gameHelp(games[(size_t)r[(size_t)row].game]);
+		case FOUND_HEADER:
+			return "Folders in the DOSBox folder that hold a program but are not a game yet. A on one adds it";
+		case FOUND:
+			return foundHelp(found[(size_t)r[(size_t)row].game]);
 		case MORE:
 			return "Only the first ones are listed. Keep fewer confs in the DOSBox folder, or put them in a folder inside it";
 		case SCANNING:
@@ -206,6 +248,11 @@ GamesList::Click GamesList::click(int row)
 			conf = g.path;
 			break;
 		}
+		case FOUND:
+			c.what = Click::ADD_FOUND;
+			c.found = found[(size_t)chosen.game];
+			armed = -1;
+			return c;
 		default:
 			// a row that says something, not a choice
 			return c;

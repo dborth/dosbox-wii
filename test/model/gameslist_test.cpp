@@ -7,6 +7,8 @@ static int checks = 0, failures = 0;
 #define CHECK(cond) do { checks++; if(!(cond)) { failures++; printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while(0)
 #define CHECK_EQ(a, b) do { checks++; const std::string x = (a), y = (b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n   got  [%s]\n   want [%s]\n", __FILE__, __LINE__, #a, x.c_str(), y.c_str()); } } while(0)
 
+#define CHECK_N(a, b) do { checks++; const long x = (long)(a), y = (long)(b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n   got  %ld\n   want %ld\n", __FILE__, __LINE__, #a, x, y); } } while(0)
+
 static GameRecord game(const char * name, const char * title, const char * program, const char * where = "", bool inferred = false)
 {
 	GameRecord g;
@@ -273,6 +275,119 @@ static void testSaving()
 	CHECK_EQ(text(l, 0), "Plain DOSBox|");
 }
 
+static FoundGame foundGame(const char * folder, const char * program, int more = 0)
+{
+	FoundGame f;
+	f.folder = folder;
+	f.title = folder;
+	f.programs.push_back(program);
+	for(int i = 0; i < more; i++)
+		f.programs.push_back("SETUP" + std::to_string(i) + ".EXE");
+	return f;
+}
+
+static void testFound()
+{
+	GamesList l;
+	l.setGames(three());
+	std::vector<FoundGame> f;
+	f.push_back(foundGame("WOLF3D", "WOLF3D.EXE", 2));
+	f.push_back(foundGame("DOOM", "DOOM.EXE"));
+	l.setFound(f);
+
+	// after the games: a header, then one row each
+	CHECK(l.rowCount() == 7);
+	CHECK_EQ(text(l, 3), "my-setup|");
+	CHECK_EQ(text(l, 4), "Found on your card|");
+	CHECK_EQ(text(l, 5), "WOLF3D|Add");
+	CHECK_EQ(text(l, 6), "DOOM|Add");
+
+	CHECK_EQ(l.rowHelp(5), "Not set up yet. DOSBox/WOLF3D holds WOLF3D.EXE and 2 more. A adds it as a game");
+	CHECK_EQ(l.rowHelp(6), "Not set up yet. DOSBox/DOOM holds DOOM.EXE. A adds it as a game");
+	CHECK(l.rowHelp(4).find("A on one adds it") != std::string::npos);
+
+	// A asks at once (no second press), and says which folder
+	GamesList::Click c = l.click(5);
+	CHECK(c.what == GamesList::Click::ADD_FOUND);
+	CHECK_EQ(c.found.folder, "WOLF3D");
+	CHECK_N(c.found.programs.size(), 3);
+	c = l.click(5);
+	CHECK(c.what == GamesList::Click::ADD_FOUND);
+	// the header does nothing
+	CHECK(l.click(4).what == GamesList::Click::NOTHING);
+
+	// a press on a game does not carry over to a found one
+	l.click(1);
+	CHECK(l.click(5).what == GamesList::Click::ADD_FOUND);
+	CHECK(l.click(1).what == GamesList::Click::MESSAGE);
+
+	// with games and nothing else found, nothing changes; with found and no games the list is not "No games found"
+	GamesList only;
+	only.setFound(f);
+	CHECK(only.rowCount() == 4);
+	CHECK_EQ(text(only, 1), "Found on your card|");
+	CHECK_EQ(text(only, 2), "WOLF3D|Add");
+
+	GamesList none;
+	none.setFound(std::vector<FoundGame>());
+	CHECK_EQ(text(none, 1), "No games found|");
+
+	// scanning still says so, after them
+	l.setScanning(true);
+	CHECK(l.rowCount() == 8);
+	CHECK_EQ(text(l, 7), "Looking for games...|");
+	l.setScanning(false);
+
+	// a long folder name is cut to fit
+	std::vector<FoundGame> long1;
+	long1.push_back(foundGame("ABCDEFGH", "A.EXE"));
+	long1[0].folder = std::string(60, 'X');
+	l.setFound(long1);
+	std::string n, v;
+	l.rowText(5, n, v);
+	CHECK_N(n.size(), 34);
+
+	// saving shows none of them: a found folder has nothing running to save
+	l.setFound(f);
+	l.setSaving(true);
+	CHECK(l.rowCount() == 4);
+	CHECK_EQ(text(l, 0), "New game|Save new");
+	for(int i = 0; i < l.rowCount(); i++)
+		CHECK(text(l, i).find("Found on your card") == std::string::npos);
+	l.setSaving(false);
+	CHECK(l.rowCount() == 7);
+}
+
+static void testFoundLimit()
+{
+	// games and found folders share the rows the screen can hold; the found ones take at most a quarter and keep a header
+	std::vector<GameRecord> games;
+	for(int i = 0; i < 200; i++)
+		games.push_back(game(("g" + std::to_string(i)).c_str(), ("Game " + std::to_string(i)).c_str(), "G.EXE"));
+	std::vector<FoundGame> found;
+	for(int i = 0; i < 80; i++)
+		found.push_back(foundGame(("F" + std::to_string(i)).c_str(), "F.EXE"));
+
+	GamesList l;
+	l.setLimit(40);
+	l.setGames(games);
+	l.setFound(found);
+
+	// Plain + 29 games + 1 more + header + 10 found = 42 rows: games + found + header = the limit
+	CHECK(l.rowCount() == 1 + 29 + 1 + 1 + 10);
+	CHECK_EQ(text(l, 30), "171 more not shown|");
+	CHECK_EQ(text(l, 31), "Found on your card|");
+	CHECK_EQ(text(l, 41), "F9|Add");
+
+	// the default limit keeps the whole list inside what the screen holds
+	GamesList d;
+	d.setGames(games);
+	d.setFound(found);
+	CHECK(d.rowCount() <= 152);
+	d.setScanning(true);
+	CHECK(d.rowCount() <= 153);
+}
+
 int main()
 {
 	testRows();
@@ -280,6 +395,8 @@ int main()
 	testHelp();
 	testClick();
 	testSaving();
+	testFound();
+	testFoundLimit();
 	if(failures)
 	{
 		printf("%d of %d checks FAILED\n", failures, checks);

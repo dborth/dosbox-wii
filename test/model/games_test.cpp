@@ -14,6 +14,8 @@ static int checks = 0, failures = 0;
 #define CHECK(cond) do { checks++; if(!(cond)) { failures++; printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while(0)
 #define CHECK_EQ(a, b) do { checks++; const std::string x = (a), y = (b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n   got  [%s]\n   want [%s]\n", __FILE__, __LINE__, #a, x.c_str(), y.c_str()); } } while(0)
 
+#define CHECK_N(a, b) do { checks++; const long x = (long)(a), y = (long)(b); if(x != y) { failures++; printf("FAIL %s:%d  %s\n   got  %ld\n   want %ld\n", __FILE__, __LINE__, #a, x, y); } } while(0)
+
 template<typename... A> static std::vector<std::string> V(A... a)
 {
 	return std::vector<std::string>{ std::string(a)... };
@@ -301,6 +303,191 @@ static void testScan()
 
 // ---- FileGamesHost on a real folder
 
+// ---- found games: folders that could be games
+
+static std::string join(const std::vector<std::string>& v, const char * sep = ",")
+{
+	std::string s;
+	for(size_t i = 0; i < v.size(); i++)
+		s += (i ? sep : "") + v[i];
+	return s;
+}
+
+static void testNames()
+{
+	CHECK(Game_IsDosName("WOLF3D"));
+	CHECK(Game_IsDosName("keen4e.exe"));
+	CHECK(Game_IsDosName("A.B"));
+	CHECK(Game_IsDosName("GAME_1"));
+	CHECK(!Game_IsDosName(""));
+	CHECK(!Game_IsDosName("WOLFENSTEIN"));		// more than 8
+	CHECK(!Game_IsDosName("WOLF3D.EXEC"));		// extension of 4
+	CHECK(!Game_IsDosName("My Game"));
+	CHECK(!Game_IsDosName("A.B.C"));
+	CHECK(!Game_IsDosName(".hidden"));
+	CHECK(!Game_IsDosName("GAME."));
+	CHECK(!Game_IsDosName("KEEN~1"));
+	CHECK(!Game_IsDosName("caf\xc3\xa9"));
+
+	CHECK_EQ(Game_SuggestTitle("KEEN"), "Keen");
+	CHECK_EQ(Game_SuggestTitle("WOLF3D"), "Wolf3d");
+	CHECK_EQ(Game_SuggestTitle("doom"), "Doom");
+	CHECK_EQ(Game_SuggestTitle("my_game"), "My Game");
+	CHECK_EQ(Game_SuggestTitle("SimCity"), "SimCity");		// mixed case is somebody's choice
+	CHECK_EQ(Game_SuggestTitle("3D"), "3d");
+}
+
+static void testFolders()
+{
+	CHECK_EQ(join(Game_AutoexecFolders(V("mount c .", "c:", "cd \\KEEN", "keen4e"))), "keen");
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd\\Keen\\Levels"))), "keen");
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd keen"))), "keen");
+	CHECK_EQ(join(Game_AutoexecFolders(V("chdir c:\\GAMES\\KEEN"))), "games");
+	CHECK_EQ(join(Game_AutoexecFolders(V("@cd /Doom"))), "doom");
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd .."))), "");
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd \\"))), "");
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd..", "cd\\"))), "");
+	CHECK_EQ(join(Game_AutoexecFolders(V("mount d sd:/DOSBox/CD1 -t cdrom"))), "dosbox,cd1");
+	CHECK_EQ(join(Game_AutoexecFolders(V("mount d \"sd:/DOSBox/My CD\""))), "dosbox,my cd");
+	CHECK_EQ(join(Game_AutoexecFolders(V("mount c"))), "");
+	CHECK_EQ(join(Game_AutoexecFolders(V("# cd nowhere", "echo cd hello", "cdrom.exe"))), "");
+	// no repeats
+	CHECK_EQ(join(Game_AutoexecFolders(V("cd \\KEEN", "cd keen", "mount d sd:/keen"))), "keen");
+
+	// a parsed conf has them
+	GameRecord g;
+	g.name = "k";
+	Game_ParseConf("[autoexec]\nmount c .\nc:\ncd \\KEEN\nkeen4e.exe\n", g);
+	CHECK_EQ(join(g.folders), "keen");
+}
+
+static void testRank()
+{
+	CHECK_EQ(join(Game_RankPrograms("KEEN", V("SETUP.EXE", "KEEN4E.EXE", "keen.bat", "KEEN.COM", "readme.txt", "LONGERNAME.EXE", "INSTALL.BAT", "go.bat"))),
+		"KEEN.BAT,KEEN.COM,KEEN4E.EXE,GO.BAT,INSTALL.BAT,SETUP.EXE");
+
+	// a BAT named like the folder is first, even before a .EXE of the same name
+	CHECK_EQ(join(Game_RankPrograms("DOOM", V("DOOM.EXE", "DOOM.BAT", "DOOM2.EXE"))), "DOOM.BAT,DOOM.EXE,DOOM2.EXE");
+	// the file the game is in the folder named for it, whatever its case on the card
+	CHECK_EQ(join(Game_RankPrograms("wolf3d", V("SETUP.EXE", "Wolf3d.exe"))), "WOLF3D.EXE,SETUP.EXE");
+	// utilities last, in whatever form
+	CHECK_EQ(join(Game_RankPrograms("X", V("UNINST.EXE", "UNINSTAL.EXE", "SETUP.EXE", "SETUP2.EXE", "INSTALL.EXE", "INSTALLR.EXE", "DOS4GW.EXE", "THEGAME.EXE"))),
+		"THEGAME.EXE,DOS4GW.EXE,INSTALL.EXE,INSTALLR.EXE,SETUP.EXE,SETUP2.EXE,UNINST.EXE,UNINSTAL.EXE");
+	// a short name is not "like" a long one by chance: GO is not a start of GOLF
+	CHECK_EQ(join(Game_RankPrograms("GOLF", V("GO.EXE", "GOLF.EXE"))), "GOLF.EXE,GO.EXE");
+	// only programs, no repeats, the cap
+	CHECK_EQ(join(Game_RankPrograms("X", V("a.txt", "b.dat", "c.exe", "C.EXE"))), "C.EXE");
+	CHECK(Game_RankPrograms("X", V()).empty());
+
+	std::vector<std::string> many;
+	for(int i = 0; i < 60; i++)
+		many.push_back("P" + std::to_string(i) + ".EXE");
+	CHECK_N(Game_RankPrograms("X", many).size(), FOUND_PROGRAMS_MAX);
+}
+
+static std::string foundNames(const GamesScan& s)
+{
+	std::string out;
+	for(size_t i = 0; i < s.found.size(); i++)
+		out += (i ? "," : "") + s.found[i].folder;
+	return out;
+}
+
+static void testFound()
+{
+	FakeHost h;
+	h.add("sd:/DOSBox/dosbox.conf", "[cpu]\n");
+	h.add("sd:/DOSBox/Games/old.exe");								// where the menu saves games: never offered
+	// not set up
+	h.add("sd:/DOSBox/WOLF3D/WOLF3D.EXE");
+	h.add("sd:/DOSBox/WOLF3D/SETUP.EXE");
+	h.add("sd:/DOSBox/WOLF3D/INSTALL.EXE");
+	h.add("sd:/DOSBox/WOLF3D/README.TXT");
+	h.add("sd:/DOSBox/WOLF3D/WOLF3D.CFG");
+	h.add("sd:/DOSBox/DOOM/DOOM.EXE");
+	h.add("sd:/DOSBox/DOOM/DOOM2.EXE");
+	// set up by a cd into it
+	h.add("sd:/DOSBox/KEEN/KEEN4E.EXE");
+	h.add("sd:/DOSBox/Games/keen4.conf", "# title=Keen 4\n[autoexec]\nc:\ncd \\keen\nkeen4e.exe\n");
+	// set up by its program, with no cd of its own
+	h.add("sd:/DOSBox/PRINCE/PRINCE.EXE");
+	h.add("sd:/DOSBox/Games/prince.conf", "# title=Prince\n# program=prince.exe\n");
+	// a conf that goes elsewhere does not cover the folder holding a program of the same name
+	h.add("sd:/DOSBox/OTHER/GO.EXE");
+	h.add("sd:/DOSBox/Games/go.conf", "# program=GO.EXE\n[autoexec]\ncd \\ELSEWHERE\ngo.exe\n");
+	// set up by a mount
+	h.add("sd:/DOSBox/CD1/GAME.EXE");
+	h.add("sd:/DOSBox/Games/cdgame.conf", "[autoexec]\nmount d sd:/DOSBox/CD1 -t cdrom\nd:\ngame.exe\n");
+	// a conf kept in the folder with the program it runs
+	h.add("sd:/DOSBox/SIM/SIM.EXE");
+	h.add("sd:/DOSBox/SIM/sim.conf", "# program=SIM.EXE\n[autoexec]\nmount c sd:/somewhere/else\n");
+	// no programs, a name DOS cannot type, a hidden folder
+	h.add("sd:/DOSBox/EMPTY/README.TXT");
+	h.add("sd:/DOSBox/Some Long Game/GAME.EXE");
+	h.add("sd:/DOSBox/.Trash/OLD.EXE");
+	// a file in the DOSBox folder itself is not a game folder
+	h.add("sd:/DOSBox/LOOSE.EXE");
+	// one level only
+	h.add("sd:/DOSBox/HOLDER/INNER/DEEP.EXE");
+
+	const GamesScan s = Games_ScanAll(h);
+	CHECK_EQ(foundNames(s), "DOOM,OTHER,WOLF3D");
+
+	for(size_t i = 0; i < s.found.size(); i++)
+	{
+		if(s.found[i].folder == "WOLF3D")
+		{
+			CHECK_EQ(s.found[i].title, "Wolf3d");
+			CHECK_EQ(join(s.found[i].programs), "WOLF3D.EXE,INSTALL.EXE,SETUP.EXE");
+		}
+		if(s.found[i].folder == "DOOM")
+			CHECK_EQ(join(s.found[i].programs), "DOOM.EXE,DOOM2.EXE");
+	}
+
+	// the games are what Games_Scan() says, and the scan lists each folder once
+	CHECK_EQ(names(s.games), names(Games_Scan(h)));
+	CHECK_EQ(names(s.games), "Games/cdgame.conf,Games/go.conf,Games/keen4.conf,Games/prince.conf,SIM/sim.conf");
+	std::map<std::string, int> listed;
+	h.opened.clear();
+	Games_ScanAll(h);
+	for(size_t i = 0; i < h.opened.size(); i++)
+		listed[h.opened[i]]++;
+	for(std::map<std::string, int>::const_iterator it = listed.begin(); it != listed.end(); ++it)
+		CHECK_N(it->second, 1);
+}
+
+static void testFoundNothing()
+{
+	// no storage
+	FakeHost none;
+	none.base.clear();
+	CHECK(Games_ScanAll(none).found.empty());
+
+	// an empty card, a card of games already set up
+	FakeHost empty;
+	empty.add("sd:/DOSBox/dosbox.conf", "[cpu]\n");
+	CHECK(Games_ScanAll(empty).found.empty());
+	CHECK(Games_ScanAll(empty).games.empty());
+
+	// the cap, and by name ignoring case
+	FakeHost many;
+	for(int i = 0; i < GAMES_MAX_FOLDERS + 10; i++)
+	{
+		char path[64];
+		snprintf(path, sizeof(path), "sd:/DOSBox/G%03d/G%03d.EXE", i, i);
+		many.add(path);
+	}
+	const GamesScan s = Games_ScanAll(many);
+	CHECK_N(s.found.size(), GAMES_MAX_FOLDERS);
+	CHECK_EQ(s.found[0].folder, "G000");
+
+	FakeHost mixed;
+	mixed.add("sd:/DOSBox/beta/B.EXE");
+	mixed.add("sd:/DOSBox/Alpha/A.EXE");
+	mixed.add("sd:/DOSBox/GAMMA/C.EXE");
+	CHECK_EQ(foundNames(Games_ScanAll(mixed)), "Alpha,beta,GAMMA");
+}
+
 static void writeFile(const std::string& path, const std::string& text)
 {
 	FILE * f = fopen(path.c_str(), "wb");
@@ -364,6 +551,11 @@ int main()
 	testInfer();
 	testParse();
 	testScan();
+	testNames();
+	testFolders();
+	testRank();
+	testFound();
+	testFoundNothing();
 	testFiles();
 	if(failures)
 	{

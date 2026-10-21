@@ -25,6 +25,10 @@
  * Everything else DOSBox reads dosbox.conf for first and the game's file wins,
  * so a hand-made game conf can be as small as it likes.
  *
+ * A game found on the card (games.h, FoundGame) is added the other way: nothing is running to save, so what is
+ * written is a small conf of its own with a title, the program and an [autoexec] that goes there and runs it. It has
+ * no map, so its controls start from the defaults, and nothing else is set, so dosbox.conf's settings apply.
+ *
  * This is plain text work over the GameSaveHost seam, so it builds and tests on a
  * PC with a fake. FileGameSaveHost (below) is the files half; gameslive.cpp adds
  * what needs the core (the running config, the mapper, the drives, the program).
@@ -32,6 +36,7 @@
 #ifndef _GAMESAVE_H_
 #define _GAMESAVE_H_
 
+#include "games.h"
 #include <string>
 #include <vector>
 
@@ -170,6 +175,23 @@ GameSaveResult Game_SaveNew(GameSaveHost& host, const std::string& title);
  * what started it, and may have been edited by hand); another game's startup is worked out again from what is running.
  */
 GameSaveResult Game_SaveReplace(GameSaveHost& host, const std::string& path, bool keepStartup);
+
+// ---- adding a found game
+
+/**
+ * The conf a found game is added as: named after its folder ("WOLF3D.conf"), else after its title, else the folder with
+ * a number (up to 9), in the Games folder; the first that is not taken. Empty when none is free or there is no storage.
+ */
+std::string Game_FoundConfPath(const GameSaveHost& host, const FoundGame& found, const std::string& title);
+
+/** What the conf says: "# title=", "# program=", and an [autoexec] with c:, cd \FOLDER and the program. */
+std::string Game_FoundConfText(const FoundGame& found, const std::string& title, const std::string& program);
+
+/**
+ * Writes the conf of a found game. `program` is one of found.programs (the first when empty). An existing conf is never
+ * touched: the name is taken (result.exists) only when every name Game_FoundConfPath() tries is.
+ */
+GameSaveResult Game_AddFound(GameSaveHost& host, const FoundGame& found, const std::string& title, const std::string& program);
 
 /** Settings > Save while a game is active: the game DOSBox was given (`given`, as GetGameConf() has it) is written, its startup and title kept. */
 GameSaveResult Game_SaveActive(GameSaveHost& host, const std::string& given);
