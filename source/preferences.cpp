@@ -415,11 +415,11 @@ void Config_Add_Display()
 		"integer: the largest whole-number multiple that fits, which keeps pixels even. "
 		"fill: stretched over the whole screen.");
 
-	const char * aspects[] = { "corrected", "square", 0 };
-	Pstring = display_sec->Add_string("aspect", Property::Changeable::Always, "corrected");
+	const char * aspects[] = { "original", "uncorrected", 0 };
+	Pstring = display_sec->Add_string("aspect", Property::Changeable::Always, "original");
 	Pstring->Set_values(aspects);
-	Pstring->Set_help("corrected: shows the picture in the shape a monitor did, so 320x200 fills a 4:3 screen. "
-		"square: every pixel is square.");
+	Pstring->Set_help("The shape of the picture; fit sets its size. original: the shape the original monitor gave it, 4:3 for most games. "
+		"uncorrected: every pixel is square, so 320x200 games look wider. No effect with the fill fit.");
 
 	const char * filters[] = { "sharp", "bilinear", "nearest", 0 };
 	Pstring = display_sec->Add_string("filter", Property::Changeable::Always, "bilinear");
@@ -463,7 +463,7 @@ EmulatorVideoSettings DisplaySettingsFromConfig(Section_prop * section)
 
 	// Get_string() gives a const char *, so it is copied into a string before it is compared
 	const std::string aspect = section->Get_string("aspect");
-	out.aspect = (aspect == "square") ? VideoAspect::Square : VideoAspect::Corrected;
+	out.aspect = (aspect == "uncorrected") ? VideoAspect::Uncorrected : VideoAspect::Original;
 
 	const std::string filter = section->Get_string("filter");
 	out.filter = (filter == "sharp") ? VideoFilter::Sharp : (filter == "nearest") ? VideoFilter::Nearest : VideoFilter::Bilinear;

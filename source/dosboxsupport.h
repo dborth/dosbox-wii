@@ -92,7 +92,7 @@ struct EmulationStatus
 	bool textMode;
 	int srcWidth, srcHeight;	//!< what the emulated card draws
 	double pixelRatio;		//!< shape of one source pixel (taller than wide when above 1)
-	bool aspectOn;			//!< the display is applying the source's pixel shape ([display] aspect = corrected)
+	bool aspectOn;			//!< the display is applying the source's pixel shape ([display] aspect = original)
 	int frameWidth, frameHeight;	//!< what is handed to the display; 0 before a mode is set
 	int frameskip;			//!< the running value, which the home screen's +/- changes
 

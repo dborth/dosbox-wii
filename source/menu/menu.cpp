@@ -529,8 +529,8 @@ class LiveHomeSettings : public HomeSettings
 			Settings_SyncRunning();
 		}
 
-		bool aspectCorrected() const override { return !strcasecmp(value("Aspect").c_str(), "corrected"); }
-		void setAspectCorrected(bool corrected) override { choose("Aspect", corrected ? "corrected" : "square", nullptr); }
+		bool aspectOriginal() const override { return !strcasecmp(value("Aspect").c_str(), "original"); }
+		void setAspectOriginal(bool original) override { choose("Aspect", original ? "original" : "uncorrected", nullptr); }
 
 		bool filterSharp() const override
 		{

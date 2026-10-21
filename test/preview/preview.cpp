@@ -169,7 +169,7 @@ struct SceneModel : ControlsModel
 struct SceneSettings : HomeSettings
 {
 	int cycles = 3000, skip = 0;
-	bool corrected = true, sharp = false;
+	bool original = true, sharp = false;
 	std::string game, title, program;
 	std::string gameName() const override { return game; }
 	std::string gameTitle() const override { return title; }
@@ -179,8 +179,8 @@ struct SceneSettings : HomeSettings
 	void stepSpeed(bool up) override { cycles += up ? 500 : -500; }
 	std::string frameskip() const override { return std::to_string(skip); }
 	void stepFrameskip(bool up) override { skip += up ? 1 : -1; }
-	bool aspectCorrected() const override { return corrected; }
-	void setAspectCorrected(bool c) override { corrected = c; }
+	bool aspectOriginal() const override { return original; }
+	void setAspectOriginal(bool o) override { original = o; }
 	bool filterSharp() const override { return sharp; }
 	void setFilterSharp(bool s) override { sharp = s; }
 };
@@ -278,7 +278,7 @@ int main(int argc, char ** argv)
 		SceneModel m(2);
 		Controls_SetModel(&m);
 		SceneSettings settings;
-		settings.sharp = true; settings.corrected = false; settings.cycles = 12000; settings.skip = 2;
+		settings.sharp = true; settings.original = false; settings.cycles = 12000; settings.skip = 2;
 		Screen s;
 		HomeView view(settings, "2.0");
 		view.select(HomeView::Action::SETTINGS);

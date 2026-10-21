@@ -425,7 +425,7 @@ bool GetEmulationStatus(EmulationStatus * status)
 	// ([display] aspect); what counts is what the driver has been given
 	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
 
-	status->aspectOn = video ? (video->getSettings().aspect == VideoAspect::Corrected) : true;
+	status->aspectOn = video ? (video->getSettings().aspect == VideoAspect::Original) : true;
 	status->frameskip = runningFrameskip;
 
 	int frameWidth = 0, frameHeight = 0;

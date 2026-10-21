@@ -38,9 +38,9 @@ class HomeSettings
 		virtual void stepSpeed(bool up) = 0;
 		virtual std::string frameskip() const = 0;
 		virtual void stepFrameskip(bool up) = 0;
-		/** Whether the picture is drawn 4:3 (corrected) and not with square pixels */
-		virtual bool aspectCorrected() const = 0;
-		virtual void setAspectCorrected(bool corrected) = 0;
+		/** Whether the picture keeps the original monitor shape (4:3 for most games) and not square pixels */
+		virtual bool aspectOriginal() const = 0;
+		virtual void setAspectOriginal(bool original) = 0;
 		/** Whether pixel edges are kept sharp and not smoothed */
 		virtual bool filterSharp() const = 0;
 		virtual void setFilterSharp(bool sharp) = 0;
@@ -73,7 +73,7 @@ class HomeView : public GuiOverlay
 		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
 		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
 		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);
-		GuiLayout& choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hint);
+		GuiLayout& choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hint, int firstW = 78, int secondW = 58);
 		GuiLayout& playersStrip();
 
 		UiScope ui;

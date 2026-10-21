@@ -101,12 +101,12 @@ GuiLayout& HomeView::stepper(std::function<std::string()> value, std::function<v
 }
 
 // Two choices side by side; the one in use is outlined
-GuiLayout& HomeView::choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hintText)
+GuiLayout& HomeView::choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hintText, int firstW, int secondW)
 {
 	const std::string h = hintText;
-	GuiTextButton& a = ui.button(firstText).size(78, 28).fontSize(13).style(MenuBarButtonStyle(true))
+	GuiTextButton& a = ui.button(firstText).size(firstW, 28).fontSize(13).style(MenuBarButtonStyle(true))
 		.onClick([set]{ set(true); }).onFocus([this, h]{ hint = h; });
-	GuiTextButton& b = ui.button(secondText).size(58, 28).fontSize(13).style(MenuBarButtonStyle(false))
+	GuiTextButton& b = ui.button(secondText).size(secondW, 28).fontSize(13).style(MenuBarButtonStyle(false))
 		.onClick([set]{ set(false); }).onFocus([this, h]{ hint = h; });
 	int last = -1;
 	ui.bind([&a, &b, firstOn, last]() mutable {
@@ -326,8 +326,8 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	quickRow(quick, MENU_ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
 		stepper([hs]{ return hs->frameskip(); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, MENU_ICON_ASPECT, "Aspect", [hs]{ return std::string(hs->aspectCorrected() ? "4:3 monitor" : "Square pixels"); },
-		choice("Corrected", "Square", [hs]{ return hs->aspectCorrected(); }, [hs](bool c){ hs->setAspectCorrected(c); }, "Corrected draws the picture 4:3 like a real monitor. Square keeps pixels square"));
+	quickRow(quick, MENU_ICON_ASPECT, "Aspect", [hs]{ return std::string("Pixel shape"); },
+		choice("Original", "Uncorrected", [hs]{ return hs->aspectOriginal(); }, [hs](bool o){ hs->setAspectOriginal(o); }, "Original is the shape the monitor gave it, 4:3 for most games. Uncorrected makes every pixel square, so 320x200 looks wider", 62, 78));
 	quick.add(MenuPopover_Divider(ui, 256));
 	quickRow(quick, MENU_ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
 		choice("Sharp", "Smooth", [hs]{ return hs->filterSharp(); }, [hs](bool sharp){ hs->setFilterSharp(sharp); }, "Sharp keeps pixel edges crisp. Smooth blends them"));

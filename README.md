@@ -70,7 +70,7 @@ Every push and pull request is built by [`build.yml`](.github/workflows/build.ym
 - **Setups**: save every player's buttons and what DOS sees under a name, and load them again later
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
-- Video output adjustments: corrected 4:3 aspect or square pixels, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
+- Video output adjustments: original (4:3) or uncorrected (square-pixel) aspect, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
 - Mounts SD cards and USB drives as DOS drives from a **Drives** screen in the menu, which also picks up drives plugged in or removed while it is open
 - Saves your settings back to `dosbox.conf` from the menu (*Settings → Save*), keeping the previous version as `dosbox.conf.bak`
 - Open source

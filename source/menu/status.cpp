@@ -275,7 +275,7 @@ static void VideoLines(const EmulationStatus & st)
 			"The size of the picture DOSBox hands to the display. Modes that a real monitor would stretch "
 			"in one direction are doubled here.");
 
-		// corrected: each source pixel has the shape the card's monitor gave it
+		// original: each source pixel has the shape the card's monitor gave it
 		double ratio = (st.srcHeight > 0) ? (double)st.srcWidth / (double)st.srcHeight : 1.0;
 
 		if(st.aspectOn && st.pixelRatio > 0.0)
@@ -289,8 +289,9 @@ static void VideoLines(const EmulationStatus & st)
 		"How big the picture is. fit keeps its shape, integer uses the largest whole-number multiple, "
 		"fill stretches it over the screen.");
 
-	AddProp("Aspect", "display", "aspect", st.aspectOn ? "corrected" : "square",
-		"corrected shows the picture the shape a monitor did, such as 320x200 as 4:3. square makes every pixel square.");
+	AddProp("Aspect", "display", "aspect", st.aspectOn ? "original" : "uncorrected",
+		"The shape of the picture. original is the shape the original monitor gave it, 4:3 for most games. "
+		"uncorrected makes every pixel square, so 320x200 games look wider. No effect with the fill fit.");
 
 	AddProp("Filter", "display", "filter", "",
 		"How the picture is smoothed when it is enlarged: sharp, bilinear or nearest.");

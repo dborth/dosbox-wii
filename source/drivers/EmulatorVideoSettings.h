@@ -17,11 +17,11 @@ enum class VideoFit
 	Fill      //!< stretched over the whole screen, shape ignored
 };
 
-//! Whether the source's non-square pixels are honoured
+//! Whether the source's non-square pixels are honoured (the shape of the picture, not its size: see VideoFit)
 enum class VideoAspect
 {
-	Corrected, //!< use the pixel aspect the emulator reports (eg. 320x200 shown as 4:3)
-	Square     //!< treat every source pixel as square
+	Original,    //!< use the pixel aspect the emulator reports, the shape the original monitor gave it (eg. 320x200 shown as 4:3)
+	Uncorrected  //!< treat every source pixel as square (eg. 320x200 shown as 16:10)
 };
 
 enum class VideoFilter
@@ -44,7 +44,7 @@ enum class VideoWidescreen
 struct EmulatorVideoSettings
 {
 	VideoFit fit = VideoFit::Fit;
-	VideoAspect aspect = VideoAspect::Corrected;
+	VideoAspect aspect = VideoAspect::Original;
 	VideoFilter filter = VideoFilter::Bilinear;
 	VideoWidescreen widescreen = VideoWidescreen::Auto;
 

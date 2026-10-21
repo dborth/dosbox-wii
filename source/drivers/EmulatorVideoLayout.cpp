@@ -14,8 +14,8 @@ VideoRect ComputeVideoLayout(const EmulatorVideoSettings& s, const VideoLayoutIn
 		return r;
 
 	const float pa = in.outputPixelAspect > 0.0f ? in.outputPixelAspect : 1.0f;
-	const float sx = (s.aspect == VideoAspect::Corrected && in.pixelAspectX > 0.0f) ? in.pixelAspectX : 1.0f;
-	const float sy = (s.aspect == VideoAspect::Corrected && in.pixelAspectY > 0.0f) ? in.pixelAspectY : 1.0f;
+	const float sx = (s.aspect == VideoAspect::Original && in.pixelAspectX > 0.0f) ? in.pixelAspectX : 1.0f;
+	const float sy = (s.aspect == VideoAspect::Original && in.pixelAspectY > 0.0f) ? in.pixelAspectY : 1.0f;
 
 	// The picture and the screen, both in square display units
 	const float picW = in.frameWidth * sx;
