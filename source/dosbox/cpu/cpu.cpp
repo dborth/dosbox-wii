@@ -79,6 +79,7 @@ void CPU_Core_Dyn_X86_SetFPUMode(bool dh_fpu);
 void CPU_Core_Dynrec_Init(void);
 bool CPU_Core_Dynrec_Cache_Init(bool enable_cache);
 void CPU_Core_Dynrec_Cache_Close(void);
+void CPU_Core_Dynrec_Cache_Flush(void);
 #endif
 
 /* In debug mode exceptions are tested and dosbox exits when 
@@ -2414,6 +2415,9 @@ void CPU_ShutDown(Section* sec) {
 /* Not changeable on the fly: only runs when the whole config is destroyed (a restart), not when a section is
  * re-initialised from the menu */
 static void CPU_ForgetInit(Section* /*sec*/) {
+#if (C_DYNREC) && !(C_DYNAMIC_X86)
+	CPU_Core_Dynrec_Cache_Flush();	/* nothing translated for this run's guest may survive */
+#endif
 	CPU::ForgetInit();
 }
 

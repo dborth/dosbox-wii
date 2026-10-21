@@ -702,6 +702,17 @@ static void cache_reclaim(void) {
 	cache_lent=false;
 }
 
+/* Throws away everything translated, like cache_lend() does before the menu
+ * borrows the memory. Needed when the core shuts down for a restart: the new
+ * run's memory and page handlers start over, so code translated for the last
+ * game must not stay in the cache (it would sit in pages nothing refers to any
+ * more, using up the pool of code pages until they are recycled). The menu
+ * only flushes when the cache is lent, which is not always possible (Wii U). */
+static void cache_flush(void) {
+	if (!cache_initialized || cache_lent) return;
+	while (cache.used_pages) cache.used_pages->ClearRelease();
+}
+
 static void cache_close(void) {
 /*	for (;;) {
 		if (cache.used_pages) {

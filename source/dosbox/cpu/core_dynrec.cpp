@@ -351,4 +351,8 @@ void CPU_Core_Dynrec_Cache_Close(void) {
 	cache_close();
 }
 
+void CPU_Core_Dynrec_Cache_Flush(void) {
+	cache_flush();
+}
+
 #endif

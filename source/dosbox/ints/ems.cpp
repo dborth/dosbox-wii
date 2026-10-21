@@ -1317,6 +1317,7 @@ private:
 
 public:
 	EMS(Section* configuration):Module_base(configuration) {
+		memset(&vcpi,0,sizeof(vcpi));	/* first boot state: "enabled" could still be set from a run with VCPI */
 		emm_device=NULL;
 		ems_type=0;
 
