@@ -152,6 +152,7 @@ static void testNames()
 
 	CHECK_EQ(Game_ResolveConf(h, "sd:/DOSBox/Games/x.conf"), "sd:/DOSBox/Games/x.conf");
 	CHECK_EQ(Game_ResolveConf(h, "usb1:/other/x.conf"), "usb1:/other/x.conf");
+	CHECK_EQ(Game_ResolveConf(h, "/vol/external01/DOSBox/Games/x.conf"), "/vol/external01/DOSBox/Games/x.conf");
 	CHECK_EQ(Game_ResolveConf(h, "Games/x.conf"), "sd:/DOSBox/Games/x.conf");
 	CHECK_EQ(Game_ResolveConf(h, "x.conf"), "sd:/DOSBox/x.conf");
 	CHECK_EQ(Game_ResolveConf(h, ""), "");

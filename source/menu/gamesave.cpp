@@ -230,7 +230,8 @@ std::string Game_ResolveConf(const GameSaveHost& host, const std::string& given)
 {
 	if(given.empty())
 		return std::string();
-	if(hasDevicePrefix(given))
+	// already a full path: "sd:/..." on the Wii, "/vol/external01/..." on the Wii U (no device name, but it starts at the root)
+	if(hasDevicePrefix(given) || given[0] == '/' || given[0] == '\\')
 		return given;
 	const std::string base = host.dosboxDirectory();
 	return base.empty() ? given : base + "/" + given;
