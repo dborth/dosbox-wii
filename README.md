@@ -824,7 +824,7 @@ joysticktype=4axis
 - `mapperfile=` is the `.map` beside it, by file name.
 - `joysticktype=` is what DOS sees (`4axis`, `2axis`, `none`, `4axis_2`, `fcs` or `ch`).
 
-**`name.map`** is a copy of DOSBox's whole mapper file as it was at the moment of the save: every event and its binds (keys, hotkeys, joystick buttons and axes, and each player's `pad_N` lines). It is the same format as `mapper-<version>.map`.
+**`name.map`** is a copy of DOSBox's whole mapper file as it was at the moment of the save: every event and its binds (keys, hotkeys, joystick buttons and axes, and each player's `pad_N` lines). It is the same format as `mapper.map`.
 
 The `.map` is written first, then the `.conf`, so a save cut short never leaves a listed setup without its map. Each file is written to a temporary name first and swapped in.
 
