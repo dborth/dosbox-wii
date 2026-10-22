@@ -493,6 +493,11 @@ bool FileGameSaveHost::read(const std::string& path, std::string& text) const
 	return ok;
 }
 
+bool FileGameSaveHost::erase(const std::string& path)
+{
+	return remove(path.c_str()) == 0 || !exists(path);
+}
+
 bool FileGameSaveHost::write(const std::string& path, const std::string& text)
 {
 	const std::string tmp = path + ".tmp", bak = path + ".bak";
@@ -658,6 +663,82 @@ GameSaveResult Game_Save(GameSaveHost& host, const GameSave& what)
 	r.message = "Saved " + fileOf(path) + " and " + mapName + ". dosbox.conf was not changed.";
 	if(!notes.empty())
 		r.message += " " + notes[0] + ".";
+	return r;
+}
+
+std::string Conf_SetTitle(const std::string& text, const std::string& title)
+{
+	const std::string wanted = "# title=" + title;
+	std::vector<std::string> all = splitLines(text);
+	for(size_t i = 0; i < all.size(); i++)
+	{
+		const std::string line = trim(all[i]);
+		if(!sectionName(line).empty())
+			break;		// the comments at the top are what a title is in
+		const size_t eq = line.find('=');
+		if(isComment(line) && eq != std::string::npos && lower(trim(line.substr(1, eq - 1))) == "title")
+		{
+			all[i] = wanted;
+			return joinLines(all);
+		}
+	}
+	return wanted + "\n" + text;
+}
+
+GameSaveResult Game_Rename(GameSaveHost& host, const std::string& path, const std::string& typed)
+{
+	std::string title = trim(oneLine(typed));
+	if(title.size() > kMaxTitle)
+		title.resize(kMaxTitle);
+	if(title.empty())
+		return fail(path, "A game needs a name.");
+
+	std::string text;
+	if(!host.read(path, text))
+		return fail(path, "Could not read " + fileOf(path) + ".");
+	if(!host.write(path, Conf_SetTitle(text, title)))
+		return fail(path, "Could not write " + fileOf(path) + ".");
+
+	GameSaveResult r;
+	r.ok = true;
+	r.path = path;
+	r.message = "Renamed to " + title + ".";
+	return r;
+}
+
+GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path)
+{
+	std::string text;
+	if(!host.read(path, text))
+		return fail(path, "Could not find " + fileOf(path) + ".");
+
+	std::string stem = fileOf(path);
+	if(stem.size() > 5 && lower(stem.substr(stem.size() - 5)) == ".conf")
+		stem.resize(stem.size() - 5);
+	const std::string title = commentValue(text, "title").empty() ? stem : commentValue(text, "title");
+
+	// its own map: the one the conf names, when that is <name>.map beside it
+	std::string mapPath;
+	const std::vector<std::string> sdl = Conf_SectionLines(text, "sdl");
+	for(size_t i = 0; i < sdl.size(); i++)
+	{
+		const size_t eq = sdl[i].find('=');
+		if(eq != std::string::npos && lower(trim(sdl[i].substr(0, eq))) == "mapperfile" &&
+			lower(trim(sdl[i].substr(eq + 1))) == lower(stem + ".map"))
+			mapPath = folderOf(path) + "/" + trim(sdl[i].substr(eq + 1));
+	}
+
+	// the conf goes first: a game with no conf is not a game, and a map with nothing pointing at it is only clutter
+	if(!host.erase(path))
+		return fail(path, "Could not delete " + fileOf(path) + ".");
+	if(!mapPath.empty())
+		host.erase(mapPath);
+	host.erase(path + ".bak");
+
+	GameSaveResult r;
+	r.ok = true;
+	r.path = path;
+	r.message = "Deleted " + title + ".";
 	return r;
 }
 

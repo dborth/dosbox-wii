@@ -62,6 +62,8 @@ class GameSaveHost
 		virtual bool read(const std::string& path, std::string& text) const = 0;
 		/** Replaces a file with this text: the old one is kept until the new one is in place. */
 		virtual bool write(const std::string& path, const std::string& text) = 0;
+		/** Deletes a file. True when it is gone (a file that was not there counts). */
+		virtual bool erase(const std::string& path) = 0;
 
 		/** The running config as dosbox.conf would be written (Config::PrintConfig). False with a reason when it could not be had. */
 		virtual bool runningConfig(std::string& text, std::string& error) = 0;
@@ -91,6 +93,7 @@ class FileGameSaveHost : public GameSaveHost
 		bool read(const std::string& path, std::string& text) const override;
 		/** Writes path + ".tmp", then swaps it in keeping the old file as path + ".bak" until the swap is done (put back if it fails). */
 		bool write(const std::string& path, const std::string& text) override;
+		bool erase(const std::string& path) override;
 
 	private:
 		std::string folderPath;
@@ -126,6 +129,9 @@ std::vector<std::string> Conf_SectionLines(const std::string& text, const std::s
 
 /** Gives a section these lines in place of the ones it has, keeping the comment lines at its start. Adds the section when it is missing. */
 std::string Conf_ReplaceSectionLines(const std::string& text, const std::string& section, const std::vector<std::string>& lines);
+
+/** Sets the "# title=" comment of a conf: the one at the top is replaced, or a line is added at the top. Nothing else is touched. */
+std::string Conf_SetTitle(const std::string& text, const std::string& title);
 
 /**
  * The [autoexec] a game should start with: the drives it needs mounted, then the program. C: is the DOSBox folder (the app
@@ -175,6 +181,18 @@ GameSaveResult Game_SaveNew(GameSaveHost& host, const std::string& title);
  * what started it, and may have been edited by hand); another game's startup is worked out again from what is running.
  */
 GameSaveResult Game_SaveReplace(GameSaveHost& host, const std::string& path, bool keepStartup);
+
+// ---- renaming and deleting
+/**
+ * Gives the game at `path` another name in the Games list: only its "# title=" comment changes (so its file names, its
+ * map and the path DOSBox was given if it is running all stay as they are). Everything else in the conf is left as it is.
+ */
+GameSaveResult Game_Rename(GameSaveHost& host, const std::string& path, const std::string& title);
+/**
+ * Deletes the game at `path`: its conf, and its map when the conf names a "<conf name>.map" beside it (a map under any
+ * other name may be shared with another game, so it stays). The caller does not offer this for the game that is running.
+ */
+GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path);
 
 // ---- adding a found game
 

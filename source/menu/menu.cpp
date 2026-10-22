@@ -504,6 +504,9 @@ class LiveHomeSettings : public HomeSettings
 		std::string gameTitle() const override { loadGameInfo(); return infoTitle.empty() ? gameName() : infoTitle; }
 		std::string gameProgram() const override { loadGameInfo(); return infoProgram; }
 
+		// The game's conf was changed (renamed from the Games screen): read its title again when it is next asked for
+		void forgetGame() { infoStale = true; }
+
 		std::string speed() const override
 		{
 			bool autoAdjust;
@@ -552,8 +555,9 @@ class LiveHomeSettings : public HomeSettings
 		void loadGameInfo() const
 		{
 			const std::string conf = GetGameConf() ? GetGameConf() : "";
-			if(conf == infoConf)
+			if(conf == infoConf && !infoStale)
 				return;
+			infoStale = false;
 			infoConf = conf;
 			infoTitle.clear();
 			infoProgram.clear();
@@ -572,6 +576,7 @@ class LiveHomeSettings : public HomeSettings
 		}
 
 		mutable std::string infoConf, infoTitle, infoProgram;
+		mutable bool infoStale = false;
 		//! The Video page's row with this label, if it is there
 		static bool find(const char * label, int& page, int& row)
 		{
@@ -729,6 +734,7 @@ void HomeMenu ()
 		if(action == HomeView::Action::GAMES)
 		{
 			GamesMenu(&w);
+			homeSettings.forgetGame();		// it may have been renamed there
 			action = RestartRequested() ? HomeView::Action::RESUME : HomeView::Action::NONE;
 			if(action == HomeView::Action::NONE)
 				continue;

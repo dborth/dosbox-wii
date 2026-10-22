@@ -83,6 +83,9 @@ class FakeHost : public GameSaveHost
 		std::string dosboxDirectory() const override { return "sd:/DOSBox"; }
 		bool makeDirectory(const std::string& path) override { made.insert(path); return mkdirOk; }
 		bool exists(const std::string& path) const override { return files.count(path) > 0; }
+		bool erase(const std::string& path) override { erased.push_back(path); files.erase(path); return !eraseFails; }
+		std::vector<std::string> erased;
+		bool eraseFails = false;
 		bool read(const std::string& path, std::string& text) const override
 		{
 			std::map<std::string, std::string>::const_iterator it = files.find(path);
@@ -678,6 +681,80 @@ static void testAddFoundFailures()
 	CHECK(Game_AddFound(d, wolf, "W", "").ok);
 }
 
+static void testRename()
+{
+	// the title line at the top is replaced; nothing else is touched
+	const std::string conf = "# title=Old name\n# program=KEEN4E.EXE\n[sdl]\nmapperfile=keen.map\n[cpu]\ncycles=fixed 6000\n[autoexec]\ncd KEEN\nKEEN4E.EXE\n";
+	CHECK_EQ(Conf_SetTitle(conf, "Commander Keen 4"),
+		"# title=Commander Keen 4\n# program=KEEN4E.EXE\n[sdl]\nmapperfile=keen.map\n[cpu]\ncycles=fixed 6000\n[autoexec]\ncd KEEN\nKEEN4E.EXE\n");
+	// no title yet: one is put at the top
+	CHECK_EQ(Conf_SetTitle("[cpu]\ncycles=max\n", "Doom"), "# title=Doom\n[cpu]\ncycles=max\n");
+	// a title that is not in the comments at the top (a key inside a section) is not the one
+	CHECK_EQ(Conf_SetTitle("[x]\n# title=inside\n", "T"), "# title=T\n[x]\n# title=inside\n");
+	// any case, and no space after the hash
+	CHECK_EQ(Conf_SetTitle("#TITLE = a\n[x]\n", "b"), "# title=b\n[x]\n");
+
+	FakeHost h;
+	h.files["sd:/DOSBox/Games/keen.conf"] = conf;
+	GameSaveResult r = Game_Rename(h, "sd:/DOSBox/Games/keen.conf", "  Commander Keen 4 ");
+	CHECK(r.ok);
+	CHECK_EQ(r.message, "Renamed to Commander Keen 4.");
+	CHECK(h.files["sd:/DOSBox/Games/keen.conf"].find("# title=Commander Keen 4\n# program=KEEN4E.EXE\n[sdl]") == 0);
+	CHECK(h.files["sd:/DOSBox/Games/keen.conf"].find("cycles=fixed 6000") != std::string::npos);
+	CHECK(h.erased.empty());				// no file was removed or renamed: the paths stay as they are
+
+	// a long title is cut; an empty one, a missing file and a write that fails are not renames
+	r = Game_Rename(h, "sd:/DOSBox/Games/keen.conf", std::string(80, 'x'));
+	CHECK(r.ok);
+	CHECK(h.files["sd:/DOSBox/Games/keen.conf"].find("# title=" + std::string(40, 'x') + "\n") == 0);
+	const std::string before = h.files["sd:/DOSBox/Games/keen.conf"];
+	CHECK(!Game_Rename(h, "sd:/DOSBox/Games/keen.conf", "   ").ok);
+	CHECK(!Game_Rename(h, "sd:/DOSBox/Games/nothere.conf", "x").ok);
+	CHECK_EQ(h.files["sd:/DOSBox/Games/keen.conf"], before);
+}
+
+static void testDelete()
+{
+	// the conf and the map it names beside it
+	FakeHost h;
+	h.files["sd:/DOSBox/Games/keen.conf"] = "# title=Commander Keen 4\n[sdl]\nmapperfile=keen.map\n";
+	h.files["sd:/DOSBox/Games/keen.map"] = "key_a \"key 97\"\n";
+	h.files["sd:/DOSBox/Games/other.conf"] = "# title=Other\n";
+	GameSaveResult r = Game_Delete(h, "sd:/DOSBox/Games/keen.conf");
+	CHECK(r.ok);
+	CHECK_EQ(r.message, "Deleted Commander Keen 4.");
+	CHECK(h.files.count("sd:/DOSBox/Games/keen.conf") == 0);
+	CHECK(h.files.count("sd:/DOSBox/Games/keen.map") == 0);
+	CHECK(h.files.count("sd:/DOSBox/Games/other.conf") == 1);		// nothing else
+
+	// a map under another name may belong to other games: it stays, with the shared mapper file
+	FakeHost g;
+	g.files["sd:/DOSBox/Games/a.conf"] = "[sdl]\nmapperfile=shared.map\n";
+	g.files["sd:/DOSBox/Games/shared.map"] = "x\n";
+	g.files["sd:/DOSBox/Games/b.conf"] = "[sdl]\nmapperfile=mapper-0.74.map\n";
+	g.files["sd:/DOSBox/Games/mapper-0.74.map"] = "y\n";
+	CHECK(Game_Delete(g, "sd:/DOSBox/Games/a.conf").ok);
+	CHECK(Game_Delete(g, "sd:/DOSBox/Games/b.conf").ok);
+	CHECK(g.files.count("sd:/DOSBox/Games/shared.map") == 1);
+	CHECK(g.files.count("sd:/DOSBox/Games/mapper-0.74.map") == 1);
+
+	// no title in the conf: it is named by its file; a conf with no map just goes
+	FakeHost n;
+	n.files["sd:/DOSBox/Games/plain.conf"] = "[cpu]\ncycles=max\n";
+	r = Game_Delete(n, "sd:/DOSBox/Games/plain.conf");
+	CHECK(r.ok);
+	CHECK_EQ(r.message, "Deleted plain.");
+
+	// a conf that cannot be deleted leaves its map alone; one that is not there is not a success
+	FakeHost f;
+	f.files["sd:/DOSBox/Games/k.conf"] = "[sdl]\nmapperfile=k.map\n";
+	f.files["sd:/DOSBox/Games/k.map"] = "z\n";
+	f.eraseFails = true;
+	CHECK(!Game_Delete(f, "sd:/DOSBox/Games/k.conf").ok);
+	CHECK(f.files.count("sd:/DOSBox/Games/k.map") == 1);
+	CHECK(!Game_Delete(n, "sd:/DOSBox/Games/gone.conf").ok);
+}
+
 static void testFileHost()
 {
 	char tmpl[] = "/tmp/gamesaveXXXXXX";
@@ -709,6 +786,12 @@ static void testFileHost()
 	CHECK(h.read(file, text));
 	CHECK_EQ(text, "two\n");
 	CHECK(!h.read(base + "/none", text));
+
+	// erase: gone afterwards; a file that was not there counts as gone
+	CHECK(h.write(base + "/Games/y.conf", "y\n"));
+	CHECK(h.erase(base + "/Games/y.conf"));
+	CHECK(!h.exists(base + "/Games/y.conf"));
+	CHECK(h.erase(base + "/Games/y.conf"));
 
 	// a folder that is not there: the write fails and nothing is left
 	CHECK(!h.write(base + "/missing/x.conf", "x"));
@@ -743,6 +826,8 @@ int main()
 	testAddFound();
 	testAddFoundNames();
 	testAddFoundFailures();
+	testRename();
+	testDelete();
 	testFileHost();
 
 	if(failures)

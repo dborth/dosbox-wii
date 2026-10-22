@@ -636,7 +636,7 @@ class GamesScreen : public ListScreen, public GuiCardSource
 					showMessage(c.message.c_str());
 					break;
 				case GamesList::Click::ASK_LAUNCH:
-					if(ask(c, "Restart"))
+					if(c.game ? gameMenu(c) : ask(c, "Restart"))
 					{
 						// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
 						RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
@@ -725,6 +725,92 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			const int answer = MenuPopover_Ask(c.message.c_str(), answers, c.detail, GuiPopover::Anchor());
 			setEnabled(true);
 			return answer == 0;
+		}
+
+		// What to do with a game: restart into it, give it another name, or delete it. One popover, so there is
+		// nothing to learn: each choice says what it does. The running game is not offered Delete. True when the
+		// choice was Restart, which the caller then does.
+		bool gameMenu(const GamesList::Click& c)
+		{
+			enum { RESTART, RENAME, DELETE, CANCEL };
+			std::vector<PickerItem> items;
+			std::vector<int> what;
+
+			const std::string file = c.conf.substr(c.conf.find_last_of("/\\") + 1);
+			const struct { int id; const char * name; std::string text; } choices[] = {
+				{ RESTART, "Restart", c.detail },
+				{ RENAME, "Rename", "Change the name the Games list shows. Its files keep their names." },
+				{ DELETE, "Delete", "Removes " + file + " and its map from the card. This cannot be undone." },
+				{ CANCEL, "Cancel", "Leave it as it is." },
+			};
+			for(size_t i = 0; i < sizeof(choices) / sizeof(choices[0]); i++)
+			{
+				if(choices[i].id == DELETE && c.running)
+					continue;		// DOSBox is running from it
+				PickerItem item;
+				item.name = choices[i].name;
+				item.current = false;
+				MenuPopover_Wrap(item.lines, choices[i].text, 44);
+				items.push_back(item);
+				what.push_back(choices[i].id);
+			}
+
+			setEnabled(false);
+			const int chosen = MenuPopover_Pick(GamesList_Fit(c.title, 28).c_str(), items, GuiPopover::Anchor());
+			setEnabled(true);
+
+			if(chosen < 0 || (size_t)chosen >= what.size())
+				return false;
+
+			if(what[(size_t)chosen] == RENAME)
+				renameGame(c);
+			else if(what[(size_t)chosen] == DELETE)
+				deleteGame(c);
+
+			return what[(size_t)chosen] == RESTART;
+		}
+
+		// The title on the on-screen keyboard; only the name the list shows changes
+		void renameGame(const GamesList::Click& c)
+		{
+			char typed[64];
+			snprintf(typed, sizeof(typed), "%s", c.title.c_str());
+
+			putAway();		// the on-screen keyboard is a screen of its own
+			const bool named = OnScreenKeyboard(typed, sizeof(typed));
+			bringBack();
+
+			if(named)
+				finishManage(Game_Rename(GameSave_Live(), c.conf, typed));
+		}
+
+		// Asks once more, as it cannot be undone
+		void deleteGame(const GamesList::Click& c)
+		{
+			std::vector<std::string> answers;
+			answers.push_back("Delete it");
+			answers.push_back("Cancel");
+			setEnabled(false);
+			const bool sure = MenuPopover_Ask(("Delete " + GamesList_Fit(c.title, 22) + "?").c_str(), answers,
+				"Its conf and map are removed from the card. This cannot be undone.", GuiPopover::Anchor()) == 0;
+			setEnabled(true);
+
+			if(sure)
+				finishManage(Game_Delete(GameSave_Live(), c.conf));
+			else
+				showMessage("Not deleted.");
+		}
+
+		// The list is read again (the name sorts somewhere else, or the game is gone) and the result is said
+		void finishManage(const GameSaveResult& r)
+		{
+			if(r.ok)
+			{
+				list.setScanning(true);
+				Games_Scanner().start();
+				changed = true;
+			}
+			showMessage(r.message.c_str());
 		}
 
 		// A name on the on-screen keyboard, the program that is running as the suggestion

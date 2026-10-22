@@ -178,16 +178,25 @@ static void testClick()
 	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK(c.detail.find("saved controls and settings") != std::string::npos);
 
-	// the game that is running can be restarted: that is what Restart does
+	// a game can be renamed and deleted from the same popover: the click says what it is
+	c = l.click(2);
+	CHECK(c.game);
+	CHECK_EQ(c.title, "Prince of Persia");
+	CHECK(!c.running);
+
+	// the game that is running can be restarted: that is what Restart does, and it is not one to delete
 	l.setCurrent("sd:/DOSBox/keen4.conf");
 	c = l.click(1);
 	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
+	CHECK(c.game);
+	CHECK(c.running);
 
 	// plain DOSBox is a choice when a game is running; it launches no conf
 	c = l.click(0);
 	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK(c.message.find("plain DOSBox") != std::string::npos);
 	CHECK(c.conf.empty());
+	CHECK(!c.game);					// plain DOSBox has nothing to rename or delete
 	CHECK(c.detail.find("dosbox.conf alone") != std::string::npos);
 
 	// rows that are not choices

@@ -77,9 +77,11 @@ class GamesList
 			std::string message;	/**< For MESSAGE: what the help line says. For ASK_*: the question (the popover's title) */
 			std::string detail;	/**< For ASK_*: what it does, a sentence or two */
 			std::string conf;	/**< For ASK_LAUNCH: the conf to run ("" for plain DOSBox). For ASK_REPLACE: the conf to replace */
-			bool running;		/**< For ASK_REPLACE: it is the game DOSBox is running (its startup is kept) */
+			bool running;		/**< For ASK_REPLACE and ASK_LAUNCH: it is the game DOSBox is running (its startup is kept; it is not deleted) */
+			bool game;		/**< For ASK_LAUNCH: it is a game, which can be renamed and deleted (not plain DOSBox) */
+			std::string title;	/**< For ASK_LAUNCH of a game: its title, as the Games list shows it */
 			FoundGame found;	/**< For ADD_FOUND: the folder to add */
-			Click() : what(NOTHING), running(false) {}
+			Click() : what(NOTHING), running(false), game(false) {}
 		};
 		/** A (or a click) on a row. */
 		Click click(int row);
@@ -103,5 +105,8 @@ class GamesList
 		std::string current;
 		size_t limit;
 };
+
+/** A name cut to fit a popover's title: at most max characters, ending in ".." when it was cut. */
+std::string GamesList_Fit(const std::string& s, size_t max);
 
 #endif

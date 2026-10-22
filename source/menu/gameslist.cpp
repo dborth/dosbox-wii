@@ -355,9 +355,18 @@ GamesList::Click GamesList::click(int row)
 		c.detail = "DOSBox restarts with dosbox.conf alone, with no game's controls or settings. What is running is lost.";
 	else
 	{
-		const std::string program = games[(size_t)chosen.game].program;
+		const GameRecord& g = games[(size_t)chosen.game];
+		const std::string& program = g.program;
+		c.game = true;
+		c.title = g.title;
+		c.running = isCurrent(g);
 		c.detail = (program.empty() ? std::string("DOSBox restarts with its saved controls and settings.")
 			: "DOSBox restarts and runs " + program + " with its saved controls and settings.") + " What is running is lost.";
 	}
 	return c;
+}
+
+std::string GamesList_Fit(const std::string& s, size_t max)
+{
+	return fit(s, max);
 }
