@@ -58,6 +58,16 @@ class GamesList
 		int rowCount() const;
 		/** A row's text for the list, cut to fit it. */
 		void rowText(int row, std::string& name, std::string& value) const;
+
+		/** What a row shows as a card: a tile, a title with a line under it, and a word at the right */
+		struct Card
+		{
+			enum Kind { CARD, FOUND, HEADER, NOTE } kind;
+			std::string tile, title, detail, action;
+			bool accent;
+			Card() : kind(CARD), accent(false) {}
+		};
+		void card(int row, Card& out) const;
 		/** What the help line says while the row is highlighted. */
 		std::string rowHelp(int row);
 

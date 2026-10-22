@@ -32,6 +32,7 @@
 #include "gameslive.h"
 #include "gamesave.h"
 #include "menupopover.h"
+#include "menutoggle.h"
 
 /****************************************************************************
  * ListBrowser
@@ -51,6 +52,52 @@ class ListBrowser : public GuiOptionBrowser
 
 		//! The highlighted option's index, or -1 until the list has been drawn.
 		int getSelectedOption() const { return optionIndex[selectedItem]; }
+};
+
+/****************************************************************************
+ * ListSurface
+ *
+ * What a ListScreen shows its rows on: a GuiOptionBrowser (a name and a value on each row) or a
+ * GuiCardBrowser (a card each). The screen asks the same four things of either.
+ ***************************************************************************/
+class ListSurface
+{
+	public:
+		virtual ~ListSurface() {}
+		virtual GuiElement * element() = 0;
+		virtual int clicked() = 0;
+		virtual int selected() = 0;
+		virtual void refresh() = 0;
+		//! The rows are worked out when the list is made, so a different number of them means making it anew
+		virtual bool remakeOnResize() const = 0;
+};
+
+class OptionSurface : public ListSurface
+{
+	public:
+		OptionSurface(OptionList * l) : browser(552, 248, l) {}
+		GuiElement * element() override { return &browser; }
+		int clicked() override { return browser.getClickedOption(); }
+		int selected() override { return browser.getSelectedOption(); }
+		void refresh() override { browser.triggerUpdate(); }
+		bool remakeOnResize() const override { return true; }
+
+	private:
+		ListBrowser browser;
+};
+
+class CardSurface : public ListSurface
+{
+	public:
+		CardSurface(GuiCardSource * s) : browser(552, 248, s) {}
+		GuiElement * element() override { return &browser; }
+		int clicked() override { return browser.getClickedOption(); }
+		int selected() override { return browser.getSelectedOption(); }
+		void refresh() override { browser.triggerUpdate(); }
+		bool remakeOnResize() const override { return false; }	// it asks its source again, whatever the count
+
+	private:
+		GuiCardBrowser browser;
 };
 
 /****************************************************************************
@@ -131,11 +178,14 @@ class ListScreen
 		void setEnabled(bool on)
 		{
 			const STATE state = on ? STATE::DEFAULT : STATE::DISABLED;
-			browser->setState(state);
+			browser->element()->setState(state);
 			w.setState(state);
 			if(on)
-				mainWindow->changeFocus(browser);
+				mainWindow->changeFocus(browser->element());
 		}
+
+		//! A screen that shows cards instead of name and value rows says where the cards come from
+		virtual GuiCardSource * cardSource() { return NULL; }
 
 		//! For a screen that puts its own controls in the header, beside the title (the Games screen's Load | Save)
 		UiScope& uiScope() { return ui; }
@@ -151,7 +201,7 @@ class ListScreen
 		void detach();
 
 		OptionList * options;
-		ListBrowser * browser;
+		ListSurface * browser;
 		int helpRow;			//!< the row whose help is on the help line; -1: not known
 		bool messageShown;		//!< a message is on the help line: leave it until the highlight moves
 		bool done;
@@ -232,19 +282,20 @@ void ListScreen::attach()
 {
 	if(!browser)
 	{
-		browser = new ListBrowser(552, 248, options);
-		browser->setPosition(0, 108);
-		browser->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+		GuiCardSource * cards = cardSource();
+		browser = cards ? (ListSurface *) new CardSurface(cards) : (ListSurface *) new OptionSurface(options);
+		browser->element()->setPosition(0, 108);
+		browser->element()->setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	}
 
 	// the browser first: it is what takes focus
-	mainWindow->append(browser);
+	mainWindow->append(browser->element());
 	mainWindow->append(&w);
 }
 
 void ListScreen::detach()
 {
-	mainWindow->remove(browser);
+	mainWindow->remove(browser->element());
 	mainWindow->remove(&w);
 }
 
@@ -255,7 +306,7 @@ void ListScreen::rereadRows()
 
 	fillRows();
 
-	if(options->length != oldLength)
+	if(options->length != oldLength && browser->remakeOnResize())
 	{
 		detach();
 		delete browser;
@@ -264,7 +315,7 @@ void ListScreen::rereadRows()
 		helpRow = -1;
 	}
 	else
-		browser->triggerUpdate();
+		browser->refresh();
 
 	if(!messageShown)
 		helpRow = -1;
@@ -274,7 +325,7 @@ void ListScreen::showMessage(const char * text)
 {
 	helpStr = text;
 	messageShown = true;
-	helpRow = browser->getSelectedOption();
+	helpRow = browser->selected();
 }
 
 void ListScreen::run()
@@ -297,7 +348,7 @@ void ListScreen::run()
 		UpdateGui();
 
 		bool changed = onFrame();
-		const int clicked = browser->getClickedOption();
+		const int clicked = browser->clicked();
 
 		if(extraClicked)
 		{
@@ -313,21 +364,21 @@ void ListScreen::run()
 		}
 
 		// the browser does not use left and right itself
-		if(!changed && stepsWithArrows() && browser->isFocused() == 1 && browser->getSelectedOption() >= 0)
+		if(!changed && stepsWithArrows() && browser->element()->isFocused() == 1 && browser->selected() >= 0)
 		{
 			for(int i = 0; i < 4 && !changed; i++)
 			{
 				if(controller[i]->left())
-					changed = onStep(browser->getSelectedOption(), -1);
+					changed = onStep(browser->selected(), -1);
 				else if(controller[i]->right())
-					changed = onStep(browser->getSelectedOption(), 1);
+					changed = onStep(browser->selected(), 1);
 			}
 		}
 
 		if(changed)
 			rereadRows();
 
-		const int selected = browser->getSelectedOption();
+		const int selected = browser->selected();
 
 		if(selected >= 0 && selected != helpRow)
 		{
@@ -501,16 +552,18 @@ class StatusScreen : public ListScreen
  * (Left and Right on a row switch them too). The folder is read on the scanner's
  * thread (gameslive.h) while the list is up, and again with Rescan.
  ***************************************************************************/
-class GamesScreen : public ListScreen
+class GamesScreen : public ListScreen, public GuiCardSource
 {
 	public:
+		~GamesScreen() { delete mode; }
+
 		GamesScreen() : ListScreen("Games", "Left / Right: Load or Save", "Rescan")
 		{
-			loadBtn = &MenuPage_Button(uiScope(), "Load", 72).onClick([this]{ pendingMode = 0; });
-			saveBtn = &MenuPage_Button(uiScope(), "Save", 72).onClick([this]{ pendingMode = 1; });
-			showMode();
-			headerRight().add(*loadBtn);
-			headerRight().add(*saveBtn);
+			std::vector<std::string> modes;
+			modes.push_back("Load");
+			modes.push_back("Save");
+			mode = new MenuToggle(uiScope(), modes, 0, 64, [this](int chosen){ pendingMode = chosen; });
+			headerRight().add(mode->element());
 		}
 
 	protected:
@@ -620,6 +673,24 @@ class GamesScreen : public ListScreen
 		// Left is Load and Right is Save, on any row
 		bool stepsWithArrows() const override { return true; }
 
+		// The rows are cards
+		GuiCardSource * cardSource() override { return this; }
+
+		int cardCount() override { return list.rowCount(); }
+
+		void card(int index, GuiCardInfo& out) override
+		{
+			GamesList::Card c;
+			list.card(index, c);
+			out.kind = c.kind == GamesList::Card::CARD ? GuiCardInfo::CARD : c.kind == GamesList::Card::FOUND ? GuiCardInfo::DASHED
+				: c.kind == GamesList::Card::HEADER ? GuiCardInfo::HEADER : GuiCardInfo::NOTE;
+			out.tile = c.tile;
+			out.title = c.title;
+			out.detail = c.detail;
+			out.action = c.action;
+			out.accent = c.accent;
+		}
+
 		bool onStep(int, int direction) override
 		{
 			const bool wantSaving = direction > 0;
@@ -639,16 +710,9 @@ class GamesScreen : public ListScreen
 				return;
 
 			list.setSaving(saving);
-			showMode();
+			mode->select(saving ? 1 : 0);
 			changed = true;
 			showMessage(saving ? "Saving what is running. Pick New game, or a game to replace" : "Pick a game to restart into");
-		}
-
-		// The one that is on has the marked outline
-		void showMode()
-		{
-			loadBtn->style(MenuBarButtonStyle(!list.isSaving()));
-			saveBtn->style(MenuBarButtonStyle(list.isSaving()));
 		}
 
 		// The question in a popover over the list, which stays drawn and takes no input meanwhile. True for the first answer.
@@ -835,8 +899,7 @@ class GamesScreen : public ListScreen
 		GamesList list;
 		bool changed = false;
 		int pendingMode = -1;			//!< 0 or 1 when Load or Save was clicked: done at the next frame
-		GuiTextButton * loadBtn = NULL;
-		GuiTextButton * saveBtn = NULL;
+		MenuToggle * mode = NULL;		//!< Load | Save, in the header
 };
 
 /****************************************************************************

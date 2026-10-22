@@ -329,6 +329,28 @@ static inline GuiShapeStyle MenuRowHighlightStyle()
 	return GuiShapeStyle(GuiPaint()).onFocus(lit).onPress(pressed);
 }
 
+//!The capsule a toggle pill's segments sit in (MenuToggle): a white, finely outlined track
+static inline GuiShapeStyle MenuToggleCapsuleStyle()
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	return GuiShapeStyle(GuiPaint().color(p.surfaceRaised).stroke(1.5f, p.outlineStrong).shadow(4.0f, MenuRGBA(0, 0, 0, 70), 0.0f, 1.5f));
+}
+
+//!One segment of a toggle pill: the one that is on has a dark face (its label is white); the others are bare until the cursor
+//!is on them, when they take the row highlight. A segment that is on keeps its dark face under the cursor, with an accent outline.
+static inline GuiShapeStyle MenuToggleSegmentStyle(bool on)
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	GuiShapeStyle s = MenuRowHighlightStyle();
+	if(on)
+	{
+		s.normal = GuiPaint().gradient(p.chromeLight, p.chromeDark);
+		s.focused = GuiPaint().gradient(p.chromeLight, p.chromeDark).stroke(2.5f, p.accent).glow(10.0f, p.glow, 1.0f);
+		s.pressed = GuiPaint().gradient(p.chromeDark, p.chromeDark).stroke(2.5f, p.accent);
+	}
+	return s;
+}
+
 //!A chip that opens a popover (Preset, In DOS, Setup): a flat light face with a fine edge, the row highlight when the cursor is on it
 static inline GuiShapeStyle MenuChipStyle()
 {

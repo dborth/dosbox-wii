@@ -216,6 +216,55 @@ static void testTags()
 	CHECK(l.rowHelp(2).find("cycles") == std::string::npos);
 }
 
+static void testCards()
+{
+	// each row as a card: its tile, title, the line under it, and the word at the right
+	GameRecord g = game("keen4", "Commander Keen 4", "KEEN4E.EXE");
+	g.ownControls = true;
+	g.cycles = "fixed 6000";
+	GameRecord plain = game("doom", "doom", "DOOM.EXE");
+	GamesList l;
+	std::vector<GameRecord> both;
+	both.push_back(g);
+	both.push_back(plain);
+	l.setGames(both);
+	l.setCurrent("sd:/DOSBox/keen4.conf");
+	GamesList::Card c;
+	l.card(0, c);
+	CHECK(c.kind == GamesList::Card::CARD);
+	CHECK_EQ(c.title, "Plain DOSBox");
+	CHECK_EQ(c.action, "Restart");
+	CHECK(!c.accent);
+	l.card(1, c);
+	CHECK_EQ(c.tile, "C");
+	CHECK_EQ(c.title, "Commander Keen 4");
+	CHECK_EQ(c.detail, "KEEN4E.EXE  -  own controls  -  6000 cycles");
+	CHECK_EQ(c.action, "RUNNING");
+	CHECK(c.accent);
+	l.card(2, c);
+	CHECK_EQ(c.tile, "D");					// the first letter, in upper case
+	CHECK_EQ(c.detail, "DOOM.EXE");
+	CHECK_EQ(c.action, "Restart");
+	// with nothing running it is plain DOSBox that is
+	l.setCurrent("");
+	l.card(0, c);
+	CHECK_EQ(c.action, "RUNNING");
+	CHECK(c.accent);
+	// saving: New game first, then Replace on the others and Save here on the running one
+	l.setCurrent("sd:/DOSBox/keen4.conf");
+	l.setSaving(true);
+	l.card(0, c);
+	CHECK_EQ(c.title, "New game");
+	CHECK_EQ(c.action, "Save new");
+	l.card(1, c);
+	CHECK_EQ(c.action, "Save here");
+	l.card(2, c);
+	CHECK_EQ(c.action, "Replace");
+	// a row that is not there is an empty card
+	l.card(99, c);
+	CHECK(c.title.empty());
+}
+
 static void testSaving()
 {
 	GamesList l;
@@ -391,6 +440,7 @@ int main()
 	testClick();
 	testSaving();
 	testTags();
+	testCards();
 	testFound();
 	testFoundLimit();
 	if(failures)

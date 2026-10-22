@@ -14,6 +14,8 @@
 #include "menu/menuart.h"
 #include "menu/menupopover.h"
 #include "menu/menuicon.h"
+#include "menu/menutoggle.h"
+#include "menu/gameslist.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -94,6 +96,30 @@ static void snap(const char * name, GuiWindow& root, int downs = 0, int rights =
 	HostSavePng((outDir + "/" + name + ".png").c_str(), false, true);
 	HostSavePng((outDir + "/" + name + "_wide.png").c_str(), true, false);
 	printf("wrote %s\n", name);
+}
+
+
+// The Games screen's list of cards, over a GamesList as the screen does it
+struct SceneCards : GuiCardSource
+{
+	GamesList list;
+	int cardCount() override { return list.rowCount(); }
+	void card(int index, GuiCardInfo& out) override
+	{
+		GamesList::Card c;
+		list.card(index, c);
+		out.kind = c.kind == GamesList::Card::CARD ? GuiCardInfo::CARD : c.kind == GamesList::Card::FOUND ? GuiCardInfo::DASHED
+			: c.kind == GamesList::Card::HEADER ? GuiCardInfo::HEADER : GuiCardInfo::NOTE;
+		out.tile = c.tile; out.title = c.title; out.detail = c.detail; out.action = c.action; out.accent = c.accent;
+	}
+};
+
+static GameRecord sceneGame(const char * name, const char * title, const char * program, bool own, const char * cycles)
+{
+	GameRecord g;
+	g.name = name; g.title = title; g.program = program; g.path = std::string("sd:/DOSBox/") + name + ".conf";
+	g.ownControls = own; g.cycles = cycles;
+	return g;
 }
 
 // A model with the players, devices and scheme chosen by the scene
@@ -239,6 +265,40 @@ int main(int argc, char ** argv)
 		ControllerConfigView view(0);
 		s.page.append(&view);
 		snap("config_empty", s.root);
+	}
+
+
+	// the Games screen's cards, in Load and Save, with the toggle pill in the header's place
+	for(int mode = 0; mode < 2; mode++)
+	{
+		SceneCards cards;
+		std::vector<GameRecord> games;
+		games.push_back(sceneGame("keen4", "Commander Keen 4", "KEEN4E.EXE", true, "fixed 6000"));
+		games.push_back(sceneGame("prince", "Prince of Persia", "PRINCE.EXE", true, ""));
+		games.push_back(sceneGame("doom", "Doom", "DOOM.EXE", false, "max"));
+		games.push_back(sceneGame("my-setup", "my-setup", "", false, ""));
+		cards.list.setGames(games);
+		FoundGame f1; f1.folder = "WOLF3D"; f1.title = "Wolf3d"; f1.programs.push_back("WOLF3D.EXE");
+		FoundGame f2; f2.folder = "KINGS"; f2.title = "Kings"; f2.programs.push_back("KQ1.EXE");
+		std::vector<FoundGame> found; found.push_back(f1); found.push_back(f2);
+		cards.list.setFound(found);
+		cards.list.setCurrent("sd:/DOSBox/keen4.conf");
+		cards.list.setSaving(mode == 1);
+		Screen s;
+		GuiCardBrowser browser(552, 248, &cards);
+		browser.setPosition(0, 108);
+		browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+		browser.setFocus(1);
+		browser.readRows();
+		s.page.append(&browser);
+		UiScope ui;
+		std::vector<std::string> modes; modes.push_back("Load"); modes.push_back("Save");
+		MenuToggle toggle(ui, modes, mode, 64, nullptr);
+		GuiLayout& header = ui.row().size(552, 44).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::END).add(toggle.element());
+		header.setPosition(0, 22);
+		header.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
+		s.page.append(&header);
+		snap(mode == 0 ? "games_load" : "games_save", s.root);
 	}
 
 	// the home screen: two controllers, four, none; and with a button highlighted
@@ -500,6 +560,30 @@ int main(int argc, char ** argv)
 	// ---- behaviour checks (a failure prints and makes the run fail)
 	int failures = 0;
 	#define EXPECT(c) do { if(!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while(0)
+
+	// ---- the card list and the toggle pill
+	{
+		SceneCards cards;
+		std::vector<GameRecord> games;
+		for(int i = 0; i < 12; i++)
+			games.push_back(sceneGame(("g" + std::to_string(i)).c_str(), ("Game " + std::to_string(i)).c_str(), "G.EXE", false, ""));
+		cards.list.setGames(games);
+		GuiCardBrowser browser(552, 248, &cards);
+		EXPECT(browser.getSelectedOption() == -1);		// nothing is highlighted until the rows have been read
+		browser.triggerUpdate();
+		browser.readRows();
+		EXPECT(browser.getSelectedOption() == 0);
+		EXPECT(cards.cardCount() == 13);				// Plain DOSBox and the twelve
+
+		UiScope ui;
+		std::vector<std::string> modes; modes.push_back("Load"); modes.push_back("Save");
+		int chosen = -1;
+		MenuToggle toggle(ui, modes, 0, 64, [&chosen](int i){ chosen = i; });
+		EXPECT(toggle.selected() == 0);
+		toggle.select(1);
+		EXPECT(toggle.selected() == 1);
+		EXPECT(chosen == -1);							// select() is the screen's own doing: no callback
+	}
 
 	// ---- popovers: placement, size and what they show
 	{

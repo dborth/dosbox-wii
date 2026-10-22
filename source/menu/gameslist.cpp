@@ -4,6 +4,7 @@
  * gameslist.cpp
  ***************************************************************************/
 #include "gameslist.h"
+#include <cctype>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -104,6 +105,81 @@ std::vector<GamesList::Row> GamesList::rows() const
 int GamesList::rowCount() const
 {
 	return (int)rows().size();
+}
+
+void GamesList::card(int row, Card& out) const
+{
+	out = Card();
+	const std::vector<Row> r = rows();
+	if(row < 0 || (size_t)row >= r.size())
+		return;
+
+	switch(r[(size_t)row].kind)
+	{
+		case PLAIN:
+			out.tile = "D";
+			out.title = "Plain DOSBox";
+			out.detail = "dosbox.conf only, no game's settings";
+			out.accent = current.empty();
+			out.action = current.empty() ? "RUNNING" : "Restart";
+			break;
+		case NEW_GAME:
+			out.kind = Card::FOUND;
+			out.tile = "+";
+			out.title = "New game";
+			out.detail = "Save what is running now as a game";
+			out.accent = true;
+			out.action = "Save new";
+			break;
+		case GAME:
+		{
+			const GameRecord& g = games[(size_t)r[(size_t)row].game];
+			const unsigned char first = g.title.empty() ? 0 : (unsigned char)g.title[0];
+			out.tile = std::string(1, (first < 128 && isalnum(first)) ? (char)toupper(first) : '#');
+			out.title = fit(g.title, 34);
+			std::vector<std::string> parts;
+			if(!g.program.empty())
+				parts.push_back(g.program);
+			if(g.ownControls)
+				parts.push_back("own controls");
+			const std::string cycles = Game_CyclesTag(g.cycles);
+			if(!cycles.empty())
+				parts.push_back(cycles);
+			out.detail = fit(join(parts, "  -  "), 52);
+			out.accent = isCurrent(g);
+			if(saving)
+				out.action = out.accent ? "Save here" : "Replace";
+			else
+				out.action = out.accent ? "RUNNING" : "Restart";
+			break;
+		}
+		case FOUND_HEADER:
+			out.kind = Card::HEADER;
+			out.title = "FOUND ON YOUR CARD";
+			break;
+		case FOUND:
+		{
+			const FoundGame& f = found[(size_t)r[(size_t)row].game];
+			out.kind = Card::FOUND;
+			out.tile = "+";
+			out.title = fit(f.title.empty() ? f.folder : f.title, 34);
+			out.detail = fit(f.folder + (f.programs.empty() ? std::string() : "  -  " + f.programs[0]), 52);
+			out.action = "Add";
+			break;
+		}
+		case MORE:
+			out.kind = Card::NOTE;
+			out.title = std::to_string(r[(size_t)row].game) + " more not shown";
+			break;
+		case SCANNING:
+			out.kind = Card::NOTE;
+			out.title = "Looking for games...";
+			break;
+		case NONE_FOUND:
+			out.kind = Card::NOTE;
+			out.title = "No games found";
+			break;
+	}
 }
 
 void GamesList::rowText(int row, std::string& name, std::string& value) const
