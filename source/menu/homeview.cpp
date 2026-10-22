@@ -29,9 +29,12 @@ const int QUICK_ROW_H = 50;
 const int CONTROLLERS_INNER_W = 244;
 const int PLAYER_SLOT_W = 58;
 const int PLAYER_SLOT_H = 80;
-const int PLAYER_SLOT_PAD = 4;	// air between a slot's highlight and the icon and label inside it
+const int PLAYER_SLOT_PAD = 8;	// air between a slot's highlight and the icon and label inside it
 const int DEVICE_ROW_H = 28;
-const int DEVICE_ROW_H_CHARGE = 36;	// the row when a GamePad is there: its battery goes under it, as a player's does
+const int STEPPER_PLUS_NUDGE = 2;	// the + of a stepper rides high in its circle: capitals and signs sit above the middle of the font's line
+const int FOOTER_TEXT_NUDGE = 1;	// likewise the footer buttons' words
+const int FOOTER_ICON_NUDGE = 1;	// and their icons ride a little higher, to stay level with the words
+const int DEVICE_ROW_H_CHARGE = 32;	// the row when a GamePad is there: its battery goes under it, as a player's does
 
 const PixelColor Dark() { return MenuPaletteCurrent().text; }
 const PixelColor Light() { return MenuChromeText(); }
@@ -42,7 +45,7 @@ const PixelColor Light() { return MenuChromeText(); }
 
 // A pill for the bars: the bar buttons' look, an icon and a word. The icon and the word go white when it is highlighted
 // (the face goes dark), as GuiTextButton does for its label.
-GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn, bool marked)
+GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn, bool marked, int textNudge, int iconNudge)
 {
 	GuiCard& c = ui.card().size(w, h).style(MenuBarButtonStyle(marked)).corners(GuiCorners(h / 2.0f)).pad(0, 0).onClick(onClick).onFocus(onFocus);
 	const int iconSize = font + 2;
@@ -51,9 +54,15 @@ GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiC
 	if(icon != MENU_ICON_NONE)
 	{
 		ic = &ui.make<MenuIcon>(icon, iconSize, Dark());
-		row.add(*ic);
+		if(iconNudge)
+		{
+			// the row centers what it holds, so an icon that rides higher sits at the top of a box taller than itself
+			row.add(ui.column().size(iconSize, iconSize + 2 * iconNudge).add(*ic));
+		}
+		else
+			row.add(*ic);
 	}
-	GuiLabel& label = ui.label(text).fontSize(font).textColor(Dark());
+	GuiLabel& label = ui.label(text).fontSize(font).textColor(Dark()).nudgeY(textNudge);
 	if(textFn)
 		label.bind(textFn);
 	row.add(label);
@@ -92,7 +101,7 @@ GuiLayout& HomeView::stepper(std::function<std::string()> value, std::function<v
 	const std::string h = hintText;
 	GuiTextButton& less = ui.button("-").size(30, 30).fontSize(22).style(MenuStepperStyle())
 		.onClick([step]{ step(false); }).onFocus([this, h]{ hint = h; });
-	GuiTextButton& more = ui.button("+").size(30, 30).fontSize(22).style(MenuStepperStyle())
+	GuiTextButton& more = ui.button("+").size(30, 30).fontSize(22).textNudge(STEPPER_PLUS_NUDGE).style(MenuStepperStyle())
 		.onClick([step]{ step(true); }).onFocus([this, h]{ hint = h; });
 	// the label does not reserve more room when its text grows, so it sits in a box of its own
 	GuiLayout& valueBox = ui.row().size(50, 30).align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE)
@@ -215,6 +224,7 @@ GuiLayout& HomeView::playersStrip()
 		GuiLayout& col = ui.column().gap(3).align(LAYOUT_ALIGN::CENTRE).size(PLAYER_SLOT_W, PLAYER_SLOT_H).pad(0, PLAYER_SLOT_PAD).add(iconBox).add(battery).add(*s.label);
 		s.card->add(col, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 		players.add(*s.card);
+		playerCards[i] = s.card;
 
 		ui.bind([&s, i, images, showBattery]{
 			const PlayerInfo p = Controls().player(i);
@@ -283,14 +293,14 @@ GuiLayout& HomeView::playersStrip()
 		}
 	});
 
-	return ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(players).add(rule).add(devices);
+	return ui.column().size(CONTROLLERS_INNER_W, 0).gap(5).align(LAYOUT_ALIGN::CENTRE).add(players).add(rule).add(devices);
 }
 
 // ---- the screen
 
 HomeView::HomeView(HomeSettings& s, const char * version) :
 	settings(s), pending(Action::NONE), actionPlayer(-1), resumeCard(nullptr), exitCard(nullptr), restartCard(nullptr), creditsCard(nullptr), gamesCard(nullptr), saveCard(nullptr),
-	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), hint("Pick something, or Resume to go back to the game")
+	configureCard(nullptr), keyboardCard(nullptr), settingsCard(nullptr), statusCard(nullptr), playerCards(), hint("Pick something, or Resume to go back to the game")
 {
 	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
@@ -338,8 +348,8 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	// body, right: controllers, then four tiles. The tiles are short, and the controllers take what they leave.
 	configureCard = &pill("Configure", MENU_ICON_NONE, 76, 26, 13, [this]{ pending = Action::CONTROLLERS; actionPlayer = -1; }, [this]{ hint = "Set up the buttons of each controller"; });
 	GuiLayout& controllersHead = ui.row().size(CONTROLLERS_INNER_W, 28).gap(6).align(LAYOUT_ALIGN::CENTRE)
-		.add(ui.make<MenuIcon>(MENU_ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4)).addSpace().add(*configureCard);
-	GuiLayout& controllersBody = ui.column().size(CONTROLLERS_INNER_W, 0).gap(6).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
+		.add(ui.make<MenuIcon>(MENU_ICON_PAD, 24, Dark())).add(ui.label("Controllers").fontSize(UI_FONT_HEADING - 4).nudgeY(2)).addSpace().add(*configureCard);
+	GuiLayout& controllersBody = ui.column().size(CONTROLLERS_INNER_W, 0).gap(4).align(LAYOUT_ALIGN::CENTRE).add(controllersHead).add(playersStrip());
 	const int controllersH = cardsH - TILE_H - 8;
 	GuiCard& controllersCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 4).size(264, controllersH);
 	controllersCard.add(controllersBody, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
@@ -404,12 +414,12 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		.align(LAYOUT_ALIGN::CENTRE).justifyContent(LAYOUT_JUSTIFY::CENTRE).add(gameCard).add(cards);
 
 	// footer: Exit, what the highlighted thing does, Credits
-	exitCard = &pill("Exit", MENU_ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; });
-	restartCard = &pill("Restart", MENU_ICON_NONE, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; });
-	creditsCard = &pill("Credits", MENU_ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; });
+	exitCard = &pill("Exit", MENU_ICON_POWER, 76, 34, 15, [this]{ pending = Action::EXIT; }, [this]{ hint = "Exit DOSBox"; }, nullptr, false, FOOTER_TEXT_NUDGE, FOOTER_ICON_NUDGE);
+	restartCard = &pill("Restart", MENU_ICON_RESTART, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; }, nullptr, false, FOOTER_TEXT_NUDGE, FOOTER_ICON_NUDGE);
+	creditsCard = &pill("Credits", MENU_ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; }, nullptr, false, FOOTER_TEXT_NUDGE, FOOTER_ICON_NUDGE);
 	GuiLabel& hintLabel = ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted())
 		.bind([this]{ return status.empty() ? hint : status; });
-	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 96 - 108 - 36);
+	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 106 - 108 - 36);
 	hintLabel.setScroll(SCROLL::HORIZONTAL);
 	GuiLayout& footer = ui.row().size(sw, MENU_BAR_BOTTOM_H).pad(MENU_PAGE_MARGIN, 0).gap(12).align(LAYOUT_ALIGN::CENTRE)
 		.add(*exitCard).add(*restartCard).add(hintLabel).addSpace().add(*creditsCard);
@@ -428,6 +438,12 @@ HomeView::Action HomeView::takeAction()
 	const Action a = pending;
 	pending = Action::NONE;
 	return a;
+}
+
+void HomeView::selectPlayer(int player)
+{
+	if(player >= 0 && player < 4 && playerCards[player])
+		playerCards[player]->select();
 }
 
 void HomeView::select(Action which)

@@ -117,6 +117,24 @@ void MenuIcon::build()
 			mesh.addPolygon(tri, fill);
 			break;
 		}
+		case MENU_ICON_RESTART:
+		{
+			// an arrow running round a circle, clockwise, with a gap at the top left where the head sits
+			const float cx = 12.0f, cy = 12.5f, r = 7.4f;
+			const float endDeg = 235.0f;
+			mesh.strokeArc(P(cx, cy), r * u, endDeg + 70.0f, 290.0f, 2.2f * u, color);
+			// the arrowhead at the end of the arc, pointing the way the arc runs
+			const float rad = endDeg * 3.14159265f / 180.0f;
+			const float px = cx + r * cosf(rad), py = cy + r * sinf(rad);
+			const float tx = -sinf(rad), ty = cosf(rad);	// the way the arc runs
+			const float nx = -ty, ny = tx;					// across it
+			std::vector<GuiPoint> head;
+			head.push_back(P(px + tx * 5.0f, py + ty * 5.0f));
+			head.push_back(P(px - tx * 1.0f + nx * 4.4f, py - ty * 1.0f + ny * 4.4f));
+			head.push_back(P(px - tx * 1.0f - nx * 4.4f, py - ty * 1.0f - ny * 4.4f));
+			mesh.addPolygon(head, fill);
+			break;
+		}
 		case MENU_ICON_CLOSE:
 			line(7.2f, 7.2f, 16.8f, 16.8f);
 			line(16.8f, 7.2f, 7.2f, 16.8f);

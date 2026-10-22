@@ -67,9 +67,11 @@ class HomeView : public GuiOverlay
 		void setStatus(const std::string& text) { status = text; }
 		/** Puts the selection on a button again (after something that was open over the screen closes) */
 		void select(Action which);
+		/** Puts the selection on a player's slot (for the preview) */
+		void selectPlayer(int player);
 
 	private:
-		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr, bool marked = false);
+		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr, bool marked = false, int textNudge = 0, int iconNudge = 0);
 		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
 		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
 		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);
@@ -91,6 +93,7 @@ class HomeView : public GuiOverlay
 		GuiCard * keyboardCard;
 		GuiCard * settingsCard;
 		GuiCard * statusCard;
+		GuiCard * playerCards[4];
 		std::string hint;
 };
 

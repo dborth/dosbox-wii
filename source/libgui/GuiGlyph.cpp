@@ -20,6 +20,10 @@ GuiGlyph::GuiGlyph(GLYPH k, const char * letter) : kind(k), text(nullptr), meshF
 		text = new GuiText(letter, px, GuiTheme::current().textOnAccent);
 		text->setParent(this);
 		text->setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
+		// capitals and digits have no descenders, so the font's line box centers them high; this puts the same
+		// padding above the letter as below it
+		// (the bumper pill is two pixels shorter than the round glyphs, so its single letter takes one less)
+		text->setNudgeY(kind == GLYPH::BUMPER && px >= 13 ? 1 : 2);
 	}
 }
 

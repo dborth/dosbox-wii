@@ -122,22 +122,30 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
 	GuiTrigger trigA;
 	trigA.setPrimaryTrigger();
 
+	// OK and Cancel go black under the cursor (white words on a dark face), as the bar buttons do
+	const PixelColor white = MenuChromeText();
 	GuiText okBtnTxt("OK", 24, (PixelColor){0, 0, 0, 255});
+	GuiText okBtnTxtOver("OK", 24, white);
 	MenuButtonShape okBtnImg(MenuButtonShape::NORMAL);
+	okBtnImg.setStyle(MenuBarButtonStyle());
 	GuiButton okBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H);
 	okBtn.setAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	okBtn.setPosition(25, -25);
 	okBtn.setLabel(&okBtnTxt);
+	okBtn.setLabelOver(&okBtnTxtOver);
 	okBtn.setImage(&okBtnImg);
 	okBtn.setTrigger(&trigA);
 	okBtn.setEffectGrow();
 
 	GuiText cancelBtnTxt("Cancel", 24, (PixelColor){0, 0, 0, 255});
+	GuiText cancelBtnTxtOver("Cancel", 24, white);
 	MenuButtonShape cancelBtnImg(MenuButtonShape::NORMAL);
+	cancelBtnImg.setStyle(MenuBarButtonStyle());
 	GuiButton cancelBtn(MENU_BTN_NORMAL_W, MENU_BTN_NORMAL_H);
 	cancelBtn.setAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	cancelBtn.setPosition(-25, -25);
 	cancelBtn.setLabel(&cancelBtnTxt);
+	cancelBtn.setLabelOver(&cancelBtnTxtOver);
 	cancelBtn.setImage(&cancelBtnImg);
 	cancelBtn.setTrigger(&trigA);
 	cancelBtn.setEffectGrow();

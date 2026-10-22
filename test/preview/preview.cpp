@@ -277,6 +277,20 @@ int main(int argc, char ** argv)
 				snap(gpNames[i], s.root);
 			}
 		}
+		{
+			// a player's slot highlighted, with a GamePad present: the padding inside the slot and the devices row
+			SceneModel m(2);
+			m.dev.gamepadPresent = true;
+			m.dev.gamepadBattery = 70;
+			m.dev.mouse = true;
+			Controls_SetModel(&m);
+			SceneSettings settings;
+			Screen s;
+			HomeView view(settings, "2.0");
+			view.selectPlayer(0);
+			s.page.append(&view);
+			snap("home_slot", s.root);
+		}
 		SceneModel m(2);
 		Controls_SetModel(&m);
 		SceneSettings settings;
