@@ -5,7 +5,8 @@
  * GuiCardBrowser.cpp
  ***************************************************************************/
 
-#include "Gui.h"
+#include "libgui/Gui.h"
+#include "GuiCardBrowser.h"
 
 #include <algorithm>
 

@@ -6,6 +6,8 @@
  ***************************************************************************/
 #pragma once
 
+#include "libgui/Gui.h"
+
 #include <string>
 
 #define CARD_PAGESIZE 5

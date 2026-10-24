@@ -2,6 +2,7 @@
 // Each PNG is the 640x480 canvas with the 5% overscan frame drawn in red; <name>_wide.png is the same frame
 // stretched to 16:9 the way a widescreen TV shows it.
 #include "libgui/Gui.h"
+#include "widgets/GuiWidgets.h"
 #include "hostgfx.h"
 #include "menu/controlsui.h"
 #include "menu/homeview.h"

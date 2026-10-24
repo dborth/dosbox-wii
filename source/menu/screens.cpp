@@ -16,6 +16,7 @@
 #include <string>
 
 #include "libgui/Gui.h"
+#include "widgets/GuiWidgets.h"
 #include "drivers/Platform.h"
 #include "drivers/VideoDriver.h"
 #include "drivers/InputController.h"

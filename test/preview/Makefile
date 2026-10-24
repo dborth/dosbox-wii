@@ -14,7 +14,8 @@ SHARED = ../shared
 GEN = gen
 LIBGUI = $(addprefix $(SRC)/libgui/, GuiLayout.cpp GuiWindow.cpp GuiElement.cpp GuiLayoutSolver.cpp GuiGeometry.cpp GuiUi.cpp \
 	GuiButton.cpp GuiShape.cpp GuiPaint.cpp GuiTheme.cpp GuiText.cpp GuiImage.cpp GuiImageData.cpp \
-	GuiMeshCache.cpp GuiGlyph.cpp GuiSound.cpp GuiPopover.cpp GuiCardBrowser.cpp)
+	GuiMeshCache.cpp GuiGlyph.cpp GuiSound.cpp GuiPopover.cpp)
+WIDGETS = $(addprefix $(SRC)/widgets/, GuiCardBrowser.cpp)
 APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controllerprofile.cpp controllerlayout.cpp controllerview.cpp controlsui.cpp menupage.cpp menupopover.cpp menutoggle.cpp games.cpp gameslist.cpp homeview.cpp menuicon.cpp) $(SRC)/stickmouse.cpp $(SRC)/stickkeys.cpp $(SHARED)/samplecontrols.cpp
 
 all: out/.stamp
@@ -28,7 +29,7 @@ INC = -I$(SRC) -I$(SRC)/menu -I$(SRC)/drivers -I$(SHARED) $(FT_CFLAGS) -I$(GEN)/
 $(GEN)/GuiTextRenderer.o: $(SRC)/libgui/GuiTextRenderer.cpp hostft.h
 	$(CXX) $(CXXFLAGS) $(INC) -include hostft.h -c -o $@ $<
 
-preview: preview.cpp hostgfx.cpp hoststubs.cpp $(GEN)/assets.cpp $(GEN)/GuiTextRenderer.o $(LIBGUI) $(APP)
+preview: preview.cpp hostgfx.cpp hoststubs.cpp $(GEN)/assets.cpp $(GEN)/GuiTextRenderer.o $(LIBGUI) $(WIDGETS) $(APP)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ $^ $(LIBS)
 
 out/.stamp: preview

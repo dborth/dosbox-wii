@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "libgui/Gui.h"
+#include "widgets/GuiWidgets.h"
 #include "drivers/Platform.h"
 #include "drivers/AudioDriver.h"
 #include "drivers/VideoDriver.h"
