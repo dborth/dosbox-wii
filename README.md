@@ -2,7 +2,7 @@
 
 [github.com/dborth/dosbox-wii](https://github.com/dborth/dosbox-wii) — GPL licensed
 
-**DOSBox Wii** is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and saved setups.
+**DOSBox Wii** is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and games.
 
 DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to be set up to run unsigned code first. If you haven't done that yet, jump to **[Installation](#installation)**; it links to a step-by-step guide for each console.
 
@@ -25,6 +25,7 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
   - [Home screen](#home-screen)
   - [Settings](#settings)
   - [Status](#status)
+  - [Games](#games)
   - [Wii and Wii U](#wii-and-wii-u)
 - [Controls](#controls)
   - [Supported devices](#supported-devices)
@@ -32,7 +33,6 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
   - [Controls on each controller](#controls-on-each-controller)
   - [Keyboard & mouse](#keyboard--mouse)
   - [The D-pad and the joystick](#the-d-pad-and-the-joystick)
-  - [Setups: saving controls per game](#setups-saving-controls-per-game)
 - [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
 - [Known Limitations](#known-limitations)
@@ -69,7 +69,7 @@ Every push builds automatically. Grab the latest continuous-integration build:
 - A Home menu you can open at any time (Home, or L + R + Plus, or a tap of a keyboard's Windows key): speed, frameskip, aspect and filter at a glance, plus settings pages for Performance, Video, Audio, Keyboard & Mouse and the DOS joystick, and an *All settings* editor for the rest
 - A **Status** page showing what DOSBox is configured to and what is in effect (running CPU core and whether the dynarec is active, cycles, screen mode, audio output, mounted drives, loaded config file), with anything not at DOSBox's default marked
 - Controller setup with a drawing of each controller, live highlighting of the buttons you press, a chooser for keys, joystick buttons, mouse buttons and DOSBox functions, and five built-in presets for common kinds of DOS game
-- **Games**: save every player's buttons and what DOS sees under a name, and load them again later
+- **Games**: save a game's controls, settings and startup under a name, then switch to it from the menu without leaving the app. Games you've put on the card by hand are found too
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
 - Video output adjustments: original (4:3) or uncorrected (square-pixel) aspect, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
@@ -97,7 +97,7 @@ DOS sees the `DOSBox` folder as drive **C:**, so put your games inside it. Every
 ├── dosbox.conf                  ← first run, when no config file is found
 ├── dosbox.conf.bak              ← after Settings → Save over an existing file
 ├── mapper.map         ← after you change a controller button
-├── Setups/                      ← after you save a setup
+├── Games/                       ← after you save a game or add one found on the card
 ├── capture/                     ← after a wave recording (Ctrl+F6, USB keyboard)
 └── ...                          ← your DOS games and files
 ```
@@ -303,7 +303,7 @@ Normally one file is read, the first of these that exists:
 
 If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but neither launcher entry in this repository passes any. To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
 
-**Restart and game configs.** `CONFIG -r` at the DOS prompt restarts DOSBox with the options it started with, or with the ones you add. `CONFIG -r -gameconf name.conf` reads `name.conf` **after** the base config, so it only has to hold what differs and its values win. It is looked up as given, then in the `DOSBox` folder. The home screen's **Restart** keeps the game config, and `CONFIG -r -nogameconf` drops it. Nothing in the menu chooses a game config.
+**Restart and game configs.** `CONFIG -r` at the DOS prompt restarts DOSBox with the options it started with, or with the ones you add. `CONFIG -r -gameconf name.conf` reads `name.conf` **after** the base config, so it only has to hold what differs and its values win. It is looked up as given, then in the `DOSBox` folder. The home screen's **Restart** keeps the game config, and `CONFIG -r -nogameconf` drops it. The **Games** screen chooses one from the menu; see [Games](#games).
 
 Whichever file was read is the one **Settings → Save** writes back to, with the previous version kept as `dosbox.conf.bak` (see [Saving](#saving)).
 
@@ -365,8 +365,8 @@ Everything else in `[cpu]`, `[sblaster]`, `[dos]` and the other sections is stan
 | `dosbox.conf` | `DOSBox` folder | First launch with no config file found |
 | `dosbox.conf.bak` | Beside the config file | **Settings → Save** over an existing file. Each save replaces the older `.bak`, so it is always the version before the last save |
 | `dosbox.conf.tmp` | Beside the config file | During a save, and removed when it finishes. It is left behind only if a save was cut short, and removed by the next save |
-| `mapper.map` | Folder of the config file | You change a controller button, or save a [setup](#setups-saving-controls-per-game) |
-| `Setups/` (`name.conf`, `name.map`) | `DOSBox` folder | The first time you save a setup |
+| `mapper.map` | Folder of the config file | You change a controller button |
+| `Games/` (`name.conf`, `name.map`) | `DOSBox` folder | The first time you save a [game](#games) or add one found on the card |
 | `capture/` | Folder of the config file (`[dosbox] captures`) | The first wave recording (**Ctrl+F6** on a USB keyboard) or raw capture. Screenshots are not built into this build |
 
 To start a game automatically and quit when it ends, use `[autoexec]`:
@@ -404,23 +404,23 @@ Nothing else opens it. (On the Wii U GamePad the **TV** button opens an on-scree
 | Action | What it does |
 |---|---|
 | **Resume** (top right) | Slides the menu away and returns to the game. Any key, mouse button or joystick button your controller buttons were holding is let go, and a button still held does nothing until you release it |
-| **Home**, on any controller | The same as Resume, **on the home screen only**. Inside Settings, Status, the controller screens or the Setups popover, Home does nothing: go **Back** first. There is no Home on a GameCube controller, so use **Resume** |
+| **Home**, on any controller | The same as Resume, **on the home screen only**. Inside Settings, Status, Games, the controller screens or a popover, Home does nothing: go **Back** first. There is no Home on a GameCube controller, so use **Resume** |
 | **B** (or **Back**) | On Settings, Status, Drives and the pages under them, goes up one level. On the home screen it does nothing |
 | **L + R + Plus**, GUI key | Open the menu, but do not close it |
 | **Keyboard** tile | After **OK** with some text typed, the menu closes and the text is typed into DOS. **Cancel**, or an empty box, stays in the menu |
 | **Exit** (bottom left) | Fades out and leaves DOSBox at once. There is **no confirmation and nothing is saved** (see [Saving](#saving)). Wii: returns to the Homebrew Channel (or whatever launched it), or turns the console off if a power-off was requested. Wii U: returns to the Wii U Menu |
-| **Restart** (beside Exit) | Closes DOSBox and starts it again from the config file, as if you had launched it again, without going back to the launcher. **Whatever is running is lost.** Settings you changed but did not **Save** are lost too, and settings DOSBox reads only at startup (**(next launch)**) now take effect. A game config given with `CONFIG -r -gameconf` (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)) is kept |
+| **Restart** (beside Exit) | Closes DOSBox and starts it again from the config file, as if you had launched it again, without going back to the launcher. **Whatever is running is lost.** Settings you changed but did not **Save** are lost too, and settings DOSBox reads only at startup (**(next launch)**) now take effect. A game config, whether chosen in **Games** or given with `CONFIG -r -gameconf` (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)), is kept |
 | Power button / system shutdown request | Honoured whether the menu is open or not, and ends DOSBox the same way as **Exit** |
 | `exit` at the DOS prompt, **Ctrl+F9** on a USB keyboard | Also end DOSBox, without the menu. Ctrl+F9 is DOSBox's `shutdown` hotkey and is not offered for controller buttons |
 
 ### Home screen
 
-The top bar says what is running. The left card holds four quick settings, the right card the controllers and four tiles, and the bottom bar has **Exit**, a line saying what the highlighted thing does, and **Credits**.
+The top bar says what is running. A **Game** card runs across the top. Under it the left card holds four quick settings and the right card the controllers and three tiles, and the bottom bar has **Exit**, a line saying what the highlighted thing does, and **Credits**.
 
 | Control | What it does |
 |---|---|
 | **Program** (top, next to the logo) | The DOS program running now, by its file name as DOS recorded it when it started (for example `KEEN4E.EXE`), or **DOS prompt** |
-| **Setup** (under it) | `Setup: name` for the setup you last **loaded or saved** from the Setups tile since DOSBox started, or `No setup loaded`. It is not chosen by the running program, and is not marked as changed when you edit buttons afterwards |
+| **Game** (under it) | `Game: name`, the file name of the game config DOSBox was started with, or `No game`. It follows a restart into a game and `CONFIG -r -gameconf`; see [Games](#games) |
 | **Resume** | Back to the game |
 | **Speed** `−` `value` `+` | The running CPU speed, changed at once. The line under it names the core that is running (*Dynamic core*, *Normal core* or *Full core*; *CPU speed* if that cannot be told). Details below |
 | **Frameskip** `−` `value` `+` | The number of frames skipped, **0 to 10**, one per press; it stops at both ends. More skipping makes heavy games faster but choppier |
@@ -430,7 +430,7 @@ The top bar says what is running. The left card holds four quick settings, the r
 | **Keyboard** tile | An on-screen keyboard with an **Enter** key. The text is typed into DOS, as a US keyboard, after the menu closes; characters with no key on a US keyboard are skipped, and the box holds at most 255 characters at a time |
 | **Settings** tile | The settings pages; see [Settings](#settings) |
 | **Status** tile | What DOSBox is set to and doing; see [Status](#status) |
-| **Setups** tile | Opens a small menu to save or load a setup (every player's buttons and the joystick type); see [Setups](#setups-saving-controls-per-game). What a save or load did is shown on the bottom line, and stays there until you open another tile |
+| **Game** card | The game DOSBox was started with, or **Plain DOSBox**. **Games** opens the list of games to restart into, and **Save** (**Save as game** at the plain prompt) saves what is running. What a save did is shown on the bottom line. See [Games](#games) |
 | **Exit** / **Credits** | Quit DOSBox / who made this, with this console's details, the free memory, and `JIT: Enabled` when the dynamic core is the one running (`Disabled` for another core, `Unknown` if that cannot be told). Any button closes the credits |
 
 **Speed** is a share of the console while DOSBox is in *max* mode, or in *auto* mode once a game has taken it there, and is shown as a percentage (`100%`). Otherwise it is a number of cycles. `−` and `+` work like this:
@@ -569,11 +569,11 @@ On numbers, a list of values is stepped in ascending order; a whole-number range
 
 **Save** (bottom of the Settings list, not on the pages below it) writes the running configuration, including what you changed in the menu, to disk:
 
-- It writes to the **first config file DOSBox loaded**, usually `DOSBox/dosbox.conf`. With none loaded it creates `dosbox.conf` in the DOSBox folder. (A file given with `-conf` is saved over if it was loaded first.)
+- With a [game](#games) active it saves **that game** (its `.conf` and `.map`) and leaves `dosbox.conf` alone. Otherwise it writes to the **first config file DOSBox loaded**, usually `DOSBox/dosbox.conf`. With none loaded it creates `dosbox.conf` in the DOSBox folder. (A file given with `-conf` is saved over if it was loaded first.)
 - The old file is kept as `dosbox.conf.bak`; an earlier `.bak` is replaced, so only the **previous** version is kept. The new file is written under a temporary name, checked, and only then swapped in, so a card that fills up does not leave a half-written file.
 - The whole file is **regenerated** from DOSBox's own settings, with DOSBox's usual comments. Comments you added by hand are lost (they stay in the `.bak`), as is any section this build does not declare. `[sdl]`, `[display]`, `[render]` and `[autoexec]` are all written. An old `aspect=` line in `[render]` is not written back, because that setting is now `[display] aspect`.
 - The result is on the bottom line: `Saved <path>.`, with `The file it replaced is kept as dosbox.conf.bak.`, or `Not saved.` and the reason.
-- It does **not** save controller buttons: those are written to the mapper file as you change them, or to a [setup](#setups-saving-controls-per-game).
+- It does **not** save controller buttons: those are written to the mapper file as you change them, or saved with a [game](#games).
 
 #### Settings that don't take effect
 
@@ -601,6 +601,85 @@ On numbers, a list of values is stepped in ascending order; a whole-number range
 | **Drives and config** | **Config file** (the first file loaded, with `+N` for more `-conf` files; *None (defaults)* if there was none); one line for each mounted DOS drive, or *None mounted* |
 
 **CPU → Dynarec** says **Active** when the CPU core running now is the dynamic recompiler, **Not active** when it is any other core, and **Unknown** when the core cannot be told. It tests only which core is running. On this build `core=auto` picks the dynamic recompiler **at startup**, as long as DOSBox could get memory for its code cache; if it could not, DOSBox falls back to the normal core. So *Not active* with `auto` or `dynamic` means there was no memory for the cache; *Not active* with `normal` is what you asked for.
+
+### Games
+
+A **game** is a saved way of running one DOS program: its controls, the settings that matter to it, and what to start. You can switch from one game to another without leaving DOSBox Wii, and the controls and settings you saved for a game come back with it.
+
+Under the hood a game is an ordinary DOSBox config file that DOSBox reads **after** `dosbox.conf`, so its settings win and `dosbox.conf` keeps everything else. A game you save from the menu holds the whole running configuration as it was at that moment, plus a `.map` file with its controller buttons. A game you write by hand can be as small as you like.
+
+The **Game** card across the top of the home screen shows the game DOSBox was started with: a tile with its first letter, its title, and `Runs KEEN4E.EXE` under it. At the plain prompt it reads **Plain DOSBox** and `Nothing is saved from this session`. Its two buttons are **Games** (the list, below) and **Save** (**Save as game** when no game is active).
+
+#### The Games screen
+
+**Games** opens a list with two tabs, **Load** and **Save**, which you switch with **Left** and **Right**. **Rescan** (beside **Back**) reads the card again, for example after you copy a game to it. The list is read in the background when the screen opens, so rows appear when it finishes.
+
+**Load** is for switching games. **A** opens a small menu for the highlighted game:
+
+| Choice | What it does |
+|---|---|
+| **Restart** | Closes DOSBox and starts it again with that game's config on top of `dosbox.conf`, then runs its startup. **Whatever is running is lost**, and so are menu changes you didn't save |
+| **Rename** | Changes the name the list shows (the file names stay as they are) |
+| **Delete** | Removes the game's `.conf`, and its `.map` if the `.conf` names one beside it. This cannot be undone. Not offered for the game that is running |
+
+The first row is **Plain DOSBox**, which restarts with `dosbox.conf` alone. The game DOSBox is running is marked **RUNNING**. Under the games, **Found on your card** lists folders just below the `DOSBox` folder that hold an `.EXE`, `.COM` or `.BAT` file and have no game yet. **A** on one asks you to confirm its name (and which program to run, if it has several), then adds a small game for it: a startup that goes to that folder and runs the program, and nothing else, so it uses your `dosbox.conf` settings and the default controls.
+
+**Save** is for keeping what is running. The first row, **New game**, asks for a name on the on-screen keyboard (it suggests the running program's name without `.EXE`, or `My game`), and asks before replacing a game with the same name. Every other row replaces that game with what is running, after a question. The game DOSBox was started with is marked **Save here** and keeps its own startup lines when it is saved.
+
+With a game running, **Save** on the home screen, and **Save** on the Settings list, save **that game** and leave `dosbox.conf` alone. At the plain prompt, **Save as game** on the home screen is the same as **New game**.
+
+#### What a saved game holds
+
+Games are kept in `DOSBox/Games/` on the device that holds your `DOSBox` folder (for example `sd:/DOSBox/Games/`), made on the first save. Each game is two files:
+
+```text
+sd:/DOSBox/Games/
+├── Commander Keen 4.conf
+└── Commander Keen 4.map
+```
+
+Names are up to 24 characters, without dots, slashes or other characters a file name cannot hold. The `.map` is written first, then the `.conf`, and each is swapped in only once it is complete, so a save cut short never leaves a game without its map.
+
+The `.conf` is the running configuration, written the way **Settings → Save** writes `dosbox.conf`, with these differences:
+
+```text
+# title=Commander Keen 4
+# program=KEEN4E.EXE
+[sdl]
+mapperfile=Commander Keen 4.map
+[joystick]
+joysticktype=4axis
+...                            ← every other setting, as it is running
+[autoexec]
+mount d "sd:/DOSBox/Other"     ← only if you had mounted it
+cd \GAMES\KEEN4
+KEEN4E.EXE
+```
+
+- `# title=` and `# program=` are comments DOSBox ignores. The title is what the list shows. Without a title the file name is used, and without a program the last line of `[autoexec]` that runs something is used.
+- `mapperfile=` is the `.map` beside it, by file name.
+- `joysticktype=` is what DOS sees, written out even if it was `auto`.
+- `[autoexec]` is built from the drives mounted when you saved and the program running: `C:` is the `DOSBox` folder, which is always mounted, so it is not repeated; other mounts are written as `mount` or `imgmount` lines, then a `cd` and the program. Only the game's own lines are written, not the ones from `dosbox.conf`. A drive that can't be written (a disk image, or a `C:` that is not the `DOSBox` folder) is skipped, and the message after the save says so.
+
+The `.map` is a copy of DOSBox's whole mapper file at the moment of the save: every event and its binds (keys, hotkeys, joystick buttons and axes, and each player's `pad_N` lines). It is the same format as `mapper.map`, so you can copy a game between consoles or edit the `.map` in a text editor. While a game is running its `.map` is the live mapper file, so button changes you make in the menu are held in memory and reach the file when you save.
+
+#### Making a game by hand
+
+Nothing has to be registered. The list shows every `.conf` (except `dosbox.conf`) in the `DOSBox` folder, in `DOSBox/Games/`, and in any folder one level below the `DOSBox` folder, whoever made it. The first lines can say how to show it:
+
+```text
+# title=Commander Keen 4
+# program=KEEN4E.EXE
+[cpu]
+cycles=fixed 6000
+[autoexec]
+cd \GAMES\KEEN4
+KEEN4E.EXE
+```
+
+Only what differs from `dosbox.conf` is needed. Other settings keep their `dosbox.conf` values, and `[autoexec]` lines from both files run, `dosbox.conf`'s first, so keep that one to mounts (an `exit` or a program started there stops the game's lines from ever running). `mapperfile=` is looked up beside the game's `.conf`. The list shows at most about 150 rows, and says how many more there are.
+
+You can also restart into a game from the DOS prompt with `CONFIG -r -gameconf name.conf` (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)). The game then shows as **RUNNING**.
 
 ### Wii and Wii U
 
@@ -646,7 +725,7 @@ Open **Controllers** on the home screen. **Configure** opens the setup screen, a
 - **Player N**, with what DOS does with that player ("Joystick 1", or "Keys + mouse") underneath. Arrows to switch players appear when two or more controllers are connected.
 - A **drawing of the controller** with a row for each control. Each row shows what that control does now ("Key: Ctrl", "Joystick 2", "Mouse left", "DOS: Cycles up"), or why it does nothing ("Joystick off", "No button 3"). Controls light up on the drawing as you press them on the real controller.
 - A **PRESET** chip (this player) and an **IN DOS** chip (the whole game) at the top.
-- A **SETUP** chip and **Back** at the bottom; see [Setups](#setups-saving-controls-per-game).
+- **Back** at the bottom. To keep your buttons for a game, save it from the home screen; see [Games](#games).
 
 Press **A** on a row to change what that control does. Changes apply at once and are written to the mapper file (`[sdl] mapperfile`, `mapper.map` by default).
 
@@ -682,7 +761,7 @@ A preset replaces **this player's** buttons only. If you have changed buttons si
 
 ZL, ZR and the stick clicks are not assigned by any preset. Under *Two joysticks* only joystick buttons 1 and 2 exist, so *Compatible* leaves X and Y unassigned there (the preset list previews them as "No button 3" and "No button 4").
 
-The preset name on screen is the one the buttons started from. DOSBox does not record it in the mapper file, so until you pick one (or load a setup) it is the closest match to your current buttons.
+The preset name on screen is the one the buttons started from. DOSBox does not record it in the mapper file, so until you pick one it is the closest match to your current buttons.
 
 #### Changing one control
 
@@ -789,62 +868,6 @@ The same rows as the Wii U Pro Controller, drawn as a GamePad, with **L Click** 
 
 A DOS joystick has no D-pad, so with a joystick enabled the D-pad is folded into the joystick's left stick axes. To stop an arrow-key D-pad also steering the joystick, **the D-pad drives the joystick only while all four of its directions are left on the joystick default or Not assigned.** Give any direction a key, mouse button, joystick button or DOSBox function and the whole D-pad stops moving the joystick. The rule is checked when emulation starts and again after you leave the menu.
 
-### Setups: saving controls per game
-
-A **setup** is a saved copy of every player's buttons and what DOS sees. It holds nothing else from `dosbox.conf` (no cycles, sound or video).
-
-Open the **SETUP** chip (bottom of the setup screen) or *Home → Setups*:
-
-- **Save as a new setup...** asks for a name on the on-screen keyboard (it suggests the running program's name, without `.EXE`, or "My setup"), then which program the setup is for: the running program, no program, or a name you type. If the name is already used you are asked before it is replaced. Names are up to 24 characters, without dots, slashes or other characters a file name cannot hold, and case does not matter.
-- **Save as *name*** (offered when a setup is loaded) replaces that setup, keeping its program.
-- **Load a setup...** lists the saved setups with the program, what DOS sees and the preset recorded.
-
-#### Where the files are
-
-Setups are kept in `DOSBox/Setups/` on the device that holds your DOSBox folder (for example `sd:/DOSBox/Setups/`). The folder is created on the first save. Each setup is two files:
-
-```text
-sd:/DOSBox/Setups/
-├── Keen4.conf
-└── Keen4.map
-```
-
-**`name.conf`** is a small DOSBox config. The first line must be exactly `# DOSBox Wii setup`; the list of setups only shows `.conf` files that begin with it, so other `.conf` files in the folder are ignored.
-
-```text
-# DOSBox Wii setup
-# program=KEEN4E.EXE
-# preset.1=Arrow keys
-[sdl]
-mapperfile=Keen4.map
-[joystick]
-joysticktype=4axis
-```
-
-- `# program=` is the program name as an upper-case file name with its extension, only if you attached one.
-- `# preset.N=` (N is the player, 1 to 4) is the preset that player started from, written only for players who were connected. It is a label for the Load list; the buttons themselves are in the `.map`.
-- `mapperfile=` is the `.map` beside it, by file name.
-- `joysticktype=` is what DOS sees (`4axis`, `2axis`, `none`, `4axis_2`, `fcs` or `ch`).
-
-**`name.map`** is a copy of DOSBox's whole mapper file as it was at the moment of the save: every event and its binds (keys, hotkeys, joystick buttons and axes, and each player's `pad_N` lines). It is the same format as `mapper.map`.
-
-The `.map` is written first, then the `.conf`, so a save cut short never leaves a listed setup without its map. Each file is written to a temporary name first and swapped in.
-
-#### What happens when you load one
-
-**Load** is something you do; a setup is **not** loaded by itself when its program starts. (The program name is stored and shown in the list, but nothing at present looks it up when a program runs.)
-
-Loading, from the menu:
-
-1. sets the joystick type from the `.conf`;
-2. gives each player's 16 buttons and D-pad directions what the `.map` has for them (its `pad_N` lines, and the matching `stick_N` binds);
-3. moves joystick-button binds onto the joystick each player now has;
-4. writes the result to the mapper file DOSBox is using.
-
-**Only those buttons and the joystick type change when you load from the menu.** Other binds in the `.map` (keyboard-key binds, hotkey keys, joystick axes) take effect only when DOSBox itself starts with that `.conf` (the standard `-conf` option). If you start DOSBox that way, the setup's `.map` is the live mapper file, so changes you make on screen are held in memory and are written to the setup only when you **Save** it.
-
-You can copy the pair between consoles, or edit the `.map` with a text editor (it is the standard DOSBox mapper format).
-
 ---
 
 ## Performance
@@ -906,7 +929,7 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 - Drives are mounted from *Settings → Drives* or with `MOUNT`; see [Mounting other drives](#mounting-other-drives) for what the Drives screen can and can't see.
 - GameCube controllers are not supported on the Wii U build.
 - Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
-- A saved setup is loaded by hand (*SETUP → Load a setup*); it does not load by itself when its program starts.
+- A game's saved controls and settings come back only when you restart into it from **Games** (or `CONFIG -r -gameconf`); they do not switch on by themselves when its program starts.
 - On the Wii U build the system HOME menu is switched off while DOSBox Wii runs, so Home opens DOSBox's menu and there is no way to the system one; use **Exit**.
 - The DOS keyboard layout (`[dos] keyboardlayout`) is shown in the menu but can only be changed in `dosbox.conf`.
 
