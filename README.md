@@ -430,7 +430,7 @@ The top bar says what is running. A **Game** card runs across the top. Under it 
 | **Keyboard** tile | An on-screen keyboard with an **Enter** key. The text is typed into DOS, as a US keyboard, after the menu closes; characters with no key on a US keyboard are skipped, and the box holds at most 255 characters at a time |
 | **Settings** tile | The settings pages; see [Settings](#settings) |
 | **Status** tile | What DOSBox is set to and doing; see [Status](#status) |
-| **Game** card | The game DOSBox was started with, or **Plain DOSBox**. **Games** opens the list of games to restart into, and **Save** (**Save as game** at the plain prompt) saves what is running. What a save did is shown on the bottom line. See [Games](#games) |
+| **Game** card | The game DOSBox was started with, or **Plain DOSBox**. **Games** opens the list of games to load, and **Save** (**Save as game** at the plain prompt) saves what is running. What a save did is shown on the bottom line. See [Games](#games) |
 | **Exit** / **Credits** | Quit DOSBox / who made this, with this console's details, the free memory, and `JIT: Enabled` when the dynamic core is the one running (`Disabled` for another core, `Unknown` if that cannot be told). Any button closes the credits |
 
 **Speed** is a share of the console while DOSBox is in *max* mode, or in *auto* mode once a game has taken it there, and is shown as a percentage (`100%`). Otherwise it is a number of cycles. `−` and `+` work like this:
@@ -618,11 +618,11 @@ The **Game** card across the top of the home screen shows the game DOSBox was st
 
 | Choice | What it does |
 |---|---|
-| **Restart** | Closes DOSBox and starts it again with that game's config on top of `dosbox.conf`, then runs its startup. **Whatever is running is lost**, and so are menu changes you didn't save |
+| **Load** | Loads the game: DOSBox restarts with that game's config on top of `dosbox.conf`, then runs its startup. For the game that is already running this reads **Restart**. **Whatever is running is lost**, and so are menu changes you didn't save |
 | **Rename** | Changes the name the list shows (the file names stay as they are) |
 | **Delete** | Removes the game's `.conf`, and its `.map` if the `.conf` names one beside it. This cannot be undone. Not offered for the game that is running |
 
-The first row is **Plain DOSBox**, which restarts with `dosbox.conf` alone. The game DOSBox is running is marked **RUNNING**. Under the games, **Found on your card** lists folders just below the `DOSBox` folder that hold an `.EXE`, `.COM` or `.BAT` file and have no game yet. **A** on one asks you to confirm its name (and which program to run, if it has several), then adds a small game for it: a startup that goes to that folder and runs the program, and nothing else, so it uses your `dosbox.conf` settings and the default controls.
+The first row is **Plain DOSBox**, which loads `dosbox.conf` alone. The game DOSBox is running is marked **RUNNING**. Under the games, **Found on your card** lists folders just below the `DOSBox` folder that hold an `.EXE`, `.COM` or `.BAT` file and have no game yet. **A** on one asks you to confirm its name (and which program to run, if it has several), then adds a small game for it: a startup that goes to that folder and runs the program, and nothing else, so it uses your `dosbox.conf` settings and the default controls.
 
 **Save** is for keeping what is running. The first row, **New game**, asks for a name on the on-screen keyboard (it suggests the running program's name without `.EXE`, or `My game`), and asks before replacing a game with the same name. Every other row replaces that game with what is running, after a question. The game DOSBox was started with is marked **Save here** and keeps its own startup lines when it is saved.
 
@@ -929,7 +929,7 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 - Drives are mounted from *Settings → Drives* or with `MOUNT`; see [Mounting other drives](#mounting-other-drives) for what the Drives screen can and can't see.
 - GameCube controllers are not supported on the Wii U build.
 - Sticks and the D-pad cannot move the mouse or be bound to keys. The mouse moves only from the Wiimote pointer, a USB mouse or the GamePad touch screen.
-- A game's saved controls and settings come back only when you restart into it from **Games** (or `CONFIG -r -gameconf`); they do not switch on by themselves when its program starts.
+- A game's saved controls and settings come back only when you load it from **Games** (or `CONFIG -r -gameconf`); they do not switch on by themselves when its program starts.
 - On the Wii U build the system HOME menu is switched off while DOSBox Wii runs, so Home opens DOSBox's menu and there is no way to the system one; use **Exit**.
 - The DOS keyboard layout (`[dos] keyboardlayout`) is shown in the menu but can only be changed in `dosbox.conf`.
 

@@ -161,7 +161,7 @@ static void testClick()
 	c = l.click(1);
 	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK_EQ(c.conf, "sd:/DOSBox/keen4.conf");
-	CHECK_EQ(c.message, "Restart into Commander Keen 4?");
+	CHECK_EQ(c.message, "Load Commander Keen 4?");
 	CHECK(c.detail.find("KEEN4E.EXE") != std::string::npos);
 	CHECK(c.detail.find("What is running is lost") != std::string::npos);
 
@@ -190,6 +190,7 @@ static void testClick()
 	CHECK(c.what == GamesList::Click::ASK_LAUNCH);
 	CHECK(c.game);
 	CHECK(c.running);
+	CHECK_EQ(c.message, "Restart Commander Keen 4?");	// already loaded, so it says what is left to do
 
 	// plain DOSBox is a choice when a game is running; it launches no conf
 	c = l.click(0);
@@ -242,7 +243,7 @@ static void testCards()
 	l.card(0, c);
 	CHECK(c.kind == GamesList::Card::CARD);
 	CHECK_EQ(c.title, "Plain DOSBox");
-	CHECK_EQ(c.action, "Restart");
+	CHECK_EQ(c.action, "Load");
 	CHECK(!c.accent);
 	l.card(1, c);
 	CHECK_EQ(c.tile, "C");
@@ -253,7 +254,7 @@ static void testCards()
 	l.card(2, c);
 	CHECK_EQ(c.tile, "D");					// the first letter, in upper case
 	CHECK_EQ(c.detail, "DOOM.EXE");
-	CHECK_EQ(c.action, "Restart");
+	CHECK_EQ(c.action, "Load");
 	// with nothing running it is plain DOSBox that is
 	l.setCurrent("");
 	l.card(0, c);

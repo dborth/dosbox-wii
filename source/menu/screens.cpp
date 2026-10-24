@@ -637,7 +637,7 @@ class GamesScreen : public ListScreen, public GuiCardSource
 					showMessage(c.message.c_str());
 					break;
 				case GamesList::Click::ASK_LAUNCH:
-					if(c.game ? gameMenu(c) : ask(c, "Restart"))
+					if(c.game ? gameMenu(c) : ask(c, "Load"))
 					{
 						// the menu closes when this returns (HomeMenu sees the request) and DOSBox restarts into it
 						RequestRestartInto(c.conf.empty() ? NULL : c.conf.c_str());
@@ -713,7 +713,7 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			list.setSaving(saving);
 			mode->select(saving ? 1 : 0);
 			changed = true;
-			showMessage(saving ? "Saving what is running. Pick New game, or a game to replace" : "Pick a game to restart into");
+			showMessage(saving ? "Saving what is running. Pick New game, or a game to replace" : "Pick a game to load");
 		}
 
 		// The question in a popover over the list, which stays drawn and takes no input meanwhile. True for the first answer.
@@ -728,9 +728,9 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			return answer == 0;
 		}
 
-		// What to do with a game: restart into it, give it another name, or delete it. One popover, so there is
+		// What to do with a game: load it (Restart, for the one that is running), give it another name, or delete it. One popover, so there is
 		// nothing to learn: each choice says what it does. The running game is not offered Delete. True when the
-		// choice was Restart, which the caller then does.
+		// choice was Load / Restart, which the caller then does.
 		bool gameMenu(const GamesList::Click& c)
 		{
 			enum { RESTART, RENAME, DELETE, CANCEL };
@@ -739,7 +739,7 @@ class GamesScreen : public ListScreen, public GuiCardSource
 
 			const std::string file = c.conf.substr(c.conf.find_last_of("/\\") + 1);
 			const struct { int id; const char * name; std::string text; } choices[] = {
-				{ RESTART, "Restart", c.detail },
+				{ RESTART, c.running ? "Restart" : "Load", c.detail },
 				{ RENAME, "Rename", "Change the name the Games list shows. Its files keep their names." },
 				{ DELETE, "Delete", "Removes " + file + " and its map from the card. This cannot be undone." },
 				{ CANCEL, "Cancel", "Leave it as it is." },

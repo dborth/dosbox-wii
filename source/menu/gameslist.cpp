@@ -121,7 +121,7 @@ void GamesList::card(int row, Card& out) const
 			out.title = "Plain DOSBox";
 			out.detail = "dosbox.conf only, no game's settings";
 			out.accent = current.empty();
-			out.action = current.empty() ? "RUNNING" : "Restart";
+			out.action = current.empty() ? "RUNNING" : "Load";
 			break;
 		case NEW_GAME:
 			out.kind = Card::FOUND;
@@ -150,7 +150,7 @@ void GamesList::card(int row, Card& out) const
 			if(saving)
 				out.action = out.accent ? "Save here" : "Replace";
 			else
-				out.action = out.accent ? "RUNNING" : "Restart";
+				out.action = out.accent ? "RUNNING" : "Load";
 			break;
 		}
 		case FOUND_HEADER:
@@ -277,7 +277,7 @@ std::string GamesList::rowHelp(int row)
 	switch(r[(size_t)row].kind)
 	{
 		case PLAIN:
-			return "dosbox.conf alone, with no game on top of it. A restarts DOSBox";
+			return "dosbox.conf alone, with no game on top of it. A loads it, which restarts DOSBox";
 		case NEW_GAME:
 			return "Saves what is running under a name you type: its controls, settings and what starts it. dosbox.conf is not changed";
 		case GAME:
@@ -350,7 +350,7 @@ GamesList::Click GamesList::click(int row)
 	}
 	c.what = Click::ASK_LAUNCH;
 	c.conf = conf;
-	c.message = "Restart into " + fit(name, 20) + "?";
+	c.message = "Load " + fit(name, 20) + "?";
 	if(conf.empty())
 		c.detail = "DOSBox restarts with dosbox.conf alone, with no game's controls or settings. What is running is lost.";
 	else
@@ -360,6 +360,8 @@ GamesList::Click GamesList::click(int row)
 		c.game = true;
 		c.title = g.title;
 		c.running = isCurrent(g);
+		if(c.running)
+			c.message = "Restart " + fit(name, 20) + "?";	// it is already loaded: all that is left is to start it again
 		c.detail = (program.empty() ? std::string("DOSBox restarts with its saved controls and settings.")
 			: "DOSBox restarts and runs " + program + " with its saved controls and settings.") + " What is running is lost.";
 	}
