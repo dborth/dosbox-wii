@@ -1,0 +1,433 @@
+name: Bug report
+description: Report a bug in DOSBox Wii / Wii U. Detailed reports get read, vague ones get closed.
+title: "[Issue]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you start
+
+        This project runs on **two consoles, with three ways of launching on the Wii U**, and the DOS side adds its own variables (your config, your game, your drives). A report that doesn't say *which console, which build and which game* usually can't be diagnosed.
+
+        **This form is for bugs: something in DOSBox Wii that is broken or behaves wrongly.** The following will be closed:
+
+        - **Questions and setup help** ("how do I mount a drive / map a button / get my game to start?"). The [README](https://github.com/dborth/dosbox-wii#readme) covers installation, `dosbox.conf`, drives, controllers and the Troubleshooting list.
+        - **"Game X is slow."** A Wii is a 729 MHz PowerPC, and many DOS games need more than it has. See *Performance* in the README. A report that the dynamic recompiler (JIT) is **not** active when it should be, or that speed got worse between builds, **is** a bug.
+        - **Feature requests**, and anything listed under *Known Limitations* in the README (no MIDI, CD audio, serial or network, no GameCube pads on the Wii U build, and so on).
+        - Games that fail the same way in **DOSBox on a PC** (see the *upstream* question below). The core is stock DOSBox SVN r4301, so those are DOSBox bugs, not port bugs.
+
+        Other rules:
+
+        - Only reports against the **latest Pre-release build** are triaged. Download it from the *Nightly Builds* table in the README and retest first.
+        - **Wii U (native):** run the **latest Aroma**. Older Aroma builds and outdated system versions are not supported.
+        - **Do not attach, link to, or ask for commercial games, BIOS images or other copyrighted files.** Reports containing them will be deleted.
+        - One bug per issue, please.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I downloaded the **latest Pre-release build** (not an older download) and the bug still happens.
+          required: true
+        - label: I searched open and closed issues in this repository and this has not been reported already.
+          required: true
+        - label: This is a bug, not a question, a setup problem, a feature request, or a game that is simply too slow.
+          required: true
+        - label: I read **Troubleshooting** and **Known Limitations** in the README and this is not covered there.
+          required: true
+
+  - type: markdown
+    attributes:
+      value: "## Your setup"
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where are you running it?
+      description: |
+        Pick the **exact** option. "Wii U" is not enough: vWii and native Wii U are different builds with different behaviour.
+        If you're on real hardware, please say so; emulator results can differ from hardware.
+      options:
+        - Real Wii
+        - Wii U - vWii via Homebrew Channel (Wii build)
+        - Wii U - vWii via VC-style injection (Wii build)
+        - Wii U - native (Aroma, .wuhb)
+        - Dolphin
+        - Cemu (native Wii U build)
+        - Other emulator or unusual setup (explain below)
+      multiple: false
+    validations:
+      required: true
+
+  - type: input
+    id: build
+    attributes:
+      label: Build date
+      description: |
+        The **Pre-release** build is replaced in place, so the version number alone doesn't identify it.
+        Give the date you downloaded it (or the commit hash / Actions run it came from), and which zip: `DOSBox-Wii.zip` or `DOSBox-WiiU.zip`.
+      placeholder: "DOSBox-Wii.zip, downloaded 2026-10-24"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build-source
+    attributes:
+      label: Where did your build come from?
+      options:
+        - Official Pre-release (README download link)
+        - GitHub Actions artifact (from a branch, PR or specific commit)
+        - Built it myself from source
+        - Someone else's build or a bundle/pack that includes it
+        - I don't know
+    validations:
+      required: true
+
+  - type: textarea
+    id: credits-screen
+    attributes:
+      label: Credits screen info
+      description: |
+        Open the Home menu and choose **Credits**. It shows your console's details, the free memory, and `JIT: Enabled` / `Disabled` / `Unknown`.
+        Paste that text here, or attach a photo of the screen. Take it **at the point the bug happens** if you can, or right after starting the app if not.
+      placeholder: "Example: vWii (729 MHz), IOS: 58, JIT: Enabled"
+    validations:
+      required: true
+
+  - type: textarea
+    id: console-details
+    attributes:
+      label: Console and environment details
+      description: |
+        Fill in the lines that apply to your console and delete the rest.
+        On **Dolphin or Cemu**, give the emulator version and your graphics backend / relevant settings.
+      value: |
+        Console region (NTSC-U, NTSC-J, PAL):
+        System menu / firmware version:
+        Wii / vWii - IOS version, cIOS or patches installed:
+        Wii U native - Aroma version, and Aroma plugins/modules installed (Mocha, Bloopair, etc.):
+        Emulator name, version and backend (Dolphin / Cemu only):
+    validations:
+      required: true
+
+  - type: dropdown
+    id: launch-method
+    attributes:
+      label: How do you launch the app?
+      options:
+        - Homebrew Channel (boot.dol)
+        - Forwarder channel (Wii / vWii)
+        - VC-style injected channel (vWii)
+        - Aroma - icon on the Wii U Menu
+        - Dolphin / Cemu directly
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage devices involved
+      description: Select everything the `DOSBox` folder, your game files, `dosbox.conf` or saved files were read from or written to when the bug happened.
+      multiple: true
+      options:
+        - SD card
+        - USB drive 1
+        - USB drive 2
+        - USB drive 3
+        - Not storage related
+    validations:
+      required: true
+
+  - type: textarea
+    id: storage-details
+    attributes:
+      label: Storage details
+      description: |
+        Brand, size and **filesystem** (FAT32 / exFAT / NTFS) of each device, whether the USB drive is self-powered, any hub or adapter used,
+        and **where the game is**: inside the `DOSBox` folder (drive `C:`), or on a drive mounted from *Settings → Drives* or with `MOUNT` (give the exact command).
+        Required for loading, saving, "drive not found", and any problem reading or writing files.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: controllers
+    attributes:
+      label: Input devices in use
+      multiple: true
+      options:
+        - Wiimote (pointer / buttons)
+        - Wiimote + Nunchuk
+        - Wii Classic Controller / Classic Controller Pro
+        - Wii U Pro Controller
+        - Wii U GamePad
+        - GameCube controller (Wii build)
+        - Third-party Bluetooth controller (e.g. via Bloopair)
+        - USB keyboard
+        - USB mouse
+        - Not input related
+    validations:
+      required: true
+
+  - type: textarea
+    id: controller-details
+    attributes:
+      label: Input details
+      description: |
+        Required for any input problem. Exact controller, keyboard and adapter models, official or third-party, wired or wireless, the order you connected them,
+        which **player** it is, what the controller's page shows (*Home menu → Controllers*), and what the player's **Emulating** and **Preset** are set to.
+        For a mapping bug, say which control you pressed, what it is set to, and what DOS received.
+    validations:
+      required: false
+
+  - type: textarea
+    id: display
+    attributes:
+      label: Display setup
+      description: |
+        Needed for any video bug. How is the console connected (composite, component, HDMI adapter, Wii U HDMI), what TV/monitor, which video mode
+        (480i/480p, widescreen on or off in the console settings), and your *Settings → Video* choices (aspect, fit, filter, scanlines, zoom/shift, widescreen).
+        On Wii U, say whether the problem is on the TV, the GamePad, or both.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "## The problem"
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: What kind of problem is it?
+      options:
+        - DOSBox closes / returns to the loader or Homebrew Channel (silent exit or crash)
+        - Freeze or hang
+        - Crash or freeze in the Home menu
+        - Video / graphics (glitches, wrong colours or aspect, black screen, filters, scanlines)
+        - Audio (crackling, missing, wrong speed, wrong pitch)
+        - Controller / keyboard / mouse input
+        - Drives, files, saving (Drives screen, MOUNT, saving dosbox.conf, saved files)
+        - Games list, Restart, or game configs (including `CONFIG -r`)
+        - Settings or menu behaving wrongly (a setting doesn't apply, wrong value shown, Status page wrong)
+        - Performance regression, or the dynamic recompiler (JIT) not active / misbehaving
+        - DOS or game behaviour that works in DOSBox on a PC
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: describe-bug
+    attributes:
+      label: Describe the bug
+      description: |
+        What happens, in as much detail as you can. Include the **exact text of any message** on screen, including DOS errors.
+        Release builds show **no message** and write **no debug log** when DOSBox hits an internal error: it simply leaves. Say so if that is what you saw,
+        and give the **last thing on screen** before it happened.
+        "It doesn't work" or "it crashes" alone can't be investigated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from launching the app to the problem, including the DOS commands you typed, which menu options you used and which button presses trigger it.
+      placeholder: |
+        1. Launch the app from ...
+        2. At the DOS prompt type ...
+        3. Press ...
+        4. See the problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time, following the same steps
+        - Often, but not every time
+        - Occasionally / hard to reproduce
+        - It happened once
+    validations:
+      required: true
+
+  - type: dropdown
+    id: after-restart
+    attributes:
+      label: Does it only happen after a Restart, a game switch, or `CONFIG -r`?
+      description: Restart re-runs DOSBox inside the same running app, so a bug that appears only on the second or later run is a different kind of bug. If you aren't sure, run the same steps right after a fresh launch of the app.
+      options:
+        - No, it happens on a fresh launch too
+        - Yes, only after a Restart / game switch
+        - I haven't tried a fresh launch
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: regression
+    attributes:
+      label: Did it ever work? If so, which version?
+      description: If it used to work, give the last download date that was fine and the first that wasn't. This lets us find the change that broke it.
+      placeholder: "Worked on the 2026-10-12 Pre-release, broken since 2026-10-20"
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "## The DOS program"
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: How widespread is it?
+      options:
+        - Not DOS-program related (menus, settings, storage, etc.)
+        - Every DOS program I try, including the DOS prompt
+        - Several programs
+        - One specific program
+    validations:
+      required: true
+
+  - type: textarea
+    id: game-info
+    attributes:
+      label: Program details
+      description: |
+        Only if a game or program is involved. Fill in what applies and delete the rest.
+        **Do not upload or link to commercial game files.** Freeware, shareware and demos with a public download are fine to link.
+      value: |
+        Title, year, and version (e.g. v1.1, shareware 1.0):
+        File that was run (e.g. KEEN4E.EXE) and how: typed at the prompt / [autoexec] / Games list:
+        Video mode it uses (text, CGA, EGA, VGA, VESA, SVGA):
+        Sound and music selected in the game's own setup (Adlib, Sound Blaster, GUS, PC speaker, Tandy):
+        Needs XMS / EMS / a minimum amount of memory? (check its README or box):
+        Patch, crack, no-CD fix or mod applied? Which:
+        How it was installed (copied folder, ran its installer on Wii, installed on a PC first):
+    validations:
+      required: false
+
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Does the same program behave correctly in DOSBox on a PC?
+      description: |
+        Test with **DOSBox 0.74-3 or DOSBox SVN** (the same core generation), the same files, and a config as close to this one as you can make it (same `machine`, `cycles`, sound settings; this build has no MIDI).
+        This tells us whether it's a port bug or a DOSBox bug.
+      options:
+        - Yes, it works correctly there
+        - No, it has the same problem there
+        - I haven't tested
+        - Not applicable (not program related)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: core
+    attributes:
+      label: Does it change with the CPU core?
+      description: |
+        *Settings → Performance → CPU core*. `dynamic` is the recompiler (JIT); `normal` is the plain interpreter.
+        A bug that goes away on `normal` points at the recompiler. Change the core at the DOS prompt, then run the program again.
+      options:
+        - Same on dynamic and normal
+        - Only on dynamic (goes away on normal)
+        - Only on normal
+        - I haven't tried
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: other-build
+    attributes:
+      label: Does the same issue happen on the other build (Wii vs Wii U)?
+      description: This tells us whether it's shared code or a console-specific problem. A vWii run of the Wii build counts as the Wii build.
+      options:
+        - Yes, it happens on both
+        - No, only on the one I reported
+        - I can only test one
+        - Not applicable
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Settings and diagnostics"
+
+  - type: dropdown
+    id: settings-reset
+    attributes:
+      label: Have you tried with the default config?
+      description: |
+        Close the app, rename `dosbox.conf` in the `DOSBox` folder (so a fresh one is made on the next launch), and retry.
+        If you use a **game config** (the Games list, or `CONFIG -r -gameconf`), try without it too.
+      options:
+        - Yes, and the bug still happens
+        - Yes, and the bug went away (I'll list the setting I think caused it below)
+        - No, I haven't tried
+    validations:
+      required: true
+
+  - type: textarea
+    id: status-page
+    attributes:
+      label: Status page
+      description: |
+        Home menu → **Status**. It lists what each setting is *configured* to and what is *in effect* (running CPU core and whether the JIT is active, cycles, screen mode, audio output, mounted drives, the config file that was loaded).
+        Paste it or attach photos. Strongly recommended for anything except a crash at startup.
+    validations:
+      required: false
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings that differ from default
+      description: |
+        List anything you changed that could be relevant, or paste the relevant sections of your `dosbox.conf` (and the game config, if one was used). You do **not** need to paste the whole file.
+        If you attach a file, **zip it**: GitHub won't accept a bare `.conf`.
+      render: ini
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and crash information
+      description: |
+        Paste anything useful. This will be formatted as code, so no backticks needed.
+        - **Crash or exception screens:** the text or a photo of the screen, including any register dump and addresses.
+        - **Dolphin / Cemu:** the emulator's log, including warnings and panic alerts.
+        - **Official Pre-release builds write no debug log.** Only attach one if you built from source with logging enabled.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots, photos or video
+      description: |
+        Drag and drop images or a short video here. This build has no screenshot function, so use an emulator screenshot or a phone photo of the screen.
+        For hardware crashes and error messages a phone photo is fine.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Anything else?
+      description: Workarounds you found, related issues, things you already tried, or anything else that might help.
+    validations:
+      required: false
