@@ -371,11 +371,11 @@ body:
     attributes:
       label: Have you tried with the default config?
       description: |
-        Close the app, rename `dosbox.conf` in the `DOSBox` folder (so a fresh one is made on the next launch), and retry.
+        **Copy your `dosbox.conf` somewhere safe first: you'll attach it below.** Then close the app, rename `dosbox.conf` in the `DOSBox` folder (so a fresh one is made on the next launch), and retry.
         If you use a **game config** (the Games list, or `CONFIG -r -gameconf`), try without it too.
       options:
         - Yes, and the bug still happens
-        - Yes, and the bug went away (I'll list the setting I think caused it below)
+        - Yes, and the bug went away (I'll say which setting I think caused it below)
         - No, I haven't tried
     validations:
       required: true
@@ -391,13 +391,19 @@ body:
       required: false
 
   - type: textarea
-    id: settings
+    id: config-files
     attributes:
-      label: Settings that differ from default
+      label: Your config and map files (please attach)
       description: |
-        List anything you changed that could be relevant, or paste the relevant sections of your `dosbox.conf` (and the game config, if one was used). You do **not** need to paste the whole file.
-        If you attach a file, **zip it**: GitHub won't accept a bare `.conf`.
-      render: ini
+        **Please attach the complete files you were using, not a summary.** Most bugs depend on a setting we can't guess, and with your exact files we can reproduce the problem, or rule your settings out.
+        Zip them and drag the `.zip` here (GitHub won't accept a bare `.conf` or `.map`). They are plain text; check them first if you keep anything private in `[autoexec]`.
+
+        - **`dosbox.conf`**: the one in your `DOSBox` folder. Settings → Status says which config file was loaded.
+        - **The game config**, if you started through the **Games** list or `CONFIG -r -gameconf`: its `.conf` file (in `DOSBox/`, `DOSBox/Setups/` or a folder below).
+        - **The mapper file** if the bug involves controls: `mapper.map` in the same folder as the config, or the `.map` named by `mapperfile` in `[sdl]` (a saved setup keeps its own beside its `.conf`).
+
+        If you changed settings in the menu **without** pressing Settings → Save, they aren't in the file. Save first, or list them below.
+        You can also name here the settings you think matter.
     validations:
       required: false
 
