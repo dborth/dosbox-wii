@@ -40,6 +40,8 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
 - [Credits](#credits)
 - [Links](#links)
 
+> 📜 Looking for version notes? They're in the **[CHANGELOG.md](CHANGELOG.md)**.
+
 ---
 
 ## Nightly Builds
@@ -945,3 +947,4 @@ This software is open source and may be copied, distributed, or modified under t
 - [Wii U Homebrew Guide](https://wiiu.hacks.guide/)
 - [Mocha](https://github.com/wiiu-env/MochaPayload) — USB storage access for the native Wii U build
 - [libgui](https://github.com/dborth/libgui)
+- [Change History (CHANGELOG.md)](CHANGELOG.md)
