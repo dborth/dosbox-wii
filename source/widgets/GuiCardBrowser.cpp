@@ -197,7 +197,7 @@ GuiCardBrowser::GuiCardBrowser(int w, int h, GuiCardSource * s)
 
 	for(int i=0; i<CARD_PAGESIZE; i++)
 	{
-		titleTxt[i] = new GuiText(nullptr, 28, theme.text);
+		titleTxt[i] = new GuiText(nullptr, 18, theme.text);
 		titleTxt[i]->setAlignment(ALIGN_H::LEFT, ALIGN_V::MIDDLE);
 		titleTxt[i]->setPosition(CB_TEXT_X, CB_TITLE_DY);
 		titleTxt[i]->setMaxWidth(textW);
