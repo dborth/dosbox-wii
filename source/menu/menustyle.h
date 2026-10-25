@@ -4,18 +4,17 @@
  * menustyle.h
  *
  * The look of the menus, drawn in code: colors, metrics and shape styles for
- * the header/footer bars, the page background, the buttons and (through
- * GuiTheme) the file browser and cards. Nothing here touches a platform API,
+ * the header/footer bars, the page background and the buttons, built from the
+ * palette in menupalette.h (theme.cpp feeds the same palette to GuiTheme for
+ * the shared widgets). Nothing here touches a platform API,
  * so it can be built on a host for previews. The GuiShape wrappers live in
  * menuart.h.
  *
- * Everything that gives the app its identity is in MenuPaletteDefault(): a
- * primary hue for the chrome, an accent for focus and selection, and a gray
- * secondary for surfaces. Sister emulators change that one function and keep
- * the rest.
+ * The colors that give the app its identity are in menupalette.h.
  ***************************************************************************/
 #pragma once
 #include "libgui/GuiTheme.h"
+#include "menupalette.h"
 
 // design-canvas sizes
 #define MENU_BTN_LONG_W		216
@@ -83,12 +82,6 @@ enum {
 	UI_FONT_SMALL = 13
 };
 
-static inline PixelColor MenuRGBA(int r, int g, int b, int a = 255)
-{
-	PixelColor c = { (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
-	return c;
-}
-
 //!Blends a toward b (t = 0 gives a, t = 1 gives b); alpha is kept from a
 static inline PixelColor MenuMix(PixelColor a, PixelColor b, float t)
 {
@@ -97,78 +90,6 @@ static inline PixelColor MenuMix(PixelColor a, PixelColor b, float t)
 	c.g = (uint8_t)(a.g + (b.g - a.g) * t + 0.5f);
 	c.b = (uint8_t)(a.b + (b.b - a.b) * t + 0.5f);
 	return c;
-}
-
-//!Everything that differs between the emulators' themes
-struct MenuPalette {
-	// chrome: the header and footer bars (light edge at the top of the gradient)
-	PixelColor chromeLight, chromeDark, chromeEdge;
-	// page background, a vertical gradient behind everything
-	PixelColor backgroundTop, backgroundBottom;
-	// highlight: focused outline, selected-row outline, scrollbar thumb when grabbed
-	PixelColor accent, accentDark;
-	PixelColor accentTint;		// selected-row fill
-	PixelColor mark;			// the one hue in the UI: what is being edited (the control on the picture, its row, the line between)
-	PixelColor glow;			// halo around a focused button; must read on the chrome
-	// the gray secondary: cards, outlines, resting controls
-	PixelColor surface, surfaceRaised, outline, outlineStrong;
-	PixelColor text, textMuted, textOnAccent;
-};
-
-//!DOSBox Wii: monochrome chrome on a gray page
-static inline MenuPalette MenuPaletteDefault()
-{
-	MenuPalette p;
-	p.chromeLight    = MenuRGBA(76, 76, 76);
-	p.chromeDark     = MenuRGBA(42, 42, 42);
-	p.chromeEdge     = MenuRGBA(118, 118, 118);
-	p.backgroundTop    = MenuRGBA(240, 240, 240);
-	p.backgroundBottom = MenuRGBA(212, 212, 212);
-	p.accent         = MenuRGBA(64, 64, 64);
-	p.accentDark     = MenuRGBA(34, 34, 34);
-	p.accentTint     = MenuRGBA(224, 224, 224);
-	p.mark           = MenuRGBA(236, 128, 12);
-	p.glow           = MenuRGBA(255, 255, 255, 170);
-	p.surface        = MenuRGBA(246, 246, 246);
-	p.surfaceRaised  = MenuRGBA(255, 255, 255);
-	p.outline        = MenuRGBA(208, 208, 208);
-	p.outlineStrong  = MenuRGBA(166, 166, 166);
-	p.text           = MenuRGBA(30, 30, 30);
-	p.textMuted      = MenuRGBA(118, 118, 118);
-	p.textOnAccent   = MenuRGBA(255, 255, 255);
-	return p;
-}
-
-//!The palette in use
-static inline MenuPalette& MenuPaletteCurrent()
-{
-	static MenuPalette palette = MenuPaletteDefault();
-	return palette;
-}
-
-//!Makes the shared widgets (GuiFileBrowser, cards) follow the palette. Call once at
-//!startup, before any page is built.
-static inline void MenuApplyTheme()
-{
-	const MenuPalette& p = MenuPaletteCurrent();
-	GuiTheme& t = GuiTheme::current();
-	t.background = p.backgroundBottom;
-	t.surface = p.surface;
-	t.surfaceRaised = p.surfaceRaised;
-	t.outline = p.outline;
-	t.outlineStrong = p.outlineStrong;
-	t.accent = p.accent;
-	t.accentLight = p.accentTint;
-	t.accentDark = p.accentDark;
-	t.text = p.text;
-	t.textMuted = p.textMuted;
-	t.textOnAccent = p.textOnAccent;
-	t.highlight = p.accentTint;
-	t.mark = p.mark;
-	t.shadow = MenuRGBA(0, 0, 0, 64);
-	t.radius = 14.0f;
-	t.strokeWidth = 1.5f;
-	t.shadowBlur = 14.0f;
 }
 
 //!Resting, highlighted and pressed looks shared by the long and large buttons.

@@ -220,7 +220,6 @@ int main(int argc, char ** argv)
 	const float scale = argc > 2 ? (float)atof(argv[2]) : 2.0f;
 	HostInit(640, 480, scale);
 	SampleControls_Use();
-	MenuApplyTheme();
 
 	// the setup screen as the model shows it for a given set of controllers
 	{

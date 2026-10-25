@@ -642,7 +642,6 @@ void HomeMenu ()
 	const int screenwidth = video->getScreenWidth();
 	const int screenheight = video->getScreenHeight();
 
-	MenuApplyTheme(); // the shared widgets follow the palette
 
 	pointer[0] = new GuiImageData(player1_point_png);
 	pointer[1] = new GuiImageData(player2_point_png);
