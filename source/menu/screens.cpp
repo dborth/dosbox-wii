@@ -59,7 +59,7 @@ class ListBrowser : public GuiOptionBrowser
  * ListSurface
  *
  * What a ListScreen shows its rows on: a GuiOptionBrowser (a name and a value on each row) or a
- * GuiCardBrowser (a card each). The screen asks the same four things of either.
+ * GuiGameBrowser (a card each). The screen asks the same four things of either.
  ***************************************************************************/
 class ListSurface
 {
@@ -98,7 +98,7 @@ class CardSurface : public ListSurface
 		bool remakeOnResize() const override { return false; }	// it asks its source again, whatever the count
 
 	private:
-		GuiCardBrowser browser;
+		GuiGameBrowser browser;
 };
 
 /****************************************************************************

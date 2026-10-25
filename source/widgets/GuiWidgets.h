@@ -16,4 +16,4 @@
 
 #include "GuiKeyboard.h"
 #include "GuiOptionBrowser.h"
-#include "GuiCardBrowser.h"
+#include "GuiGameBrowser.h"

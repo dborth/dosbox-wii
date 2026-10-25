@@ -285,7 +285,7 @@ int main(int argc, char ** argv)
 		cards.list.setCurrent("sd:/DOSBox/keen4.conf");
 		cards.list.setSaving(mode == 1);
 		Screen s;
-		GuiCardBrowser browser(552, 248, &cards);
+		GuiGameBrowser browser(552, 248, &cards);
 		browser.setPosition(0, 108);
 		browser.setAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 		browser.setFocus(1);
@@ -568,7 +568,7 @@ int main(int argc, char ** argv)
 		for(int i = 0; i < 12; i++)
 			games.push_back(sceneGame(("g" + std::to_string(i)).c_str(), ("Game " + std::to_string(i)).c_str(), "G.EXE", false, ""));
 		cards.list.setGames(games);
-		GuiCardBrowser browser(552, 248, &cards);
+		GuiGameBrowser browser(552, 248, &cards);
 		EXPECT(browser.getSelectedOption() == -1);		// nothing is highlighted until the rows have been read
 		browser.triggerUpdate();
 		browser.readRows();

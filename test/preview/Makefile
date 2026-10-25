@@ -15,7 +15,7 @@ GEN = gen
 LIBGUI = $(addprefix $(SRC)/libgui/, GuiLayout.cpp GuiWindow.cpp GuiElement.cpp GuiLayoutSolver.cpp GuiGeometry.cpp GuiUi.cpp \
 	GuiButton.cpp GuiShape.cpp GuiPaint.cpp GuiTheme.cpp GuiText.cpp GuiImage.cpp GuiImageData.cpp \
 	GuiMeshCache.cpp GuiGlyph.cpp GuiSound.cpp GuiPopover.cpp)
-WIDGETS = $(addprefix $(SRC)/widgets/, GuiCardBrowser.cpp)
+WIDGETS = $(addprefix $(SRC)/widgets/, GuiGameBrowser.cpp)
 APP = $(addprefix $(SRC)/menu/, controlsmodel.cpp controllerprofile.cpp controllerlayout.cpp controllerview.cpp controlsui.cpp menupage.cpp menupopover.cpp menutoggle.cpp games.cpp gameslist.cpp homeview.cpp menuicon.cpp) $(SRC)/theme.cpp $(SRC)/stickmouse.cpp $(SRC)/stickkeys.cpp $(SHARED)/samplecontrols.cpp
 
 all: out/.stamp

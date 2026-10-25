@@ -2,7 +2,7 @@
  * libgui
  *
  * Daryl Borth 2009-2026
- * GuiCardBrowser.h
+ * GuiGameBrowser.h
  ***************************************************************************/
 #pragma once
 
@@ -12,7 +12,7 @@
 
 #define CARD_PAGESIZE 5
 
-//!What one row of a GuiCardBrowser shows. Filled in by the GuiCardSource when the row is on screen.
+//!What one row of a GuiGameBrowser shows. Filled in by the GuiCardSource when the row is on screen.
 struct GuiCardInfo
 {
 	//!How the row looks: a card, a card for something not added yet, or plain text between cards
@@ -26,7 +26,7 @@ struct GuiCardInfo
 	bool accent = false;	//!< The tile (and the action) take the accent colour; otherwise they are neutral
 };
 
-//!Where a GuiCardBrowser gets its rows from. Asked only for the rows that are on screen, so the list can be as long as it likes.
+//!Where a GuiGameBrowser gets its rows from. Asked only for the rows that are on screen, so the list can be as long as it likes.
 class GuiCardSource
 {
 	public:
@@ -40,14 +40,14 @@ class GuiCardTile;
 //!A scrolling list of cards: a tile, a title with a line under it, and a word at the right. The
 //!pad, pointer and scrollbar work as in GuiOptionBrowser, which this is the taller-row version of.
 //!\ingroup grp_core
-class GuiCardBrowser : public GuiElement
+class GuiGameBrowser : public GuiElement
 {
 	public:
 		//!\param w Width
 		//!\param h Height
-		//!\param s Where the rows come from - must outlive this GuiCardBrowser
-		GuiCardBrowser(int w, int h, GuiCardSource * s);
-		~GuiCardBrowser();
+		//!\param s Where the rows come from - must outlive this GuiGameBrowser
+		GuiGameBrowser(int w, int h, GuiCardSource * s);
+		~GuiGameBrowser();
 		//!\return the row that was clicked this frame, or -1 if none was
 		int getClickedOption();
 		//!\return the row the highlight is on, or -1 before the first frame

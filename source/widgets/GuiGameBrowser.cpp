@@ -2,11 +2,11 @@
  * libgui
  *
  * Daryl Borth 2009-2026
- * GuiCardBrowser.cpp
+ * GuiGameBrowser.cpp
  ***************************************************************************/
 
 #include "libgui/Gui.h"
-#include "GuiCardBrowser.h"
+#include "GuiGameBrowser.h"
 
 #include <algorithm>
 
@@ -86,7 +86,7 @@ class GuiCardTile : public GuiElement
 		GuiText * letter;
 };
 
-GuiCardBrowser::GuiCardBrowser(int w, int h, GuiCardSource * s)
+GuiGameBrowser::GuiGameBrowser(int w, int h, GuiCardSource * s)
 {
 	width = w;
 	height = h;
@@ -235,7 +235,7 @@ GuiCardBrowser::GuiCardBrowser(int w, int h, GuiCardSource * s)
 	}
 }
 
-GuiCardBrowser::~GuiCardBrowser()
+GuiGameBrowser::~GuiGameBrowser()
 {
 	delete arrowUpBtn;
 	delete arrowDownBtn;
@@ -264,7 +264,7 @@ GuiCardBrowser::~GuiCardBrowser()
 }
 
 //! Sizes and places the scrollbar thumb for the rows currently shown
-void GuiCardBrowser::updateThumb()
+void GuiGameBrowser::updateThumb()
 {
 	if(count <= CARD_PAGESIZE)
 	{
@@ -289,7 +289,7 @@ void GuiCardBrowser::updateThumb()
 }
 
 //! Puts row index of the source on a slot of the page: its text, its look
-void GuiCardBrowser::showRow(int slot, int index)
+void GuiGameBrowser::showRow(int slot, int index)
 {
 	const GuiTheme& theme = GuiTheme::current();
 	GuiCardInfo info;
@@ -316,7 +316,7 @@ void GuiCardBrowser::showRow(int slot, int index)
 	detailTxt[slot]->setPosition(x, CB_DETAIL_DY);
 }
 
-void GuiCardBrowser::setFocus(int f)
+void GuiGameBrowser::setFocus(int f)
 {
 	focus = f;
 
@@ -327,7 +327,7 @@ void GuiCardBrowser::setFocus(int f)
 		optionBtn[selectedItem]->setState(STATE::SELECTED);
 }
 
-void GuiCardBrowser::resetState()
+void GuiGameBrowser::resetState()
 {
 	if(state != STATE::DISABLED)
 	{
@@ -339,7 +339,7 @@ void GuiCardBrowser::resetState()
 		optionBtn[i]->resetState();
 }
 
-int GuiCardBrowser::getClickedOption()
+int GuiGameBrowser::getClickedOption()
 {
 	int found = -1;
 	for(int i=0; i<CARD_PAGESIZE; i++)
@@ -354,12 +354,12 @@ int GuiCardBrowser::getClickedOption()
 	return found;
 }
 
-int GuiCardBrowser::getSelectedOption() const
+int GuiGameBrowser::getSelectedOption() const
 {
 	return optionIndex[selectedItem];
 }
 
-void GuiCardBrowser::draw()
+void GuiGameBrowser::draw()
 {
 	if(!this->isVisible())
 		return;
@@ -380,18 +380,18 @@ void GuiCardBrowser::draw()
 	this->updateEffects();
 }
 
-void GuiCardBrowser::triggerUpdate()
+void GuiGameBrowser::triggerUpdate()
 {
 	listChanged = true;
 }
 
-void GuiCardBrowser::resetText()
+void GuiGameBrowser::resetText()
 {
 	for(int i=0; i<CARD_PAGESIZE; i++)
 		optionBtn[i]->resetText();
 }
 
-void GuiCardBrowser::readRows()
+void GuiGameBrowser::readRows()
 {
 	if(!listChanged)
 		return;
@@ -434,7 +434,7 @@ void GuiCardBrowser::readRows()
 	}
 }
 
-void GuiCardBrowser::update(InputController * controller)
+void GuiGameBrowser::update(InputController * controller)
 {
 	if(state == STATE::DISABLED || !controller)
 		return;

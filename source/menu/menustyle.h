@@ -65,7 +65,7 @@
 
 // page-turning arrows: hit area of the button, and the glyph drawn inside it
 
-// the two cards of the game list page (the list itself is drawn by GuiFileBrowser)
+// the two cards of the game list page (the list itself is drawn by GuiGameBrowser)
 #define MENU_LIST_X			20
 #define MENU_LIST_Y			101
 #define MENU_LIST_W			330
