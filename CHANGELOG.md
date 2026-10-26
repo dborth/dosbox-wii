@@ -2,7 +2,7 @@
 
 All notable changes to DOSBox Wii are recorded here, newest first. For the current features and setup instructions, see [README.md](README.md).
 
-## 2.0 (unreleased)
+## 2.0 - October 25, 2026
 * **A new port.** DOSBox Wii has been rebuilt on the same [libgui](https://github.com/dborth/libgui) interface and driver framework as the other GX emulators, and no longer uses SDL. The DOSBox core is stock SVN r4301, and one codebase now builds for both the Wii and the Wii U
 * **Wii U release!** DOSBox Wii now runs natively on the Wii U as its own app, with its own icon on the Wii U Menu. Requires [Aroma](https://wiiu.hacks.guide/) - run the latest Aroma release and launch the `.wuhb` directly from it
   * Full **Wii U GamePad** support - touch screen and buttons - alongside Wiimote, Nunchuk, Classic Controller and Wii U Pro Controller
