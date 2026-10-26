@@ -34,6 +34,7 @@ DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to
   - [Keyboard & mouse](#keyboard--mouse)
   - [The D-pad and the joystick](#the-d-pad-and-the-joystick)
 - [Performance](#performance)
+- [Memory](#memory)
 - [Troubleshooting](#troubleshooting)
 - [Known Limitations](#known-limitations)
 - [Building from Source](#building-from-source)
@@ -317,7 +318,7 @@ The default file holds every setting DOSBox Wii has, each with DOSBox's own comm
 |---|---|
 | `[sdl]` | Mouse speed and the mapper file (below) |
 | `[display]` | Video output (below) |
-| `[dosbox]` | `language`, `machine` (default `svga_s3`), `captures`, `memsize` (1 to 63 MB, default 16) |
+| `[dosbox]` | `language`, `machine` (default `svga_s3`), `captures`, `memsize` (default 16 MB; the Wii takes at most 16, the Wii U up to 63) |
 | `[render]` | `frameskip` |
 | `[cpu]` | CPU core, type and cycles |
 | `[mixer]` | Mixer options |
@@ -874,7 +875,7 @@ A DOS joystick has no D-pad, so with a joystick enabled the D-pad is folded into
 
 Three things set how fast DOSBox Wii runs a game, and all three can be changed while it runs: the CPU core, the cycles, and frameskip.
 
-1. **Check the dynarec is on.** *Status → CPU → Dynarec* reads *Active* when the dynamic recompiler is the core running. With the default `core=auto`, DOSBox starts on the dynamic core (it doesn't wait for a program to enter protected mode) if it could set up the code cache. The cache is 8 MB, or as little as 1 MB if that is all there is. On the **Wii** it comes from MEM1. On the **Wii U** it comes from the area the console reserves for generated code, so if the console gives the app none, DOSBox runs the normal core and Status reads *Not active*.
+1. **Check the dynarec is on.** *Status → CPU → Dynarec* reads *Active* when the dynamic recompiler is the core running. With the default `core=auto`, DOSBox starts on the dynamic core (it doesn't wait for a program to enter protected mode) if it could set up the code cache. The cache is 8 MB, or as little as 1 MB if that is all there is. On the **Wii** it comes from MEM1 and only MEM1 (see [Memory](#memory)). On the **Wii U** it comes from the area the console reserves for generated code, so if the console gives the app none, DOSBox runs the normal core and Status reads *Not active*.
 2. **Cycles.** Set them under *Settings → Performance* (at any time), and step them from the home screen's speed buttons:
 
    | Mode | What it does | Home-screen **+** / **−** |
@@ -889,6 +890,59 @@ Three things set how fast DOSBox Wii runs a game, and all three can be changed w
 
 ---
 
+## Memory
+
+The Wii has two banks of memory, and nearly all of both is spoken for before a game starts. This section is the breakdown, so you can see where it goes, and why DOSBox Wii doesn't give DOS more RAM, draw bigger video modes, or run CPU upscaling filters.
+
+### MEM1: 24 MB, fast
+
+| What | MB |
+|---|---|
+| Held back before the program starts (the top of MEM1) | 1.0 |
+| **The program itself:** code 3.5, read-only data 0.8, exception tables 0.5, data 0.15, bluetooth/GX FIFO 1.7 | 6.7 |
+| **The heap pool** (everything left) | 16.2 |
+| &nbsp;&nbsp;of which the **dynarec's code cache** | 8.0 |
+| &nbsp;&nbsp;of which the rest, for anything that uses `malloc` or `new` | 8.2 |
+
+The code cache is taken from MEM1 and nowhere else: it is 8 MB if the pool has that much free, as little as 1 MB if that is all it has, and the dynarec stays off below that.
+
+### MEM2: 64 MB
+
+These blocks are taken straight from MEM2, not from the heap. Most are taken once and kept until DOSBox Wii exits (a **Restart** reuses them), and several are taken at their largest size, so asking for less gives nothing back. Only the picture buffers follow the video mode.
+
+| What | MB | Notes |
+|---|---|---|
+| **Paging TLB** | 20.0 | The full-size TLB |
+| **DOS RAM** | 16.0 | The most the Wii allows, taken whatever `memsize` says |
+| **Dynarec block table** | 8.0 | 128k blocks (64 bytes each) |
+| **Video card memory** | 4.5 | 4 MB, the most the S3 card can have, taken whatever `machine` is set to, and a 0.5 MB fast copy used by 16-colour modes |
+| **TV output** | 1.4 | Two 640×576 frames of 720 KB |
+| **Picture buffers** | 0.3 to 2.4 | They follow the video mode. A full-size frame is 0.6 MB (640×480, 16 bits), and there are three: the frame, the texture the GPU draws from, and the scaler's cache of the last frame, which is 1, 2 or 4 bytes a pixel (so 0.06 MB for a 320×200 256-colour mode, 0.3 MB at 640×480, 1.2 MB for a 32-bit mode). The Sharp filter adds an enlarged copy, up to 0.6 MB, while it is on |
+| **Gravis Ultrasound memory** | 1.0 | Only if the GUS is turned on |
+
+### What the heap does
+
+Anything that is not one of those blocks (the dynarec's code pages, the `C:` mount, the menu's own objects, fonts, DOS's bookkeeping) comes from the one ordinary heap. That heap starts in the MEM1 pool, and when the pool is full it carries on into MEM2. So **MEM1 free** reading close to zero is normal and is not a sign of trouble; what can run out is the two banks together.
+
+Added up, the fixed blocks leave only a few MB spare. After startup ~7 MB is free across both banks, and a bigger video mode, the Sharp filter and the GUS can each take some of it.
+
+### Why not more?
+
+- **More DOS RAM.** The 16 MB limit is in the code (`MAX_MEMORY` in `memory.cpp`), and it is set aside already: the TLB, DOS RAM and the dynarec's block table alone are 44 of MEM2. Every extra MB would come out of the 6 to 7 MB spare. The Wii U allows up to 63.
+- **Bigger video modes.** The renderer's buffers are 640×480, so a mode larger than that (the 800×600 and bigger VESA modes) isn't drawn. A bigger mode would also cost every buffer in the table above, at a larger size.
+- **A bigger code cache.** 8 MB is the most the dynarec uses. It has to be one piece of MEM1, which is half the pool.
+- **A smaller TLB.** The full TLB is 20 MB and is kept for speed. A reduced one of about 1.3 MB is in the core: it is used when `USE_FULL_TLB` is undefined in `paging.h`, which saves about 19 MB at some cost in speed that hasn't been measured.
+
+### The menu
+
+On Wii, the menu has no memory of its own. While it is open the emulator is paused, so the menu borrows the dynarec's 8 MB code cache for its images, text and the picture it keeps of the game behind it. When you close the menu the cache is handed back empty: the dynarec translates the code again as the game runs.
+
+### Wii U
+
+The Wii U build asks for the same blocks, from one large ordinary heap, so none of this is tight there: DOS RAM goes up to 63 MB and is taken at that size whatever `memsize` says.
+
+---
+
 ## Troubleshooting
 
 ### A game closes DOSBox, crashes, or hangs
@@ -898,7 +952,7 @@ When DOSBox hits an internal error it stops and DOSBox Wii leaves, as if you had
 - **Delete `dosbox.conf`** (from the `DOSBox` folder) to restore the default settings. A new one is created on next launch. (Settings → Save keeps the version before your last save as `dosbox.conf.bak`.)
 - **Turn the sound off**, alone or with the others below: *Sound Blaster* `none` and *Gravis Ultrasound* off under *Settings → Audio*. Those rows change at the DOS prompt only, so set them before you start the game (or edit `dosbox.conf` and press **Restart**).
 - **Fixed cycles**, for example `fixed 10000`, under *Settings → Performance*.
-- **`memsize`** in `[dosbox]`: 1 to 63 MB, default 16. It is read once at startup, so edit `dosbox.conf` and press **Restart**.
+- **`memsize`** in `[dosbox]`: default 16 MB. On the Wii 16 is also the most there is (a larger value is treated as 16), and the 16 MB stays set aside however low you set it, so lowering it changes what DOS sees, not how much memory is free ([Memory](#memory)). It is read once at startup, so edit `dosbox.conf` and press **Restart**.
 - **DOS memory off** (`ems`, `xms`, `umb`), under *Settings → All settings → DOS memory and keyboard*, at the DOS prompt. A change is refused while a program is using upper memory.
 - **`LOADFIX`**: `loadfix game.exe` reserves 64 KB of memory (`loadfix -32 game.exe` for another size), runs the program, then frees it.
 - **The normal core** instead of the dynarec (*Settings → Performance → CPU core*).
@@ -923,6 +977,7 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 
 ## Known Limitations
 
+- Video modes larger than 640×480 aren't drawn (the renderer's buffers are that size), and on the Wii DOS gets at most 16 MB of RAM. Both come from the memory budget, see [Memory](#memory).
 - Disc drives and network shares can't be used, and no CD drive is reported to DOS (so no CD audio): there is no screen to connect a share or read a disc, so `dvd:/` and `smb:/` don't exist for `MOUNT`.
 - No MIDI or MPU-401, no serial ports and no modem or IPX networking: none of these is compiled in, and there is no `[midi]`, `[serial]` or `[ipx]` section. A game that looks for a MIDI device finds none; use Sound Blaster FM music instead.
 - No screenshots (they are not built in).
