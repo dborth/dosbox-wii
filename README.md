@@ -140,7 +140,7 @@ Wii U support comes in **three genuinely different forms**. Pick the one that ma
 |              | vWii (Homebrew Channel) | vWii (VC-style injection) | Native Wii U build |
 |--------------|-------------------------|---------------------------|--------------------|
 | What it is   | The regular **Wii** build, run inside vWii | The same Wii build, launched as its own injected Virtual-Console-style channel | A dedicated Wii U (Aroma) app, `.wuhb` |
-| Requires     | Homebrew Channel *inside vWii* | Homebrew Channel *inside vWii*, plus a channel built with **[TeconMoon's WiiVC Injector Mod](https://github.com/timefox/TeconMoon-s-WiiVC-Injector-Mod)** | **Aroma** (Wii U homebrew environment) |
+| Requires     | Homebrew Channel *inside vWii* | Homebrew Channel *inside vWii*, plus a channel built with **[TeconMoon's WiiVC Injector Mod](https://github.com/Rodrigo-Matsuura/MoonWiiVCInjector/releases)** | **Aroma** (Wii U homebrew environment) |
 | GamePad      | Not usable | Usable as **player 1** (buttons and sticks; no touch) | **Full support**: touch, buttons |
 | Which download | `DOSBox-Wii.zip` (Wii build) | `DOSBox-Wii.zip` (Wii build) | `DOSBox-WiiU.zip` |
 
@@ -182,7 +182,7 @@ This is the simplest Wii U path, but also the most limited: no GamePad support. 
 
 #### vWii via VC-style injection (GamePad support)
 
-Rather than launching DOSBox Wii from the Homebrew Channel every time, you can package it as its **own injected channel** using **[TeconMoon's WiiVC Injector Mod](https://github.com/timefox/TeconMoon-s-WiiVC-Injector-Mod)**. This installs it as a Virtual-Console-style title in your vWii NAND rather than something launched through the Homebrew Channel, which is what lets you use the Wii U GamePad for display (without touch) and as player 1.
+Rather than launching DOSBox Wii from the Homebrew Channel every time, you can package it as its **own injected channel** using **[TeconMoon's WiiVC Injector Mod](https://github.com/timefox/TeconMoon-s-WiiVC-Injector-Mod)**. https://github.com/Rodrigo-Matsuura/MoonWiiVCInjector/releases vWii NAND rather than something launched through the Homebrew Channel, which is what lets you use the Wii U GamePad for display (without touch) and as player 1.
 
 At a high level:
 
