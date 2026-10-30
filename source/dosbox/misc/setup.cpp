@@ -815,7 +815,14 @@ void Section::ExecuteDestroy(bool destroyall) {
 	typedef std::list<Function_wrapper>::iterator func_it;
 	for (func_it tel=destroyfunctions.begin(); tel!=destroyfunctions.end(); ) {
 		if(destroyall || (*tel).canchange) {
-			(*tel).function(this);
+			if(destroyall) {
+				/* This is the shutdown from ~Section_prop(), which cannot throw: it runs while a restart
+				 * (throw 1) is unwinding the stack, and an exception leaving a destructor then ends in
+				 * std::terminate ("abort called"). A destroy function that fails has nothing left to
+				 * report to, so the rest still run. */
+				try { (*tel).function(this); } catch(...) { }
+			} else
+				(*tel).function(this);
 			tel=destroyfunctions.erase(tel); //Remove destroyfunction once used
 		} else tel++;
 	}

@@ -110,6 +110,7 @@ enum { HAND_NONE=0,HAND_FILE,HAND_DEVICE};
 
 /* Routines for File Class */
 void DOS_SetupFiles (void);
+void DOS_ShutdownFiles (void);
 bool DOS_ReadFile(Bit16u handle,Bit8u * data,Bit16u * amount, bool fcb = false);
 bool DOS_WriteFile(Bit16u handle,Bit8u * data,Bit16u * amount,bool fcb = false);
 bool DOS_SeekFile(Bit16u handle,Bit32u * pos,Bit32u type,bool fcb = false);

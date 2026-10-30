@@ -1320,6 +1320,20 @@ bool DOS_GetFileDate(Bit16u entry, Bit16u* otime, Bit16u* odate) {
 	return true;
 }
 
+/* Closes and deletes every open DOS file. DOS_SetupFiles() only forgets the pointers, so without this the
+ * files a program had open when DOSBox was restarted (the file is closed by the program, not by us) would keep
+ * their host file handles and memory for the life of the process, and add up with every restart. A file
+ * can sit in several slots (DOS_DuplicateEntry), so this counts references the way DOS_CloseFile does. */
+void DOS_ShutdownFiles (void) {
+	for (Bit32u i=0;i<DOS_FILES;i++) {
+		DOS_File * file=Files[i];
+		if (!file) continue;
+		Files[i]=0;
+		if (file->IsOpen()) file->Close();
+		if (file->RemoveRef()<=0) delete file;
+	}
+}
+
 void DOS_SetupFiles (void) {
 	/* Setup the File Handles */
 	Bit32u i;

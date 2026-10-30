@@ -1247,6 +1247,8 @@ public:
 static DOS* test;
 
 void DOS_ShutDown(Section* /*sec*/) {
+	/* before the drives go: closing a file may still want its drive */
+	DOS_ShutdownFiles();
 	delete test;
 	/* DOS_SetupDevices() adds CON, NUL and the others to this table and nothing takes them out again, so a restart
 	 * would find them still there (and run out of slots on the third run). Forgotten, not deleted: other modules
