@@ -200,7 +200,11 @@ int MountDOSBoxDir(char DriveLetter, const char *path)
  * The Drives screen's model
  ***************************************************************************/
 
+#ifdef __WIIU__
+#define DRIVEMAP_THREAD_STACKSIZE	(128 * 1024)
+#else
 #define DRIVEMAP_THREAD_STACKSIZE	(8 * 1024)
+#endif
 #define POLL_STEP_US				50000	//!< the thread checks for a stop request this often...
 #define POLL_STEPS					20		//!< ...and polls the devices every this many steps (1 s)
 #define UPDATE_INTERVAL_MS			500		//!< the screen re-reads the devices this often
