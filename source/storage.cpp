@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <atomic>
 #include <sys/stat.h>
 #include "storage.h"
 #include "dosboxsupport.h"
@@ -236,6 +237,7 @@ struct OwnedDrive
 static DriveMapState * state = NULL;
 static OwnedDrive owned[MAX_OWNED];
 static Thread pollThread;
+static std::atomic<bool> pollRunning(false);	//!< PollMain() has not yet returned
 static Ticks lastUpdate = 0;
 
 /****************************************************************************
@@ -380,6 +382,7 @@ static void * PollMain(void *)
 			usleep(POLL_STEP_US);
 	}
 
+	pollRunning = false;	// the last thing the thread does
 	return nullptr;
 }
 
@@ -401,9 +404,23 @@ void DriveMap_Open()
 	Tidy();
 
 	// no thread: devices are then only read as they stand
-	pollThread.start(PollMain, nullptr, DRIVEMAP_THREAD_STACKSIZE, ThreadPriority::Low);
+	pollRunning = true;
+
+	if(!pollThread.start(PollMain, nullptr, DRIVEMAP_THREAD_STACKSIZE, ThreadPriority::Low))
+		pollRunning = false;
 
 	lastUpdate = SystemTime::now();
+}
+
+void DriveMap_BeginClose()
+{
+	if(state)
+		pollThread.requestStop();
+}
+
+bool DriveMap_CloseReady()
+{
+	return !state || !pollRunning;
 }
 
 void DriveMap_Close()
@@ -411,6 +428,8 @@ void DriveMap_Close()
 	if(!state)
 		return;
 
+	// Instant if the caller waited for DriveMap_CloseReady(); otherwise this
+	// waits out whatever mount or probe the thread is in the middle of
 	pollThread.requestStop();
 	pollThread.join();
 

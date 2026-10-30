@@ -72,7 +72,17 @@ extern char appDrive[MAX_APP_DRIVE_LEN];
 //! hot-plug. Pair with DriveMap_Close().
 void DriveMap_Open();
 
-//! The Drives screen is closing: stops the polling thread and waits for it.
+//! The Drives screen is closing. Asks the polling thread to stop; does not
+//! wait. The thread may be in the middle of a USB mount or probe that takes
+//! seconds, so call this, then keep the GUI running until
+//! DriveMap_CloseReady(), then DriveMap_Close().
+void DriveMap_BeginClose();
+
+//! True once the polling thread has finished (or there never was one).
+bool DriveMap_CloseReady();
+
+//! Finishes closing: joins the polling thread and frees the model. Waits for
+//! the thread if DriveMap_CloseReady() was not true first.
 void DriveMap_Close();
 
 //! Call every frame while the screen is open. Cheap. Returns true when

@@ -476,7 +476,17 @@ class DrivesScreen : public ListScreen
 
 	protected:
 		void onOpen() override { DriveMap_Open(); }
-		void onClose() override { DriveMap_Close(); }
+		void onClose() override
+		{
+			// The poll thread can be inside a USB mount for seconds: keep the GUI
+			// alive while it finishes rather than freezing on the join
+			DriveMap_BeginClose();
+
+			while(!DriveMap_CloseReady())
+				UpdateGui();
+
+			DriveMap_Close();
+		}
 
 		int rowCount() override { return DriveMap_RowCount(); }
 
