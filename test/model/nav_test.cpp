@@ -24,12 +24,13 @@ struct Tab { const char* label; int width, capW, capH; std::vector<Row> rows; };
 
 // the same table as keyPane(); tab row 22 high, 2 gap; body starts 4 below it
 static const std::vector<Tab> tabs = {
-	{ "Common", 54, 58, 32, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "Ctrl", "Alt", "Shift" }, 0 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
-	{ "A-Z", 30, 22, 30, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 11 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 23 } } },
-	{ "0-9", 30, 22, 30, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
-	{ "F-keys", 42, 36, 30, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
-	{ "Edit", 32, 72, 32, { { { "PgUp", "PgDn", "Home" }, 0 }, { { "End", "Ins", "Del" }, 0 } } },
-	{ "Symbols", 46, 36, 30, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave" }, 0 } } },
+	{ "Common", 44, 58, 26, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "LCtrl", "LAlt", "LShift" }, 0 }, { { "RCtrl", "RAlt", "RShift" }, 60 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
+	{ "A-Z", 24, 22, 30, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 11 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 23 } } },
+	{ "0-9", 24, 22, 30, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
+	{ "F-keys", 34, 36, 30, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
+	{ "Edit", 26, 54, 30, { { { "PgUp", "PgDn", "Home", "End" }, 0 }, { { "Ins", "Del", "CapsLk", "ScrLk" }, 0 }, { { "PrtSc", "Pause" }, 0 } } },
+	{ "Symbols", 42, 36, 30, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave", "Less" }, 0 } } },
+	{ "Keypad", 40, 54, 20, { { { "NumLk", "KP /", "KP *", "KP -" }, 0 }, { { "KP 7", "KP 8", "KP 9", "KP +" }, 0 }, { { "KP 4", "KP 5", "KP 6", "KP Enter" }, 0 }, { { "KP 1", "KP 2", "KP 3", "KP ." }, 0 }, { { "KP 0" }, 0 } } },
 };
 
 static Grid pane(size_t shown)
@@ -55,7 +56,13 @@ int main()
 	  expect(g, "Common", NAV_DIR::RIGHT, "A-Z"); expect(g, "A-Z", NAV_DIR::LEFT, "Common");
 	  expect(g, "Common", NAV_DIR::DOWN, "Enter"); expect(g, "Enter", NAV_DIR::RIGHT, "Esc"); expect(g, "Esc", NAV_DIR::RIGHT, "Space");
 	  expect(g, "Space", NAV_DIR::LEFT, "Esc"); expect(g, "Enter", NAV_DIR::DOWN, "Backspace"); expect(g, "Backspace", NAV_DIR::UP, "Enter");
-	  expect(g, "Ctrl", NAV_DIR::RIGHT, "Alt"); expect(g, "Left", NAV_DIR::RIGHT, "Right"); expect(g, "Left", NAV_DIR::UP, "Alt");
+	  expect(g, "LCtrl", NAV_DIR::RIGHT, "LAlt"); expect(g, "Left", NAV_DIR::RIGHT, "Right"); expect(g, "Left", NAV_DIR::UP, "RAlt");
+	  // each left modifier has its right twin straight under it, and the arrows are under those
+	  expect(g, "LCtrl", NAV_DIR::DOWN, "RCtrl"); expect(g, "LAlt", NAV_DIR::DOWN, "RAlt"); expect(g, "LShift", NAV_DIR::DOWN, "RShift");
+	  expect(g, "RCtrl", NAV_DIR::UP, "LCtrl"); expect(g, "RShift", NAV_DIR::UP, "LShift");
+	  expect(g, "RCtrl", NAV_DIR::DOWN, "Down"); expect(g, "RAlt", NAV_DIR::DOWN, "Left"); expect(g, "RShift", NAV_DIR::DOWN, "Right");
+	  // the indented row is not a dead end: its first key goes back and the key above its gap still reaches it
+	  expect(g, "RCtrl", NAV_DIR::RIGHT, "RAlt"); expect(g, "RShift", NAV_DIR::LEFT, "RAlt"); expect(g, "Up", NAV_DIR::UP, "RCtrl"); expect(g, "Backspace", NAV_DIR::DOWN, "RCtrl");
 	  expect(g, "Enter", NAV_DIR::UP, "Common"); expect(g, "Up", NAV_DIR::DOWN, "(stay)"); }
 
 	// A-Z: staggered rows. Sideways stays in the row; up and down pick the key whose cap overlaps.
@@ -68,10 +75,16 @@ int main()
 	  expect(g, "P", NAV_DIR::RIGHT, "A"); expect(g, "A", NAV_DIR::LEFT, "P"); }
 
 	// Other tabs: first tab to its first key, rows in order
-	{ Grid g = pane(2); expect(g, "0-9", NAV_DIR::DOWN, "5"); expect(g, "1", NAV_DIR::RIGHT, "2"); expect(g, "9", NAV_DIR::RIGHT, "0"); }
+	{ Grid g = pane(2); expect(g, "0-9", NAV_DIR::DOWN, "4"); expect(g, "1", NAV_DIR::RIGHT, "2"); expect(g, "9", NAV_DIR::RIGHT, "0"); }
 	{ Grid g = pane(3); expect(g, "F1", NAV_DIR::RIGHT, "F2"); expect(g, "F1", NAV_DIR::DOWN, "F7"); expect(g, "F12", NAV_DIR::UP, "F6"); expect(g, "F-keys", NAV_DIR::RIGHT, "Edit"); }
-	{ Grid g = pane(4); expect(g, "PgUp", NAV_DIR::RIGHT, "PgDn"); expect(g, "PgUp", NAV_DIR::DOWN, "End"); expect(g, "Del", NAV_DIR::UP, "Home"); }
-	{ Grid g = pane(5); expect(g, "Minus", NAV_DIR::DOWN, "Quote"); expect(g, "Quote", NAV_DIR::RIGHT, "["); expect(g, "Slash", NAV_DIR::DOWN, "Grave"); expect(g, "Symbols", NAV_DIR::LEFT, "Edit"); }
+	{ Grid g = pane(4); expect(g, "PgUp", NAV_DIR::RIGHT, "PgDn"); expect(g, "PgUp", NAV_DIR::DOWN, "Ins"); expect(g, "Del", NAV_DIR::UP, "PgDn");
+	  expect(g, "CapsLk", NAV_DIR::RIGHT, "ScrLk"); expect(g, "Ins", NAV_DIR::DOWN, "PrtSc"); expect(g, "Del", NAV_DIR::DOWN, "Pause"); expect(g, "Pause", NAV_DIR::DOWN, "(stay)"); }
+	{ Grid g = pane(5); expect(g, "Minus", NAV_DIR::DOWN, "Quote"); expect(g, "Quote", NAV_DIR::RIGHT, "["); expect(g, "Slash", NAV_DIR::DOWN, "Grave"); expect(g, "Symbols", NAV_DIR::LEFT, "Edit"); expect(g, "Semicolon", NAV_DIR::DOWN, "Less"); expect(g, "Symbols", NAV_DIR::RIGHT, "Keypad"); }
+
+	// Keypad: a number pad, 7 8 9 over 4 5 6 over 1 2 3, with 0 at the bottom
+	{ Grid g = pane(6); expect(g, "Keypad", NAV_DIR::DOWN, "KP -"); expect(g, "NumLk", NAV_DIR::DOWN, "KP 7"); expect(g, "KP 7", NAV_DIR::DOWN, "KP 4"); expect(g, "KP 4", NAV_DIR::DOWN, "KP 1");
+	  expect(g, "KP 1", NAV_DIR::DOWN, "KP 0"); expect(g, "KP 0", NAV_DIR::DOWN, "(stay)"); expect(g, "KP 8", NAV_DIR::UP, "KP /"); expect(g, "KP 9", NAV_DIR::RIGHT, "KP +");
+	  expect(g, "KP 5", NAV_DIR::LEFT, "KP 4"); expect(g, "KP Enter", NAV_DIR::DOWN, "KP ."); expect(g, "Symbols", NAV_DIR::RIGHT, "Keypad"); }
 
 	// Ordinary layouts keep working: a list, a 2x2 grid, and a row of buttons
 	{ Grid g; add(g, "r1", 0, 0, 200, 28); add(g, "r2", 0, 30, 200, 28); add(g, "r3", 0, 60, 200, 28);

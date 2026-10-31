@@ -512,7 +512,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 	const std::vector<int> allowed = Controls().choices(player, TARGET::KEY);
 	const std::vector<std::string>& names = Catalog_Names(TARGET::KEY);
 	static const char * const caps[][2] = { { "Backspace", "Bksp" }, { "Minus", "-" }, { "Equals", "=" }, { "Comma", "," },
-		{ "Period", "." }, { "Slash", "/" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Backslash", "\\" }, { "Grave", "`" } };
+		{ "Period", "." }, { "Slash", "/" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Backslash", "\\" }, { "Grave", "`" }, { "Less", "<" } };
 
 	// a key by name, as a cap `kw` wide; nothing when the build or player cannot bind it
 	auto cap = [&](GuiLayout& row, const char * name, int kw, int kh) -> bool {
@@ -521,6 +521,8 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 			return false;
 		const std::string full = names[(size_t)code];
 		const char * label = full.c_str();
+		if(full.compare(0, 3, "KP ") == 0)
+			label += 3;	// the Keypad tab is drawn like a number pad: "KP 7" is a cap that says 7 (the hint line has the full name)
 		for(size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++)
 			if(full == caps[c][0])
 				label = caps[c][1];
@@ -540,12 +542,15 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 	struct Row { std::vector<const char *> keys; int indent; };
 	struct Tab { const char * label; int width; int capW; int capH; std::vector<Row> rows; };
 	const std::vector<Tab> tabs = {
-		{ "Common", 54, 58, 32, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "Ctrl", "Alt", "Shift" }, 0 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
-		{ "A-Z", 30, 22, 30, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 11 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 23 } } },
-		{ "0-9", 30, 22, 30, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
-		{ "F-keys", 42, 36, 30, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
-		{ "Edit", 32, 72, 32, { { { "PgUp", "PgDn", "Home" }, 0 }, { { "End", "Ins", "Del" }, 0 } } },
-		{ "Symbols", 46, 36, 30, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave" }, 0 } } },
+		// left and right modifiers are different keys, so each side has its own row, one under the other
+		{ "Common", 44, 58, 26, { { { "Enter", "Esc", "Space", "Tab" }, 0 }, { { "Backspace", "LCtrl", "LAlt", "LShift" }, 0 }, { { "RCtrl", "RAlt", "RShift" }, 60 }, { { "Up", "Down", "Left", "Right" }, 0 } } },
+		{ "A-Z", 24, 22, 30, { { { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }, 0 }, { { "A", "S", "D", "F", "G", "H", "J", "K", "L" }, 11 }, { { "Z", "X", "C", "V", "B", "N", "M" }, 23 } } },
+		{ "0-9", 24, 22, 30, { { { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }, 0 } } },
+		{ "F-keys", 34, 36, 30, { { { "F1", "F2", "F3", "F4", "F5", "F6" }, 0 }, { { "F7", "F8", "F9", "F10", "F11", "F12" }, 0 } } },
+		{ "Edit", 26, 54, 30, { { { "PgUp", "PgDn", "Home", "End" }, 0 }, { { "Ins", "Del", "CapsLk", "ScrLk" }, 0 }, { { "PrtSc", "Pause" }, 0 } } },
+		{ "Symbols", 42, 36, 30, { { { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon" }, 0 }, { { "Quote", "[", "]", "Backslash", "Grave", "Less" }, 0 } } },
+		// the number pad, laid out as on a keyboard (many DOS games move with it)
+		{ "Keypad", 40, 54, 20, { { { "NumLk", "KP /", "KP *", "KP -" }, 0 }, { { "KP 7", "KP 8", "KP 9", "KP +" }, 0 }, { { "KP 4", "KP 5", "KP 6", "KP Enter" }, 0 }, { { "KP 1", "KP 2", "KP 3", "KP ." }, 0 }, { { "KP 0" }, 0 } } },
 	};
 
 	// open on the tab with the key in use
@@ -564,7 +569,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 
 	GuiLayout& tabRow = ui.row().gap(2).size(w, 22);
 	std::vector<GuiTextButton*>& tabButtons = ui.own<std::vector<GuiTextButton*> >();
-	GuiLayout& stack = ui.overlay().size(w, 104);
+	GuiLayout& stack = ui.overlay().size(w, 112);
 	for(size_t t = 0; t < tabs.size(); t++)
 	{
 		const int idx = (int)t;
@@ -683,7 +688,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	{
 		GuiLayout& pane = ui.column().gap(4);
 		keyPane(pane, player, rightW);
-		panels.push_back({ "Key", &pane, TARGET::KEY, 24 + 4 + 22 + 4 + 104 });
+		panels.push_back({ "Key", &pane, TARGET::KEY, 24 + 4 + 22 + 4 + 112 });
 		keyPanel = (int)panels.size() - 1;
 	}
 

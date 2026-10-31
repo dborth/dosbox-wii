@@ -248,11 +248,21 @@ static void testEventNames()
 		BindingTarget back;
 		CHECK(Mapper_TargetFor(0, e, back) && back == BindingTarget(TARGET::KEY, (int)i));
 	}
-	// the right-hand modifiers read as the one key the catalog has
+	// the right-hand modifiers are their own keys (a map saved as key_rctrl must not read back as the left one)
 	BindingTarget t;
-	CHECK(Mapper_TargetFor(0, "key_rctrl", t) && t == key("Ctrl"));
-	CHECK(Mapper_TargetFor(0, "key_ralt", t) && t == key("Alt"));
-	CHECK(Mapper_TargetFor(0, "key_rshift", t) && t == key("Shift"));
+	CHECK(Mapper_TargetFor(0, "key_rctrl", t) && t == key("RCtrl") && t != key("LCtrl"));
+	CHECK(Mapper_TargetFor(0, "key_ralt", t) && t == key("RAlt") && t != key("LAlt"));
+	CHECK(Mapper_TargetFor(0, "key_rshift", t) && t == key("RShift") && t != key("LShift"));
+	{
+		std::string ev;
+		CHECK(Mapper_EventFor(0, key("RShift"), ev) && ev == "key_rshift");
+		CHECK(Mapper_EventFor(0, key("LShift"), ev) && ev == "key_lshift");
+		// a few of the newer names against the mapper's own
+		CHECK(Mapper_EventFor(0, key("KP 8"), ev) && ev == "key_kp_8");
+		CHECK(Mapper_EventFor(0, key("KP Enter"), ev) && ev == "key_kp_enter");
+		CHECK(Mapper_EventFor(0, key("CapsLk"), ev) && ev == "key_capslock");
+		CHECK(Mapper_EventFor(0, key("PrtSc"), ev) && ev == "key_printscreen");
+	}
 
 	for(TARGET kind : { TARGET::MOUSE, TARGET::HOTKEY })
 		for(size_t i = 0; i < Catalog_Names(kind).size(); i++)
@@ -332,15 +342,15 @@ static void testShippedState()
 static void testSetBinding()
 {
 	Rig r("4axis");
-	r.model.setBinding(0, INPUT_BTN_A, key("Ctrl"));
+	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
 	CHECK(r.mapper.log.size() == 1 && r.mapper.log[0] == "0:0=key_lctrl");		// player 1, source 0 (A)
 	CHECK(r.mapper.saves == 1);												// written to the mapper file at once
-	CHECK(r.model.binding(0, INPUT_BTN_A) == key("Ctrl"));
+	CHECK(r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));
 	CHECK(r.mapper.events(0, 0).size() == 1);								// the shipped joystick bind on that source went with it
 	CHECK(r.model.modified(0));
 
 	// setting what it already is changes nothing and writes nothing
-	r.model.setBinding(0, INPUT_BTN_A, key("Ctrl"));
+	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
 	CHECK(r.mapper.log.size() == 1 && r.mapper.saves == 1);
 
 	// a key, the mouse and a hotkey, on the buttons they were asked for
@@ -437,7 +447,7 @@ static void testPresets()
 	for(size_t i = 0; i < r.mapper.log.size(); i++)
 		CHECK(r.mapper.log[i].compare(0, 2, "0:") == 0);
 	CHECK(!r.model.modified(0));
-	CHECK(r.model.defaultBinding(0, INPUT_BTN_A) == key("Ctrl"));
+	CHECK(r.model.defaultBinding(0, INPUT_BTN_A) == key("LCtrl"));
 
 	// an edit makes it modified; reset puts the preset back, for that player only
 	r.model.applyPreset(1, PRESET_SHOOTER);
@@ -445,7 +455,7 @@ static void testPresets()
 	r.model.setBinding(1, INPUT_BTN_A, key("Z"));
 	CHECK(r.model.modified(0) && r.model.modified(1));
 	r.model.resetBindings(0);
-	CHECK(!r.model.modified(0) && r.model.binding(0, INPUT_BTN_A) == key("Ctrl"));
+	CHECK(!r.model.modified(0) && r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));
 	CHECK(r.model.modified(1) && r.model.binding(1, INPUT_BTN_A) == key("Z"));
 
 	// reset with nothing changed writes nothing
@@ -456,7 +466,7 @@ static void testPresets()
 
 	// applying a preset replaces edits
 	r.model.applyPreset(1, PRESET_SHOOTER);
-	CHECK(!r.model.modified(1) && r.model.binding(1, INPUT_BTN_A) == key("Ctrl"));
+	CHECK(!r.model.modified(1) && r.model.binding(1, INPUT_BTN_A) == key("LCtrl"));
 	CHECK_EQ(r.model.player(1).preset, "Arrows + shooter");
 	CHECK_EQ(r.model.player(0).preset, "Arrow keys");
 
@@ -543,18 +553,18 @@ static void testSaving()
 {
 	Rig r("4axis");
 	r.mapper.saveWorks = false;
-	r.model.setBinding(0, INPUT_BTN_A, key("Ctrl"));
-	CHECK(r.model.binding(0, INPUT_BTN_A) == key("Ctrl"));				// in effect
+	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
+	CHECK(r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));				// in effect
 	CHECK(r.model.saveFailed());										// but the model says it was not kept
 	r.mapper.saveWorks = true;
-	r.model.setBinding(0, INPUT_BTN_B, key("Alt"));
+	r.model.setBinding(0, INPUT_BTN_B, key("LAlt"));
 	CHECK(!r.model.saveFailed());
 
 	// a change the mapper refuses (no pad group yet) is not reported as a change
 	Rig q("4axis");
 	struct Refusing : FakeMapper { bool setEvent(int, int, const char *) override { return false; } } refusing;
 	MapperControlsModel m(q.hw, refusing);
-	m.setBinding(0, INPUT_BTN_A, key("Ctrl"));
+	m.setBinding(0, INPUT_BTN_A, key("LCtrl"));
 	CHECK(refusing.saves == 0);
 	CHECK(m.binding(0, INPUT_BTN_A) == joy(0));
 }
@@ -648,14 +658,14 @@ static void testMigrateBinds()
 	r.model.setBinding(1, INPUT_BTN_A, joy(1));
 	CHECK_EQ(sourceEvent(r, 1, INPUT_BTN_A), "jbutton_1_1");
 	r.model.setBinding(0, INPUT_BTN_B, joy(1));
-	r.model.setBinding(0, INPUT_BTN_X, key("Ctrl"));
+	r.model.setBinding(0, INPUT_BTN_X, key("LCtrl"));
 	r.model.setEmulated(3);
 	CHECK_EQ(r.mapper.joystickType(), "4axis_2");
 	CHECK_EQ(sourceEvent(r, 1, INPUT_BTN_A), "jbutton_0_1");			// moved to the player's own joystick
 	CHECK(r.model.binding(1, INPUT_BTN_A) == joy(1));
 	// player 1's bind would now fire player 2's joystick: removed
 	CHECK(r.model.binding(0, INPUT_BTN_B) == BindingTarget());
-	CHECK(r.model.binding(0, INPUT_BTN_X) == key("Ctrl"));			// keys are not touched
+	CHECK(r.model.binding(0, INPUT_BTN_X) == key("LCtrl"));			// keys are not touched
 	CHECK(r.mapper.saves > 0);
 	// nothing left to move
 	CHECK(!Mapper_MigrateJoystickBinds(r.mapper));
@@ -726,9 +736,9 @@ static void testWritesThrough()
 {
 	Rig r("4axis");
 	int saves = r.mapper.saves;
-	r.model.setBinding(0, INPUT_BTN_A, key("Ctrl"));
+	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
 	CHECK(r.mapper.saves == saves + 1);
-	r.model.setBinding(0, INPUT_BTN_A, key("Ctrl"));							// the same value again changes nothing
+	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));							// the same value again changes nothing
 	CHECK(r.mapper.saves == saves + 1);
 	r.model.applyPreset(0, PRESET_ARROWS);
 	CHECK(r.mapper.saves == saves + 2);
@@ -770,8 +780,8 @@ static void testInstall()
 	Rig r("4axis");
 	Controls_SetModel(&r.model);
 	CHECK(&Controls() == &r.model);
-	Controls().setBinding(0, INPUT_BTN_A, key("Ctrl"));
-	CHECK_EQ(Controls().describe(0, INPUT_BTN_A), "Key: Ctrl");
+	Controls().setBinding(0, INPUT_BTN_A, key("LCtrl"));
+	CHECK_EQ(Controls().describe(0, INPUT_BTN_A), "Key: LCtrl");
 	CHECK_EQ(Controls().describe(0, INPUT_BTN_B), "Joystick 2");
 	Controls_SetModel(nullptr);
 	CHECK(&Controls() != &r.model);
@@ -785,7 +795,7 @@ static void testCaptureThroughHardware()
 	CHECK(r.hw.began == 1);
 	CaptureEvent e;
 	CHECK(!r.model.pollCapture(e));
-	CaptureEvent keyPress = { TARGET::KEY, Catalog_Find(TARGET::KEY, "Ctrl") };
+	CaptureEvent keyPress = { TARGET::KEY, Catalog_Find(TARGET::KEY, "LCtrl") };
 	CaptureEvent mouse = { TARGET::MOUSE, 1 };
 	r.hw.pending.push_back(keyPress);
 	r.hw.pending.push_back(mouse);

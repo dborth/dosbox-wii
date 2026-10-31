@@ -68,7 +68,7 @@ struct BindingTarget {
 	BindingTarget() : kind(TARGET::NONE), code(0) {}
 	BindingTarget(TARGET k, int c) : kind(k), code(c) {}
 
-	/** A short description for a list row: "Key: Ctrl", "Joystick button 1", "Not assigned". */
+	/** A short description for a list row: "Key: LCtrl", "Joystick button 1", "Not assigned". */
 	std::string describe() const;
 
 	bool operator==(const BindingTarget& o) const { return kind == o.kind && (kind == TARGET::NONE || code == o.code); }
@@ -179,7 +179,7 @@ struct EmulatedMode {
  */
 PlayerInfo Controls_ComposePlayer(const PlayerHardware& hardware, int index, const EmulatedMode& mode, const std::string& preset);
 
-/** The catalog index of the key a USB HID usage (keyboard page) stands for, or -1. Left and right Ctrl, Shift and Alt are one key each. */
+/** The catalog index of the key a USB HID usage (keyboard page) stands for, or -1. Left and right Ctrl, Shift and Alt are separate keys. */
 int Catalog_KeyFromHid(unsigned hidUsage);
 
 /** Everything the controller screens read and write. */
@@ -247,7 +247,7 @@ class ControlsModel
 		virtual void resetBindings(int player) = 0;
 		/** What a control does, in short words; when the target would do nothing it says why instead ("Joystick off", "No button 3"). */
 		std::string describe(int player, int control) const;
-		/** The same for a target that is not set yet ("Key: Ctrl", or why it would do nothing for this player). */
+		/** The same for a target that is not set yet ("Key: LCtrl", or why it would do nothing for this player). */
 		std::string describeTarget(int player, const BindingTarget& target) const;
 
 		// ---- what the chooser offers

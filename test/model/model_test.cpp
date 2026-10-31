@@ -133,7 +133,7 @@ static void testUsable()
 	for(int mode = 0; mode < 3; mode++)
 	{
 		m.setEmulated(mode);
-		CHECK(m.usable(0, key("Ctrl")) && m.usable(2, mouse) && m.usable(1, hot) && m.usable(0, BindingTarget()));
+		CHECK(m.usable(0, key("LCtrl")) && m.usable(2, mouse) && m.usable(1, hot) && m.usable(0, BindingTarget()));
 	}
 	m.setEmulated(0);
 }
@@ -155,7 +155,7 @@ static void testDescribe()
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Joystick off");
 
 	applyAll(m, 1);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: Ctrl");
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: LCtrl");
 	CHECK_EQ(m.describe(0, INPUT_BTN_UP), "Key: Up");
 	CHECK_EQ(m.describe(0, INPUT_TRIGGER_ZL), "Not assigned");
 	m.setEmulated(0);
@@ -244,7 +244,7 @@ static void testPerPlayerBindings()
 	ControlsModel& m = fresh();
 	m.setBinding(0, INPUT_BTN_A, key("F1"));
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F1");
-	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: Ctrl"); // another player is untouched
+	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: LCtrl"); // another player is untouched
 	m.setBinding(1, INPUT_BTN_A, BindingTarget(TARGET::MOUSE, 1));
 	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right");
 	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: F1");
@@ -254,11 +254,11 @@ static void testPerPlayerBindings()
 	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Not assigned");
 
 	m.resetBindings(0);
-	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: Ctrl");
-	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Key: Alt");
+	CHECK_EQ(m.describe(0, INPUT_BTN_A), "Key: LCtrl");
+	CHECK_EQ(m.describe(0, INPUT_BTN_B), "Key: LAlt");
 	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Mouse right"); // player 2's edit survives player 1's reset
 	m.resetBindings(1);
-	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: Ctrl");
+	CHECK_EQ(m.describe(1, INPUT_BTN_A), "Key: LCtrl");
 
 	// stick clicks are controls too
 	m.setBinding(0, INPUT_THUMB_L | BIND_STICK_CLICK, key("Tab"));
@@ -318,22 +318,41 @@ static void testHidKeys()
 		CHECK(Catalog_KeyFromHid(named[i].hid) == code);
 	}
 
-	// left and right modifiers are the same key to us
-	CHECK(Catalog_KeyFromHid(224) == Catalog_Find(TARGET::KEY, "Ctrl") && Catalog_KeyFromHid(228) == Catalog_KeyFromHid(224));
-	CHECK(Catalog_KeyFromHid(225) == Catalog_Find(TARGET::KEY, "Shift") && Catalog_KeyFromHid(229) == Catalog_KeyFromHid(225));
-	CHECK(Catalog_KeyFromHid(226) == Catalog_Find(TARGET::KEY, "Alt") && Catalog_KeyFromHid(230) == Catalog_KeyFromHid(226));
+	// the left and right modifiers are separate keys (a game can read them as different buttons)
+	struct { unsigned hid; const char * name; } mods[] = {
+		{ 224, "LCtrl" }, { 225, "LShift" }, { 226, "LAlt" }, { 228, "RCtrl" }, { 229, "RShift" }, { 230, "RAlt" },
+	};
+	for(size_t i = 0; i < sizeof(mods) / sizeof(mods[0]); i++)
+	{
+		CHECK(Catalog_Find(TARGET::KEY, mods[i].name) >= 0);
+		CHECK(Catalog_KeyFromHid(mods[i].hid) == Catalog_Find(TARGET::KEY, mods[i].name));
+	}
+	CHECK(Catalog_KeyFromHid(224) != Catalog_KeyFromHid(228));
+	CHECK(Catalog_KeyFromHid(225) != Catalog_KeyFromHid(229));
+	CHECK(Catalog_KeyFromHid(226) != Catalog_KeyFromHid(230));
+
+	// locks, Pause, Print Screen, the ISO key and the number pad
+	struct { unsigned hid; const char * name; } extra[] = {
+		{ 57, "CapsLk" }, { 70, "PrtSc" }, { 71, "ScrLk" }, { 72, "Pause" }, { 83, "NumLk" }, { 100, "Less" },
+		{ 84, "KP /" }, { 85, "KP *" }, { 86, "KP -" }, { 87, "KP +" }, { 88, "KP Enter" }, { 99, "KP ." }, { 98, "KP 0" },
+	};
+	for(size_t i = 0; i < sizeof(extra) / sizeof(extra[0]); i++)
+	{
+		CHECK(Catalog_Find(TARGET::KEY, extra[i].name) >= 0);
+		CHECK(Catalog_KeyFromHid(extra[i].hid) == Catalog_Find(TARGET::KEY, extra[i].name));
+	}
+	for(unsigned i = 0; i < 9; i++)		// keypad 1-9 are usages 89-97
+		CHECK(Catalog_KeyFromHid(89 + i) == Catalog_Find(TARGET::KEY, (std::string("KP ") + (char)('1' + i)).c_str()));
 
 	// keys the mapper cannot bind here are refused rather than guessed
 	CHECK(Catalog_KeyFromHid(0) == -1);		// no key
-	CHECK(Catalog_KeyFromHid(57) == -1);	// caps lock
-	CHECK(Catalog_KeyFromHid(83) == -1);	// num lock
-	CHECK(Catalog_KeyFromHid(89) == -1);	// keypad
+	CHECK(Catalog_KeyFromHid(103) == -1);	// keypad equals: the mapper has no event for it
 	CHECK(Catalog_KeyFromHid(227) == -1);	// the GUI key opens the menu
 	CHECK(Catalog_KeyFromHid(1000) == -1);
 
 	// every key in the catalog can be pressed (except nothing is unreachable by a USB keyboard)
 	const std::vector<std::string>& keys = Catalog_Names(TARGET::KEY);
-	CHECK(keys.size() == 77);
+	CHECK(keys.size() == 102);
 	std::vector<bool> reached(keys.size(), false);
 	for(unsigned hid = 0; hid < 232; hid++)
 	{

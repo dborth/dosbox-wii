@@ -15,13 +15,17 @@ namespace {
 struct KeyName { const char * catalog; const char * event; };
 const KeyName kKeyNames[] =
 {
-	{ "Backspace", "bspace" }, { "Ctrl", "lctrl" }, { "Alt", "lalt" }, { "Shift", "lshift" },
+	{ "Backspace", "bspace" },
+	{ "LCtrl", "lctrl" }, { "LAlt", "lalt" }, { "LShift", "lshift" }, { "RCtrl", "rctrl" }, { "RAlt", "ralt" }, { "RShift", "rshift" },
 	{ "PgUp", "pageup" }, { "PgDn", "pagedown" }, { "Ins", "insert" }, { "Del", "delete" },
 	{ "[", "lbracket" }, { "]", "rbracket" },
+	{ "CapsLk", "capslock" }, { "ScrLk", "scrolllock" }, { "PrtSc", "printscreen" }, { "Pause", "pause" }, { "NumLk", "numlock" },
+	{ "Less", "lessthan" },
+	{ "KP /", "kp_divide" }, { "KP *", "kp_multiply" }, { "KP -", "kp_minus" }, { "KP +", "kp_plus" },
+	{ "KP Enter", "kp_enter" }, { "KP .", "kp_period" },
+	{ "KP 0", "kp_0" }, { "KP 1", "kp_1" }, { "KP 2", "kp_2" }, { "KP 3", "kp_3" }, { "KP 4", "kp_4" },
+	{ "KP 5", "kp_5" }, { "KP 6", "kp_6" }, { "KP 7", "kp_7" }, { "KP 8", "kp_8" }, { "KP 9", "kp_9" },
 };
-
-// The catalog has one Ctrl, Alt and Shift; the mapper has a left and a right. Reading either gives the catalog key.
-const KeyName kKeyAliases[] = { { "Ctrl", "rctrl" }, { "Alt", "ralt" }, { "Shift", "rshift" } };
 
 // A catalog key's event name
 std::string keyEvent(const std::string& catalog)
@@ -44,8 +48,6 @@ const std::map<std::string, int>& keyByEvent()
 		const std::vector<std::string>& names = Catalog_Names(TARGET::KEY);
 		for(size_t i = 0; i < names.size(); i++)
 			m[keyEvent(names[i])] = (int)i;
-		for(size_t i = 0; i < sizeof(kKeyAliases) / sizeof(kKeyAliases[0]); i++)
-			m[std::string("key_") + kKeyAliases[i].event] = Catalog_Find(TARGET::KEY, kKeyAliases[i].catalog);
 	}
 	return m;
 }

@@ -460,6 +460,9 @@ int main(int argc, char ** argv)
 		{ "chooser_dosbox", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_Y, BindingTarget(), 4 },
 		{ "chooser_letters", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "G")), -1 },
 		{ "chooser_fkeys", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), -1 },	// opens on the tab with the key in use
+		{ "chooser_modifiers", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "RShift")), -1 },
+		{ "chooser_edit", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "CapsLk")), -1 },
+		{ "chooser_keypad", (int)PadType::CLASSIC, 0, 1, INPUT_BTN_X, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "KP 8")), -1 },
 	};
 	for(size_t i = 0; i < sizeof(choosers) / sizeof(choosers[0]); i++)
 	{
@@ -708,15 +711,17 @@ int main(int argc, char ** argv)
 		TargetChooserView view("A Button", 0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F3")), BindingTarget());
 		s.page.append(&view);
 		EXPECT(view.keyCapCount() == (int)Controls().choices(0, TARGET::KEY).size());
-		EXPECT(view.keyTabCount() == 6);
+		EXPECT(view.keyTabCount() == 7);
 		EXPECT(view.category() == 1);								// opens on Key, the kind the control uses
 		EXPECT(view.keyTabIndex() == 3);							// ...and on the F-keys tab, which has F3
 		view.stepKeyTab(1);
 		EXPECT(view.keyTabIndex() == 4);
 		view.stepKeyTab(1); view.stepKeyTab(1);
+		EXPECT(view.keyTabIndex() == 6);							// the Keypad tab is last
+		view.stepKeyTab(1);
 		EXPECT(view.keyTabIndex() == 0);							// wraps forward
 		view.stepKeyTab(-1);
-		EXPECT(view.keyTabIndex() == 5);							// and back
+		EXPECT(view.keyTabIndex() == 6);							// and back
 	}
 	{
 		// a key pressed before listening began does not count
@@ -768,7 +773,7 @@ int main(int argc, char ** argv)
 		EXPECT(items.size() == 5 && index.size() == 5);
 		EXPECT(items[1].current && !items[0].current);
 		EXPECT(items[0].rows.size() == 7 && items[0].rows[0].label == "A Button" && items[0].rows[0].value == "Joystick 1");
-		EXPECT(items[1].rows[0].value == "Key: Ctrl");
+		EXPECT(items[1].rows[0].value == "Key: LCtrl");
 
 		Controls().setBinding(0, INPUT_BTN_A, BindingTarget(TARGET::KEY, Catalog_Find(TARGET::KEY, "F2")));
 		items = Picker_PresetItems(0, index);

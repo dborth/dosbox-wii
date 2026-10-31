@@ -724,7 +724,7 @@ A player can hold more than one device. A Wiimote with a Nunchuk or Classic atta
 Open **Controllers** on the home screen. **Configure** opens the setup screen, and a player's icon in the strip opens that player. The setup screen has:
 
 - **Player N**, with what DOS does with that player ("Joystick 1", or "Keys + mouse") underneath. Arrows to switch players appear when two or more controllers are connected.
-- A **drawing of the controller** with a row for each control. Each row shows what that control does now ("Key: Ctrl", "Joystick 2", "Mouse left", "DOS: Cycles up"), or why it does nothing ("Joystick off", "No button 3"). Controls light up on the drawing as you press them on the real controller.
+- A **drawing of the controller** with a row for each control. Each row shows what that control does now ("Key: LCtrl", "Joystick 2", "Mouse left", "DOS: Cycles up"), or why it does nothing ("Joystick off", "No button 3"). Controls light up on the drawing as you press them on the real controller.
 - A **PRESET** chip (this player) and an **IN DOS** chip (the whole game) at the top.
 - **Back** at the bottom. To keep your buttons for a game, save it from the home screen; see [Games](#games).
 
@@ -751,10 +751,10 @@ A preset replaces **this player's** buttons only. If you have changed buttons si
 | Source | Compatible | Arrow keys | Arrows + shooter | Point and click | Menu keys |
 |---|---|---|---|---|---|
 | D-pad | not assigned (moves the joystick) | arrow keys | arrow keys | arrow keys | arrow keys |
-| A | Joystick 1 | Ctrl | Ctrl | Mouse left | Enter |
-| B | Joystick 2 | Alt | Space | Mouse right | Esc |
-| X (Wiimote `1`) | Joystick 3 | Space | Alt | — | Y |
-| Y (Wiimote `2`) | Joystick 4 | Enter | Shift | — | N |
+| A | Joystick 1 | LCtrl | LCtrl | Mouse left | Enter |
+| B | Joystick 2 | LAlt | Space | Mouse right | Esc |
+| X (Wiimote `1`) | Joystick 3 | Space | LAlt | — | Y |
+| Y (Wiimote `2`) | Joystick 4 | Enter | LShift | — | N |
 | Plus (Start) | — | Enter | Enter | Enter | Enter |
 | Minus (Select) | — | Esc | Esc | Esc | Esc |
 | L | — | PgUp | Z | — | — |
@@ -771,13 +771,13 @@ Press **A** on a row. The chooser lists, down the left:
 | Kind | What it offers |
 |---|---|
 | **Suggested** | What the presets give this control that this player can use (only shown when there is something to suggest) |
-| **Key** | **Press a key on the keyboard** (shown only while a USB keyboard is connected), then 77 keys on tabs: Common, A-Z, 0-9, F-keys, Edit, Symbols (**L** and **R** change tab). Left and right Ctrl, Alt and Shift are one key each |
+| **Key** | **Press a key on the keyboard** (shown only while a USB keyboard is connected), then 102 keys on tabs: Common, A-Z, 0-9, F-keys, Edit, Symbols, Keypad (**L** and **R** change tab). Left and right Ctrl, Alt and Shift are separate keys (**LCtrl**, **RCtrl** and so on, one under the other on the Common tab), because some games read them as different buttons, e.g. the two flippers in Pinball Fantasies. Edit also has Caps Lock, Scroll Lock, Print Screen and Pause; Keypad has Num Lock and the number pad; Symbols has the extra `<` key of ISO keyboards. A USB keyboard's left and right keys are told apart by **Press a key on the keyboard** |
 | **Joystick** | Buttons 1 to 4, limited to what the current mode has. Not shown for a player with no joystick |
 | **Mouse** | Left, right and middle button; **Click a mouse button** is shown while a USB mouse is connected |
 | **DOSBox** | Cycles up, Cycles down, Frameskip up, Frameskip down, Swap disk image, Fast forward (hold) |
 | **None** | The control does nothing |
 
-**Default** gives the control what this player's preset gives it. **B** cancels. A control has exactly one target, so choosing one replaces whatever it did before, including the DOSBox default binds. A key that is not in the list (a keypad key, say) is refused with "That one can't be used here".
+**Default** gives the control what this player's preset gives it. **B** cancels. A control has exactly one target, so choosing one replaces whatever it did before, including the DOSBox default binds. A key that is not in the list (the Windows key, say) is refused with "That one can't be used here".
 
 Stick rows (**L Stick**, **R Stick**, **Main Stick**, **C-Stick**, **Nunchuk Stick**) are information only. They show "Joystick axes" when the current mode gives this player that stick as an axis (the left stick needs a joystick; the right stick needs the four-axis modes) and "Not used" otherwise. **A stick cannot be bound to keys or the mouse.** The **Home** row, and the GameCube's **Menu** row, are fixed.
 

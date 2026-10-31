@@ -87,8 +87,9 @@ int PadBattery(const InputPadData& pad, PadType type)
 
 static std::vector<std::string> makeKeys()
 {
-	const char * named[] = { "Enter", "Esc", "Space", "Tab", "Backspace", "Ctrl", "Alt", "Shift", "Up", "Down", "Left", "Right",
-		"PgUp", "PgDn", "Home", "End", "Ins", "Del" };
+	// The left and right modifiers are separate keys: some games read them as different levers.
+	const char * named[] = { "Enter", "Esc", "Space", "Tab", "Backspace", "LCtrl", "LAlt", "LShift", "RCtrl", "RAlt", "RShift",
+		"Up", "Down", "Left", "Right", "PgUp", "PgDn", "Home", "End", "Ins", "Del", "CapsLk", "ScrLk", "PrtSc", "Pause" };
 	std::vector<std::string> v(named, named + sizeof(named) / sizeof(named[0]));
 	for(int i = 1; i <= 12; i++)
 	{
@@ -101,9 +102,15 @@ static std::vector<std::string> makeKeys()
 	for(char c = 'A'; c <= 'Z'; c++)
 		v.push_back(std::string(1, c));
 	// the punctuation keys the mapper binds, by name (the key buttons draw the symbol)
-	const char * punctuation[] = { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon", "Quote", "[", "]", "Backslash", "Grave" };
+	// ("Less" is the extra key left of Z on ISO keyboards)
+	const char * punctuation[] = { "Minus", "Equals", "Comma", "Period", "Slash", "Semicolon", "Quote", "[", "]", "Backslash", "Grave", "Less" };
 	for(size_t i = 0; i < sizeof(punctuation) / sizeof(punctuation[0]); i++)
 		v.push_back(punctuation[i]);
+	// the number pad (many DOS games move with it), Num Lock first as on the pad itself
+	const char * keypad[] = { "NumLk", "KP /", "KP *", "KP -", "KP +", "KP Enter", "KP .",
+		"KP 0", "KP 1", "KP 2", "KP 3", "KP 4", "KP 5", "KP 6", "KP 7", "KP 8", "KP 9" };
+	for(size_t i = 0; i < sizeof(keypad) / sizeof(keypad[0]); i++)
+		v.push_back(keypad[i]);
 	return v;
 }
 
@@ -132,6 +139,7 @@ int Catalog_KeyFromHid(unsigned hid)
 	if(hid >= 4 && hid <= 29) { single[0] = (char)('A' + (hid - 4)); name = single; }
 	else if(hid >= 30 && hid <= 38) { single[0] = (char)('1' + (hid - 30)); name = single; }
 	else if(hid == 39) name = "0";
+	else if(hid >= 89 && hid <= 97) { snprintf(fkey, sizeof(fkey), "KP %u", hid - 88); name = fkey; }	// keypad 1-9
 	else if(hid >= 58 && hid <= 69) { snprintf(fkey, sizeof(fkey), "F%u", hid - 57); name = fkey; }
 	else switch(hid)
 	{
@@ -161,9 +169,25 @@ int Catalog_KeyFromHid(unsigned hid)
 		case 80: name = "Left"; break;
 		case 81: name = "Down"; break;
 		case 82: name = "Up"; break;
-		case 224: case 228: name = "Ctrl"; break;
-		case 225: case 229: name = "Shift"; break;
-		case 226: case 230: name = "Alt"; break;
+		case 57: name = "CapsLk"; break;
+		case 70: name = "PrtSc"; break;
+		case 71: name = "ScrLk"; break;
+		case 72: name = "Pause"; break;
+		case 83: name = "NumLk"; break;
+		case 84: name = "KP /"; break;
+		case 85: name = "KP *"; break;
+		case 86: name = "KP -"; break;
+		case 87: name = "KP +"; break;
+		case 88: name = "KP Enter"; break;
+		case 98: name = "KP 0"; break;
+		case 99: name = "KP ."; break;
+		case 100: name = "Less"; break;
+		case 224: name = "LCtrl"; break;
+		case 225: name = "LShift"; break;
+		case 226: name = "LAlt"; break;
+		case 228: name = "RCtrl"; break;
+		case 229: name = "RShift"; break;
+		case 230: name = "RAlt"; break;
 		default: break;
 	}
 	return name ? Catalog_Find(TARGET::KEY, name) : -1;
@@ -412,8 +436,8 @@ BindingTarget Presets_Target(int preset, int control)
 		case PRESET_ARROWS:
 			switch(control)
 			{
-				case INPUT_BTN_A: return key("Ctrl");
-				case INPUT_BTN_B: return key("Alt");
+				case INPUT_BTN_A: return key("LCtrl");
+				case INPUT_BTN_B: return key("LAlt");
 				case INPUT_BTN_X: return key("Space");
 				case INPUT_BTN_Y: return key("Enter");
 				case INPUT_BTN_PLUS: return key("Enter");
@@ -425,10 +449,10 @@ BindingTarget Presets_Target(int preset, int control)
 		case PRESET_SHOOTER:
 			switch(control)
 			{
-				case INPUT_BTN_A: return key("Ctrl");
+				case INPUT_BTN_A: return key("LCtrl");
 				case INPUT_BTN_B: return key("Space");
-				case INPUT_BTN_X: return key("Alt");
-				case INPUT_BTN_Y: return key("Shift");
+				case INPUT_BTN_X: return key("LAlt");
+				case INPUT_BTN_Y: return key("LShift");
 				case INPUT_BTN_PLUS: return key("Enter");
 				case INPUT_BTN_MINUS: return key("Esc");
 				case INPUT_TRIGGER_L: return key("Z");
