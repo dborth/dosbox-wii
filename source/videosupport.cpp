@@ -35,6 +35,8 @@ static struct {
 	bool active;			// GFX_Start()/GFX_Stop(): DOSBox may draw
 	bool updating;			// between GFX_StartUpdate() and GFX_EndUpdate()
 	bool suspended;			// the menu owns the display
+	bool redraw;			// a frame was skipped because the display was busy
+	uint32_t skipSince;		// GetTicks() when the first skipped frame was skipped
 
 	Bitu width, height;		// size of the frame DOSBox renders
 	Bitu flags;
@@ -52,8 +54,41 @@ static EmulatorVideoDriver * EmulatorVideo(void) {
 	return platform->getVideo()->getEmulatorVideo();
 }
 
-static void PresentFrame(void) {
-	EmulatorVideo()->presentFrame(gfx.frame, (int)gfx.width, (int)gfx.height, (int)gfx.pitch);
+/* Presents the frame. With wait false the frame is skipped if the display has
+ * not finished the last one, rather than stalling the emulation thread (which
+ * also mixes the audio) until it has. Nothing is lost: gfx.frame keeps the
+ * whole picture, and GFX_PresentPending() presents it as soon as the display
+ * is free, which matters because DOSBox only presents when the screen changes
+ * and the last frame of a change may be the one skipped. */
+static const uint32_t MAX_SKIP_MS = 100;
+
+static void PresentFrame(bool wait) {
+	EmulatorVideoDriver * video = EmulatorVideo();
+	if (!wait && !video->isReadyToPresent()) {
+		if (!gfx.redraw) {
+			gfx.redraw = true;
+			gfx.skipSince = GetTicks();
+		}
+		// A display that stays busy must not freeze the picture: after this
+		// long, wait for it as before
+		if ((uint32_t)(GetTicks() - gfx.skipSince) < MAX_SKIP_MS)
+			return;
+	}
+	gfx.redraw = false;
+	video->presentFrame(gfx.frame, (int)gfx.width, (int)gfx.height, (int)gfx.pitch);
+}
+
+void GFX_PresentPending(void) {
+	if (!gfx.redraw)
+		return;
+	if (!gfx.frame || gfx.width == 0 || gfx.height == 0 || gfx.suspended || gfx.updating) {
+		// Not the moment. Leaves the flag set if a frame is still coming,
+		// clears it when there is nothing that could be presented
+		if (!gfx.frame || gfx.width == 0 || gfx.height == 0 || gfx.suspended)
+			gfx.redraw = false;
+		return;
+	}
+	PresentFrame(false);
 }
 
 /****************************************************************************
@@ -95,6 +130,8 @@ void GFX_Suspend(void) {
 	// A frame DOSBox is part way through drawing is left alone. Nothing runs
 	// while the menu is up, and the rest of it is drawn after GFX_Resume().
 	EmulatorVideoDriver * video = EmulatorVideo();
+	if (gfx.redraw && gfx.frame && !gfx.updating)
+		PresentFrame(true);		// a skipped frame, so the snapshot is the latest
 	video->snapshotFrame();		// reads the last presented frame, so first
 	video->stopVideo();
 	gfx.suspended = true;
@@ -110,14 +147,14 @@ void GFX_Resume(void) {
 	// The screen still shows the menu. DOSBox will not present again until
 	// something changes, which may be a long time at a quiet prompt.
 	if (gfx.frame)
-		PresentFrame();
+		PresentFrame(true);
 }
 
 void GFX_Refresh(void) {
 	if (!gfx.frame || gfx.width == 0 || gfx.height == 0 || gfx.suspended || gfx.updating)
 		return;
 
-	PresentFrame();
+	PresentFrame(false);
 }
 
 void GFX_ShowScreen(const unsigned short * pixels, int width, int height, int pitch) {
@@ -160,6 +197,7 @@ static bool AllocateFrame(Bitu width, Bitu height) {
 	}
 
 	gfx.pitch = pitch;
+	gfx.redraw = false;			// the frame it was for is gone
 	memset(gfx.frame, 0, needed);		// black
 	return true;
 }
@@ -229,7 +267,7 @@ void GFX_EndUpdate(const Bit16u * changedLines) {
 	if (!changedLines)
 		return;
 
-	PresentFrame();
+	PresentFrame(false);
 }
 
 void GFX_Start(void) {

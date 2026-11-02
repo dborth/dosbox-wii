@@ -322,6 +322,9 @@ void GFX_Events() {
 	// Scan the pads, keyboard and mice; posts the events polled below
 	InputHal_Update();
 
+	// A frame skipped because the display was busy goes out as soon as it is free
+	GFX_PresentPending();
+
 	CheckExit();
 
 	// HOME, a controller combo or the keyboard's GUI key: hand the display to the menu.

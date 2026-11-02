@@ -47,6 +47,13 @@ class EmulatorVideoDriver
 		//! \param pitch    bytes between the start of consecutive rows
 		virtual void presentFrame(const uint16_t* pixels, int width, int height, int pitch) = 0;
 
+		//! False while presentFrame() would have to wait for the display (the last
+		//! frame has not been shown yet). A caller that must not stall, such as the
+		//! emulation thread, which also mixes the audio, checks this, skips the
+		//! present and tries again later. Drivers whose presentFrame() never waits
+		//! keep the default.
+		virtual bool isReadyToPresent() const { return true; }
+
 		//! Pixel aspect of the frame (DOSBox's GFX_SetSize scalex/scaley), used
 		//! to size the quad on screen. 1.0/1.0 is square pixels.
 		virtual void setPixelAspect(float scaleX, float scaleY) { (void)scaleX; (void)scaleY; }

@@ -39,6 +39,11 @@ void GFX_Resume(void);
 //! must update when it has not. Does nothing while the menu owns the display,
 //! while DOSBox is part way through a frame, or before any mode is set.
 void GFX_Refresh(void);
+//! Presents the frame again if the last present was skipped because the
+//! display was still busy with the one before. Cheap when there is nothing to
+//! do; called once per emulation event pass (GFX_Events).
+void GFX_PresentPending(void);
+
 //! Shows a finished RGB565 picture that is not emulator output (the mapper
 //! screen), square pixels, in place of the emulator frame. pixels must be 32
 //! byte aligned. GFX_ResetScreen() brings the emulator picture back.

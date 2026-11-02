@@ -410,6 +410,21 @@ void WutEmulatorVideo::refreshGamePadOverlay()
 }
 
 /****************************************************************************
+ * isReadyToPresent
+ *
+ * presentFrame() waits for the GPU to retire the previous frame, which
+ * includes the swap, so it takes up to one refresh. The emulation thread also
+ * mixes the audio, so a program that draws faster than the display would fall 
+ * behind real time and starve the audio.
+ * The caller skips the frame while this is false and presents again later.
+ * Without the foreground there is nothing to wait for.
+ ***************************************************************************/
+bool WutEmulatorVideo::isReadyToPresent() const
+{
+	return !videoDriver->isForeground() || !videoDriver->isPresentPending();
+}
+
+/****************************************************************************
  * presentFrame
  *
  * prepareFrame() first: it waits for the GPU to retire the previous frame

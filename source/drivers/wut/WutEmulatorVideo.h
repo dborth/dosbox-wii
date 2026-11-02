@@ -25,6 +25,7 @@ class WutEmulatorVideo : public EmulatorVideoDriver
 		void resetVideo() override;
 		void stopVideo() override;
 		void presentFrame(const uint16_t* pixels, int width, int height, int pitch) override;
+		bool isReadyToPresent() const override;
 		void setPixelAspect(float scaleX, float scaleY) override;
 		EmulatorVideoCapabilities getCapabilities() const override;
 		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
