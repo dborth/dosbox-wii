@@ -1,10 +1,10 @@
-# DOSBox Wii
+# DOSBox Wii / Wii U
 
 [github.com/dborth/dosbox-wii](https://github.com/dborth/dosbox-wii) — GPL licensed
 
-**DOSBox Wii** is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and games.
+**DOSBox Wii / Wii U** is a DOS emulator for the **Nintendo Wii** and **Wii U**. It is [DOSBox](https://www.dosbox.com/) (SVN r4301, with a PowerPC dynamic recompiler) running on the shared [`libgui`](https://github.com/dborth/libgui) UI and driver framework, with a Home menu for settings, controllers, drives and games.
 
-DOSBox Wii is homebrew — it isn't signed by Nintendo, so your console needs to be set up to run unsigned code first. If you haven't done that yet, jump to **[Installation](#installation)**; it links to a step-by-step guide for each console.
+DOSBox Wii / Wii U is homebrew — it isn't signed by Nintendo, so your console needs to be set up to run unsigned code first. If you haven't done that yet, jump to **[Installation](#installation)**; it links to a step-by-step guide for each console.
 
 ## Table of Contents
 

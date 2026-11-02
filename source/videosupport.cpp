@@ -30,6 +30,7 @@
 #include "videosupport.h"
 #include "preferences.h"
 #include "osk.h"
+#include "timer.h"
 
 static struct {
 	bool active;			// GFX_Start()/GFX_Stop(): DOSBox may draw
