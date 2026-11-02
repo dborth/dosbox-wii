@@ -14,7 +14,7 @@
  * produces the same codes. DOSBox translates HID -> its own key table
  * (the SDLK_* enum we are keeping) in one place in the mapper layer.
  *
- * Wii (OgcKeyboardDriver, libogc2 + libwiikeyboard, already in LIBS):
+ * Wii (WiiKeyboardDriver, libogc2 + libwiikeyboard, already in LIBS):
  *  - init(): KEYBOARD_Init(cb) with a callback that only sets a flag
  *    (it runs in the USB thread); hotplug is reported by the callback.
  *  - poll(): KEYBOARD_ScanKeyboard() / KEYBOARD_GetEvent into KeyEvent
@@ -61,25 +61,25 @@ struct KeyEvent
 	bool     pressed;    //!< true = key down, false = key up
 };
 
+//! Physical keyboard. The base class is the driver for a platform that has
+//! none (eg. GameCube): it is never connected and never has an event, so the
+//! app can poll it without asking whether there is a keyboard.
 class KeyboardDriver
 {
 	public:
 		virtual ~KeyboardDriver() = default;
 
-		virtual void init() = 0;
-		virtual void shutdown() = 0;
+		virtual void init() {}
+		virtual void shutdown() {}
 
 		//! True while at least one keyboard is attached
-		virtual bool isConnected() const = 0;
+		virtual bool isConnected() const { return false; }
 
 		//! Pops the next pending event into `out`. Returns false when the
 		//! queue is empty. Call from the main thread, once per frame.
-		virtual bool poll(KeyEvent & out) = 0;
+		virtual bool poll(KeyEvent & out) { (void)out; return false; }
 
 		//! Lets isConnected() follow hot-plug while nothing is polling (in the
 		//! menu). Keeps pending key events for the next poll(). Main thread.
 		virtual void refresh() {}
 };
-
-//! The app-owned keyboard instance (defined in wiihardware.cpp)
-extern KeyboardDriver* keyboard;

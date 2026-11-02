@@ -15,6 +15,8 @@
 #include "ThreadDriver.h"
 #include "Logger.h"
 #include "SystemKeyboardDriver.h"
+#include "KeyboardDriver.h"
+#include "MouseDriver.h"
 
 class AudioDriver;
 class VideoDriver;
@@ -90,6 +92,12 @@ class Platform
 		//!The platform's own on-screen keyboard, or nullptr if it has none
 		//!(only the Wii U does, on the GamePad).
 		virtual SystemKeyboardDriver* getSystemKeyboard() { return nullptr; }
+		//!The USB keyboard and mouse. Never null: a platform without them
+		//!(eg. GameCube) keeps these defaults, a driver that is never
+		//!connected and never has an event. A platform that has them creates
+		//!and init()s them in init(), and shuts them down in shutdown().
+		virtual KeyboardDriver* getKeyboard() { static KeyboardDriver none; return &none; }
+		virtual MouseDriver* getMouse() { static MouseDriver none; return &none; }
 		//!May return nullptr on a Platform that hasn't finished init()
 		//!yet - LogPrintf()/LOG_*() already guard against this, but code
 		//!calling platform->getLogger() directly should too.

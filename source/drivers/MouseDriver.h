@@ -22,21 +22,21 @@ struct MouseEvent
 	uint8_t buttons;   //!< MouseButtons bitmask currently held
 };
 
+//! Physical (USB) mouse. The base class is the driver for a platform that has
+//! none (eg. GameCube): it is never connected and never has an event, so the
+//! app can poll it without asking whether there is a mouse.
 class MouseDriver
 {
 	public:
 		virtual ~MouseDriver() = default;
 
-		virtual void init() = 0;
-		virtual void shutdown() = 0;
+		virtual void init() {}
+		virtual void shutdown() {}
 
 		//! Pops the next pending event into `out`. Returns false when the
 		//! queue is empty. Call from the main thread, once per frame.
-		virtual bool poll(MouseEvent & out) = 0;
+		virtual bool poll(MouseEvent & out) { (void)out; return false; }
 
 		//! True while at least one mouse is attached (follows hot-plug)
-		virtual bool isConnected() const = 0;
+		virtual bool isConnected() const { return false; }
 };
-
-//! The app-owned mouse instance (defined in wiihardware.cpp)
-extern MouseDriver* usbMouse;

@@ -1,7 +1,7 @@
 /****************************************************************************
- * Platform Abstraction Layer (OGC driver)
+ * Platform Abstraction Layer (Wii driver)
  * Daryl Borth 2026
- * OgcKeyboardDriver.cpp
+ * WiiKeyboardDriver.cpp
  *
  * libwiikeyboard runs its own USB thread and queues events; this driver
  * only drains that queue. libwiikeyboard reports HID usage IDs as
@@ -9,40 +9,33 @@
  * here. It does not synthesise key repeat, which is what the emulator
  * wants (raw press/release).
  ***************************************************************************/
-#include <ogc/machine/processor.h>
-
-#ifdef HW_RVL
+#include <gctypes.h>
 #include <wiikeyboard/keyboard.h>
-#endif
 
-#include "OgcKeyboardDriver.h"
+#include "WiiKeyboardDriver.h"
 
-void OgcKeyboardDriver::init()
+void WiiKeyboardDriver::init()
 {
-	#ifdef HW_RVL
 	if (initialized)
 		return;
 
 	// No keypress callback: events are polled via KEYBOARD_GetEvent, and
 	// hotplug arrives there as KEYBOARD_CONNECTED/DISCONNECTED events.
-	initialized = (KEYBOARD_Init(NULL) >= 0);
+	initialized = (KEYBOARD_Init(nullptr) >= 0);
 	connected = 0;
 	heldHead = heldCount = 0;
-	#endif
 }
 
-void OgcKeyboardDriver::shutdown()
+void WiiKeyboardDriver::shutdown()
 {
-	#ifdef HW_RVL
 	if (initialized)
 		KEYBOARD_Deinit();
-	#endif
+
 	initialized = false;
 	connected = 0;
 	heldHead = heldCount = 0;
 }
 
-#ifdef HW_RVL
 static uint16_t MapModifiers(uint16_t m)
 {
 	uint16_t mods = KEYMOD_NONE;
@@ -58,11 +51,9 @@ static uint16_t MapModifiers(uint16_t m)
 
 	return mods;
 }
-#endif
 
-bool OgcKeyboardDriver::fetch(KeyEvent & out)
+bool WiiKeyboardDriver::fetch(KeyEvent & out)
 {
-	#ifdef HW_RVL
 	if (!initialized)
 		return false;
 
@@ -86,13 +77,11 @@ bool OgcKeyboardDriver::fetch(KeyEvent & out)
 				return true;
 		}
 	}
-	#else
-	(void)out;
-	#endif
+
 	return false;
 }
 
-bool OgcKeyboardDriver::poll(KeyEvent & out)
+bool WiiKeyboardDriver::poll(KeyEvent & out)
 {
 	if (heldCount > 0) {
 		out = held[heldHead];
@@ -107,7 +96,7 @@ bool OgcKeyboardDriver::poll(KeyEvent & out)
 // libwiikeyboard only reports attach/detach through the same queue as keys, so
 // the count is only as current as the last drain. Nothing polls in the menu:
 // drain here, and hold on to the keys so they still reach the next poll().
-void OgcKeyboardDriver::refresh()
+void WiiKeyboardDriver::refresh()
 {
 	KeyEvent ke;
 

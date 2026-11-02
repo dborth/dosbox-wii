@@ -21,4 +21,8 @@ void EnterMenu();
 //! loader). Does not return.
 void ExitApp();
 
+class KeyboardDriver;
+
+extern KeyboardDriver* keyboard;
+
 #endif

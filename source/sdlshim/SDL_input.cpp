@@ -920,7 +920,7 @@ static void PollMouse(void)
 
 	// USB mouse
 	MouseEvent me;
-	while (usbMouse->poll(me)) {
+	while (platform->getMouse()->poll(me)) {
 		PostMouseMotion(me.dx, me.dy);
 		SetMouseButton(&usbButtons, SDL_BUTTON_LEFT, (me.buttons & MOUSE_BTN_LEFT) != 0);
 		SetMouseButton(&usbButtons, SDL_BUTTON_RIGHT, (me.buttons & MOUSE_BTN_RIGHT) != 0);

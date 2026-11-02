@@ -38,25 +38,15 @@
 
 #ifdef HW_RVL
 #include "drivers/ogc/wii/WiiPlatform.h"
-#include "drivers/ogc/OgcKeyboardDriver.h"
-#include "drivers/ogc/OgcMouseDriver.h"
 static WiiPlatform platformInstance;
-static OgcKeyboardDriver keyboardInstance;
-static OgcMouseDriver mouseInstance;
 #elif __WIIU__
 #include "drivers/wut/WutPlatform.h"
-#include "drivers/wut/WutKeyboardDriver.h"
-#include "drivers/wut/WutMouseDriver.h"
 static WutPlatform platformInstance;
-static WutKeyboardDriver keyboardInstance;
-static WutMouseDriver mouseInstance;
 #endif
 
 Platform* platform = &platformInstance;
 
-// USB keyboard and mouse
-KeyboardDriver* keyboard = OSK_WrapKeyboard(&keyboardInstance);
-MouseDriver* usbMouse = &mouseInstance;
+KeyboardDriver* keyboard = nullptr;
 
 /****************************************************************************
  * SwitchAudioMode
@@ -80,8 +70,8 @@ static void SwitchAudioMode(int mode)
 /****************************************************************************
  * InitApp
  *
- * Brings up the platform (thread, video, audio, input, filesystem, logger
- * drivers) and the GUI text system.
+ * Brings up the platform (thread, video, audio, input, filesystem, USB
+ * keyboard and mouse, logger drivers) and the GUI text system.
  ***************************************************************************/
 static void InitApp()
 {
@@ -101,8 +91,7 @@ static void InitApp()
 
 	FindAppDrive();
 
-	keyboard->init();
-	usbMouse->init();
+	keyboard = OSK_WrapKeyboard(platform->getKeyboard());
 
 	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size, platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
 	textTranslator = new GuiTextTranslator();

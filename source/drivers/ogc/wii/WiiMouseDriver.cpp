@@ -1,45 +1,34 @@
 /****************************************************************************
- * Platform Abstraction Layer (OGC driver)
+ * Platform Abstraction Layer (Wii driver)
  * Daryl Borth 2026
- * OgcMouseDriver.cpp
+ * WiiMouseDriver.cpp
  ***************************************************************************/
-#include <ogc/machine/processor.h>
-
-#ifdef HW_RVL
+#include <gctypes.h>
 #include <ogc/usbmouse.h>
-#endif
 
-#include "OgcMouseDriver.h"
+#include "WiiMouseDriver.h"
 
-void OgcMouseDriver::init()
+void WiiMouseDriver::init()
 {
-	#ifdef HW_RVL
 	if (!initialized)
 		initialized = (MOUSE_Init() >= 0);
-	#endif
 }
 
-void OgcMouseDriver::shutdown()
+void WiiMouseDriver::shutdown()
 {
-	#ifdef HW_RVL
 	if (initialized)
 		MOUSE_Deinit();
-	#endif
+
 	initialized = false;
 }
 
-bool OgcMouseDriver::isConnected() const
+bool WiiMouseDriver::isConnected() const
 {
-	#ifdef HW_RVL
 	return initialized && MOUSE_IsConnected();
-	#else
-	return false;
-	#endif
 }
 
-bool OgcMouseDriver::poll(MouseEvent & out)
+bool WiiMouseDriver::poll(MouseEvent & out)
 {
-	#ifdef HW_RVL
 	mouse_event me;
 
 	if (initialized && MOUSE_GetEvent(&me)) {
@@ -51,8 +40,6 @@ bool OgcMouseDriver::poll(MouseEvent & out)
 		if (me.button & 0x4) out.buttons |= MOUSE_BTN_MIDDLE;
 		return true;
 	}
-	#else
-	(void)out;
-	#endif
+
 	return false;
 }

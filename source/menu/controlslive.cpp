@@ -18,6 +18,7 @@
 #include "drivers/KeyboardDriver.h"
 #include "drivers/MouseDriver.h"
 #include "inputlogic.h"
+#include "dosboxwii.h"
 #include "dosboxsupport.h"
 #include "settings.h"
 #include "storage.h"
@@ -50,8 +51,8 @@ class HalControlsHardware : public ControlsHardware
 		DeviceStatus devices() const override
 		{
 			DeviceStatus d;
-			d.keyboard = keyboard && keyboard->isConnected();
-			d.mouse = usbMouse && usbMouse->isConnected();
+			d.keyboard = keyboard->isConnected();
+			d.mouse = platform->getMouse()->isConnected();
 			d.wiimoteIr = false;
 			for(int i = 0; i < CHANNELS; i++)
 			{
@@ -78,17 +79,17 @@ class HalControlsHardware : public ControlsHardware
 		{
 			// the shim polls both only while emulating, so what is queued now is from before the menu
 			KeyEvent ke;
-			while(keyboard && keyboard->poll(ke)) {}
+			while(keyboard->poll(ke)) {}
 			MouseEvent me;
 			mouseHeld = 0;
-			while(usbMouse && usbMouse->poll(me))
+			while(platform->getMouse()->poll(me))
 				mouseHeld = me.buttons;
 		}
 
 		bool pollCapture(CaptureEvent& event) override
 		{
 			KeyEvent ke;
-			while(keyboard && keyboard->poll(ke))
+			while(keyboard->poll(ke))
 			{
 				if(!ke.pressed)
 					continue;
@@ -98,7 +99,7 @@ class HalControlsHardware : public ControlsHardware
 			}
 			// a mouse event carries every button held, so a press is a bit that was not set in the one before
 			MouseEvent me;
-			while(usbMouse && usbMouse->poll(me))
+			while(platform->getMouse()->poll(me))
 			{
 				const uint8_t fresh = (uint8_t)(me.buttons & ~mouseHeld);
 				mouseHeld = me.buttons;

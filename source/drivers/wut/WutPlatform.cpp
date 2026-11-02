@@ -42,6 +42,13 @@ void WutPlatform::init(const PlatformConfig& config)
 
 	this->systemKeyboard = new WutSystemKeyboard(this->inputDriver);
 
+	// Keyboard first: the mouse driver shares the HID setup it may have done
+	this->keyboardDriver = new WutKeyboardDriver();
+	this->keyboardDriver->init();
+
+	this->mouseDriver = new WutMouseDriver();
+	this->mouseDriver->init();
+
 #if LOGGING_ENABLED
 	this->logger = new Logger();
 	this->logger->registerBackend(LOGGER_OSREPORT,	new WutLoggerOSReport());
@@ -75,6 +82,18 @@ void WutPlatform::shutdown()
 		logger->shutdown();
 		delete logger;
 		logger = nullptr;
+	}
+
+	if (mouseDriver) {
+		mouseDriver->shutdown();
+		delete mouseDriver;
+		mouseDriver = nullptr;
+	}
+
+	if (keyboardDriver) {
+		keyboardDriver->shutdown();
+		delete keyboardDriver;
+		keyboardDriver = nullptr;
 	}
 
 	if(fileSystemDriver)

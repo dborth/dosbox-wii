@@ -1,16 +1,16 @@
 /****************************************************************************
- * Platform Abstraction Layer (OGC driver)
+ * Platform Abstraction Layer (Wii driver)
  * Daryl Borth 2026
- * OgcKeyboardDriver.h
+ * WiiKeyboardDriver.h
  *
  * USB keyboard via libwiikeyboard. See drivers/KeyboardDriver.h for the
  * contract.
  ***************************************************************************/
 #pragma once
 
-#include "../KeyboardDriver.h"
+#include "../../KeyboardDriver.h"
 
-class OgcKeyboardDriver : public KeyboardDriver
+class WiiKeyboardDriver : public KeyboardDriver
 {
 	public:
 		void init() override;

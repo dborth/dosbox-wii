@@ -1,15 +1,15 @@
 /****************************************************************************
- * Platform Abstraction Layer (OGC driver)
+ * Platform Abstraction Layer (Wii driver)
  * Daryl Borth 2026
- * OgcMouseDriver.h
+ * WiiMouseDriver.h
  *
  * USB mouse via libogc's usbmouse
  ***************************************************************************/
 #pragma once
 
-#include "../MouseDriver.h"
+#include "../../MouseDriver.h"
 
-class OgcMouseDriver : public MouseDriver
+class WiiMouseDriver : public MouseDriver
 {
 	public:
 		void init() override;
