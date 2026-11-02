@@ -32,6 +32,7 @@
 #include "drivers/Mutex.h"
 #include "drivers/Time.h"
 #include "osk.h"
+#include "dosboxwii.h"
 #include "dosboxsupport.h"
 #include "inputlogic.h"
 #include "stickmouse.h"
