@@ -40,6 +40,9 @@ class OgcVideoDriver : public VideoDriver
 		//! Waits for the last presented frame to be copied out and displayed, and for
 		//! the GPU to finish with it. Leaves the buffer order alone.
 		void waitForIdle();
+		//! True when waitForIdle() would not have to sleep: the last presented frame
+		//! has been copied out and its vertical blank has passed. Never blocks.
+		bool isBufferReady() const;
 		//! waitForIdle(), then moves on to the other buffer for the next frame.
 		void waitForBufferReady();
 		void presentBuffer();

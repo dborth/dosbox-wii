@@ -675,6 +675,20 @@ void OgcEmulatorVideo::init(VideoDriver* driver)
 }
 
 /****************************************************************************
+ * isReadyToPresent
+ *
+ * presentFrame() sleeps until the previous frame has been copied to the XFB
+ * and its vertical blank has passed, so each present takes up to one refresh.
+ * The emulation thread also mixes the audio, so a program that draws faster
+ * than the display falls behind real time. The caller skips the frame
+ * while this is false and presents again later.
+ ***************************************************************************/
+bool OgcEmulatorVideo::isReadyToPresent() const
+{
+	return videoDriver->isBufferReady();
+}
+
+/****************************************************************************
  * presentFrame
  *
  * Uploads the RGB565 frame as a tiled texture and draws it as a quad.

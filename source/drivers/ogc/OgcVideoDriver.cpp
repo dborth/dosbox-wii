@@ -285,6 +285,13 @@ void OgcVideoDriver::waitForIdle()
 	OgcFreeRetiredMeshes();
 }
 
+bool OgcVideoDriver::isBufferReady() const
+{
+	// The same condition waitForIdle() sleeps on. Both are volatile and each
+	// is only ever written from one side, so a plain read is enough
+	return vb_done && copynow != GX_TRUE;
+}
+
 void OgcVideoDriver::waitForBufferReady()
 {
 	waitForIdle();
