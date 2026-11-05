@@ -203,7 +203,6 @@ void WutInputDriver::init() {
 	KPADInit();
 	WPADEnableURCC(TRUE);
 	WPADEnableWiiRemote(TRUE);
-	VPADInit();
 	OSEnableHomeButtonMenu(FALSE);
 	VPADSetTVMenuInvalid(VPAD_CHAN_0, TRUE);
 	InitUserInputControllers();
