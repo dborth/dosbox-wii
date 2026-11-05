@@ -85,6 +85,19 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: build-sha256
+    attributes:
+      label: Build SHA-256
+      description: |
+        Lets us match your report to the exact build. The Pre-release is replaced in place, and a crash address only means something against the build that produced it.
+        On the **Pre-release** page, the SHA-256 of each zip is shown next to it under *Assets* (`sha256:` followed by 64 characters). Copy the one for the zip you downloaded.
+        **It must be for the file you actually ran.** If you downloaded it a while ago, the page may now show a newer build: download the latest, retest, and copy the hash then.
+        Built it yourself? Give the commit hash instead.
+      placeholder: "sha256:0123abcd... (or: built from source, commit 87cf8f3)"
+    validations:
+      required: true
+
   - type: textarea
     id: credits-screen
     attributes:
@@ -413,7 +426,7 @@ body:
       label: Logs and crash information
       description: |
         Paste anything useful. This will be formatted as code, so no backticks needed.
-        - **Crash or exception screens:** the text or a photo of the screen, including any register dump and addresses.
+        - **Crash or exception screens:** the text or a photo of the **whole** screen, not just the top. We need the registers, `LR`/`SRR0`/`DAR`, the **STACK DUMP** and the **CODE DUMP**. Without the matching build (see Build SHA-256) the addresses are meaningless, so if you downloaded it a while ago, update to the latest Pre-release and reproduce the crash again.
         - **Dolphin / Cemu:** the emulator's log, including warnings and panic alerts.
         - **Official Pre-release builds write no debug log.** Only attach one if you built from source with logging enabled.
       render: shell
