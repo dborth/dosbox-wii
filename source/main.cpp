@@ -75,11 +75,6 @@ static void SwitchAudioMode(int mode)
  ***************************************************************************/
 static void InitApp()
 {
-	// stdout/stderr go nowhere; diagnostics use the platform Logger
-	extern const devoptab_t dotab_stdnull;
-	devoptab_list[STD_OUT] = &dotab_stdnull;
-	devoptab_list[STD_ERR] = &dotab_stdnull;
-
 	PlatformConfig platformConfig;
 	platformConfig.canvasWidth = 640;
 	platformConfig.canvasHeight = 480;
@@ -88,6 +83,11 @@ static void InitApp()
 	platformConfig.assetScaleY = 2.25f;
 #endif
 	platform->init(platformConfig);
+
+	// stdout/stderr go nowhere; diagnostics use the platform Logger
+	extern const devoptab_t dotab_stdnull;
+	devoptab_list[STD_OUT] = &dotab_stdnull;
+	devoptab_list[STD_ERR] = &dotab_stdnull;
 
 	FindAppDrive();
 
