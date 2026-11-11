@@ -10,7 +10,6 @@
 #define _FILELIST_H_
 
 #include "font_ttf.h"
-#include "en_lang.h"
 
 #include "logo_png.h"
 

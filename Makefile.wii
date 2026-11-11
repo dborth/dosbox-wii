@@ -28,7 +28,7 @@ SOURCES		:=	source source/menu source/libgui source/widgets source/drivers sourc
 				source/dosbox/ints \
 				source/dosbox/misc source/dosbox/shell \
 				source/sdlshim
-DATA		:=	data/images data/fonts data/sounds data/lang
+DATA		:=	data/images data/fonts data/sounds
 INCLUDES 	:=  source source/dosbox source/dosbox/include source/sdlshim
 
 #---------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.ttf) \
-					$(wildcard $(dir)/*.lang) $(wildcard $(dir)/*.png)))
+					$(wildcard $(dir)/*.png)))
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -145,10 +145,6 @@ $(OFILES_SOURCES): $(HFILES)
 # This rule links in binary data with various extensions
 #---------------------------------------------------------------------------------
 %.ttf.o %_ttf.h : %.ttf
-	@echo $(notdir $<)
-	$(bin2o)
-
-%.lang.o %_lang.h : %.lang
 	@echo $(notdir $<)
 	$(bin2o)
 

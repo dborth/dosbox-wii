@@ -94,7 +94,6 @@ static void InitApp()
 	keyboard = OSK_WrapKeyboard(platform->getKeyboard());
 
 	fontSystem = new GuiTextRenderer(font_ttf, font_ttf_size, platform->getVideo()->getGlyphRenderer(), platform->getVideo()->getUIScale());
-	textTranslator->loadLanguage(en_lang, en_lang_size);
 
 #ifdef __WIIU__
 	GuiImageData::setDecodeScratch(malloc(IMAGE_DECODE_SCRATCH_SIZE), IMAGE_DECODE_SCRATCH_SIZE);
