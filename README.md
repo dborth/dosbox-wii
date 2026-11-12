@@ -18,6 +18,7 @@ DOSBox Wii / Wii U is homebrew — it isn't signed by Nintendo, so your console 
 - [Files, Drives & dosbox.conf](#files-drives--dosboxconf)
   - [The DOSBox folder and C:](#the-dosbox-folder-and-c)
   - [Mounting other drives](#mounting-other-drives)
+  - [CD-ROM games](#cd-rom-games)
   - [dosbox.conf](#dosboxconf)
   - [Other files DOSBox Wii creates](#other-files-dosbox-wii-creates)
 - [The Home Menu](#the-home-menu)
@@ -291,7 +292,53 @@ e:
 dir
 ```
 
-A subfolder works too (`mount e usb:/games`), and `mount -u e` removes the drive again. A folder that doesn't exist gives `Directory ... doesn't exist.` DOSBox Wii has no way to connect a network share or read a disc, so `dvd:/` and `smb:/` are never there to mount.
+A subfolder works too (`mount e usb:/games`), and `mount -u e` removes the drive again. A folder that doesn't exist gives `Directory ... doesn't exist.` DOSBox Wii has no way to connect a network share or read a disc, so `dvd:/` and `smb:/` are never there to mount. CDs work from files on the card instead: see [CD-ROM games](#cd-rom-games).
+
+### CD-ROM games
+
+The console's disc drive is not available to DOS, so no real CD can be read. Games that need their CD still have two ways to get one, both from files on the SD card or a USB drive. Both use the drive-letter and path forms in [From DOS: MOUNT](#from-dos-mount) (for example `sd:/DOSBox/GAMES/AMAZON/game.cue` on the Wii, `/vol/external01/DOSBox/GAMES/AMAZON/game.cue` on the Wii U).
+
+> **Status:** both ways are part of the DOSBox core, but they have had little testing on the consoles. If one doesn't work for a game, please report it with the game, where you got it, and the exact lines you used.
+
+#### A disc image
+
+Use `IMGMOUNT` with a `.iso`, or with a `.cue` sheet for an image with audio tracks:
+
+```text
+imgmount d sd:/DOSBox/GAMES/AMAZON/game.cue -t iso
+d:
+dir
+```
+
+The image shows as a real CD drive, with a volume label, so a game that checks for its CD finds it. Use `mount -u d` to remove it (at the DOS prompt, not while a program runs). Some releases ship the sheet under another name or extension (a `.ins` file next to a `.gog` image, for example): give `IMGMOUNT` the sheet, not the image file.
+
+#### A folder as a CD
+
+If you have the disc's files in a folder, mount the folder as a CD:
+
+```text
+mount d sd:/DOSBox/GAMES/AMAZON/CD -t cdrom
+```
+
+DOS sees a CD drive holding those files, which is often enough for a game that only checks that a CD is in the drive. It says `MSCDEX: Mounted subdirectory: limited support.` That is expected: a folder has **no audio tracks** and no track table, so a game that plays CD music or reads the disc's layout needs an image instead.
+
+#### What doesn't work
+
+- **Compressed audio tracks.** A `.cue` sheet's audio tracks are read only when they are plain binary data (a single `.bin`, or `BINARY` entries). Tracks listed as `.ogg`, `.mp3`, `.wav` or similar are not decoded and are skipped, so the game plays no music from them. Some digital-download releases of CD games are packed this way.
+- **A physical disc, `dvd:/`, `-usecd`, or any real drive.** There is none to read.
+- **Speed.** Games that play video from the disc (the full-motion-video titles of the mid 90s) need a full image and a fast enough device, and may also need more speed than the console gives; see [Performance](#performance).
+
+#### In a game
+
+A saved game remembers a CD mounted either way: **Games** writes the `mount ... -t cdrom` or `imgmount ... -t iso` line into the game's `[autoexec]` (see [What a saved game holds](#what-a-saved-game-holds)). To set one up by hand, put the same lines in the game's conf before the `cd` and the program line:
+
+```text
+[autoexec]
+imgmount d sd:/DOSBox/GAMES/AMAZON/game.cue -t iso
+c:
+cd GAMES\AMAZON
+amazon.exe
+```
 
 ### dosbox.conf
 
@@ -957,6 +1004,10 @@ When DOSBox hits an internal error it stops and DOSBox Wii leaves, as if you had
 - **`LOADFIX`**: `loadfix game.exe` reserves 64 KB of memory (`loadfix -32 game.exe` for another size), runs the program, then frees it.
 - **The normal core** instead of the dynarec (*Settings → Performance → CPU core*).
 
+### A game asks for its CD
+
+Give DOS a CD from a file or a folder before the game starts; see [CD-ROM games](#cd-rom-games). Mount it on the letter the game looks for (usually `d`), and run the game from there or from the folder you installed it to. If the game finds the CD but has no music, its audio tracks are probably compressed files, which are not supported.
+
 ### A game runs slowly
 
 See [Performance](#performance).
@@ -978,7 +1029,7 @@ Audio, CPU core and DOS memory settings change only at the DOS prompt (leave the
 ## Known Limitations
 
 - Video modes larger than 640×480 aren't drawn (the renderer's buffers are that size), and on the Wii DOS gets at most 16 MB of RAM. Both come from the memory budget, see [Memory](#memory).
-- Disc drives and network shares can't be used, and no CD drive is reported to DOS (so no CD audio): there is no screen to connect a share or read a disc, so `dvd:/` and `smb:/` don't exist for `MOUNT`.
+- A real disc drive can't be used, and network shares can't be connected: `dvd:/` and `smb:/` don't exist for `MOUNT`. A CD can be given to DOS from a disc image or a folder (see [CD-ROM games](#cd-rom-games)); a folder has no CD audio, and audio tracks that are `.ogg`, `.mp3` or `.wav` files are not decoded.
 - No MIDI or MPU-401, no serial ports and no modem or IPX networking: none of these is compiled in, and there is no `[midi]`, `[serial]` or `[ipx]` section. A game that looks for a MIDI device finds none; use Sound Blaster FM music instead.
 - No screenshots (they are not built in).
 - Drives are mounted from *Settings → Drives* or with `MOUNT`; see [Mounting other drives](#mounting-other-drives) for what the Drives screen can and can't see.
