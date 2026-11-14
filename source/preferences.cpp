@@ -236,6 +236,18 @@ static bool Exists(const std::string & path, off_t * size = NULL)
 	return true;
 }
 
+std::string ConfigSavePath()
+{
+	if(control && !control->configfiles.empty())
+		return control->configfiles[0];
+
+	std::string dir, name;
+
+	Cross::CreatePlatformConfigDir(dir);	// creates the folder; ends with a separator
+	Cross::GetPlatformConfigName(name);
+	return dir + name;
+}
+
 bool ConfigSaveText(const char * path, const std::string & text, std::string * error)
 {
 	std::string ignored;
