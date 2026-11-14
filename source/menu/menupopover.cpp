@@ -172,7 +172,7 @@ PickerView::PickerView(const char * title, const std::vector<PickerItem>& itemLi
 	GuiLayout& captionColumn = ui.column().size(innerW, captionH).pad(0, 0);
 	for(int k = 0; k < captionLinesN; k++)
 	{
-		GuiLabel& line = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this, k]{ return captionLines[(size_t)k]; });
+		GuiLabel& line = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this, k](UiText& t){ t.set(captionLines[(size_t)k].c_str()); });
 		captionColumn.add(ui.row().size(innerW, kPopoverCaptionLineH).align(LAYOUT_ALIGN::CENTRE).add(line));
 	}
 	GuiLayout& content = ui.column().size(innerW, panelHeight - 2 * kPopoverPad)

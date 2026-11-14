@@ -55,7 +55,7 @@ void GuiText::setup(const char * t, int s, PixelColor c, uint16_t st, int mw, AL
 	alignmentHor = h;
 	alignmentVert = v;
 
-	assign(t, true);
+	assign(t);
 }
 
 /**
@@ -70,90 +70,55 @@ void GuiText::release()
 {
 	free(text);
 	text = nullptr;
-	msgid = nullptr;
-	textLen = textCap = msgCap = 0;
-	rawText = false;
+	textLen = textCap = 0;
 }
 
 /**
- * Takes a message ID: translates it, and keeps the translation and the ID itself (resetText() translates
- * it again) in one allocation. When the text already held is in an allocation big enough, that is reused.
- * `id` may point into the allocation that is held (resetText() passes the ID it keeps).
- *
- * With translate false the text is not a message ID but the text to show: it is shown as it is, no ID is kept (the
- * allocation then holds just an empty one), and resetText() leaves it alone.
+ * Sets the text: the characters of the UTF-8 string t, in one allocation that is reused when the text held is
+ * in an allocation big enough.
  */
-void GuiText::assign(const char * id, bool translate)
+void GuiText::assign(const char * t)
 {
 	layoutValid = false;
 	textScrollPos = 0;
 	textScrollInitialDelay = TEXT_SCROLL_INITIAL_DELAY;
 	this->forgetMeasurements();
 
-	if(!id)
+	if(!t)
 	{
 		release();
 		return;
 	}
 
-	const char * translated = id;
-
-	// two passes over the translation: how many characters it comes to, then the characters themselves
-	size_t n = GuiTextRenderer::utf8ToWide(translated, nullptr, 0);
+	// two passes over the string: how many characters it comes to, then the characters themselves
+	size_t n = GuiTextRenderer::utf8ToWide(t, nullptr, 0);
 	if(n > MAX_TEXT_CHARS)
 		n = MAX_TEXT_CHARS;
 
-	size_t m = translate ? strlen(id) : 0;
-	if(m > MAX_MSGID_BYTES)
-	{
-		m = MAX_MSGID_BYTES;
-		while(m > 0 && ((unsigned char)id[m] & 0xC0) == 0x80) // do not end partway through a character
-			--m;
-	}
-
-	if(text && n <= textCap && m <= msgCap)
+	if(text && n <= textCap)
 	{
 		// fits where it is
-		textLen = (uint16_t)GuiTextRenderer::utf8ToWide(translated, text, n + 1);
-		if(id != msgid)
-			memmove(msgid, id, m);
-		msgid[m] = 0;
-		rawText = !translate;
+		textLen = (uint16_t)GuiTextRenderer::utf8ToWide(t, text, n + 1);
 		return;
 	}
 
-	// The new allocation is filled before the old one is freed, because `id` and `translated` may point into it
-	const size_t wideBytes = (n + 1) * sizeof(wchar_t);
-	void * block = malloc(wideBytes + m + 1);
-	if(!block)
+	wchar_t * newText = static_cast<wchar_t *>(malloc((n + 1) * sizeof(wchar_t)));
+	if(!newText)
 	{
 		release(); // nothing is drawn, and nothing can go wrong with it
 		return;
 	}
 
-	wchar_t * newText = static_cast<wchar_t *>(block);
-	char * newMsgid = static_cast<char *>(block) + wideBytes;
-	const size_t len = GuiTextRenderer::utf8ToWide(translated, newText, n + 1);
-	memcpy(newMsgid, id, m);
-	newMsgid[m] = 0;
-
+	const size_t len = GuiTextRenderer::utf8ToWide(t, newText, n + 1);
 	free(text);
 	text = newText;
-	msgid = newMsgid;
 	textLen = (uint16_t)len;
 	textCap = (uint16_t)n;
-	msgCap = (uint16_t)m;
-	rawText = !translate;
 }
 
 void GuiText::setText(const char * t)
 {
-	assign(t, true);
-}
-
-void GuiText::setRawText(const char * t)
-{
-	assign(t, false);
+	assign(t);
 }
 
 int GuiText::getLongestWordWidth()
@@ -325,10 +290,7 @@ void GuiText::setAlignment(ALIGN_H hor, ALIGN_V vert)
 
 void GuiText::resetText()
 {
-	if(!msgid || rawText)
-		return;
-
-	assign(msgid, true);
+	// the text is never looked up, so there is nothing to look up again
 }
 
 /**

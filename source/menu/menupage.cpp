@@ -17,7 +17,7 @@ GuiCard& MenuPage_Section(UiScope& ui, int w)
 	return c;
 }
 
-static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, bool withBody, int hintWidth)
+static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * title, std::function<void(UiText&)> hint, bool withBody, int hintWidth)
 {
 	const int sw = platform->getVideo()->getScreenWidth();
 	const int sh = platform->getVideo()->getScreenHeight();
@@ -66,12 +66,12 @@ static MenuPageFrame buildFrame(UiScope& ui, GuiOverlay& page, const char * titl
 	return f;
 }
 
-MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, int hintWidth)
+MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<void(UiText&)> hint, int hintWidth)
 {
 	return buildFrame(ui, page, title, hint, true, hintWidth);
 }
 
-MenuPageFrame MenuPage_BuildBars(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint)
+MenuPageFrame MenuPage_BuildBars(UiScope& ui, GuiOverlay& page, const char * title, std::function<void(UiText&)> hint)
 {
 	return buildFrame(ui, page, title, hint, false, MENU_PAGE_BODY_W - 236);
 }

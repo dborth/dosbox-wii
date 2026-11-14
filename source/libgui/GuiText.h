@@ -20,16 +20,13 @@ class GuiText : public GuiElement
 		GuiText(const char * t);
 		//!Destructor
 		~GuiText();
-		//!Sets the text of the GuiText element. The text is looked up for translation (see GuiTextTranslator),
-		//!and the result is kept in one allocation that later calls reuse whenever the new text fits in it.
+		//!Sets the text of the GuiText element. The text is kept in one allocation that later calls reuse whenever the
+		//!new text fits in it.
 		//!\param t Text (UTF-8)
 		void setText(const char * t);
-		//!Sets the text of the GuiText element to be shown exactly as it is. For text that is not a message ID: file and
-		//!game names, text the user typed, numbers, and anything already translated (Tr(), TrFormat()). It is never
-		//!looked up, so it can never be mistaken for a message; it is not changed by resetText(); and no copy of it is
-		//!kept besides the one that is drawn.
+		//!The same as setText(): there is nothing to translate here. It is kept so that code shared with libgui builds as it is.
 		//!\param t Text (UTF-8)
-		void setRawText(const char * t);
+		void setRawText(const char * t) { setText(t); }
 		//!Sets up preset values to be used by GuiText(t)
 		//!Useful when printing multiple text elements, all with the same attributes set
 		//!\param sz Font size
@@ -47,7 +44,7 @@ class GuiText : public GuiElement
 		void setMaxWidth(int w);
 		//!Gets the width of the text when rendered
 		int getTextWidth();
-		//!Gets the number of characters in the (translated) text
+		//!Gets the number of characters in the text
 		int getLength() { return textLen; }
 		//!Gets the width of the text's widest word (words are split at spaces): the least width
 		//!that wrapping can fit the text in
@@ -85,7 +82,7 @@ class GuiText : public GuiElement
 		//!Sets the pixels added to the font size to get the distance between wrapped lines (default 6; less
 		//!for a tighter block, negative for tighter than the font size)
 		void setLineSpacing(int px) { lineSpacing = px; }
-		//!Updates the text to the selected language
+		//!Does nothing: there is no language to update the text to (see GuiElement::resetText())
 		void resetText();
 		//!Constantly called to draw the text
 	void draw() override;
@@ -93,20 +90,16 @@ class GuiText : public GuiElement
 		//! Limits that keep the text, and the work done on it, bounded
 		enum {
 			MAX_WRAP_LINES = 8,		//!< Lines a wrapped text is kept in; what does not fit is replaced by "..."
-			MAX_TEXT_CHARS = 1023,	//!< Characters kept of the translated text
-			MAX_MSGID_BYTES = 1023	//!< Bytes kept of the original text (what resetText() translates again)
+			MAX_TEXT_CHARS = 1023	//!< Characters kept of the text
 		};
 
 		PixelColor color; //!< Font color
 
-		// The text lives in one allocation: textCap + 1 wide characters, then msgCap + 1 bytes. `text` is its
-		// start (and what is freed); null when there is no text, or when the allocation failed.
-		wchar_t* text = nullptr; //!< Translated Unicode text, NUL-terminated
-		char* msgid = nullptr; //!< Original text as given (UTF-8, English), kept for resetText()
+		// The text is one allocation of textCap + 1 wide characters; null when there is no text, or when the
+		// allocation failed.
+		wchar_t* text = nullptr; //!< Unicode text, NUL-terminated
 		uint16_t textLen = 0; //!< Characters in text
 		uint16_t textCap = 0; //!< Most characters the allocation holds in text
-		uint16_t msgCap = 0; //!< Most bytes the allocation holds in msgid
-		bool rawText = false; //!< The text was set with setRawText(): there is no message ID to translate again
 
 		int size; //!< Font size
 		int maxWidth; //!< Maximum width of the generated text object (for text wrapping)
@@ -143,7 +136,7 @@ class GuiText : public GuiElement
 		uint32_t fullWidthGen;
 
 		void setup(const char * t, int s, PixelColor c, uint16_t st, int mw, ALIGN_H h, ALIGN_V v);
-		void assign(const char * id, bool translate);
+		void assign(const char * t);
 		void release();
 		void buildLayout();
 		void breakLines();

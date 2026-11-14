@@ -45,7 +45,7 @@ const PixelColor Light() { return MenuChromeText(); }
 
 // A pill for the bars: the bar buttons' look, an icon and a word. The icon and the word go white when it is highlighted
 // (the face goes dark), as GuiTextButton does for its label.
-GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn, bool marked, int textNudge, int iconNudge)
+GuiCard& HomeView::pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<void(UiText&)> textFn, bool marked, int textNudge, int iconNudge)
 {
 	GuiCard& c = ui.card().size(w, h).style(MenuBarButtonStyle(marked)).corners(GuiCorners(h / 2.0f)).pad(0, 0).onClick(onClick).onFocus(onFocus);
 	const int iconSize = font + 2;
@@ -96,7 +96,7 @@ GuiCard& HomeView::tile(const char * title, int icon, Action action, const char 
 }
 
 // - value +
-GuiLayout& HomeView::stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hintText)
+GuiLayout& HomeView::stepper(std::function<void(UiText&)> value, std::function<void(bool)> step, const char * hintText)
 {
 	const std::string h = hintText;
 	GuiTextButton& less = ui.button("-").size(30, 30).fontSize(22).style(MenuStepperStyle())
@@ -130,7 +130,7 @@ GuiLayout& HomeView::choice(const char * firstText, const char * secondText, std
 }
 
 // One line of the quick settings: icon, what it is and a note, the control at the right
-void HomeView::quickRow(GuiLayout& column, int icon, const char * labelText, std::function<std::string()> note, GuiLayout& control)
+void HomeView::quickRow(GuiLayout& column, int icon, const char * labelText, std::function<void(UiText&)> note, GuiLayout& control)
 {
 	GuiLayout& text = ui.column().gap(4).align(LAYOUT_ALIGN::START);
 	text.add(ui.label(labelText).fontSize(UI_FONT_HEADING - 4));
@@ -314,12 +314,15 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	GuiShape& rule = ui.make<GuiShape>(1, 38);
 	rule.setPaint(GuiPaint().color(MenuRGBA(255, 255, 255, 80)));
 	GuiLabel& program = ui.label().fontSize(UI_FONT_HEADING - 2).textColor(MenuChromeText())
-		.bind([]{ const std::string p = Controls().runningProgram(); return p.empty() ? std::string("DOS prompt") : p; });
+		.bind([](UiText& t){ const std::string p = Controls().runningProgram(); t.set(p.empty() ? "DOS prompt" : p.c_str()); });
 	program.setMaxWidth(150);
 	GuiLabel& headerGame = ui.label().fontSize(13).textColor(MenuChromeTextMuted())
-		.bind([this]{
+		.bind([this](UiText& t){
 			const std::string game = settings.gameName();
-			return game.empty() ? std::string("No game") : "Game: " + game;
+			if(game.empty())
+				t.set("No game");
+			else
+				t.format("Game: %s", game.c_str());
 		});
 	headerGame.setMaxWidth(150);
 	GuiLayout& running = ui.column().gap(4).align(LAYOUT_ALIGN::START).add(program).add(headerGame);
@@ -330,16 +333,16 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	// body, left: quick settings, one card
 	GuiLayout& quick = ui.column().size(256, 0).gap(0);
 	HomeSettings * hs = &settings;
-	quickRow(quick, MENU_ICON_GAUGE, "Speed", [hs]{ return hs->speedNote(); },
-		stepper([hs]{ return hs->speed(); }, [hs](bool up){ hs->stepSpeed(up); }, "- slows DOS down, + speeds it up (CPU cycles)"));
+	quickRow(quick, MENU_ICON_GAUGE, "Speed", [hs](UiText& t){ t.set(hs->speedNote().c_str()); },
+		stepper([hs](UiText& t){ t.set(hs->speed().c_str()); }, [hs](bool up){ hs->stepSpeed(up); }, "- slows DOS down, + speeds it up (CPU cycles)"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, MENU_ICON_FRAMES, "Frameskip", []{ return std::string("Skips frames"); },
-		stepper([hs]{ return hs->frameskip(); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
+	quickRow(quick, MENU_ICON_FRAMES, "Frameskip", [](UiText& t){ t.set("Skips frames"); },
+		stepper([hs](UiText& t){ t.set(hs->frameskip().c_str()); }, [hs](bool up){ hs->stepFrameskip(up); }, "More skipped frames runs heavy games faster, but choppier"));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, MENU_ICON_ASPECT, "Aspect", [hs]{ return std::string("Pixel shape"); },
+	quickRow(quick, MENU_ICON_ASPECT, "Aspect", [](UiText& t){ t.set("Pixel shape"); },
 		choice("Original", "Uncorrected", [hs]{ return hs->aspectOriginal(); }, [hs](bool o){ hs->setAspectOriginal(o); }, "Original is the shape the monitor gave it, 4:3 for most games. Uncorrected makes every pixel square, so 320x200 looks wider", 62, 78));
 	quick.add(MenuPopover_Divider(ui, 256));
-	quickRow(quick, MENU_ICON_FILTER, "Filter", []{ return std::string("Pixel edges"); },
+	quickRow(quick, MENU_ICON_FILTER, "Filter", [](UiText& t){ t.set("Pixel edges"); },
 		choice("Sharp", "Smooth", [hs]{ return hs->filterSharp(); }, [hs](bool sharp){ hs->setFilterSharp(sharp); }, "Sharp keeps pixel edges crisp. Smooth blends them"));
 	const int cardsH = bodyH - GAME_CARD_H - BODY_GAP;
 	GuiCard& quickCard = ui.card().selectable(false).style(MenuPageCardStyle()).corners(GuiCorners(14.0f)).pad(10, 6).size(276, cardsH);
@@ -367,30 +370,39 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 		[this, gs]{ hint = gs->gameName().empty() ? "Pick a game. DOSBox restarts into it" : "Switch game. DOSBox restarts"; });
 	saveCard = &pill("Save", MENU_ICON_NONE, 108, 28, 14, [this]{ pending = Action::SAVE; actionPlayer = -1; },
 		[this, gs]{ hint = gs->gameName().empty() ? "Save this session as a new game" : "Save this game as it is now"; },
-		[gs]{ return std::string(gs->gameName().empty() ? "Save as game" : "Save"); }, true);
+		[gs](UiText& t){ t.set(gs->gameName().empty() ? "Save as game" : "Save"); }, true);
 	const int cardW = 264 + COLUMN_GAP + 276;
 	const MenuPalette& pal = MenuPaletteCurrent();
 	GuiShape& tileShape = ui.make<GuiShape>(GAME_TILE, GAME_TILE);
 	tileShape.setCorners(GuiCorners(10.0f));
-	GuiLabel& tileLetter = ui.label().fontSize(24).bind([gs]{
+	GuiLabel& tileLetter = ui.label().fontSize(24).bind([gs](UiText& t){
 		const std::string title = gs->gameName().empty() ? std::string() : gs->gameTitle();
 		if(title.empty())
-			return std::string("+");
+		{
+			t.set("+");
+			return;
+		}
 		const unsigned char c = (unsigned char)title[0];
-		return std::string(1, (c < 128 && isalnum(c)) ? (char)toupper(c) : '#');
+		t.format("%c", (c < 128 && isalnum(c)) ? (char)toupper(c) : '#');
 	});
 	GuiLayout& tileBox = ui.overlay().size(GAME_TILE, GAME_TILE);
 	tileBox.add(tileShape, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 	tileBox.add(tileLetter, GuiItem().at(LAYOUT_ALIGN::CENTRE, LAYOUT_ALIGN::CENTRE));
 	GuiLabel& gameTitle = ui.label().fontSize(UI_FONT_HEADING - 2)
-		.bind([gs]{ return gs->gameName().empty() ? std::string("Plain DOSBox") : gs->gameTitle(); });
+		.bind([gs](UiText& t){ t.set(gs->gameName().empty() ? "Plain DOSBox" : gs->gameTitle().c_str()); });
 	gameTitle.setMaxWidth(GAME_TEXT_W);
 	GuiLabel& gameNote = ui.label().fontSize(12).muted()
-		.bind([gs]{
+		.bind([gs](UiText& t){
 			if(gs->gameName().empty())
-				return std::string("Nothing is saved from this session");
+			{
+				t.set("Nothing is saved from this session");
+				return;
+			}
 			const std::string program = gs->gameProgram();
-			return program.empty() ? std::string("Its controls and settings are saved") : "Runs " + program;
+			if(program.empty())
+				t.set("Its controls and settings are saved");
+			else
+				t.format("Runs %s", program.c_str());
 		});
 	gameNote.setMaxWidth(GAME_TEXT_W);
 	int namedLast = -1;
@@ -418,7 +430,7 @@ HomeView::HomeView(HomeSettings& s, const char * version) :
 	restartCard = &pill("Restart", MENU_ICON_RESTART, 96, 34, 15, [this]{ pending = Action::RESTART; }, [this]{ hint = "Close DOSBox and start it again. Whatever is running is lost"; }, nullptr, false, FOOTER_TEXT_NUDGE, FOOTER_ICON_NUDGE);
 	creditsCard = &pill("Credits", MENU_ICON_INFO, 96, 34, 15, [this]{ pending = Action::CREDITS; }, [this]{ hint = "Who made this"; }, nullptr, false, FOOTER_TEXT_NUDGE, FOOTER_ICON_NUDGE);
 	GuiLabel& hintLabel = ui.label().fontSize(MENU_PAGE_HINT_FONT).textColor(MenuChromeTextMuted())
-		.bind([this]{ return status.empty() ? hint : status; });
+		.bind([this](UiText& t){ t.set((status.empty() ? hint : status).c_str()); });
 	hintLabel.setMaxWidth(sw - 2 * MENU_PAGE_MARGIN - 132 - 106 - 108 - 36);
 	hintLabel.setScroll(SCROLL::HORIZONTAL);
 	GuiLayout& footer = ui.row().size(sw, MENU_BAR_BOTTOM_H).pad(MENU_PAGE_MARGIN, 0).gap(12).align(LAYOUT_ALIGN::CENTRE)

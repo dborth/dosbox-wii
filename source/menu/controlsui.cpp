@@ -163,15 +163,19 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 
 	// what the row says: a button's target, or for a stick what the DOS side does with it
 	// (while a preset popover is open, a button shows what that preset would give it)
-	const std::function<std::string()> text = [this, pl, id, fixed, stick]() -> std::string {
+	const std::function<void(UiText&)> text = [this, pl, id, fixed, stick](UiText& out) {
 		if(stick)
 		{
 			// a stick the DOS joystick does not use can move the mouse; any stick can press the arrow keys instead
-			return stickUseText(pl, stick - 1, Controls().stickUse(pl, stick - 1));
+			out.set(stickUseText(pl, stick - 1, Controls().stickUse(pl, stick - 1)).c_str());
+			return;
 		}
 		if(fixed)
-			return std::string(fixed);
-		return previewPreset >= 0 ? Controls().describeTarget(pl, Controls().presetBinding(previewPreset, id)) : Controls().describe(pl, id);
+		{
+			out.set(fixed);
+			return;
+		}
+		out.set((previewPreset >= 0 ? Controls().describeTarget(pl, Controls().presetBinding(previewPreset, id)) : Controls().describe(pl, id)).c_str());
 	};
 
 	GuiLabel& target = ui.label().fontSize(UI_FONT_SMALL + 1);
@@ -191,9 +195,11 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 	const int control = r.control;
 	// the hint for the row: a stick the DOS joystick leaves alone says what A does; one it uses, a button's change, a fixed row its text
 	const std::function<std::string()> hint = [this, pl, stick, name, info, text]() -> std::string {
+		UiText shown;
+		text(shown);
 		if(stick)
-			return GuiFormat("%s: %s. A: %s", name, text().c_str(), stickUseText(pl, stick - 1, Controls().nextStickUse(pl, stick - 1)).c_str());
-		return info ? GuiFormat("%s: %s", name, text().c_str()) : GuiFormat("A changes what %s does", name);
+			return GuiFormat("%s: %s. A: %s", name, shown.c_str(), stickUseText(pl, stick - 1, Controls().nextStickUse(pl, stick - 1)).c_str());
+		return info ? GuiFormat("%s: %s", name, shown.c_str()) : GuiFormat("A changes what %s does", name);
 	};
 	row.onFocus([this, &row, control, side, hint]{
 		view->setHighlight(control);
@@ -237,7 +243,7 @@ GuiCard& ControllerConfigView::bindingRow(const ProfileRow& r, Side side, int wi
 }
 
 // A chip that opens a popover: what it chooses in small capitals, what is chosen under it, and an arrow pointing the way the popover opens. A card, so the whole face is the target.
-static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::function<std::string()> value, bool opensUp)
+static GuiCard& PickerChip(UiScope& ui, int width, const char * what, std::function<void(UiText&)> value, bool opensUp)
 {
 	const std::string title = what;
 	GuiLabel& caption = ui.label(title.c_str()).fontSize(UI_FONT_SMALL - 2).muted();
@@ -275,7 +281,7 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 	// Header: who (this player: the switcher, only with two or more controllers; else just the page name), then what
 	// the buttons start from (Preset: this player) and what DOS sees (In DOS: the whole game). The footer has Back.
 	// Left of the middle is about the player, right of it about the game.
-	MenuPageFrame f = MenuPage_Build(ui, *this, "Controls", [this]{ return status; }, 250);
+	MenuPageFrame f = MenuPage_Build(ui, *this, "Controls", [this](UiText& t){ t.set(status.c_str()); }, 250);
 	if(!empty)
 	{
 		// "Player N" with, under it, what the DOS side does with this player (the caption belongs to the name above it)
@@ -283,7 +289,7 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 		const int slot = player;
 		GuiLabel& who = ui.label(GuiFormat("Player %d", player + 1).c_str()).fontSize(UI_FONT_HEADING).textColor(MenuChromeText());
 		GuiLabel& caption = ui.label(info.role.c_str()).fontSize(UI_FONT_SMALL).textColor(MenuChromeTextMuted())
-			.bind([slot]{ return Controls().player(slot).role; });
+			.bind([slot](UiText& t){ t.set(Controls().player(slot).role.c_str()); });
 		caption.setMaxWidth(110);
 		// a fixed width, so the arrows stay put whatever the name and caption say ("Player 1" is narrower than "Player 4")
 		GuiLayout& nameBlock = ui.column().gap(4).size(kPlayerNameW, kPlayerNameH).align(LAYOUT_ALIGN::START).justifyContent(LAYOUT_JUSTIFY::START).add(who).add(caption);
@@ -314,13 +320,13 @@ ControllerConfigView::ControllerConfigView(int player, PadType show) :
 
 	const int pl = playerSlot;
 	GuiCard& emulatedBtn = PickerChip(ui, 168, "IN DOS",
-		[]{ ControlsModel& m = Controls(); return m.emulatedModes()[(size_t)m.currentEmulated()].name; }, false);
+		[](UiText& t){ ControlsModel& m = Controls(); t.set(m.emulatedModes()[(size_t)m.currentEmulated()].name.c_str()); }, false);
 	emulatedBtn.onClick([this]{ pickRequest = Pick::EMULATED; });
 	emulatedBtn.onFocus([this]{ status = "A chooses what DOS sees: a joystick, two, or none (the whole game)"; });
 	if(!empty)
 	{
 		GuiCard& presetBtn = PickerChip(ui, 172, "PRESET",
-			[pl]{ ControlsModel& m = Controls(); return m.presets()[(size_t)m.currentPreset(pl)].name; }, false);
+			[pl](UiText& t){ ControlsModel& m = Controls(); t.set(m.presets()[(size_t)m.currentPreset(pl)].name.c_str()); }, false);
 		presetBtn.onClick([this]{ pickRequest = Pick::PRESET; });
 		presetBtn.onFocus([this]{ status = "A chooses a preset for this player's buttons"; });
 		presetButton = &presetBtn;
@@ -563,7 +569,7 @@ void TargetChooserView::keyPane(GuiLayout& pane, int player, int w)
 						keyTab = (int)t;
 
 	GuiTextButton& press = ui.button("").size(w, 24).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
-		.bind([this]{ return listen && listenKind == TARGET::KEY ? std::string("Press a key...") : std::string("Press a key on the keyboard"); })
+		.bind([this](UiText& t){ t.set(listen && listenKind == TARGET::KEY ? "Press a key..." : "Press a key on the keyboard"); })
 		.visibleWhen([]{ return Controls().devices().keyboard; })
 		.onClick([this]{ startListening(TARGET::KEY); });
 
@@ -704,7 +710,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 		GuiLayout& g = ui.column().gap(rowGap);
 		const std::vector<int> codes = m.choices(player, TARGET::MOUSE);
 		GuiTextButton& click = ui.button("").size(rightW, 24).fontSize(UI_FONT_SMALL).style(MenuBarButtonStyle())
-			.bind([this]{ return listen && listenKind == TARGET::MOUSE ? std::string("Click a button...") : std::string("Click a mouse button"); })
+			.bind([this](UiText& t){ t.set(listen && listenKind == TARGET::MOUSE ? "Click a button..." : "Click a mouse button"); })
 			.visibleWhen([]{ return Controls().devices().mouse; })
 			.onClick([this]{ startListening(TARGET::MOUSE); });
 		g.add(click);
@@ -780,7 +786,7 @@ TargetChooserView::TargetChooserView(const char * controlName, int player, int c
 	GuiLabel& title = ui.label(GuiFormat("What should %s do?", controlName).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiLabel& nowLabel = ui.label(GuiFormat("Now: %s", m.describe(player, control).c_str()).c_str()).fontSize(UI_FONT_SMALL).muted();
 	GuiCard& close = MenuPopover_CloseButton(ui, [this]{ dismiss(); });
-	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this]{ return hintText; });
+	GuiLabel& hint = ui.label().fontSize(UI_FONT_SMALL).muted().bind([this](UiText& t){ t.set(hintText.c_str()); });
 	hint.setMaxWidth(inner - 74);
 	GuiTextButton& useDefault = ui.button("Default").size(70, footH).fontSize(UI_FONT_SMALL).style(MenuKeycapStyle()).rounded(8.0f).litTextColor(MenuPaletteCurrent().text)
 		.onClick([this, defaultTarget]{

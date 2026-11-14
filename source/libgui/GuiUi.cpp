@@ -7,6 +7,7 @@
 #include "Gui.h"
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 
 std::string GuiFormat(const char * fmt, ...)
 {
@@ -28,7 +29,54 @@ std::string GuiFormat(const char * fmt, ...)
 	return out;
 }
 
-// An empty string is no text at all: GuiText skips drawing and the translator is not asked for "".
+// ---- UiText
+
+// Where to cut UTF-8 text that was cut short so that it ends on a whole character: n, or less if the last
+// character in s[0..n) is incomplete
+static size_t Utf8Trim(const char * s, size_t n)
+{
+	size_t i = n, continuation = 0;
+	while(i > 0 && continuation < 3 && ((unsigned char)s[i - 1] & 0xC0) == 0x80)
+	{
+		i--;
+		continuation++;
+	}
+	if(i == 0)
+		return n; // nothing but continuation bytes: no character was cut, the text is just not valid
+	const unsigned char lead = (unsigned char)s[i - 1];
+	const size_t need = lead >= 0xF0 ? 4 : (lead >= 0xE0 ? 3 : (lead >= 0xC0 ? 2 : 1));
+	return need > continuation + 1 ? i - 1 : n;
+}
+
+void UiText::set(const char * t)
+{
+	if(!t)
+	{
+		text[0] = 0;
+		return;
+	}
+
+	size_t n = strlen(t);
+	if(n >= SIZE)
+		n = Utf8Trim(t, SIZE - 1);
+	memcpy(text, t, n);
+	text[n] = 0;
+}
+
+void UiText::format(const char * fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	const int n = vsnprintf(text, SIZE, fmt, args);
+	va_end(args);
+
+	if(n < 0)
+		text[0] = 0;
+	else if(n >= SIZE)
+		text[Utf8Trim(text, SIZE - 1)] = 0;
+}
+
+// An empty string is no text at all: GuiText skips drawing.
 static const char * textOrNull(const char * t)
 {
 	return (t && *t) ? t : nullptr;
@@ -152,18 +200,29 @@ GuiLabel& GuiLabel::accent()
 	return textColor(GuiTheme::current().accent);
 }
 
-GuiLabel& GuiLabel::bind(std::function<std::string()> fn)
+GuiLabel& GuiLabel::bind(std::function<void(UiText&)> fn)
 {
-	GuiLabel * self = this;
-	std::string last = "\x01"; // matches no real text, so the first evaluation always sets it
-	ui.bind([self, fn, last]() mutable {
-		const std::string s = fn();
-		if(s != last)
+	// The text last set is kept here, so that a frame in which nothing changed is a comparison and nothing more
+	struct Binding
+	{
+		GuiLabel * label;
+		std::function<void(UiText&)> fn;
+		char last[UiText::SIZE];
+
+		void operator()()
 		{
-			self->setText(textOrNull(s.c_str()));
-			last = s;
+			UiText t;
+			fn(t);
+			if(strcmp(t.c_str(), last) != 0)
+			{
+				label->setRawText(textOrNull(t.c_str()));
+				strcpy(last, t.c_str());
+			}
 		}
-	});
+	};
+
+	Binding b = { this, fn, "\x01" }; // matches no real text, so the first evaluation always sets it
+	ui.bind(b);
 	return *this;
 }
 
@@ -189,7 +248,7 @@ GuiChip::GuiChip(UiScope& scope, const char * t) :
 	GuiLayout::add(&label);
 }
 
-GuiChip& GuiChip::bind(std::function<std::string()> fn)
+GuiChip& GuiChip::bind(std::function<void(UiText&)> fn)
 {
 	label.bind(fn);
 	return *this;
@@ -244,6 +303,46 @@ void GuiTextButton::setLayoutSize(int w, int h)
 	shape.setLayoutSize(w, h);
 }
 
+GuiTextButton& GuiTextButton::fitText(int minW, int padX, int maxW)
+{
+	fitMinW = minW > 0 ? minW : 1;
+	fitPadX = padX;
+	fitMaxW = maxW;
+	return *this;
+}
+
+void GuiTextButton::getNaturalSize(int& w, int& h)
+{
+	GuiButton::getNaturalSize(w, h);
+	if(fitMinW <= 0)
+		return;
+
+	w = text.getTextWidth() + 2 * fitPadX;
+	if(w < fitMinW)
+		w = fitMinW;
+
+	int budget = 0;
+	if(fitMaxW > 0 && w > fitMaxW)
+	{
+		w = fitMaxW;
+		budget = fitMaxW - 2 * fitPadX;
+	}
+	if(budget != fitBudget)
+	{
+		fitBudget = budget;
+		text.setMaxWidth(budget);
+		textLit.setMaxWidth(budget);
+	}
+
+	// A layout does not resize an element whose natural size is the size it assigns, so the button takes the width
+	// itself (and its shape with it) whenever the text changes it
+	if(w != fitAppliedW)
+	{
+		fitAppliedW = w;
+		setLayoutSize(w, h);
+	}
+}
+
 GuiTextButton& GuiTextButton::onClick(UiCallback fn)
 {
 	clickCb = fn;
@@ -283,10 +382,30 @@ void GuiTextButton::setText(const char * t)
 	textLit.setText(textOrNull(t));
 }
 
-GuiTextButton& GuiTextButton::bind(std::function<std::string()> fn)
+GuiTextButton& GuiTextButton::bind(std::function<void(UiText&)> fn)
 {
-	text.bind(fn);
-	textLit.bind(fn);
+	// One function call and one comparison a frame for both labels (the resting one and the highlighted one)
+	struct Binding
+	{
+		GuiTextButton * button;
+		std::function<void(UiText&)> fn;
+		char last[UiText::SIZE];
+
+		void operator()()
+		{
+			UiText t;
+			fn(t);
+			if(strcmp(t.c_str(), last) != 0)
+			{
+				button->text.setRawText(textOrNull(t.c_str()));
+				button->textLit.setRawText(textOrNull(t.c_str()));
+				strcpy(last, t.c_str());
+			}
+		}
+	};
+
+	Binding b = { this, fn, "\x01" };
+	ui.bind(b);
 	return *this;
 }
 

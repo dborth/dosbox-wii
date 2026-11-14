@@ -51,13 +51,13 @@ struct MenuPageFrame {
  * @param title The page title
  * @param hint Returns the hint line, read every frame
  */
-MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint, int hintWidth = MENU_PAGE_BODY_W - 236);
+MenuPageFrame MenuPage_Build(UiScope& ui, GuiOverlay& page, const char * title, std::function<void(UiText&)> hint, int hintWidth = MENU_PAGE_BODY_W - 236);
 
 /**
  * Like MenuPage_Build, but only the header and footer bars: no body and no card, for a page whose content is
  * something else on the main window (a list). `body` and `content` are null in the result.
  */
-MenuPageFrame MenuPage_BuildBars(UiScope& ui, GuiOverlay& page, const char * title, std::function<std::string()> hint);
+MenuPageFrame MenuPage_BuildBars(UiScope& ui, GuiOverlay& page, const char * title, std::function<void(UiText&)> hint);
 
 /** Width of the content inside the page card. */
 #define MENU_PAGE_CONTENT_W	(MENU_PAGE_BODY_W - 2 * MENU_PAGE_CARD_PAD)

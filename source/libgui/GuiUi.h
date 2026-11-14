@@ -14,7 +14,7 @@
  *   ui.column().gap(8)
  *     .add(ui.label("Controllers").fontSize(28))
  *     .add(ui.card().onClick([&]{ OpenPlayer(1); })
- *            .add(ui.label().bind([&]{ return DeviceName(1); })));
+ *            .add(ui.label().bind([&](UiText& t){ t.set(DeviceName(1)); })));
  *   ui.attachTo(page);
  *
  * Everything the scope made is destroyed with it, children before parents
@@ -26,14 +26,36 @@
 //!\ingroup grp_builder
 typedef std::function<void()> UiCallback;
 
-//!Formats like printf and returns a std::string, for bound text:
-//!`ui.label().bind([&]{ return GuiFormat("battery %d%%", pct); })`
+//!Formats like printf and returns a std::string, for text that is kept as one:
+//!`status = GuiFormat("Selected player %d", n + 1);` To show text that is made up each frame, write it into the
+//!UiText a binding is given instead; that does not allocate.
 //!\ingroup grp_builder
 #if defined(__GNUC__)
 std::string GuiFormat(const char * fmt, ...) __attribute__((format(printf, 1, 2)));
 #else
 std::string GuiFormat(const char * fmt, ...);
 #endif
+
+//!The text a bound function writes (see GuiLabel::bind()): a buffer of SIZE bytes in the caller's frame, so making
+//!a different text every frame costs no allocation. Text that does not fit is cut on a whole character.
+//!\ingroup grp_builder
+class UiText
+{
+	public:
+		enum { SIZE = 256 };
+		UiText() { text[0] = 0; }
+		//!Sets the text to a copy of t (nullptr is no text)
+		void set(const char * t);
+		//!Sets the text with printf, as GuiFormat() does
+#if defined(__GNUC__)
+		void format(const char * fmt, ...) __attribute__((format(printf, 2, 3)));
+#else
+		void format(const char * fmt, ...);
+#endif
+		const char * c_str() const { return text; }
+	private:
+		char text[SIZE];
+};
 
 class UiScope;
 
@@ -53,9 +75,10 @@ class GuiLabel : public GuiText
 		GuiLabel& muted();
 		//!Uses the theme's accent color
 		GuiLabel& accent();
-		//!Keeps the text equal to what `fn` returns, checked every frame (the text is only
-		//!rebuilt when the string actually changes)
-		GuiLabel& bind(std::function<std::string()> fn);
+		//!Keeps the text equal to what `fn` writes into its UiText, checked every frame (the text is only
+		//!rebuilt when it actually changes). Nothing is allocated while it stays the same.
+		//!`label.bind([&](UiText& t){ t.format("battery %d%%", pct); })`
+		GuiLabel& bind(std::function<void(UiText&)> fn);
 		//!Shows the label only while `fn` returns true. Hidden elements take no room in a layout.
 		GuiLabel& visibleWhen(std::function<bool()> fn);
 	private:
@@ -70,8 +93,8 @@ class GuiChip : public GuiOverlay
 		GuiChip(UiScope& scope, const char * text = "");
 		//!Sets the text
 		void setText(const char * t) { label.setText(t); }
-		//!Keeps the text equal to what `fn` returns, checked every frame
-		GuiChip& bind(std::function<std::string()> fn);
+		//!Keeps the text equal to what `fn` writes, checked every frame (see GuiLabel::bind())
+		GuiChip& bind(std::function<void(UiText&)> fn);
 		GuiChip& visibleWhen(std::function<bool()> fn);
 	private:
 		UiScope& ui;
@@ -92,6 +115,13 @@ class GuiTextButton : public GuiButton
 		GuiTextButton& size(int w, int h);
 		//!Sets the label's font size (default 20)
 		GuiTextButton& fontSize(int px);
+		//!Sizes the button from its text, so a longer translation gets a wider button instead of a cut-off label.
+		//!The width is the text plus padX on each side, at least minW and at most maxW (0 = no limit; past it the
+		//!text is cut to fit). It follows the text when that changes. The height is the one from size().
+		//!A layout reads the width every frame; outside a layout, read it with getNaturalSize().
+		GuiTextButton& fitText(int minW, int padX, int maxW = 0);
+		//!The width follows the text if fitText() was called
+		void getNaturalSize(int& w, int& h) override;
 		//!Called when the button is clicked. The button stays selected afterwards.
 		GuiTextButton& onClick(UiCallback fn);
 		//!Called when the button becomes selected (by the pointer or the D-pad)
@@ -108,8 +138,8 @@ class GuiTextButton : public GuiButton
 		GuiTextButton& disabled(bool d = true);
 		//!Sets the text
 		void setText(const char * t);
-		//!Keeps the text equal to what `fn` returns, checked every frame
-		GuiTextButton& bind(std::function<std::string()> fn);
+		//!Keeps the text equal to what `fn` writes, checked every frame (see GuiLabel::bind()). `fn` is run once a frame.
+		GuiTextButton& bind(std::function<void(UiText&)> fn);
 		//!Shows the button only while `fn` returns true
 		GuiTextButton& visibleWhen(std::function<bool()> fn);
 		//!Enables the button only while `fn` returns true
@@ -125,6 +155,11 @@ class GuiTextButton : public GuiButton
 		UiCallback clickCb;
 		UiCallback focusCb;
 		bool wasSelected;
+		int fitMinW = 0;		//!< fitText(): 0 = not fitted
+		int fitPadX = 0;
+		int fitMaxW = 0;
+		int fitAppliedW = -1;	//!< the width last given to the button itself (a layout skips setLayoutSize() when the natural size is what it assigns)
+		int fitBudget = 0;		//!< the text's maximum width as last set (0 = none), so it is set only when it changes
 };
 
 //!The clickable, focusable surface behind a GuiCard (a button with a shape for an image).

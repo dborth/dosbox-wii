@@ -71,10 +71,10 @@ class HomeView : public GuiOverlay
 		void selectPlayer(int player);
 
 	private:
-		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<std::string()> textFn = nullptr, bool marked = false, int textNudge = 0, int iconNudge = 0);
+		GuiCard& pill(const char * text, int icon, int w, int h, int font, UiCallback onClick, UiCallback onFocus, std::function<void(UiText&)> textFn = nullptr, bool marked = false, int textNudge = 0, int iconNudge = 0);
 		GuiCard& tile(const char * title, int icon, Action action, const char * hint);
-		void quickRow(GuiLayout& column, int icon, const char * label, std::function<std::string()> note, GuiLayout& control);
-		GuiLayout& stepper(std::function<std::string()> value, std::function<void(bool)> step, const char * hint);
+		void quickRow(GuiLayout& column, int icon, const char * label, std::function<void(UiText&)> note, GuiLayout& control);
+		GuiLayout& stepper(std::function<void(UiText&)> value, std::function<void(bool)> step, const char * hint);
 		GuiLayout& choice(const char * firstText, const char * secondText, std::function<bool()> firstOn, std::function<void(bool)> set, const char * hint, int firstW = 78, int secondW = 58);
 		GuiLayout& playersStrip();
 

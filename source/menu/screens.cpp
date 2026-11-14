@@ -241,7 +241,7 @@ ListScreen::ListScreen(const char * title, const char * hint, const char * extra
 
 	// Footer, left: what the highlighted row does. A screen with no help line shows its key hints there instead,
 	// and one that has a help line shows them at the right of the header.
-	chrome = MenuPage_BuildBars(ui, chromePage, title, [this]{ return hasHelpLine ? helpStr : hintStr; });
+	chrome = MenuPage_BuildBars(ui, chromePage, title, [this](UiText& t){ t.set((hasHelpLine ? helpStr : hintStr).c_str()); });
 	if(hasHelpLine && !hintStr.empty())
 		chrome.headerRight->add(ui.label(hintStr.c_str()).fontSize(14).textColor(MenuChromeTextMuted()));
 

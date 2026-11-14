@@ -1,5 +1,5 @@
 // The few platform pieces the widgets reach that the preview does not need for real: triggers, sounds, the
-// controller and the text translator.
+// controller.
 #include "libgui/Gui.h"
 
 GuiTrigger::GuiTrigger() : type(TRIGGER_TYPE::SIMPLE), action(TRIGGER_ACTION::NONE), chan(-1), conditionMask(0) {}
@@ -29,9 +29,6 @@ bool InputController::down() const { return false; }
 bool InputController::left() const { return false; }
 bool InputController::right() const { return false; }
 bool InputController::isSecondaryPressed() const { return false; }
-
-GuiTextTranslator::GuiTextTranslator() {}
-const char * GuiTextTranslator::getText(const char * msgid) const { return msgid; }
 
 GuiWindow * mainWindow = nullptr;
 void UpdateGui() {}

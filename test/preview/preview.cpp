@@ -51,7 +51,7 @@ struct Screen
 // pixel of the rail of device icons is, at the rail's x, below the card's top
 struct CardGeometry { int top, bottom, railY; };
 static std::vector<CardGeometry> g_cards, g_rails;
-static std::vector<int> g_modalBg;	// the red of the dimmed background over the black margin, per modal scene
+static std::vector<int> g_modalBg;	// the red of the dimmed background over a grey margin, per modal scene
 static CardGeometry MeasureCard()
 {
 	int w = 0, h = 0;
@@ -548,6 +548,9 @@ int main(int argc, char ** argv)
 			snap(sc.name, s.root);
 			if(i < 3)
 			{
+				// the dimming is black, which cannot show over the black margin of the pictures: draw the frame again over grey
+				HostClear(200, 200, 200);
+				s.root.draw();
 				int w = 0, h = 0;
 				const std::vector<uint8_t>& px = HostPixels(w, h);
 				g_modalBg.push_back(px[((size_t)(h / 2) * w + (size_t)(w * 0.02f)) * 4]);
@@ -669,11 +672,11 @@ int main(int argc, char ** argv)
 		Controls_SetModel(nullptr);
 		SampleControls_ResetHardware();
 	}
-	// a disabled screen is washed over once (0xbe at 0x70 over black is 83), however many rows and columns it holds; each
-	// extra layer would lift this toward 0xbe
+	// a disabled screen is dimmed once (black at 0x80 over grey 200 is 100), however many rows and columns it holds; each
+	// extra layer would take this toward 50
 	EXPECT(g_modalBg.size() == 3);
 	for(size_t i = 0; i < g_modalBg.size(); i++)
-		EXPECT(g_modalBg[i] >= 80 && g_modalBg[i] <= 86);
+		EXPECT(g_modalBg[i] >= 98 && g_modalBg[i] <= 102);
 	// the card is the same height whatever controller is drawn in it, and the rail of icons never moves
 	EXPECT(g_cards.size() >= 8 && g_rails.size() >= 4);
 	for(size_t i = 0; i < g_cards.size(); i++)
