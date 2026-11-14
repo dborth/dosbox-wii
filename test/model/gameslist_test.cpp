@@ -183,6 +183,15 @@ static void testClick()
 	CHECK(c.game);
 	CHECK_EQ(c.title, "Prince of Persia");
 	CHECK(!c.running);
+	CHECK(c.map.empty());							// this one has no map of its own
+
+	// the map a conf names goes with the click, so a delete needs nothing read from the card
+	GamesList owned;
+	GameRecord withMap = game("keen4", "Commander Keen 4", "KEEN4E.EXE");
+	withMap.mapFile = "keen4.map";
+	std::vector<GameRecord> one(1, withMap);
+	owned.setGames(one);
+	CHECK_EQ(owned.click(1).map, "keen4.map");
 
 	// the game that is running can be restarted: that is what Restart does, and it is not one to delete
 	l.setCurrent("sd:/DOSBox/keen4.conf");

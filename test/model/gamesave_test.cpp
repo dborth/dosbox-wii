@@ -49,11 +49,11 @@ static int countOf(const std::string& text, const std::string& part)
 class FakeHost : public GameSaveHost
 {
 	public:
-		FakeHost() : mkdirOk(true), saveMapperOk(true), configOk(true)
+		FakeHost() : bindsOk(true), configOk(true)
 		{
 			files["sd:/DOSBox/dosbox.conf"] = "[autoexec]\nmount d sd:/CD\n";
-			files["sd:/DOSBox/mapper-0.74.map"] = "key_a \"key 97\"\n";
-			mapper = "sd:/DOSBox/mapper-0.74.map";
+			files["sd:/DOSBox/mapper-0.74.map"] = "key_a \"key 97\"\n";	// the shared mapper file: a save neither reads nor writes it
+			binds = "key_a \"key 97\"\n";
 			joystick = "4axis";
 			config = printed("fixed 3000", "mount d sd:/CD");
 		}
@@ -81,13 +81,18 @@ class FakeHost : public GameSaveHost
 		}
 
 		std::string dosboxDirectory() const override { return "sd:/DOSBox"; }
-		bool makeDirectory(const std::string& path) override { made.insert(path); return mkdirOk; }
-		bool exists(const std::string& path) const override { return files.count(path) > 0; }
-		bool erase(const std::string& path) override { erased.push_back(path); files.erase(path); return !eraseFails; }
+		bool erase(const std::string& path) override
+		{
+			erased.push_back(path);
+			if(eraseFails)
+				return false;
+			return files.erase(path) > 0;		// like remove(): a file that is not there is not deleted
+		}
 		std::vector<std::string> erased;
 		bool eraseFails = false;
 		bool read(const std::string& path, std::string& text) const override
 		{
+			reads.push_back(path);
 			std::map<std::string, std::string>::const_iterator it = files.find(path);
 			if(it == files.end())
 				return false;
@@ -114,17 +119,23 @@ class FakeHost : public GameSaveHost
 			return true;
 		}
 		std::string baseConfig() const override { return "sd:/DOSBox/dosbox.conf"; }
-		bool saveMapper() override { return saveMapperOk; }
-		std::string mapperFile() const override { return mapper; }
+		bool mapperText(std::string& text) override
+		{
+			if(!bindsOk)
+				return false;
+			text = binds;
+			return true;
+		}
 		std::string joystickType() const override { return joystick; }
 		std::string runningProgramPath() const override { return program; }
 		std::vector<GameDrive> drives() const override { return driveList; }
 
 		std::map<std::string, std::string> files;
-		std::set<std::string> made, failWrite;
+		std::set<std::string> failWrite;
 		std::vector<std::string> written;
-		bool mkdirOk, saveMapperOk, configOk;
-		std::string config, mapper, joystick, program;
+		mutable std::vector<std::string> reads;	// every read, to show what a save looks at
+		bool bindsOk, configOk;
+		std::string config, binds, joystick, program;
 		std::vector<GameDrive> driveList;
 };
 
@@ -264,7 +275,7 @@ static void testNewGame()
 	CHECK_EQ(r.path, "sd:/DOSBox/Games/Commander Keen 4.conf");
 	CHECK(has(r.message, "Saved Commander Keen 4.conf and Commander Keen 4.map"));
 	CHECK(has(r.message, "dosbox.conf was not changed"));
-	CHECK(h.made.count("sd:/DOSBox/Games") > 0);
+	CHECK_EQ(r.text, h.files["sd:/DOSBox/Games/Commander Keen 4.conf"]);	// what the games list is told it is
 
 	const std::string conf = h.files["sd:/DOSBox/Games/Commander Keen 4.conf"];
 	CHECK(conf.compare(0, 27, "# title=Commander Keen 4\n# ") == 0 || has(conf, "# title=Commander Keen 4\n"));
@@ -280,8 +291,12 @@ static void testNewGame()
 	CHECK_EQ(join(Conf_SectionLines(conf, "autoexec")), "c:|cd \\GAMES\\KEEN4|KEEN4E.EXE");
 	CHECK(!has(conf, "mount d sd:/CD"));
 
-	// the map is a copy of the one in use, beside it
+	// the map is the controls as they are in memory, beside the conf
 	CHECK_EQ(h.files["sd:/DOSBox/Games/Commander Keen 4.map"], "key_a \"key 97\"\n");
+	// all a save reads is the conf it may replace (its absence is how a new name is known) and dosbox.conf
+	CHECK_N(h.reads.size(), 2);
+	CHECK_EQ(h.reads[0], "sd:/DOSBox/Games/Commander Keen 4.conf");
+	CHECK_EQ(h.reads[1], "sd:/DOSBox/dosbox.conf");
 	// the map first, so a save cut short never lists a game with no map; and dosbox.conf is never touched
 	CHECK_N(h.written.size(), 2);
 	CHECK_EQ(h.written[0], "sd:/DOSBox/Games/Commander Keen 4.map");
@@ -295,6 +310,15 @@ static void testNewGame()
 	CHECK_EQ(g.title, "Commander Keen 4");
 	CHECK_EQ(g.program, "KEEN4E.EXE");
 	CHECK(!g.programInferred);
+
+	// the games list is told what was written, and has the game as a scan of the file would make it
+	const GameRecord listed = Game_RecordFor(r.path, "sd:/DOSBox", r.text);
+	CHECK_EQ(listed.name, "Commander Keen 4");
+	CHECK_EQ(listed.title, "Commander Keen 4");
+	CHECK_EQ(listed.program, "KEEN4E.EXE");
+	CHECK_EQ(listed.where, "Games");
+	CHECK_EQ(listed.mapFile, "Commander Keen 4.map");
+	CHECK(listed.ownControls);
 }
 
 static void testNameTaken()
@@ -307,10 +331,12 @@ static void testNameTaken()
 	CHECK_EQ(again.path, "sd:/DOSBox/Games/Keen.conf");
 	CHECK(has(again.message, "already exists"));
 
-	// nothing was written for the refusal
+	// nothing was written for the refusal, and the only thing looked at was the file that is there
 	const size_t before = h.written.size();
+	h.reads.clear();
 	Game_SaveNew(h, "Keen");
 	CHECK_N(h.written.size(), before);
+	CHECK_N(h.reads.size(), 1);
 
 	// no usable name
 	FakeHost h2;
@@ -445,64 +471,59 @@ static void testReplace()
 	CHECK_EQ(join(Conf_SectionLines(h.files["sd:/DOSBox/Games/Prince.conf"], "autoexec")), "c:|cd \\GAMES\\KEEN4|KEEN4E.EXE");
 }
 
-static void testMapper()
+static void testControls()
 {
-	// the mapper file in use is a game's own (DOSBox was started with it): saved in place, not copied onto itself
+	// the map holds the controls as they are in memory: whatever was changed in the menu and not saved yet
 	FakeHost h;
-	h.files["sd:/DOSBox/Games/Keen.conf"] = "# title=Keen\n[sdl]\nmapperfile=Keen.map\n";
-	h.files["sd:/DOSBox/Games/Keen.map"] = "key_b \"key 98\"\n";
-	h.mapper = "sd:/DOSBox/Games/Keen.map";
-	h.config = FakeHost::printed("auto", "", "Keen.map");
-	CHECK(Game_SaveActive(h, "Games/Keen.conf").ok);
-	CHECK_N(h.written.size(), 1);
-	CHECK_EQ(h.written[0], "sd:/DOSBox/Games/Keen.conf");
-	CHECK_EQ(h.files["sd:/DOSBox/Games/Keen.map"], "key_b \"key 98\"\n");
+	h.binds = "key_b \"key 98\"\njbutton_0_0 \"pad_0 button 0\"\n";
+	CHECK(Game_SaveNew(h, "Doom").ok);
+	CHECK_EQ(h.files["sd:/DOSBox/Games/Doom.map"], "key_b \"key 98\"\njbutton_0_0 \"pad_0 button 0\"\n");
+	CHECK(has(h.files["sd:/DOSBox/Games/Doom.conf"], "mapperfile=Doom.map\n"));
 
-	// the one in use is somebody else's (dosbox.conf's, or a hand-made game that has none): copied beside the conf
+	// the shared mapper file is neither read nor written: its place is not looked at
+	CHECK_EQ(h.files["sd:/DOSBox/mapper-0.74.map"], "key_a \"key 97\"\n");
+	for(size_t i = 0; i < h.written.size(); i++)
+		CHECK(!has(h.written[i], "mapper-0.74.map"));
+	for(size_t i = 0; i < h.reads.size(); i++)
+		CHECK(!has(h.reads[i], "mapper-0.74.map"));
+
+	// the game that is running, whose own map DOSBox was started with: map and conf written, once each, map first
 	FakeHost g;
-	g.mapper = "sd:/DOSBox/mapper-0.74.map";
-	CHECK(Game_SaveNew(g, "Doom").ok);
-	CHECK_EQ(g.files["sd:/DOSBox/Games/Doom.map"], "key_a \"key 97\"\n");
-	CHECK(has(g.files["sd:/DOSBox/Games/Doom.conf"], "mapperfile=Doom.map\n"));
-	CHECK_EQ(g.files["sd:/DOSBox/mapper-0.74.map"], "key_a \"key 97\"\n");	// the base's own is not changed
+	g.files["sd:/DOSBox/Games/Keen.conf"] = "# title=Keen\n[sdl]\nmapperfile=Keen.map\n";
+	g.files["sd:/DOSBox/Games/Keen.map"] = "key_b \"key 98\"\n";
+	g.binds = "key_c \"key 99\"\n";
+	g.config = FakeHost::printed("auto", "", "Keen.map");
+	CHECK(Game_SaveActive(g, "Games/Keen.conf").ok);
+	CHECK_N(g.written.size(), 2);
+	CHECK_EQ(g.written[0], "sd:/DOSBox/Games/Keen.map");
+	CHECK_EQ(g.written[1], "sd:/DOSBox/Games/Keen.conf");
+	CHECK_EQ(g.files["sd:/DOSBox/Games/Keen.map"], "key_c \"key 99\"\n");
 
-	// a mapper file that cannot be written or read stops the save before any file is replaced
+	// controls that cannot be had stop the save before any file is written
 	FakeHost bad;
-	bad.saveMapperOk = false;
-	GameSaveResult r = Game_SaveNew(bad, "Doom");
-	CHECK(!r.ok && has(r.message, "Not saved") && has(r.message, "mapper"));
+	bad.bindsOk = false;
+	const GameSaveResult r = Game_SaveNew(bad, "Doom");
+	CHECK(!r.ok && has(r.message, "Not saved") && has(r.message, "controls"));
 	CHECK(bad.written.empty());
-	FakeHost gone;
-	gone.mapper = "sd:/DOSBox/missing.map";
-	r = Game_SaveNew(gone, "Doom");
-	CHECK(!r.ok && has(r.message, "mapper"));
-	CHECK(gone.written.empty());
 }
 
 static void testFailures()
 {
-	// a folder that cannot be made (a locked or missing card)
-	FakeHost a;
-	a.mkdirOk = false;
-	GameSaveResult r = Game_SaveNew(a, "Doom");
-	CHECK(!r.ok);
-	CHECK(has(r.message, "Could not make the folder sd:/DOSBox/Games"));
-	CHECK(a.written.empty());
-
-	// the map cannot be written: no conf is written either
+	// the map cannot be written (a locked or missing card, or a folder that could not be made): no conf is written either
 	FakeHost b;
 	b.failWrite.insert(".map");
-	r = Game_SaveNew(b, "Doom");
+	GameSaveResult r = Game_SaveNew(b, "Doom");
 	CHECK(!r.ok && has(r.message, "Doom.map"));
 	CHECK(b.written.empty());
-	CHECK(!b.exists("sd:/DOSBox/Games/Doom.conf"));
+	CHECK(b.files.count("sd:/DOSBox/Games/Doom.conf") == 0);
 
-	// the conf cannot be written: an old one is as it was (the host keeps it until the new one is in place)
+	// the conf cannot be written: it is said, and the game is not reported as saved
 	FakeHost c;
 	c.files["sd:/DOSBox/Games/Doom.conf"] = "# title=Old\n[autoexec]\nold.exe\n";
 	c.failWrite.insert(".conf");
 	r = Game_SaveReplace(c, "sd:/DOSBox/Games/Doom.conf", true);
 	CHECK(!r.ok && has(r.message, "Doom.conf"));
+	CHECK(r.text.empty());
 	CHECK_EQ(c.files["sd:/DOSBox/Games/Doom.conf"], "# title=Old\n[autoexec]\nold.exe\n");
 
 	// the running config could not be had
@@ -543,8 +564,7 @@ class BareFiles : public FileGameSaveHost
 		explicit BareFiles(const std::string& folder) : FileGameSaveHost(folder) {}
 		bool runningConfig(std::string&, std::string&) override { return false; }
 		std::string baseConfig() const override { return std::string(); }
-		bool saveMapper() override { return false; }
-		std::string mapperFile() const override { return std::string(); }
+		bool mapperText(std::string&) override { return false; }
 		std::string joystickType() const override { return std::string(); }
 		std::string runningProgramPath() const override { return std::string(); }
 		std::vector<GameDrive> drives() const override { return std::vector<GameDrive>(); }
@@ -573,12 +593,12 @@ static void testAddFound()
 	CHECK_EQ(r.path, "sd:/DOSBox/Games/WOLF3D.conf");
 	CHECK(has(r.message, "Added WOLF3D.conf"));
 	CHECK(has(r.message, "defaults"));
-	CHECK(h.made.count("sd:/DOSBox/Games") > 0);
 
 	// a small conf: title, program, startup; no map, no settings; only that one file written
 	const std::string conf = h.files["sd:/DOSBox/Games/WOLF3D.conf"];
 	CHECK_EQ(conf, "# title=Wolfenstein 3D\n# program=WOLF3D.EXE\n\n[autoexec]\nc:\ncd \\WOLF3D\nWOLF3D.EXE\n");
 	CHECK_N(h.written.size(), 1);
+	CHECK_EQ(r.text, conf);
 	CHECK(!has(conf, "mapperfile"));
 	CHECK(!has(conf, "[cpu]"));
 	CHECK(h.files.count("sd:/DOSBox/Games/WOLF3D.map") == 0);
@@ -657,15 +677,6 @@ static void testAddFoundFailures()
 	CHECK(Game_AddFound(a, bare, "W", "X.EXE").ok);
 	CHECK(has(a.files["sd:/DOSBox/Games/WOLF3D.conf"], "# program=X.EXE\n"));
 
-	// no folder to make
-	FakeHost b;
-	b.mkdirOk = false;
-	r = Game_AddFound(b, wolf, "W", "");
-	CHECK(!r.ok);
-	CHECK(!r.exists);
-	CHECK(has(r.message, "Not saved"));
-	CHECK(b.written.empty());
-
 	// the write fails
 	FakeHost c;
 	c.failWrite.insert("WOLF3D.conf");
@@ -677,7 +688,7 @@ static void testAddFoundFailures()
 	// nothing is asked of the running core: a found game is added with nothing running (no config, no mapper, no program)
 	FakeHost d;
 	d.configOk = false;
-	d.saveMapperOk = false;
+	d.bindsOk = false;
 	CHECK(Game_AddFound(d, wolf, "W", "").ok);
 }
 
@@ -702,6 +713,9 @@ static void testRename()
 	CHECK(h.files["sd:/DOSBox/Games/keen.conf"].find("# title=Commander Keen 4\n# program=KEEN4E.EXE\n[sdl]") == 0);
 	CHECK(h.files["sd:/DOSBox/Games/keen.conf"].find("cycles=fixed 6000") != std::string::npos);
 	CHECK(h.erased.empty());				// no file was removed or renamed: the paths stay as they are
+	CHECK_EQ(r.text, h.files["sd:/DOSBox/Games/keen.conf"]);	// the games list is told the new text, and so has the new title
+	CHECK_EQ(Game_RecordFor(r.path, "sd:/DOSBox", r.text).title, "Commander Keen 4");
+	CHECK_N(h.written.size(), 1);							// one read, one write
 
 	// a long title is cut; an empty one, a missing file and a write that fails are not renames
 	r = Game_Rename(h, "sd:/DOSBox/Games/keen.conf", std::string(80, 'x'));
@@ -715,17 +729,20 @@ static void testRename()
 
 static void testDelete()
 {
-	// the conf and the map it names beside it
+	// the conf and the map it names beside it: two deletes, and nothing is read
 	FakeHost h;
 	h.files["sd:/DOSBox/Games/keen.conf"] = "# title=Commander Keen 4\n[sdl]\nmapperfile=keen.map\n";
 	h.files["sd:/DOSBox/Games/keen.map"] = "key_a \"key 97\"\n";
 	h.files["sd:/DOSBox/Games/other.conf"] = "# title=Other\n";
-	GameSaveResult r = Game_Delete(h, "sd:/DOSBox/Games/keen.conf");
+	GameSaveResult r = Game_Delete(h, "sd:/DOSBox/Games/keen.conf", "keen.map", "Commander Keen 4");
 	CHECK(r.ok);
 	CHECK_EQ(r.message, "Deleted Commander Keen 4.");
 	CHECK(h.files.count("sd:/DOSBox/Games/keen.conf") == 0);
 	CHECK(h.files.count("sd:/DOSBox/Games/keen.map") == 0);
 	CHECK(h.files.count("sd:/DOSBox/Games/other.conf") == 1);		// nothing else
+	CHECK_N(h.erased.size(), 2);
+	CHECK(h.reads.empty());
+	CHECK(h.written.empty());
 
 	// a map under another name may belong to other games: it stays, with the shared mapper file
 	FakeHost g;
@@ -733,26 +750,42 @@ static void testDelete()
 	g.files["sd:/DOSBox/Games/shared.map"] = "x\n";
 	g.files["sd:/DOSBox/Games/b.conf"] = "[sdl]\nmapperfile=mapper-0.74.map\n";
 	g.files["sd:/DOSBox/Games/mapper-0.74.map"] = "y\n";
-	CHECK(Game_Delete(g, "sd:/DOSBox/Games/a.conf").ok);
-	CHECK(Game_Delete(g, "sd:/DOSBox/Games/b.conf").ok);
+	CHECK(Game_Delete(g, "sd:/DOSBox/Games/a.conf", "shared.map", "").ok);
+	CHECK(Game_Delete(g, "sd:/DOSBox/Games/b.conf", "mapper-0.74.map", "").ok);
 	CHECK(g.files.count("sd:/DOSBox/Games/shared.map") == 1);
 	CHECK(g.files.count("sd:/DOSBox/Games/mapper-0.74.map") == 1);
 
-	// no title in the conf: it is named by its file; a conf with no map just goes
+	// the map's name is compared the way a card does, ignoring case
+	FakeHost c;
+	c.files["sd:/DOSBox/Games/Doom.conf"] = "x\n";
+	c.files["sd:/DOSBox/Games/Doom.map"] = "x\n";
+	CHECK(Game_Delete(c, "sd:/DOSBox/Games/Doom.conf", "DOOM.MAP", "Doom").ok);
+	CHECK_N(c.erased.size(), 2);								// the map is asked for as the conf wrote it (a card finds it either way)
+	CHECK_EQ(c.erased[1], "sd:/DOSBox/Games/DOOM.MAP");
+
+	// no title given: it is named by its file; a conf with no map just goes
 	FakeHost n;
 	n.files["sd:/DOSBox/Games/plain.conf"] = "[cpu]\ncycles=max\n";
-	r = Game_Delete(n, "sd:/DOSBox/Games/plain.conf");
+	r = Game_Delete(n, "sd:/DOSBox/Games/plain.conf", "", "");
 	CHECK(r.ok);
 	CHECK_EQ(r.message, "Deleted plain.");
+	CHECK_N(n.erased.size(), 1);
 
-	// a conf that cannot be deleted leaves its map alone; one that is not there is not a success
+	// a conf that cannot be deleted leaves its map alone; one that is not there is not a success (Rescan clears it from the list)
 	FakeHost f;
 	f.files["sd:/DOSBox/Games/k.conf"] = "[sdl]\nmapperfile=k.map\n";
 	f.files["sd:/DOSBox/Games/k.map"] = "z\n";
 	f.eraseFails = true;
-	CHECK(!Game_Delete(f, "sd:/DOSBox/Games/k.conf").ok);
+	CHECK(!Game_Delete(f, "sd:/DOSBox/Games/k.conf", "k.map", "K").ok);
 	CHECK(f.files.count("sd:/DOSBox/Games/k.map") == 1);
-	CHECK(!Game_Delete(n, "sd:/DOSBox/Games/gone.conf").ok);
+	r = Game_Delete(n, "sd:/DOSBox/Games/gone.conf", "", "");
+	CHECK(!r.ok && has(r.message, "Rescan"));
+}
+
+static bool onDisk(const std::string& path)
+{
+	struct stat st;
+	return stat(path.c_str(), &st) == 0;
 }
 
 static void testFileHost()
@@ -767,42 +800,39 @@ static void testFileHost()
 	BareFiles h(base);
 
 	CHECK_EQ(h.dosboxDirectory(), base);
-	CHECK(h.makeDirectory(base + "/Games"));
-	CHECK(h.makeDirectory(base + "/Games"));			// already there
-	CHECK(h.makeDirectory(base + "/Deep/Er"));		// the parent is made too
-	CHECK(!h.makeDirectory(base + "/a/b/c"));			// not further than that
-	CHECK(!h.makeDirectory(""));
 
+	// the folder is not there yet: the write makes it, and the file is the whole of what was asked
 	const std::string file = base + "/Games/x.conf";
-	CHECK(!h.exists(file));
+	CHECK(!onDisk(base + "/Games"));
 	CHECK(h.write(file, "one\n"));
 	CHECK_EQ(readFile(file), "one\n");
+	CHECK(onDisk(base + "/Games"));
+
+	// written again, in place: the old text is gone, and nothing else is made beside it
 	CHECK(h.write(file, "two\n"));
 	CHECK_EQ(readFile(file), "two\n");
-	// no .tmp or .bak left behind
-	CHECK(!h.exists(file + ".tmp"));
-	CHECK(!h.exists(file + ".bak"));
+	CHECK(!onDisk(file + ".tmp"));
+	CHECK(!onDisk(file + ".bak"));
+	CHECK(h.write(file, "a\n"));						// shorter than before: none of the old text is left
+	CHECK_EQ(readFile(file), "a\n");
+	CHECK(h.write(file, ""));							// an empty file is a file
+	CHECK(onDisk(file) && readFile(file).empty());
+
 	std::string text;
+	CHECK(h.write(file, "two\n"));
 	CHECK(h.read(file, text));
 	CHECK_EQ(text, "two\n");
 	CHECK(!h.read(base + "/none", text));
 
-	// erase: gone afterwards; a file that was not there counts as gone
+	// erase: gone afterwards; a file that was not there is not a success
 	CHECK(h.write(base + "/Games/y.conf", "y\n"));
 	CHECK(h.erase(base + "/Games/y.conf"));
-	CHECK(!h.exists(base + "/Games/y.conf"));
-	CHECK(h.erase(base + "/Games/y.conf"));
+	CHECK(!onDisk(base + "/Games/y.conf"));
+	CHECK(!h.erase(base + "/Games/y.conf"));
 
-	// a folder that is not there: the write fails and nothing is left
-	CHECK(!h.write(base + "/missing/x.conf", "x"));
-	CHECK(!h.exists(base + "/missing/x.conf.tmp"));
-
-	// a leftover .tmp from a cut short write does not get in the way, and the old file survives a failed swap's retry
-	FILE * f = fopen((file + ".tmp").c_str(), "wb");
-	if(f) { fputs("half", f); fclose(f); }
-	CHECK(h.write(file, "three\n"));
-	CHECK_EQ(readFile(file), "three\n");
-	CHECK(!h.exists(file + ".tmp"));
+	// only the folder the file is in is made, not the ones above it
+	CHECK(!h.write(base + "/a/b/x.conf", "x"));
+	CHECK(!onDisk(base + "/a"));
 
 	std::string cmd = "rm -rf '" + base + "'";
 	if(system(cmd.c_str()) != 0)
@@ -821,7 +851,7 @@ int main()
 	testAutoexecAppends();
 	testNoConfYet();
 	testReplace();
-	testMapper();
+	testControls();
 	testFailures();
 	testAddFound();
 	testAddFoundNames();

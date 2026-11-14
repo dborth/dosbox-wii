@@ -176,7 +176,7 @@ bool Mapper_MigrateJoystickBinds(PadMapper& mapper)
 }
 
 MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& m, std::function<std::string()> runningProgram)
-	: hw(hardware), mapper(m), program(runningProgram), failedSave(false)
+	: hw(hardware), mapper(m), program(runningProgram)
 {
 	for(int i = 0; i < 4; i++)
 		presetOf[i] = -1;
@@ -184,7 +184,6 @@ MapperControlsModel::MapperControlsModel(ControlsHardware& hardware, PadMapper& 
 
 void MapperControlsModel::forget()
 {
-	failedSave = false;
 	seenType.clear();
 	for(int i = 0; i < 4; i++)
 		presetOf[i] = -1;
@@ -224,7 +223,6 @@ void MapperControlsModel::setEmulated(int index)
 		return;
 	// the groups are rebuilt from the mapper file, which still holds the binds of the old type
 	Mapper_MigrateJoystickBinds(mapper);
-	saved();
 	followJoystickType();
 }
 
@@ -269,11 +267,6 @@ bool MapperControlsModel::write(int player, int control, const BindingTarget& t)
 	return mapper.setEvent(player, source, event.c_str());
 }
 
-void MapperControlsModel::saved()
-{
-	failedSave = !mapper.save();
-}
-
 bool MapperControlsModel::supported(int control) const { return Pad_SourceOfControl(control) >= 0; }
 
 BindingTarget MapperControlsModel::binding(int player, int control) const { return current(player, control); }
@@ -287,8 +280,7 @@ void MapperControlsModel::setBinding(int player, int control, const BindingTarge
 		return;
 	if(effective(player, current(player, control)) == t)
 		return;
-	if(write(player, control, t))
-		saved();
+	write(player, control, t);
 }
 
 // ---- presets
@@ -353,10 +345,8 @@ void MapperControlsModel::applyPreset(int player, int index)
 {
 	if(!validPlayer(player) || index < 0 || index >= PRESET_COUNT)
 		return;
-	const bool changed = writePreset(player, index);
+	writePreset(player, index);
 	presetOf[player] = index;
-	if(changed)
-		saved();
 }
 
 bool MapperControlsModel::modified(int player) const
@@ -375,8 +365,7 @@ void MapperControlsModel::resetBindings(int player)
 {
 	if(!modified(player))
 		return;
-	if(writePreset(player, currentPreset(player)))
-		saved();
+	writePreset(player, currentPreset(player));
 }
 
 std::vector<BindingTarget> MapperControlsModel::suggestions(int player, int control) const

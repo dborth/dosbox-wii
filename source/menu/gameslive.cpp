@@ -34,7 +34,8 @@ GamesHost& Games_Live()
 
 namespace {
 
-// Saving a game: the files are the DOSBox folder's, the rest is the running core's. Main thread, between decoder runs (the menu is).
+// Saving a game: the files are the DOSBox folder's, the rest is the running core's (config and controls are read from memory,
+// nothing is written to get them). Main thread, between decoder runs (the menu is).
 class LiveGameSave : public FileGameSaveHost
 {
 	public:
@@ -47,12 +48,10 @@ class LiveGameSave : public FileGameSaveHost
 
 		std::string baseConfig() const override { return ConfigSavePath(); }
 
-		bool saveMapper() override { return MAPPER_SaveBindsNow(); }
-
-		std::string mapperFile() const override
+		bool mapperText(std::string& text) override
 		{
-			char path[256];
-			return GetMapperFilePath(path, sizeof(path)) ? std::string(path) : std::string();
+			MAPPER_BindsText(text);
+			return true;
 		}
 
 		std::string joystickType() const override { return GetJoystickTypeName(); }
@@ -107,6 +106,7 @@ void GamesScanner::start()
 	if(worker.isRunning())
 		return;
 
+	stale = false;
 	{
 		MutexLock guard(lock);
 		finished = false;
@@ -132,6 +132,20 @@ bool GamesScanner::poll()
 	if(worker.isRunning())
 		worker.join();
 
+	if(stale)
+	{
+		// the menu wrote or deleted a file after this scan began: it may have listed the card before that, and
+		// would put back what the list already shows is gone (or the old name). Throw it away and look again.
+		{
+			MutexLock guard(lock);
+			pending.clear();
+			pendingFound.clear();
+			finished = false;
+		}
+		start();
+		return false;
+	}
+
 	{
 		MutexLock guard(lock);
 		current.swap(pending);
@@ -144,6 +158,37 @@ bool GamesScanner::poll()
 	return true;
 }
 
+// A scan that is running, or has finished and waits for poll(), may have listed the card before this edit
+void GamesScanner::edited()
+{
+	if(worker.isRunning())
+	{
+		stale = true;
+		return;
+	}
+	MutexLock guard(lock);
+	if(finished)
+		stale = true;
+}
+
+void GamesScanner::put(const GameRecord& game)
+{
+	Games_Put(current, game);
+	edited();
+}
+
+void GamesScanner::drop(const std::string& path)
+{
+	Games_Drop(current, path);
+	edited();
+}
+
+void GamesScanner::dropFound(const std::string& folder)
+{
+	Found_Drop(currentFound, folder);
+	edited();
+}
+
 void GamesScanner::finish()
 {
 	if(worker.isRunning())
@@ -154,4 +199,15 @@ GamesScanner& Games_Scanner()
 {
 	static GamesScanner scanner;
 	return scanner;
+}
+
+void Games_Saved(const GameSaveResult& r)
+{
+	if(r.ok && !r.text.empty())
+		Games_Scanner().put(Game_RecordFor(r.path, GameSave_Live().dosboxDirectory(), r.text));
+}
+
+void Games_Deleted(const std::string& path)
+{
+	Games_Scanner().drop(path);
 }

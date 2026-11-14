@@ -193,7 +193,11 @@ static std::string SaveGame()
 	const char * given = GetGameConf();
 
 	if(given && given[0])
-		return Game_SaveActive(host, given).message;
+	{
+		const GameSaveResult saved = Game_SaveActive(host, given);
+		Games_Saved(saved);
+		return saved.message;
+	}
 
 	char typed[64];
 	char program[64];
@@ -228,7 +232,10 @@ static std::string SaveGame()
 	}
 
 	if(r.ok)
+	{
 		SetGameConf(r.path.c_str());
+		Games_Saved(r);
+	}
 	return r.message;
 }
 

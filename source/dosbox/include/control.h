@@ -83,6 +83,8 @@ public:
 	void Init();
 	void ShutDown();
 	void StartUp();
+	/* The config as dosbox.conf is written, as text (PrintConfig is this, written to a file) */
+	void PrintConfigText(std::string& out) const;
 	bool PrintConfig(char const * const configfilename) const;
 	bool ParseConfigFile(char const * const configfilename);
 	void ParseEnv(char ** envp);

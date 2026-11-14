@@ -159,10 +159,9 @@ bool IsShellIdle() {
 }
 
 /****************************************************************************
- * GetMapperFilePath, GetRunningProgram, GetRunningProgramPath
+ * GetRunningProgram, GetRunningProgramPath
  *
- * What the menu needs to know about the core: where the mapper's file is, and
- * which program is running (the environment block is read by dosprogram.cpp).
+ * What the menu needs to know about the core: which program is running (the environment block is read by dosprogram.cpp).
  ***************************************************************************/
 
 // The program's whole path as DOS recorded it in the environment block DOS_Execute writes; empty if it is not there
@@ -201,22 +200,6 @@ bool GetRunningProgramPath(char * path, size_t size)
 		return false;
 
 	safe_strncpy(path, full.c_str(), size);
-	return true;
-}
-
-bool GetMapperFilePath(char * path, size_t size)
-{
-	if(!path || size == 0)
-		return false;
-	path[0] = 0;
-
-	Section_prop * section = control ? static_cast<Section_prop *>(control->GetSection("sdl")) : NULL;
-	Prop_path * property = section ? section->Get_path("mapperfile") : NULL;
-
-	if(!property || property->realpath.empty())
-		return false;
-
-	safe_strncpy(path, property->realpath.c_str(), size);
 	return true;
 }
 

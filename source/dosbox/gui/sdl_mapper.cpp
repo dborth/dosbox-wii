@@ -2084,27 +2084,38 @@ void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char const
 	return ;
 }
 
+/* The binds as the mapper file holds them, one line per event, as text. Nothing is written: the menu keeps what it
+ * saves in memory until the user asks for it to be kept. */
+static void BindsText(std::string & out) {
+	char buf[128];
+	out.clear();
+	for (CEventVector_it event_it=events.begin();event_it!=events.end();event_it++) {
+		CEvent * event=*(event_it);
+		out+=event->GetName();
+		out+=' ';
+		for (CBindList_it bind_it=event->bindlist.begin();bind_it!=event->bindlist.end();bind_it++) {
+			CBind * bind=*(bind_it);
+			bind->ConfigName(buf);
+			bind->AddFlags(buf);
+			out+='"';
+			out+=buf;
+			out+="\" ";
+		}
+		out+='\n';
+	}
+}
+
 static bool SaveBindsFile(void) {
 	FILE * savefile=fopen(mapper.filename.c_str(),"wt+");
 	if (!savefile) {
 		LOG_MSG("Can't open %s for saving the mappings",mapper.filename.c_str());
 		return false;
 	}
-	char buf[128];
-	for (CEventVector_it event_it=events.begin();event_it!=events.end();event_it++) {
-		CEvent * event=*(event_it);
-		fprintf(savefile,"%s ",event->GetName());
-		for (CBindList_it bind_it=event->bindlist.begin();bind_it!=event->bindlist.end();bind_it++) {
-			CBind * bind=*(bind_it);
-			bind->ConfigName(buf);
-			bind->AddFlags(buf);
-			fprintf(savefile,"\"%s\" ",buf);
-		}
-		fprintf(savefile,"\n");
-	}
-	/* a full card makes fprintf fail part way, and fclose is where the rest is written */
-	const bool ok=!ferror(savefile) & (fclose(savefile)==0);
-	return ok;
+	std::string text;
+	BindsText(text);
+	/* a full card makes fwrite fail part way, and fclose is where the rest is written */
+	const bool written=fwrite(text.data(),1,text.size(),savefile)==text.size() && !ferror(savefile);
+	return (fclose(savefile)==0) && written;
 }
 static void MAPPER_SaveBinds(void) {
 	if (SaveBindsFile()) change_action_text("Mapper file saved.",CLR_WHITE);
@@ -2590,6 +2601,10 @@ void MAPPER_PadsResync(void) {
 
 bool MAPPER_SaveBindsNow(void) {
 	return SaveBindsFile();
+}
+
+void MAPPER_BindsText(std::string & out) {
+	BindsText(out);
 }
 
 void MAPPER_LosingFocus(void) {

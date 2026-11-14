@@ -147,8 +147,6 @@ class LiveMapper : public PadMapper
 
 		bool setEvent(int pad, int source, const char * event) override { return MAPPER_PadSetEvent(pad, source, event); }
 
-		bool save() override { return MAPPER_SaveBindsNow(); }
-
 		std::string joystickType() const override { return GetJoystickTypeName(); }
 
 		bool setJoystickType(const std::string& type) override { return Settings_SetJoystickType(type.c_str()); }
@@ -164,8 +162,7 @@ PadMapper& Mapper_Live()
 
 void Controls_JoystickTypeChanged()
 {
-	if(Mapper_MigrateJoystickBinds(Mapper_Live()))
-		Mapper_Live().save();
+	Mapper_MigrateJoystickBinds(Mapper_Live());
 }
 
 // ---- the program the DOS PSP says is running

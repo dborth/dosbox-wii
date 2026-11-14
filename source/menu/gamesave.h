@@ -55,24 +55,19 @@ class GameSaveHost
 
 		/** The DOSBox folder, without a trailing separator ("sd:/DOSBox"). Empty when there is no storage to use. */
 		virtual std::string dosboxDirectory() const = 0;
-		/** Makes a folder if it is not there (and its parent, not further). True when it exists afterwards. */
-		virtual bool makeDirectory(const std::string& path) = 0;
-		virtual bool exists(const std::string& path) const = 0;
-		/** The whole of a file. */
+		/** The whole of a file. False when it cannot be read, which is also how a file that is not there shows. */
 		virtual bool read(const std::string& path, std::string& text) const = 0;
-		/** Replaces a file with this text: the old one is kept until the new one is in place. */
+		/** Writes a file: the whole of it, once, in place. The folder is made if it is not there. */
 		virtual bool write(const std::string& path, const std::string& text) = 0;
-		/** Deletes a file. True when it is gone (a file that was not there counts). */
+		/** Deletes a file. False when it could not be (which includes a file that was not there). */
 		virtual bool erase(const std::string& path) = 0;
 
-		/** The running config as dosbox.conf would be written (Config::PrintConfig). False with a reason when it could not be had. */
+		/** The running config as dosbox.conf would be written (Config::PrintConfigText), made in memory. False with a reason when it could not be had. */
 		virtual bool runningConfig(std::string& text, std::string& error) = 0;
 		/** dosbox.conf: the file the games are layered over. Empty when there is none. */
 		virtual std::string baseConfig() const = 0;
-		/** Writes the mapper's binds to the mapper file DOSBox is using (MAPPER_SaveBindsNow). */
-		virtual bool saveMapper() = 0;
-		/** The mapper file DOSBox is using; empty when it is not known. */
-		virtual std::string mapperFile() const = 0;
+		/** The mapper's binds as a mapper file holds them (MAPPER_BindsText), made in memory. */
+		virtual bool mapperText(std::string& text) = 0;
 		/** The joystick type in effect ("4axis"); empty when not known. */
 		virtual std::string joystickType() const = 0;
 		/** The DOS path of the program running now, as DOS recorded it ("C:\GAMES\KEEN4\KEEN4E.EXE"); empty at the prompt. */
@@ -81,17 +76,15 @@ class GameSaveHost
 		virtual std::vector<GameDrive> drives() const = 0;
 };
 
-/** The files half of a GameSaveHost, over stdio: the folder, existence, reading and writing. Still abstract. */
+/** The files half of a GameSaveHost, over stdio: the folder, reading, writing and deleting. Still abstract. */
 class FileGameSaveHost : public GameSaveHost
 {
 	public:
 		explicit FileGameSaveHost(const std::string& folder = std::string()) : folderPath(folder) {}
 
 		std::string dosboxDirectory() const override { return folderPath; }
-		bool makeDirectory(const std::string& path) override;
-		bool exists(const std::string& path) const override;
 		bool read(const std::string& path, std::string& text) const override;
-		/** Writes path + ".tmp", then swaps it in keeping the old file as path + ".bak" until the swap is done (put back if it fails). */
+		/** One fopen, fwrite and fclose. When the file cannot be opened its folder is made (once) and the open is tried again. */
 		bool write(const std::string& path, const std::string& text) override;
 		bool erase(const std::string& path) override;
 
@@ -154,6 +147,7 @@ struct GameSaveResult
 	bool ok = false;
 	bool exists = false;		/**< Not saved because the file is there and a replace was not asked for */
 	std::string path;			/**< The conf (written, or the one that exists) */
+	std::string text;			/**< The conf as it was written, for the games list (Game_RecordFor); empty when nothing was */
 	std::string message;		/**< For the help line: what was written, or why not */
 };
 
@@ -163,6 +157,7 @@ struct GameSave
 	std::string path;			/**< The conf to write */
 	std::string title;			/**< "# title="; empty keeps the file's own (or its name) */
 	bool keepStartup = false;	/**< Keep the file's [autoexec] and "# program=" instead of working them out from what is running */
+	bool mustBeNew = false;		/**< Write nothing when the file is there already (result.exists) */
 };
 
 /**
@@ -173,7 +168,7 @@ struct GameSave
  */
 GameSaveResult Game_Save(GameSaveHost& host, const GameSave& what);
 
-/** A new game under a title: not saved when that name is taken (result.exists), so the caller can ask to replace it. */
+/** A new game under a title: not saved when that name is taken (result.exists, found by the read of it that a save makes anyway), so the caller can ask to replace it. */
 GameSaveResult Game_SaveNew(GameSaveHost& host, const std::string& title);
 
 /**
@@ -189,16 +184,18 @@ GameSaveResult Game_SaveReplace(GameSaveHost& host, const std::string& path, boo
  */
 GameSaveResult Game_Rename(GameSaveHost& host, const std::string& path, const std::string& title);
 /**
- * Deletes the game at `path`: its conf, and its map when the conf names a "<conf name>.map" beside it (a map under any
- * other name may be shared with another game, so it stays). The caller does not offer this for the game that is running.
+ * Deletes the game at `path`: its conf, and its map when `mapFile` (the conf's [sdl] mapperfile, GameRecord::mapFile)
+ * is "<conf name>.map" (a map under any other name may be shared with another game, so it stays). Two deletes, and
+ * nothing is read. `title` is for the message. The caller does not offer this for the game that is running.
  */
-GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path);
+GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path, const std::string& mapFile, const std::string& title);
 
 // ---- adding a found game
 
 /**
  * The conf a found game is added as: named after its folder ("WOLF3D.conf"), else after its title, else the folder with
- * a number (up to 9), in the Games folder; the first that is not taken. Empty when none is free or there is no storage.
+ * a number (up to 9), in the Games folder; the first that is not taken (a name is tried by opening it, so a taken one
+ * is only found when it is there). Empty when none is free or there is no storage.
  */
 std::string Game_FoundConfPath(const GameSaveHost& host, const FoundGame& found, const std::string& title);
 

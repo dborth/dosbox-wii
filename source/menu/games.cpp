@@ -149,6 +149,7 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 	out.program.clear();
 	out.programInferred = false;
 	out.ownControls = false;
+	out.mapFile.clear();
 	out.cycles.clear();
 	out.autoexec.clear();
 	out.folders.clear();
@@ -188,7 +189,10 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 		const std::string key = equals == std::string::npos ? std::string() : lower(trim(line.substr(0, equals)));
 		const std::string value = equals == std::string::npos ? std::string() : trim(line.substr(equals + 1));
 		if(section == "sdl" && key == "mapperfile")
+		{
+			out.mapFile = value;
 			out.ownControls = !value.empty() && lower(value).compare(0, 7, "mapper-") != 0;
+		}
 		else if(section == "cpu" && key == "cycles")
 			out.cycles = value;
 
@@ -586,6 +590,69 @@ GamesScan Games_ScanAll(const GamesHost& host)
 std::vector<GameRecord> Games_Scan(const GamesHost& host)
 {
 	return Games_ScanAll(host).games;
+}
+
+// ---- the list in memory
+
+GameRecord Game_RecordFor(const std::string& path, const std::string& directory, const std::string& text)
+{
+	GameRecord g;
+	const size_t slash = path.find_last_of("/\\");
+	const std::string file = slash == std::string::npos ? path : path.substr(slash + 1);
+	g.name = file.size() > 5 && endsWithNoCase(file, ".conf") ? file.substr(0, file.size() - 5) : file;
+	g.path = path;
+
+	if(!directory.empty() && path.size() > directory.size() + 1 && strncasecmp(path.c_str(), directory.c_str(), directory.size()) == 0 &&
+		path[directory.size()] == '/')
+	{
+		const std::string below = path.substr(directory.size() + 1);
+		const size_t end = below.find('/');
+		if(end != std::string::npos)
+			g.where = below.substr(0, end);
+	}
+
+	Game_ParseConf(text, g);
+	return g;
+}
+
+int Games_Find(const std::vector<GameRecord>& games, const std::string& path)
+{
+	for(size_t i = 0; i < games.size(); i++)
+		if(strcasecmp(games[i].path.c_str(), path.c_str()) == 0)
+			return (int)i;
+	return -1;
+}
+
+void Games_Put(std::vector<GameRecord>& games, const GameRecord& game)
+{
+	const int at = Games_Find(games, game.path);
+	if(at >= 0)
+		games.erase(games.begin() + at);
+	else if(games.size() >= GAMES_MAX)
+		return;
+	games.insert(std::upper_bound(games.begin(), games.end(), game, byTitle), game);
+}
+
+bool Games_Drop(std::vector<GameRecord>& games, const std::string& path)
+{
+	const int at = Games_Find(games, path);
+	if(at < 0)
+		return false;
+	games.erase(games.begin() + at);
+	return true;
+}
+
+bool Found_Drop(std::vector<FoundGame>& found, const std::string& folder)
+{
+	for(size_t i = 0; i < found.size(); i++)
+	{
+		if(strcasecmp(found[i].folder.c_str(), folder.c_str()) == 0)
+		{
+			found.erase(found.begin() + i);
+			return true;
+		}
+	}
+	return false;
 }
 
 // ---- FileGamesHost

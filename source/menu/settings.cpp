@@ -28,6 +28,7 @@
 #include "control.h"
 #include "settings.h"
 #include "gamesave.h"
+#include "gameslive.h"
 #include "controlslive.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
@@ -1786,6 +1787,7 @@ bool Settings_Save(char * message, size_t size)
 	{
 		const GameSaveResult r = Game_SaveActive(GameSave_Live(), game);
 
+		Games_Saved(r);
 		snprintf(message, size, "%s", r.message.c_str());
 		return r.ok;
 	}
@@ -1799,12 +1801,19 @@ bool Settings_Save(char * message, size_t size)
 		return false;
 	}
 
+	// The controls are kept in memory until now. With no game they belong to the mapper file DOSBox is using
+	// (a game's own map is written with the game).
+	const bool controls = MAPPER_SaveBindsNow();
+
 	struct stat st;
 	const std::string bak = path + ".bak";
+	const bool kept = stat(bak.c_str(), &st) == 0;
 
-	if(stat(bak.c_str(), &st) == 0)
-		snprintf(message, size, "Saved %s. The file it replaced is kept as %s.bak.", path.c_str(), BaseName(path));
+	if(!controls)
+		snprintf(message, size, "Saved %s, but the controls could not be saved.", path.c_str());
+	else if(kept)
+		snprintf(message, size, "Saved %s and the controls. The file it replaced is kept as %s.bak.", path.c_str(), BaseName(path));
 	else
-		snprintf(message, size, "Saved %s.", path.c_str());
-	return true;
+		snprintf(message, size, "Saved %s and the controls.", path.c_str());
+	return controls;
 }

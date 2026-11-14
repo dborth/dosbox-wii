@@ -12,6 +12,7 @@
 #define _GAMESLIVE_H_
 
 #include "games.h"
+#include "gamesave.h"
 #include "drivers/ThreadDriver.h"
 #include "drivers/Thread.h"
 
@@ -21,7 +22,7 @@ GamesHost& Games_Live();
 class GamesScanner
 {
 	public:
-		GamesScanner() : finished(false), scanned(false) {}
+		GamesScanner() : finished(false), stale(false), scanned(false) {}
 
 		/** Starts a scan unless one is running. If no thread can be made it scans here and now (the result is ready at the next poll()). */
 		void start();
@@ -35,16 +36,26 @@ class GamesScanner
 		const std::vector<FoundGame>& found() const { return currentFound; }
 		/** Whether a scan has finished since the app started, even if it found nothing. */
 		bool scannedOnce() const { return scanned; }
+		/**
+		 * What the menu itself writes or deletes goes into the list as it happens, so the card is not read again to see it.
+		 * A scan running at the time may have listed the card before the change: its result is thrown away and the scan
+		 * runs again (poll() does that), so it can never put back what was just deleted.
+		 */
+		void put(const GameRecord& game);
+		void drop(const std::string& path);
+		void dropFound(const std::string& folder);
 		/** Stops waiting for a running scan (joins it; a scan is short and cannot be cut off mid-listing). For shutting down. */
 		void finish();
 
 	private:
+		void edited();
 		static void * Main(void * self);
 
 		Thread worker;
 		Mutex lock;
 		std::vector<GameRecord> pending;	// the worker's result, until poll() takes it
 		bool finished;				// the worker is done (under lock)
+		bool stale;					// the list was edited since the running scan began (main thread only)
 		std::vector<FoundGame> pendingFound;
 		std::vector<GameRecord> current;
 		std::vector<FoundGame> currentFound;
@@ -52,5 +63,10 @@ class GamesScanner
 };
 
 GamesScanner& Games_Scanner();
+
+/** A save, rename or add went through (r.ok): the game goes into the list as the conf says it is now. Nothing is read. */
+void Games_Saved(const GameSaveResult& r);
+/** A game's conf was deleted: it goes out of the list. */
+void Games_Deleted(const std::string& path);
 
 #endif

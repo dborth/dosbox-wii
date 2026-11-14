@@ -31,8 +31,6 @@ class PadMapper
 		virtual std::vector<std::string> events(int pad, int source) const = 0;
 		/** Makes a source do one thing: whatever it did is let go and removed, then it is bound to the event ("" binds nothing). False when it could not. */
 		virtual bool setEvent(int pad, int source, const char * event) = 0;
-		/** Writes the mapper file. */
-		virtual bool save() = 0;
 		/** The joystick type in effect: none, 2axis, 4axis, 4axis_2, fcs or ch. */
 		virtual std::string joystickType() const = 0;
 		/**
@@ -111,9 +109,6 @@ class MapperControlsModel : public ControlsModel
 		/** Forgets what was known of the running DOSBox (the preset each player was taken to start from, the type last seen): for a DOSBox that has restarted. */
 		void forget();
 
-		/** Whether the last change could not be written to the mapper file (it is in effect, but lost when DOSBox closes). */
-		bool saveFailed() const { return failedSave; }
-
 	private:
 		static bool validPlayer(int player) { return player >= 0 && player < 4; }
 		/** What the mapper has on a button now (Not assigned for a bind the catalogs cannot hold). */
@@ -123,8 +118,6 @@ class MapperControlsModel : public ControlsModel
 		bool write(int player, int control, const BindingTarget& target);
 		bool writePreset(int player, int preset);
 		int differences(int player, int preset) const;
-		/** After a change: writes the mapper file, and notes when that failed. */
-		void saved();
 		ControlsHardware& hw;
 		PadMapper& mapper;
 		std::function<std::string()> program;
@@ -133,7 +126,6 @@ class MapperControlsModel : public ControlsModel
 
 		mutable int presetOf[4];
 		mutable std::string seenType;
-		bool failedSave;
 };
 
 #endif

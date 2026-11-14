@@ -8,6 +8,8 @@
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <type_traits>
+#include <utility>
 #include <map>
 #include <set>
 #include <sstream>
@@ -70,7 +72,6 @@ class FakeMapper : public PadMapper
 				for(int s = 0; s < PAD_SOURCE_COUNT; s++)
 					padBinds[p][s].clear();
 			log.clear();
-			saves = 0;
 			setType(t);
 		}
 
@@ -145,7 +146,6 @@ class FakeMapper : public PadMapper
 			return true;
 		}
 
-		bool save() override { saves++; if(onSave) onSave(); return saveWorks; }
 		bool setJoystickType(const std::string& t) override
 		{
 			static const char * const known[] = { "none", "2axis", "4axis", "4axis_2", "fcs", "ch" };
@@ -164,9 +164,6 @@ class FakeMapper : public PadMapper
 		std::string type;
 		std::vector<std::string> padBinds[4][PAD_SOURCE_COUNT], stickBinds[4][PAD_SOURCE_COUNT];
 		std::vector<std::string> log;
-		int saves = 0;
-		bool saveWorks = true;
-		std::function<void()> onSave;	// what writing the mapper file does: the test points it at the fake file
 
 	private:
 		static const std::string& mapperSource() { static const std::string s = readFile("dosbox/gui/sdl_mapper.cpp"); return s; }
@@ -308,7 +305,7 @@ static void testShippedState()
 		// untouched, the buttons are Compatible and nothing is "modified"
 		CHECK(r.model.currentPreset(0) == PRESET_COMPATIBLE);
 		CHECK(!r.model.modified(0));
-		CHECK(r.mapper.saves == 0 && r.mapper.log.empty());				// reading changes nothing
+		CHECK(r.mapper.log.empty());											// reading changes nothing
 	}
 	{
 		Rig r("2axis");
@@ -344,14 +341,13 @@ static void testSetBinding()
 	Rig r("4axis");
 	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
 	CHECK(r.mapper.log.size() == 1 && r.mapper.log[0] == "0:0=key_lctrl");		// player 1, source 0 (A)
-	CHECK(r.mapper.saves == 1);												// written to the mapper file at once
 	CHECK(r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));
 	CHECK(r.mapper.events(0, 0).size() == 1);								// the shipped joystick bind on that source went with it
 	CHECK(r.model.modified(0));
 
 	// setting what it already is changes nothing and writes nothing
 	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
-	CHECK(r.mapper.log.size() == 1 && r.mapper.saves == 1);
+	CHECK(r.mapper.log.size() == 1);
 
 	// a key, the mouse and a hotkey, on the buttons they were asked for
 	r.model.setBinding(0, INPUT_TRIGGER_L, BindingTarget(TARGET::MOUSE, 1));
@@ -402,7 +398,7 @@ static void testJoystickLimit()
 		const size_t before = r.mapper.log.size();
 		r.model.setBinding(0, INPUT_TRIGGER_L, joy(2));
 		r.model.setBinding(1, INPUT_TRIGGER_L, joy(3));
-		CHECK(r.mapper.log.size() == before && r.mapper.saves == 0);
+		CHECK(r.mapper.log.size() == before);
 		CHECK(r.model.binding(0, INPUT_TRIGGER_L).kind == TARGET::NONE);
 		r.model.setBinding(1, INPUT_TRIGGER_L, joy(1));
 		CHECK(r.model.binding(1, INPUT_TRIGGER_L) == joy(1));
@@ -436,7 +432,6 @@ static void testPresets()
 	Rig r("4axis");
 	r.model.applyPreset(0, PRESET_ARROWS);
 	CHECK(r.model.currentPreset(0) == PRESET_ARROWS);
-	CHECK(r.mapper.saves == 1);
 	// every button of player 1 has what the preset says, and no other player was touched
 	for(int s = 0; s < PAD_SOURCE_COUNT; s++)
 	{
@@ -460,9 +455,8 @@ static void testPresets()
 
 	// reset with nothing changed writes nothing
 	const size_t n = r.mapper.log.size();
-	const int saves = r.mapper.saves;
 	r.model.resetBindings(0);
-	CHECK(r.mapper.log.size() == n && r.mapper.saves == saves);
+	CHECK(r.mapper.log.size() == n);
 
 	// applying a preset replaces edits
 	r.model.applyPreset(1, PRESET_SHOOTER);
@@ -547,25 +541,25 @@ static void testSuggestions()
 		CHECK(t.kind != TARGET::JOYSTICK);
 }
 
-// ---- saving
+// ---- nothing here writes a file
+
+// The model can only change the mapper in memory: PadMapper has no way to write the mapper file. Controls are kept
+// when the user presses Save (the games save writes them with the game; Settings > Save writes the shared file).
+template<class T, class = void> struct CanSave : std::false_type {};
+template<class T> struct CanSave<T, decltype(std::declval<T&>().save(), void())> : std::true_type {};
+static_assert(!CanSave<PadMapper>::value, "PadMapper must not offer a way to write the mapper file");
 
 static void testSaving()
 {
 	Rig r("4axis");
-	r.mapper.saveWorks = false;
 	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
-	CHECK(r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));				// in effect
-	CHECK(r.model.saveFailed());										// but the model says it was not kept
-	r.mapper.saveWorks = true;
-	r.model.setBinding(0, INPUT_BTN_B, key("LAlt"));
-	CHECK(!r.model.saveFailed());
+	CHECK(r.model.binding(0, INPUT_BTN_A) == key("LCtrl"));				// in effect, in the mapper, at once
 
 	// a change the mapper refuses (no pad group yet) is not reported as a change
 	Rig q("4axis");
 	struct Refusing : FakeMapper { bool setEvent(int, int, const char *) override { return false; } } refusing;
 	MapperControlsModel m(q.hw, refusing);
 	m.setBinding(0, INPUT_BTN_A, key("LCtrl"));
-	CHECK(refusing.saves == 0);
 	CHECK(m.binding(0, INPUT_BTN_A) == joy(0));
 }
 
@@ -607,11 +601,10 @@ static void testEmulatedMode()
 	CHECK(r.model.joystickButtons(0) == 4 && r.model.joystickAxes(0) == 4);
 
 	// an out of range index, or the mode already in effect, changes nothing
-	const int saves = r.mapper.saves;
 	r.model.setEmulated(0);
 	r.model.setEmulated(9);
 	r.model.setEmulated(-1);
-	CHECK(r.model.currentEmulated() == 0 && r.mapper.saves == saves);
+	CHECK(r.model.currentEmulated() == 0);
 
 	// a type the mapper refuses leaves the mode as it was
 	class Refuser : public FakeMapper { public: bool setJoystickType(const std::string&) override { return false; } };
@@ -619,7 +612,7 @@ static void testEmulatedMode()
 	Refuser refuser;
 	MapperControlsModel m(hw, refuser);
 	m.setEmulated(1);
-	CHECK(m.currentEmulated() == 0 && refuser.saves == 0);
+	CHECK(m.currentEmulated() == 0);
 }
 
 static void testAdvancedTypes()
@@ -666,7 +659,6 @@ static void testMigrateBinds()
 	// player 1's bind would now fire player 2's joystick: removed
 	CHECK(r.model.binding(0, INPUT_BTN_B) == BindingTarget());
 	CHECK(r.model.binding(0, INPUT_BTN_X) == key("LCtrl"));			// keys are not touched
-	CHECK(r.mapper.saves > 0);
 	// nothing left to move
 	CHECK(!Mapper_MigrateJoystickBinds(r.mapper));
 
@@ -731,30 +723,23 @@ static void testRunningProgram()
 	CHECK(m.runningProgram().empty());
 }
 
-// every change goes to the mapper file in use, whichever file that is: there is no file the model keeps its hands off
-static void testWritesThrough()
+// every change is one change to the mapper, made when it is asked for; the same value again, or a reset with nothing edited, does nothing
+static void testEditsAreInMemory()
 {
 	Rig r("4axis");
-	int saves = r.mapper.saves;
+	const size_t n = r.mapper.log.size();
 	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));
-	CHECK(r.mapper.saves == saves + 1);
+	CHECK(r.mapper.log.size() == n + 1);
 	r.model.setBinding(0, INPUT_BTN_A, key("LCtrl"));							// the same value again changes nothing
-	CHECK(r.mapper.saves == saves + 1);
-	r.model.applyPreset(0, PRESET_ARROWS);
-	CHECK(r.mapper.saves == saves + 2);
+	CHECK(r.mapper.log.size() == n + 1);
 	r.model.setBinding(0, INPUT_BTN_B, key("F7"));
 	r.model.resetBindings(0);
-	CHECK(r.mapper.saves == saves + 4 && !r.model.saveFailed());
-	r.mapper.saveWorks = false;
-	r.model.setBinding(0, INPUT_BTN_X, key("F8"));
-	CHECK(r.model.saveFailed());
-	r.mapper.saveWorks = true;
-	r.model.setBinding(0, INPUT_BTN_Y, key("F9"));
-	CHECK(!r.model.saveFailed());
+	CHECK(r.model.binding(0, INPUT_BTN_A) == r.model.defaultBinding(0, INPUT_BTN_A));
+	CHECK(!r.model.modified(0));
 
 	// a DOSBox that restarted has a new mapper: what was cached about the old one is dropped
 	r.model.forget();
-	CHECK(!r.model.saveFailed());
+	CHECK(!r.model.modified(0));
 }
 
 // ---- players come from the hardware and the joystick type in effect
@@ -837,7 +822,7 @@ int main()
 	testAdvancedTypes();
 	testMigrateBinds();
 	testPresetFollowsType();
-	testWritesThrough();
+	testEditsAreInMemory();
 	testPlayers();
 	testInstall();
 	testRunningProgram();

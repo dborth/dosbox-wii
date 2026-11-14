@@ -52,8 +52,7 @@ bool ConfigSave(const char * path, std::string * error);
 
 /**
  * The running config as ConfigSave() would write it, as text: for a game conf, which is that text with a few things
- * changed (menu/gamesave.h). Goes through a temporary file next to the config, as PrintConfig() only writes to files,
- * and has the same completeness check.
+ * changed (menu/gamesave.h). Made in memory: no file is touched.
  *
  * @param text   the config; left as it was on failure
  * @param error  on failure, one line saying why. May be NULL.

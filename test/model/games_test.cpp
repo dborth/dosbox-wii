@@ -72,6 +72,7 @@ static void testParse()
 	t.name = "t";
 	Game_ParseConf("[sdl]\nmapperfile=KEEN4E.map\n[cpu]\ncycles=fixed 6000\n", t);
 	CHECK(t.ownControls);
+	CHECK_EQ(t.mapFile, "KEEN4E.map");		// as written: what deleting the game needs to find its map
 	CHECK_EQ(t.cycles, "fixed 6000");
 	CHECK_EQ(Game_CyclesTag(t.cycles), "6000 cycles");
 	// the shared mapper file is nobody's own; auto says nothing; a game with neither says nothing
@@ -79,6 +80,7 @@ static void testParse()
 	u.name = "u";
 	Game_ParseConf("[sdl]\nmapperfile=mapper-2.0.map\n[cpu]\ncycles=auto\n", u);
 	CHECK(!u.ownControls);
+	CHECK_EQ(u.mapFile, "mapper-2.0.map");
 	CHECK_EQ(Game_CyclesTag(u.cycles), "");
 	GameRecord v;
 	v.name = "v";
@@ -93,6 +95,7 @@ static void testParse()
 	w.name = "w";
 	Game_ParseConf("[render]\nmapperfile=x.map\ncycles=fixed 1\n", w);
 	CHECK(!w.ownControls);
+	CHECK(w.mapFile.empty());
 	CHECK(w.cycles.empty());
 
 	// a comment says the program, and wins over the autoexec
@@ -341,6 +344,79 @@ static std::string join(const std::vector<std::string>& v, const char * sep = ",
 	return s;
 }
 
+// ---- the list in memory
+
+static std::string summary(const std::vector<GameRecord>& g)
+{
+	std::string s;
+	for(size_t i = 0; i < g.size(); i++)
+		s += g[i].path + "|" + g[i].title + "|" + g[i].where + "|" + g[i].mapFile + "|" + g[i].program + ";";
+	return s;
+}
+
+static void testList()
+{
+	FakeHost card;
+	card.add("sd:/DOSBox/Games/keen.conf", "# title=Keen\n[sdl]\nmapperfile=keen.map\n");
+	card.add("sd:/DOSBox/Games/keen.map");
+	card.add("sd:/DOSBox/Games/doom.conf", "# title=Doom\n");
+	card.add("sd:/DOSBox/Games/wolf.conf", "# title=Wolf\n[autoexec]\nwolf.exe\n");
+	GamesScan live = Games_ScanAll(card);
+	CHECK_N(live.games.size(), 3);
+
+	// what the menu does to the card is done to the list as well: afterwards the list is what a scan would find
+	// a game saved
+	const std::string abe = "# title=Abe\n# program=ABE.EXE\n[sdl]\nmapperfile=abe.map\n";
+	Games_Put(live.games, Game_RecordFor("sd:/DOSBox/Games/abe.conf", "sd:/DOSBox", abe));
+	card.add("sd:/DOSBox/Games/abe.conf", abe);
+	// a game renamed: it is the same game (the same path) under another title, and sorts somewhere else
+	const std::string zork = "# title=Zork\n[autoexec]\nwolf.exe\n";
+	Games_Put(live.games, Game_RecordFor("sd:/DOSBox/Games/wolf.conf", "sd:/DOSBox", zork));
+	card.add("sd:/DOSBox/Games/wolf.conf", zork);
+	CHECK_N(live.games.size(), 4);						// replaced, not added twice
+	// a game deleted: found by its path however the card spells it
+	CHECK_N(Games_Find(live.games, "sd:/DOSBox/GAMES/DOOM.CONF"), 1);
+	CHECK(Games_Drop(live.games, "sd:/DOSBox/GAMES/DOOM.CONF"));
+	card.files.erase("sd:/DOSBox/Games/doom.conf");
+	CHECK(!Games_Drop(live.games, "sd:/DOSBox/Games/doom.conf"));	// it is gone: nothing more to take out
+	CHECK_N(Games_Find(live.games, "sd:/DOSBox/Games/doom.conf"), -1);
+
+	CHECK_EQ(summary(live.games), summary(Games_Scan(card)));
+	CHECK_EQ(live.games[0].title, "Abe");
+	CHECK_EQ(live.games[2].title, "Zork");
+
+	// the record a save makes
+	const GameRecord r = Game_RecordFor("sd:/DOSBox/Games/abe.conf", "sd:/DOSBox", abe);
+	CHECK_EQ(r.name, "abe");
+	CHECK_EQ(r.where, "Games");
+	CHECK_EQ(r.mapFile, "abe.map");
+	CHECK(r.ownControls);
+	// in the DOSBox folder itself there is no folder below it; somewhere not under it is not under anything
+	CHECK(Game_RecordFor("sd:/DOSBox/x.conf", "sd:/DOSBox", "").where.empty());
+	CHECK(Game_RecordFor("usb1:/other/x.conf", "sd:/DOSBox", "").where.empty());
+	CHECK_EQ(Game_RecordFor("sd:/DOSBox/x.conf", "sd:/DOSBox", "").title, "x");
+
+	// a full list takes no new game, but a game in it can still change
+	std::vector<GameRecord> full;
+	for(int i = 0; i < GAMES_MAX; i++)
+		Games_Put(full, Game_RecordFor("sd:/DOSBox/Games/g" + std::to_string(1000 + i) + ".conf", "sd:/DOSBox", ""));
+	CHECK_N(full.size(), GAMES_MAX);
+	Games_Put(full, Game_RecordFor("sd:/DOSBox/Games/extra.conf", "sd:/DOSBox", ""));
+	CHECK_N(full.size(), GAMES_MAX);
+	Games_Put(full, Game_RecordFor("sd:/DOSBox/Games/g1000.conf", "sd:/DOSBox", "# title=Changed\n"));
+	CHECK_N(full.size(), GAMES_MAX);
+	CHECK_EQ(full[(size_t)Games_Find(full, "sd:/DOSBox/Games/g1000.conf")].title, "Changed");
+
+	// a found folder that became a game goes out of that list
+	std::vector<FoundGame> found(2);
+	found[0].folder = "WOLF3D";
+	found[1].folder = "KEEN";
+	CHECK(Found_Drop(found, "wolf3d"));						// the card's names are not case sensitive
+	CHECK_N(found.size(), 1);
+	CHECK_EQ(found[0].folder, "KEEN");
+	CHECK(!Found_Drop(found, "WOLF3D"));
+}
+
 static void testNames()
 {
 	CHECK(Game_IsDosName("WOLF3D"));
@@ -579,6 +655,7 @@ int main()
 	testInfer();
 	testParse();
 	testScan();
+	testList();
 	testNames();
 	testFolders();
 	testRank();

@@ -80,6 +80,7 @@ class GamesList
 			bool running;		/**< For ASK_REPLACE and ASK_LAUNCH: it is the game DOSBox is running (its startup is kept; it is not deleted) */
 			bool game;		/**< For ASK_LAUNCH: it is a game, which can be renamed and deleted (not plain DOSBox) */
 			std::string title;	/**< For ASK_LAUNCH of a game: its title, as the Games list shows it */
+		std::string map;	/**< For ASK_LAUNCH of a game: its conf's [sdl] mapperfile as written (what Game_Delete needs); empty when it has none */
 			FoundGame found;	/**< For ADD_FOUND: the folder to add */
 			Click() : what(NOTHING), running(false), game(false) {}
 		};

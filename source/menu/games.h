@@ -75,6 +75,7 @@ struct GameRecord
 	std::string program;			/**< "KEEN4E.EXE" (as written, upper case): "# program=", else what [autoexec] runs; empty when neither says */
 	bool programInferred;			/**< program came from [autoexec], not from a comment */
 	bool ownControls;			/**< [sdl] mapperfile names a map of its own (not the shared mapper-<version>.map) */
+	std::string mapFile;			/**< [sdl] mapperfile as written ("keen.map"); empty when the conf does not say */
 	std::string cycles;			/**< [cpu] cycles as written ("fixed 6000", "max"); empty when the conf does not say */
 	std::string path;			/**< The whole path, which is what SetGameConf() takes ("sd:/DOSBox/Games/keen.conf") */
 	std::string where;			/**< The folder below the DOSBox folder it was found in; empty for the DOSBox folder itself ("Games", "GAMES") */
@@ -151,5 +152,27 @@ GamesScan Games_ScanAll(const GamesHost& host);
 
 /** Every game under the host's folder, by title ignoring case, then path. Empty when there is no storage. */
 std::vector<GameRecord> Games_Scan(const GamesHost& host);
+
+// ---- the list in memory
+// The games list is what the menu shows and edits: a scan fills it, and what the menu writes or deletes is put in it
+// (or taken out) as it happens, so the card is not read again to see what the menu itself just did.
+
+/**
+ * The record a conf's text makes, as a scan would make it from the file. `directory` is the DOSBox folder, which
+ * gives `where` (the folder below it that the conf is in, empty when it is in the DOSBox folder itself).
+ */
+GameRecord Game_RecordFor(const std::string& path, const std::string& directory, const std::string& text);
+
+/** The place of the game whose conf is `path` (compared ignoring case, as a card's names are), or -1. */
+int Games_Find(const std::vector<GameRecord>& games, const std::string& path);
+
+/** Puts a game in its place by title (then path), replacing the one with its path. Not added when the list is full (GAMES_MAX). */
+void Games_Put(std::vector<GameRecord>& games, const GameRecord& game);
+
+/** Takes the game whose conf is `path` out of the list. False when it was not there. */
+bool Games_Drop(std::vector<GameRecord>& games, const std::string& path);
+
+/** Takes a found folder out of the list (it is a game now). False when it was not there. */
+bool Found_Drop(std::vector<FoundGame>& found, const std::string& folder);
 
 #endif

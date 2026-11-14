@@ -11,6 +11,7 @@
 #define _DOSBOXSUPPORT_H_
 
 #include <stddef.h>
+#include <string>
 
 //! Reads the config and runs DOSBox until the user exits it. The platform
 //! and GUI must already be up. Returns when DOSBox has shut down.
@@ -112,12 +113,6 @@ struct EmulationStatus
 //! things are). Never NULL.
 const char * GetJoystickTypeName(void);
 
-//! The mapper file the core is using: [sdl] mapperfile as the mapper resolved it
-//! at start (the path MAPPER_SaveBindsNow() writes). False when it cannot be
-//! told. Read from the config property, so it is right unless that was changed
-//! with CONFIG -set after start, which the mapper does not follow either.
-bool GetMapperFilePath(char * path, size_t size);
-
 //! The DOS program running now, as DOS recorded it when it was started: the
 //! file name with its extension ("KEEN4E.EXE", read from the environment block
 //! DOS_Execute writes), or just the short name the MCB keeps ("KEEN4E") when
@@ -164,6 +159,7 @@ bool MAPPER_EventExists(const char * name);
 int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
 bool MAPPER_PadSetEvent(int pad, int source, const char * event);
 bool MAPPER_SaveBindsNow(void);
+void MAPPER_BindsText(std::string & out);
 void MAPPER_RebuildJoysticks(void);
 void MAPPER_PadsResync(void);
 

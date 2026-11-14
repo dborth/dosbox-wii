@@ -359,6 +359,7 @@ GamesList::Click GamesList::click(int row)
 		const std::string& program = g.program;
 		c.game = true;
 		c.title = g.title;
+		c.map = g.mapFile;
 		c.running = isCurrent(g);
 		if(c.running)
 			c.message = "Restart " + fit(name, 20) + "?";	// it is already loaded: all that is left is to start it again

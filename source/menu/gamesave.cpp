@@ -7,7 +7,6 @@
 #include "games.h"
 #include <algorithm>
 #include <ctype.h>
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -438,44 +437,6 @@ GameStartup Game_BuildStartup(const std::string& dosboxDirectory, const std::vec
 
 // ---- the files half of a host
 
-namespace {
-
-bool isDirectory(const std::string& path)
-{
-	struct stat st;
-	return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-}
-
-} // namespace
-
-bool FileGameSaveHost::makeDirectory(const std::string& dir)
-{
-	if(dir.empty())
-		return false;
-	if(isDirectory(dir))
-		return true;
-	mkdir(dir.c_str(), 0777);
-	if(!isDirectory(dir))
-	{
-		// the parent may be missing (the DOSBox folder is made with the config, so normally it is not)
-		const size_t slash = dir.find_last_of('/');
-		if(slash != std::string::npos && slash > 0)
-		{
-			const std::string parent = dir.substr(0, slash);
-			if(parent[parent.size() - 1] != ':' && !isDirectory(parent))
-				mkdir(parent.c_str(), 0777);
-			mkdir(dir.c_str(), 0777);
-		}
-	}
-	return isDirectory(dir);
-}
-
-bool FileGameSaveHost::exists(const std::string& path) const
-{
-	struct stat st;
-	return stat(path.c_str(), &st) == 0;
-}
-
 bool FileGameSaveHost::read(const std::string& path, std::string& text) const
 {
 	FILE * f = fopen(path.c_str(), "rb");
@@ -495,45 +456,26 @@ bool FileGameSaveHost::read(const std::string& path, std::string& text) const
 
 bool FileGameSaveHost::erase(const std::string& path)
 {
-	return remove(path.c_str()) == 0 || !exists(path);
+	return remove(path.c_str()) == 0;
 }
 
 bool FileGameSaveHost::write(const std::string& path, const std::string& text)
 {
-	const std::string tmp = path + ".tmp", bak = path + ".bak";
-	remove(tmp.c_str());	// left by a write that was cut short
-
-	FILE * f = fopen(tmp.c_str(), "wb");
+	FILE * f = fopen(path.c_str(), "wb");
 	if(!f)
-		return false;
+	{
+		// the folder may not be there yet (the first game saved): make it, once, and try once more
+		const size_t slash = path.find_last_of('/');
+		if(slash == std::string::npos || slash == 0)
+			return false;
+		mkdir(path.substr(0, slash).c_str(), 0777);
+		f = fopen(path.c_str(), "wb");
+		if(!f)
+			return false;
+	}
 	// a full card makes fwrite fail part way, and fclose is where the rest is written
 	const bool written = fwrite(text.data(), 1, text.size(), f) == text.size() && !ferror(f);
-	if(fclose(f) != 0 || !written)
-	{
-		remove(tmp.c_str());
-		return false;
-	}
-
-	const bool replacing = exists(path);
-	if(replacing)
-	{
-		remove(bak.c_str());
-		if(rename(path.c_str(), bak.c_str()) != 0)
-		{
-			remove(tmp.c_str());
-			return false;
-		}
-	}
-	if(rename(tmp.c_str(), path.c_str()) != 0)
-	{
-		if(replacing)
-			rename(bak.c_str(), path.c_str());	// put the old one back
-		remove(tmp.c_str());
-		return false;
-	}
-	if(replacing)
-		remove(bak.c_str());
-	return true;
+	return fclose(f) == 0 && written;
 }
 
 // ---- saving
@@ -589,26 +531,32 @@ GameSaveResult Game_Save(GameSaveHost& host, const GameSave& what)
 
 	const std::string dir = folderOf(path);
 	const std::string name = stemOf(fileOf(path));
-	if(dir.empty() || name.empty() || !host.makeDirectory(dir))
-		return fail(path, "Could not make the folder " + dir + ".");
+	if(dir.empty() || name.empty())
+		return fail(path, "There is nowhere to save it.");
+
+	// the conf as it is now, if it is there: what a replace keeps of it, and the answer to "is the name taken"
+	std::string existing;
+	const bool had = host.read(path, existing);
+	if(had && what.mustBeNew)
+	{
+		GameSaveResult r;
+		r.exists = true;
+		r.path = path;
+		r.message = fileOf(path) + " already exists.";
+		return r;
+	}
 
 	std::string text, error;
 	if(!host.runningConfig(text, error))
 		return fail(path, error.empty() ? "The running config could not be read." : error);
 
-	std::string existing;
-	const bool had = host.exists(path) && host.read(path, existing);
-
 	// the map first: a save cut short never leaves a conf with no map
 	const std::string mapName = name + ".map";
 	const std::string mapPath = dir + "/" + mapName;
-	if(!host.saveMapper())
-		return fail(path, "The mapper file could not be written.");
-	const std::string inUse = host.mapperFile();
 	std::string map;
-	if(inUse.empty() || !host.read(inUse, map))
-		return fail(path, "The mapper file could not be read.");
-	if(!samePath(inUse, mapPath) && !host.write(mapPath, map))
+	if(!host.mapperText(map))
+		return fail(path, "The controls could not be read.");
+	if(!host.write(mapPath, map))
 		return fail(path, "Could not write " + mapName + ".");
 
 	text = Conf_SetValue(text, "sdl", "mapperfile", mapName);
@@ -660,6 +608,7 @@ GameSaveResult Game_Save(GameSaveHost& host, const GameSave& what)
 	GameSaveResult r;
 	r.ok = true;
 	r.path = path;
+	r.text = text;
 	r.message = "Saved " + fileOf(path) + " and " + mapName + ". dosbox.conf was not changed.";
 	if(!notes.empty())
 		r.message += " " + notes[0] + ".";
@@ -696,49 +645,34 @@ GameSaveResult Game_Rename(GameSaveHost& host, const std::string& path, const st
 	std::string text;
 	if(!host.read(path, text))
 		return fail(path, "Could not read " + fileOf(path) + ".");
-	if(!host.write(path, Conf_SetTitle(text, title)))
+	const std::string renamed = Conf_SetTitle(text, title);
+	if(!host.write(path, renamed))
 		return fail(path, "Could not write " + fileOf(path) + ".");
 
 	GameSaveResult r;
 	r.ok = true;
 	r.path = path;
+	r.text = renamed;
 	r.message = "Renamed to " + title + ".";
 	return r;
 }
 
-GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path)
+GameSaveResult Game_Delete(GameSaveHost& host, const std::string& path, const std::string& mapFile, const std::string& title)
 {
-	std::string text;
-	if(!host.read(path, text))
-		return fail(path, "Could not find " + fileOf(path) + ".");
-
-	std::string stem = fileOf(path);
-	if(stem.size() > 5 && lower(stem.substr(stem.size() - 5)) == ".conf")
-		stem.resize(stem.size() - 5);
-	const std::string title = commentValue(text, "title").empty() ? stem : commentValue(text, "title");
-
-	// its own map: the one the conf names, when that is <name>.map beside it
-	std::string mapPath;
-	const std::vector<std::string> sdl = Conf_SectionLines(text, "sdl");
-	for(size_t i = 0; i < sdl.size(); i++)
-	{
-		const size_t eq = sdl[i].find('=');
-		if(eq != std::string::npos && lower(trim(sdl[i].substr(0, eq))) == "mapperfile" &&
-			lower(trim(sdl[i].substr(eq + 1))) == lower(stem + ".map"))
-			mapPath = folderOf(path) + "/" + trim(sdl[i].substr(eq + 1));
-	}
+	const std::string stem = stemOf(fileOf(path));
 
 	// the conf goes first: a game with no conf is not a game, and a map with nothing pointing at it is only clutter
 	if(!host.erase(path))
-		return fail(path, "Could not delete " + fileOf(path) + ".");
-	if(!mapPath.empty())
-		host.erase(mapPath);
-	host.erase(path + ".bak");
+		return fail(path, "Could not delete " + fileOf(path) + ". Rescan if it is gone already.");
+
+	// its own map: the one the conf names, when that is <name>.map beside it
+	if(!mapFile.empty() && lower(mapFile) == lower(stem + ".map"))
+		host.erase(folderOf(path) + "/" + mapFile);
 
 	GameSaveResult r;
 	r.ok = true;
 	r.path = path;
-	r.message = "Deleted " + title + ".";
+	r.message = "Deleted " + (title.empty() ? stem : title) + ".";
 	return r;
 }
 
@@ -748,18 +682,10 @@ GameSaveResult Game_SaveNew(GameSaveHost& host, const std::string& title)
 	if(path.empty())
 		return fail(path, "That name can't be used.");
 
-	if(host.exists(path))
-	{
-		GameSaveResult r;
-		r.exists = true;
-		r.path = path;
-		r.message = fileOf(path) + " already exists.";
-		return r;
-	}
-
 	GameSave what;
 	what.path = path;
 	what.title = trim(title);
+	what.mustBeNew = true;
 	return Game_Save(host, what);
 }
 
@@ -798,7 +724,8 @@ std::string Game_FoundConfPath(const GameSaveHost& host, const FoundGame& found,
 		if(names[i].empty())
 			continue;
 		const std::string path = dir + "/" + names[i] + ".conf";
-		if(!host.exists(path))
+		std::string taken;
+		if(!host.read(path, taken))
 			return path;
 	}
 	return std::string();
@@ -842,15 +769,14 @@ GameSaveResult Game_AddFound(GameSaveHost& host, const FoundGame& found, const s
 		return r;
 	}
 
-	if(!host.makeDirectory(dir))
-		return fail(path, "Could not make the folder " + dir + ".");
-
-	if(!host.write(path, Game_FoundConfText(found, title, program)))
+	const std::string text = Game_FoundConfText(found, title, program);
+	if(!host.write(path, text))
 		return fail(path, "Could not write " + fileOf(path) + ".");
 
 	GameSaveResult r;
 	r.ok = true;
 	r.path = path;
+	r.text = text;
 	r.message = "Added " + fileOf(path) + ". Its controls start from the defaults.";
 	return r;
 }

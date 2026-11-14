@@ -254,11 +254,10 @@ static bool ReadAll(const std::string & path, std::string * out)
 }
 
 /**
- * PrintConfig() ignores write errors (a full card makes it stop part way and
- * still return true), so what it left is looked at before it replaces
- * anything: it must be there and not empty, and the header of the last
- * section, which is written last, must be in it. That catches a card that
- * filled up; it cannot prove a file complete.
+ * What PrintConfig() left is looked at before it replaces anything: it must
+ * be there and not empty, and the header of the last section, which is
+ * written last, must be in it. That catches a card that filled up; it cannot
+ * prove a file complete.
  */
 static bool LooksComplete(const std::string & path)
 {
@@ -370,30 +369,7 @@ bool ConfigText(std::string * text, std::string * error)
 		return false;
 	}
 
-	// PrintConfig only writes to a file: it goes next to the config it would replace, and is read back
-	const std::string tmp = ConfigSavePath() + ".text.tmp";
-
-	remove(tmp.c_str());
-
-	if(!control->PrintConfig(tmp.c_str()))
-	{
-		*error = "Could not write " + tmp + ".";
-		return false;
-	}
-
-	const bool complete = LooksComplete(tmp);
-	std::string read;
-	const bool ok = complete && ReadAll(tmp, &read);
-
-	remove(tmp.c_str());
-
-	if(!ok)
-	{
-		*error = "The config was not written in full. Is the card full?";
-		return false;
-	}
-
-	*text = read;
+	control->PrintConfigText(*text);
 	return true;
 }
 

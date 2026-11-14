@@ -28,8 +28,28 @@
 #include <list>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <limits>
 #include <limits.h>
+
+/* printf onto the end of a string, so a config can be made as text before (or without) a file */
+static void Appendf(std::string& out,const char* fmt,...) {
+	char stackbuf[512];
+	va_list ap,ap2;
+	va_start(ap,fmt);
+	va_copy(ap2,ap);
+	const int n=vsnprintf(stackbuf,sizeof(stackbuf),fmt,ap);
+	va_end(ap);
+	if (n>=0) {
+		if ((size_t)n<sizeof(stackbuf)) out.append(stackbuf,(size_t)n);
+		else {
+			std::string big((size_t)n+1,'\0');
+			vsnprintf(&big[0],big.size(),fmt,ap2);
+			out.append(big.c_str(),(size_t)n);
+		}
+	}
+	va_end(ap2);
+}
 
 using namespace std;
 static std::string current_config_dir; // Set by parseconfigfile so Prop_path can use it to construct the realpath
@@ -654,7 +674,7 @@ bool Section_prop::HandleInputline(string const& gegevens){
 	return false;
 }
 
-void Section_prop::PrintData(FILE* outfile) const {
+void Section_prop::PrintData(std::string& out) const {
 	/* Now print out the individual section entries */
 	size_t len = 0;
 	// Determine maximum length of the props in this section
@@ -664,7 +684,7 @@ void Section_prop::PrintData(FILE* outfile) const {
 	}
 
 	for(const_it tel = properties.begin();tel != properties.end();tel++) {
-		fprintf(outfile,"%-*s = %s\n", len, (*tel)->propname.c_str(), (*tel)->GetValue().ToString().c_str());
+		Appendf(out,"%-*s = %s\n", (int)len, (*tel)->propname.c_str(), (*tel)->GetValue().ToString().c_str());
 	}
 }
 
@@ -683,27 +703,26 @@ bool Section_line::HandleInputline(string const& line) {
 	return true;
 }
 
-void Section_line::PrintData(FILE* outfile) const {
-	fprintf(outfile,"%s",data.c_str());
+void Section_line::PrintData(std::string& out) const {
+	out.append(data.c_str());
 }
 
 string Section_line::GetPropValue(string const& /* _property*/) const {
 	return NO_SUCH_PROPERTY;
 }
 
-bool Config::PrintConfig(char const * const configfilename) const {
+void Config::PrintConfigText(std::string& out) const {
 	char temp[50];char helpline[256];
-	FILE* outfile=fopen(configfilename,"w+t");
-	if(outfile==NULL) return false;
+	out.clear();
 
 	/* Print start of configfile and add a return to improve readibility. */
-	fprintf(outfile,MSG_Get("CONFIGFILE_INTRO"),VERSION);
-	fprintf(outfile,"\n");
+	Appendf(out,MSG_Get("CONFIGFILE_INTRO"),VERSION);
+	out+="\n";
 	for (const_it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
 		/* Print out the Section header */
 		strcpy(temp,(*tel)->GetName());
 		lowcase(temp);
-		fprintf(outfile,"[%s]\n",temp);
+		Appendf(out,"[%s]\n",temp);
 
 		Section_prop *sec = dynamic_cast<Section_prop *>(*tel);
 		if (sec) {
@@ -723,22 +742,22 @@ bool Config::PrintConfig(char const * const configfilename) const {
 					help.replace(pos, 1, prefix);
 				}
 
-				fprintf(outfile, "# %*s: %s", (int)maxwidth, p->propname.c_str(), help.c_str());
+				Appendf(out, "# %*s: %s", (int)maxwidth, p->propname.c_str(), help.c_str());
 
 				std::vector<Value> values = p->GetValues();
 				if (!values.empty()) {
-					fprintf(outfile, "%s%s:", prefix, MSG_Get("CONFIG_SUGGESTED_VALUES"));
+					Appendf(out, "%s%s:", prefix, MSG_Get("CONFIG_SUGGESTED_VALUES"));
 					std::vector<Value>::iterator it = values.begin();
 					while (it != values.end()) {
 						if((*it).ToString() != "%u") { //Hack hack hack. else we need to modify GetValues, but that one is const...
-							if (it != values.begin()) fputs(",", outfile);
-							fprintf(outfile, " %s", (*it).ToString().c_str());
+							if (it != values.begin()) out+=",";
+							Appendf(out, " %s", (*it).ToString().c_str());
 						}
 						++it;
 					}
-					fprintf(outfile,".");
+					out+=".";
 				}
-			fprintf(outfile, "\n");
+			out+="\n";
 			}
 		} else {
 			upcase(temp);
@@ -749,19 +768,27 @@ bool Config::PrintConfig(char const * const configfilename) const {
 				*helpwrite++=*helpstr;
 				if (*helpstr == '\n') {
 					*helpwrite=0;
-					fprintf(outfile,"# %s",helpline);
+					Appendf(out,"# %s",helpline);
 					helpwrite=helpline;
 				}
 				helpstr++;
 			}
 		}
 
-		fprintf(outfile,"\n");
-		(*tel)->PrintData(outfile);
-		fprintf(outfile,"\n");		/* Always an empty line between sections */
+		out+="\n";
+		(*tel)->PrintData(out);
+		out+="\n";		/* Always an empty line between sections */
 	}
-	fclose(outfile);
-	return true;
+}
+
+bool Config::PrintConfig(char const * const configfilename) const {
+	std::string text;
+	PrintConfigText(text);
+	FILE* outfile=fopen(configfilename,"w+t");
+	if(outfile==NULL) return false;
+	/* a full card makes fwrite fail part way, and fclose is where the rest is written */
+	const bool written=fwrite(text.data(),1,text.size(),outfile)==text.size() && !ferror(outfile);
+	return (fclose(outfile)==0) && written;
 }
 
 

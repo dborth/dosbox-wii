@@ -792,7 +792,7 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			bringBack();
 
 			if(named)
-				finishManage(Game_Rename(GameSave_Live(), c.conf, typed));
+				finishManage(Game_Rename(GameSave_Live(), c.conf, typed), false);
 		}
 
 		// Asks once more, as it cannot be undone
@@ -807,19 +807,29 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			setEnabled(true);
 
 			if(sure)
-				finishManage(Game_Delete(GameSave_Live(), c.conf));
+				finishManage(Game_Delete(GameSave_Live(), c.conf, c.map, c.title), true);
 			else
 				showMessage("Not deleted.");
 		}
 
-		// The list is read again (the name sorts somewhere else, or the game is gone) and the result is said
-		void finishManage(const GameSaveResult& r)
+		// The list shows what is now in memory (the name sorts somewhere else, or the game is gone): the card is not read again
+		void refreshList()
+		{
+			list.setGames(Games_Scanner().games());
+			list.setFound(Games_Scanner().found());
+			changed = true;
+		}
+
+		// A rename or a delete went through: the list changes to match it, and the result is said
+		void finishManage(const GameSaveResult& r, bool deleted)
 		{
 			if(r.ok)
 			{
-				list.setScanning(true);
-				Games_Scanner().start();
-				changed = true;
+				if(deleted)
+					Games_Deleted(r.path);
+				else
+					Games_Saved(r);
+				refreshList();
 			}
 			showMessage(r.message.c_str());
 		}
@@ -964,9 +974,9 @@ class GamesScreen : public ListScreen, public GuiCardSource
 					return false;
 				}
 
-				list.setScanning(true);
-				Games_Scanner().start();
-				changed = true;
+				Games_Saved(r);
+				Games_Scanner().dropFound(found.folder);		// it is a game now
+				refreshList();
 				showMessage(r.message.c_str());
 				return true;
 			}
@@ -979,9 +989,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			{
 				SetGameConf(r.path.c_str());
 				list.setCurrent(r.path);
-				list.setScanning(true);
-				Games_Scanner().start();
-				changed = true;
+				Games_Saved(r);
+				refreshList();
 			}
 			showMessage(r.message.c_str());
 		}
