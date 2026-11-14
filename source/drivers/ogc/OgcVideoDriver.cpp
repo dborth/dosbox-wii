@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <wiiuse/wpad.h>
 #include <ogc/machine/processor.h>
+#include <ogc/irq.h>
 
 #include "OgcVideoDriver.h"
 
@@ -57,20 +58,20 @@ static void * vbgetback (void *arg)
 	while (1)
 	{
 		u32 level;
-		_CPU_ISR_Disable(level);
+		level = IRQ_Disable();
 		while (!vb_wait)
 		{
 			LWP_ThreadSleep(vb_queue);     // Sleep safely until waitForBufferReady kicks us off
 		}
 		vb_wait = false;
-		_CPU_ISR_Restore(level);
+		IRQ_Restore(level);
 
 		VIDEO_WaitVSync();                 // Wait for video vertical blank
 
-		_CPU_ISR_Disable(level);
+		level = IRQ_Disable();
 		vb_done = true;
 		LWP_ThreadSignal(render_queue);    // Instantly alert the main thread
-		_CPU_ISR_Restore(level);
+		IRQ_Restore(level);
 	}
 	return nullptr;
 }
@@ -272,12 +273,12 @@ void OgcVideoDriver::waitForIdle()
 	u32 level;
 
 	// Ensure previous frame copy and background VSync block have finished cleanly
-	_CPU_ISR_Disable(level);
+	level = IRQ_Disable();
 	while (!vb_done || (copynow == GX_TRUE))
 	{
 		LWP_ThreadSleep(render_queue); // Halts main thread with 0 CPU load until signals occur
 	}
-	_CPU_ISR_Restore(level);
+	IRQ_Restore(level);
 
 	// Guarantee the GPU has fully finished rendering the PREVIOUS frame
 	// before we begin swizzling new data into texture memory.
@@ -307,11 +308,11 @@ void OgcVideoDriver::presentBuffer()
 
 	// Reset state and signal background VSync thread to begin waiting for next blanking interval
 	u32 level;
-	_CPU_ISR_Disable(level);
+	level = IRQ_Disable();
 	vb_done = false;
 	vb_wait = true;
 	LWP_ThreadSignal(vb_queue);
-	_CPU_ISR_Restore(level);
+	IRQ_Restore(level);
 }
 
 OgcVideoDriver::OgcVideoDriver()
@@ -667,19 +668,19 @@ void OgcImageRenderer::destroyMesh(void * mesh)
 
 	// The GPU may not have read the list yet; OgcFreeRetiredMeshes() frees it once it has
 	u32 level;
-	_CPU_ISR_Disable(level);
+	level = IRQ_Disable();
 	m->next = retiredMeshes;
 	retiredMeshes = m;
-	_CPU_ISR_Restore(level);
+	IRQ_Restore(level);
 }
 
 void OgcFreeRetiredMeshes()
 {
 	u32 level;
-	_CPU_ISR_Disable(level);
+	level = IRQ_Disable();
 	OgcMesh * m = retiredMeshes;
 	retiredMeshes = nullptr;
-	_CPU_ISR_Restore(level);
+	IRQ_Restore(level);
 
 	while(m)
 	{
@@ -693,9 +694,9 @@ void OgcFreeRetiredMeshes()
 void OgcDiscardRetiredMeshes()
 {
 	u32 level;
-	_CPU_ISR_Disable(level);
+	level = IRQ_Disable();
 	retiredMeshes = nullptr;
-	_CPU_ISR_Restore(level);
+	IRQ_Restore(level);
 }
 
 void OgcImageRenderer::drawMeshInstance(void * mesh, float x, float y, float scaleX, float scaleY)
