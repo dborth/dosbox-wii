@@ -38,6 +38,9 @@
 #include "control.h"
 #include "inout.h"
 #include "dma.h"
+#ifdef DOSBOX_WII
+#include "storage.h"
+#endif
 
 
 #if defined(OS2)
@@ -288,6 +291,19 @@ public:
 				lastconfigdir.erase(pos);
 				if (lastconfigdir.length())	temp_line = lastconfigdir + CROSS_FILESPLIT + temp_line;
 			}
+#ifdef DOSBOX_WII
+			{
+				/* usb: and usb1: are the same thing on either console, and a USB
+				 * drive that was slow to show up is waited for (storage.cpp) */
+				char resolved[CROSS_LEN];
+				const char * waitFor = StorageResolvePath(temp_line.c_str(), resolved, sizeof(resolved));
+				temp_line = resolved;
+				if (waitFor) {
+					WriteOut("Waiting for %s...\n", waitFor);
+					StorageWaitForPath(temp_line.c_str(), CALLBACK_Idle);
+				}
+			}
+#endif
 			struct stat test;
 			//Win32 : strip tailing backslashes
 			//os2: some special drive check

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <strings.h>
 #include <atomic>
 #include <sys/stat.h>
 #include "storage.h"
@@ -195,6 +196,120 @@ bool IsDOSDriveMounted(char DriveLetter)
 int MountDOSBoxDir(char DriveLetter, const char *path)
 {
 	return MountDOSDrive(DriveLetter, path, NULL) ? 1 : 0;
+}
+
+/****************************************************************************
+ * Host paths in MOUNT
+ ***************************************************************************/
+
+//! Which device a path's prefix names, and how long the prefix is (without
+//! the colon). -1 if none. Only the USB devices are looked for: they are the
+//! ones whose name differs between the consoles, and the ones that appear late.
+static int UsbDeviceOfPath(const char * path, size_t & nameLen)
+{
+	static const struct { const char * name; int device; } names[] =
+	{
+		{ "usb",  DEVICE_USB  }, { "usb1", DEVICE_USB  },
+		{ "usb2", DEVICE_USB2 }, { "usb3", DEVICE_USB3 },
+	};
+
+	const char * colon = strchr(path, ':');
+
+	if(!colon || colon == path || colon - path > 4)
+		return -1;
+
+	// a prefix is followed by the root: "usb:" alone or "usb:/..."
+	if(colon[1] != 0 && colon[1] != '/')
+		return -1;
+
+	nameLen = (size_t)(colon - path);
+
+	for(size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if(strlen(names[i].name) == nameLen && strncasecmp(path, names[i].name, nameLen) == 0)
+			return names[i].device;
+
+	return -1;
+}
+
+const char * StorageResolvePath(const char * path, char * out, size_t outSize)
+{
+	size_t nameLen = 0;
+	const int device = UsbDeviceOfPath(path, nameLen);
+
+	if(!out || outSize == 0)
+		return NULL;
+
+	FileSystemDriver * fs = platform->getFileSystem();
+	const char * prefix = (device >= 0) ? fs->getDevicePrefix(device) : NULL;	// eg. "usb:/"
+
+	if(device < 0 || !prefix || !prefix[0])
+	{
+		// not a USB path, or this console has no such slot: leave it alone
+		snprintf(out, outSize, "%s", path);
+		return NULL;
+	}
+
+	// the driver's prefix is "name:/"; the rest of the path starts at the colon
+	const size_t prefixName = strcspn(prefix, ":");
+	snprintf(out, outSize, "%.*s%s", (int)prefixName, prefix, path + nameLen);
+
+	const char * mount = fs->getMountPath(device);
+
+	if(mount && mount[0])
+		return NULL;	// already mounted
+
+	StorageDevice list[MAX_STORAGE_DEVICES];
+	const int count = fs->enumerateStorageDevices(list);
+
+	for(int i = 0; i < count; i++)
+		if(list[i].id == device)
+		{
+			static char name[sizeof(list[0].name)];
+			snprintf(name, sizeof(name), "%s", list[i].name);
+			return name;
+		}
+
+	return "USB drive";
+}
+
+bool StorageWaitForPath(const char * path, void (*idle)(void))
+{
+	size_t nameLen = 0;
+	const int device = UsbDeviceOfPath(path, nameLen);
+
+	if(device < 0)
+		return false;
+
+	FileSystemDriver * fs = platform->getFileSystem();
+	const Ticks start = SystemTime::now();
+	Ticks lastTry = 0;
+	bool first = true;
+
+	for(;;)
+	{
+		if(first || SystemTime::diffMillisecs(lastTry, SystemTime::now()) >= 250)
+		{
+			first = false;
+			lastTry = SystemTime::now();
+
+			// scans for the device first, then mounts it if it is there
+			const MountResult result = fs->mountStorageDevice(device);
+
+			if(result == MountResult::Success)
+				return true;
+
+			if(result == MountResult::MountFailed)
+				return false;	// there, but not readable: waiting will not help
+		}
+
+		if(SystemTime::diffSecs(start, SystemTime::now()) >= STORAGE_WAIT_SECS)
+			return false;
+
+		if(idle)
+			idle();
+		else
+			usleep(10000);
+	}
 }
 
 /****************************************************************************

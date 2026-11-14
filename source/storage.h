@@ -50,6 +50,33 @@ bool IsDOSDriveMounted(char DriveLetter);
 
 int MountDOSBoxDir(char DriveLetter, const char *path);
 
+/* ---- Host paths in MOUNT ----
+ *
+ * A path like "usb:/games" names a storage device by its prefix. The
+ * driver tries each device once at startup, so a USB drive that is slow to
+ * show up is not there yet when autoexec runs. These two calls let MOUNT
+ * (the only caller) cope: the path's prefix is accepted under either console's
+ * spelling, and a USB device that is not mounted yet is waited for.
+ */
+
+//! Seconds MOUNT waits for a USB device that is not mounted yet
+#define STORAGE_WAIT_SECS		8
+
+//! Rewrites a leading device prefix to the spelling this console uses, so
+//! "usb1:/x" and "usb:/x" both work on either console. A path with no
+//! recognised device prefix is copied as is. Does no I/O. Returns the device's
+//! display name (eg. "USB Mass Storage") if the prefix is that of a USB
+//! device that is NOT mounted right now (so a wait may be worthwhile), or
+//! NULL otherwise.
+const char * StorageResolvePath(const char * path, char * out, size_t outSize);
+
+//! Tries to mount the USB device that out (from StorageResolvePath) is on,
+//! once about every quarter second for up to STORAGE_WAIT_SECS, calling
+//! idle() between tries so the emulator keeps running (NULL: nothing is
+//! called). Stops early if the device is present but cannot be read (eg. not
+//! FAT). Returns true if the device is mounted.
+bool StorageWaitForPath(const char * path, void (*idle)(void));
+
 extern char appDrive[MAX_APP_DRIVE_LEN];
 
 /* ---- The Drives screen's model ----
