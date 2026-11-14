@@ -2599,12 +2599,12 @@ void MAPPER_PadsResync(void) {
 	}
 }
 
-bool MAPPER_SaveBindsNow(void) {
-	return SaveBindsFile();
-}
-
 void MAPPER_BindsText(std::string & out) {
 	BindsText(out);
+}
+
+void MAPPER_FileName(std::string & out) {
+	out=mapper.filename;
 }
 
 void MAPPER_LosingFocus(void) {

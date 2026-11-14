@@ -257,6 +257,54 @@ class MenuMeshElement : public GuiElement
 		std::vector<MeshVertex> scratch;
 };
 
+//!A busy spinner: a ring of dots with a bold head and a fading tail. Advance it by
+//!calling setPhase() with a growing number; each step moves the head one dot clockwise.
+class MenuSpinner : public GuiElement
+{
+	public:
+		MenuSpinner() : phase(0)
+		{
+			width = MENU_SPINNER_SIZE;
+			height = MENU_SPINNER_SIZE;
+			const float radius = MENU_SPINNER_SIZE / 2.0f - 10.0f;
+			for(int i = 0; i < MENU_SPINNER_DOTS; i++)
+			{
+				const float a = (-90.0f + 360.0f * i / MENU_SPINNER_DOTS) * 3.14159265f / 180.0f;
+				dots[i].setParent(this);
+				dots[i].setShape(SHAPE::ELLIPSE);
+				dots[i].setAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
+				dots[i].setPosition((int)(radius * cosf(a) + (cosf(a) < 0 ? -0.5f : 0.5f)),
+									(int)(radius * sinf(a) + (sinf(a) < 0 ? -0.5f : 0.5f)));
+			}
+			setPhase(0);
+		}
+
+		void setPhase(int p)
+		{
+			phase = ((p % MENU_SPINNER_DOTS) + MENU_SPINNER_DOTS) % MENU_SPINNER_DOTS;
+			for(int i = 0; i < MENU_SPINNER_DOTS; i++)
+			{
+				const int level = (phase - i + MENU_SPINNER_DOTS) % MENU_SPINNER_DOTS;
+				const int d = (int)(MenuSpinnerDotSize(level) + 0.5f);
+				dots[i].setSize(d, d);
+				dots[i].setPaint(MenuSpinnerDotPaint(level));
+			}
+		}
+
+		void draw() override
+		{
+			if(!this->isVisible())
+				return;
+			for(int i = 0; i < MENU_SPINNER_DOTS; i++)
+				dots[i].draw();
+			this->updateEffects();
+		}
+
+	private:
+		int phase;
+		GuiShape dots[MENU_SPINNER_DOTS];
+};
+
 //!The window behind the on-screen keyboard: a card with a chrome band holding the text
 //!field. Insert it as the keyboard's first element: keyboard.insert(&box, 0). It is
 //!wider than the keyboard itself so the keys keep a margin from the card's edge.

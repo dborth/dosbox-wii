@@ -113,8 +113,10 @@ void Settings_SyncRunning();
 bool Settings_SetJoystickType(const char * type);
 
 /**
- * Saves the running config to dosbox.conf (see ConfigSave in preferences.h
- * for how the file is replaced).
+ * Saves the running config to dosbox.conf (see ConfigSaveText in preferences.h
+ * for how the file is replaced) and the controls to the mapper file in use, or
+ * the running game when there is one. The card is written to on a worker thread
+ * behind a "please wait" panel (menubusy.h), so call it from the menu loop only.
  *
  * @param message  always set: one line for the user, where it went or why not
  * @return true if it was saved

@@ -660,7 +660,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 					break;
 				case GamesList::Click::ASK_REPLACE:
 					if(ask(c, "Replace"))
-						finishSave(Game_SaveReplace(GameSave_Live(), c.conf, c.running));
+						finishSave(GameSave_Busy("Saving", "Saving " + GamesList_Fit(c.title, 26) + ".", true,
+							[&](GameSaveHost& h){ return Game_SaveReplace(h, c.conf, c.running); }));
 					else
 						showMessage("Not saved.");
 					break;
@@ -792,7 +793,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			bringBack();
 
 			if(named)
-				finishManage(Game_Rename(GameSave_Live(), c.conf, typed), false);
+				finishManage(GameSave_Busy("Renaming", std::string("Renaming to ") + typed + ".", false,
+					[&](GameSaveHost& h){ return Game_Rename(h, c.conf, typed); }), false);
 		}
 
 		// Asks once more, as it cannot be undone
@@ -807,7 +809,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			setEnabled(true);
 
 			if(sure)
-				finishManage(Game_Delete(GameSave_Live(), c.conf, c.map, c.title), true);
+				finishManage(GameSave_Busy("Deleting", "Deleting " + GamesList_Fit(c.title, 26) + ".", false,
+					[&](GameSaveHost& h){ return Game_Delete(h, c.conf, c.map, c.title); }), true);
 			else
 				showMessage("Not deleted.");
 		}
@@ -860,7 +863,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 			if(!named)
 				return;
 
-			GameSaveResult r = Game_SaveNew(GameSave_Live(), typed);
+			GameSaveResult r = GameSave_Busy("Saving", std::string("Saving ") + typed + ".", true,
+				[&](GameSaveHost& h){ return Game_SaveNew(h, typed); });
 
 			if(r.exists)
 			{
@@ -874,7 +878,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 				setEnabled(true);
 
 				if(replace)
-					finishSave(Game_SaveReplace(GameSave_Live(), r.path, sameGame(r.path)));
+					finishSave(GameSave_Busy("Saving", std::string("Saving ") + typed + ".", true,
+						[&](GameSaveHost& h){ return Game_SaveReplace(h, r.path, sameGame(r.path)); }));
 				else
 					showMessage("Not saved.");
 				return;
@@ -967,7 +972,8 @@ class GamesScreen : public ListScreen, public GuiCardSource
 				if(choice != 0)
 					return false;		// Cancel, or the popover was closed
 
-				const GameSaveResult r = Game_AddFound(GameSave_Live(), found, title, found.programs[program]);
+				const GameSaveResult r = GameSave_Busy("Adding", "Adding " + GamesList_Fit(title, 26) + ".", false,
+					[&](GameSaveHost& h){ return Game_AddFound(h, found, title, found.programs[program]); });
 				if(!r.ok)
 				{
 					showMessage(r.message.c_str());
@@ -1067,8 +1073,7 @@ class SettingsListScreen : public ListScreen
 
 		void onExtraButton() override
 		{
-			// writes a few KB to the card, which is quick enough not to need the
-			// worker thread; if it ever hitches the menu on a slow USB drive it should
+			// the card is written to on a worker thread, behind a spinner (Settings_Save)
 			char message[320];
 
 			Settings_Save(message, sizeof(message));

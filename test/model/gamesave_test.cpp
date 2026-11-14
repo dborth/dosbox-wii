@@ -110,6 +110,7 @@ class FakeHost : public GameSaveHost
 		}
 		bool runningConfig(std::string& text, std::string& error) override
 		{
+			coreCalls++;
 			if(!configOk)
 			{
 				error = "The config could not be read.";
@@ -121,20 +122,22 @@ class FakeHost : public GameSaveHost
 		std::string baseConfig() const override { return "sd:/DOSBox/dosbox.conf"; }
 		bool mapperText(std::string& text) override
 		{
+			coreCalls++;
 			if(!bindsOk)
 				return false;
 			text = binds;
 			return true;
 		}
-		std::string joystickType() const override { return joystick; }
-		std::string runningProgramPath() const override { return program; }
-		std::vector<GameDrive> drives() const override { return driveList; }
+		std::string joystickType() const override { coreCalls++; return joystick; }
+		std::string runningProgramPath() const override { coreCalls++; return program; }
+		std::vector<GameDrive> drives() const override { coreCalls++; return driveList; }
 
 		std::map<std::string, std::string> files;
 		std::set<std::string> failWrite;
 		std::vector<std::string> written;
 		mutable std::vector<std::string> reads;	// every read, to show what a save looks at
 		bool bindsOk, configOk;
+		mutable int coreCalls = 0;			// every question asked of the running core: a worker must ask none
 		std::string config, binds, joystick, program;
 		std::vector<GameDrive> driveList;
 };
@@ -788,6 +791,75 @@ static bool onDisk(const std::string& path)
 	return stat(path.c_str(), &st) == 0;
 }
 
+// ---- the host for a worker
+
+static void testSnapshot()
+{
+	// a save through a snapshot is the save the host would make: the same files and the same message
+	FakeHost direct;
+	direct.program = "C:\\GAMES\\KEEN4\\KEEN4E.EXE";
+	direct.driveList = { D('C', "sd:/DOSBox/") };
+	const GameSaveResult want = Game_SaveNew(direct, "Commander Keen 4");
+
+	FakeHost live;
+	live.program = direct.program;
+	live.driveList = direct.driveList;
+	GameSaveSnapshot snap(live, true);
+	CHECK(live.coreCalls > 0);								// the core is asked once, when the snapshot is made...
+	live.coreCalls = 0;
+	live.program = "C:\\OTHER.EXE";							// ...so what changes after that is not seen
+	live.binds = "key_z \"key 122\"\n";
+	const GameSaveResult got = Game_SaveNew(snap, "Commander Keen 4");
+	CHECK(got.ok);
+	CHECK_N(live.coreCalls, 0);								// ...and the save itself asks it nothing
+	CHECK_EQ(got.message, want.message);
+	CHECK_EQ(got.text, want.text);
+	CHECK_EQ(live.files["sd:/DOSBox/Games/Commander Keen 4.conf"], direct.files["sd:/DOSBox/Games/Commander Keen 4.conf"]);
+	CHECK_EQ(live.files["sd:/DOSBox/Games/Commander Keen 4.map"], direct.files["sd:/DOSBox/Games/Commander Keen 4.map"]);
+	CHECK_EQ(snap.dosboxDirectory(), "sd:/DOSBox");
+
+	// the running game's save, a replace, and a name that is taken, all through it
+	FakeHost l2;
+	l2.files["sd:/DOSBox/Games/Keen.conf"] = "# title=Keen\n[sdl]\nmapperfile=Keen.map\n";
+	l2.config = FakeHost::printed("auto", "", "Keen.map");
+	GameSaveSnapshot s2(l2, true);
+	l2.coreCalls = 0;
+	CHECK(Game_SaveActive(s2, "Games/Keen.conf").ok);
+	CHECK(Game_SaveNew(s2, "Keen").exists);
+	CHECK_N(l2.coreCalls, 0);
+
+	// failures the core had are the snapshot's: controls that could not be had stop the save before a file is written
+	FakeHost bad;
+	bad.bindsOk = false;
+	GameSaveSnapshot s3(bad, true);
+	const GameSaveResult r = Game_SaveNew(s3, "Doom");
+	CHECK(!r.ok && has(r.message, "controls"));
+	CHECK(bad.written.empty());
+	FakeHost noConfig;
+	noConfig.configOk = false;
+	GameSaveSnapshot s4(noConfig, true);
+	CHECK(!Game_SaveNew(s4, "Doom").ok);
+	CHECK(noConfig.written.empty());
+
+	// rename, delete and add found ask the core nothing: a snapshot made without it takes nothing, and they work on it
+	FakeHost f;
+	f.files["sd:/DOSBox/Games/keen.conf"] = "# title=Keen\n[sdl]\nmapperfile=keen.map\n";
+	f.files["sd:/DOSBox/Games/keen.map"] = "x\n";
+	GameSaveSnapshot files(f, false);
+	CHECK_N(f.coreCalls, 0);								// making it did not ask
+	CHECK(Game_Rename(files, "sd:/DOSBox/Games/keen.conf", "Commander Keen").ok);
+	const FoundGame wolf = foundGame("WOLF3D", V("WOLF3D.EXE"));
+	CHECK(Game_AddFound(files, wolf, "Wolfenstein", "").ok);
+	CHECK(Game_Delete(files, "sd:/DOSBox/Games/keen.conf", "keen.map", "Commander Keen").ok);
+	CHECK_N(f.coreCalls, 0);
+	CHECK(f.files.count("sd:/DOSBox/Games/keen.map") == 0);
+	// a save run on it stops at once and says why, rather than writing a conf from nothing
+	const GameSaveResult none = Game_SaveNew(files, "Doom");
+	CHECK(!none.ok);
+	CHECK(f.files.count("sd:/DOSBox/Games/Doom.conf") == 0);
+	CHECK_N(f.coreCalls, 0);
+}
+
 static void testFileHost()
 {
 	char tmpl[] = "/tmp/gamesaveXXXXXX";
@@ -858,6 +930,7 @@ int main()
 	testAddFoundFailures();
 	testRename();
 	testDelete();
+	testSnapshot();
 	testFileHost();
 
 	if(failures)

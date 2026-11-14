@@ -43,6 +43,8 @@
 #define MENU_BTN_SMALL_H	40
 
 // dialogs: a card with a chrome title band
+#define MENU_SPINNER_SIZE		72
+#define MENU_SPINNER_DOTS		8
 #define MENU_DIALOG_W			448
 #define MENU_DIALOG_H			288
 #define MENU_DIALOG_HEADER_H	52
@@ -90,6 +92,21 @@ static inline PixelColor MenuMix(PixelColor a, PixelColor b, float t)
 	c.g = (uint8_t)(a.g + (b.g - a.g) * t + 0.5f);
 	c.b = (uint8_t)(a.b + (b.b - a.b) * t + 0.5f);
 	return c;
+}
+
+//!One dot of the busy spinner. level 0 is the head (bold, accent colored); higher
+//!levels trail off smaller and paler.
+static inline GuiPaint MenuSpinnerDotPaint(int level)
+{
+	const MenuPalette& p = MenuPaletteCurrent();
+	const float t = (float)level / (float)(MENU_SPINNER_DOTS - 1);
+	return GuiPaint().color(MenuMix(p.accent, p.outline, t));
+}
+
+//!Diameter of the spinner dot at a trail level
+static inline float MenuSpinnerDotSize(int level)
+{
+	return 14.0f - 6.0f * (float)level / (float)(MENU_SPINNER_DOTS - 1);
 }
 
 //!Resting, highlighted and pressed looks shared by the long and large buttons.

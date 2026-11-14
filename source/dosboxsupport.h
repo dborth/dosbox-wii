@@ -158,8 +158,8 @@ bool CanReinitDosSection(const char ** reason);
 bool MAPPER_EventExists(const char * name);
 int MAPPER_PadGetEvents(int pad, int source, char names[][16], int max, bool * from_stick);
 bool MAPPER_PadSetEvent(int pad, int source, const char * event);
-bool MAPPER_SaveBindsNow(void);
 void MAPPER_BindsText(std::string & out);
+void MAPPER_FileName(std::string & out);
 void MAPPER_RebuildJoysticks(void);
 void MAPPER_PadsResync(void);
 

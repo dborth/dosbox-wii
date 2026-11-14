@@ -461,6 +461,11 @@ bool FileGameSaveHost::erase(const std::string& path)
 
 bool FileGameSaveHost::write(const std::string& path, const std::string& text)
 {
+	return Game_WriteFile(path, text);
+}
+
+bool Game_WriteFile(const std::string& path, const std::string& text)
+{
 	FILE * f = fopen(path.c_str(), "wb");
 	if(!f)
 	{
@@ -476,6 +481,43 @@ bool FileGameSaveHost::write(const std::string& path, const std::string& text)
 	// a full card makes fwrite fail part way, and fclose is where the rest is written
 	const bool written = fwrite(text.data(), 1, text.size(), f) == text.size() && !ferror(f);
 	return fclose(f) == 0 && written;
+}
+
+// ---- the host for a worker
+
+GameSaveSnapshot::GameSaveSnapshot(GameSaveHost& live, bool withCore) :
+	files(live), directory(live.dosboxDirectory()), configOk(false), bindsOk(false)
+{
+	configError = "The running config was not asked for.";
+	if(!withCore)
+		return;
+
+	configError.clear();
+	configOk = live.runningConfig(configText, configError);
+	bindsOk = live.mapperText(bindsText);
+	base = live.baseConfig();
+	joystick = live.joystickType();
+	program = live.runningProgramPath();
+	driveList = live.drives();
+}
+
+bool GameSaveSnapshot::runningConfig(std::string& text, std::string& error)
+{
+	if(!configOk)
+	{
+		error = configError;
+		return false;
+	}
+	text = configText;
+	return true;
+}
+
+bool GameSaveSnapshot::mapperText(std::string& text)
+{
+	if(!bindsOk)
+		return false;
+	text = bindsText;
+	return true;
 }
 
 // ---- saving

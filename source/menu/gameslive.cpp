@@ -4,6 +4,7 @@
  * gameslive.cpp
  ***************************************************************************/
 #include "gameslive.h"
+#include "menubusy.h"
 #include "gamesave.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
@@ -210,4 +211,14 @@ void Games_Saved(const GameSaveResult& r)
 void Games_Deleted(const std::string& path)
 {
 	Games_Scanner().drop(path);
+}
+
+GameSaveResult GameSave_Busy(const char * title, const std::string& detail, bool withCore, const std::function<GameSaveResult(GameSaveHost&)>& job)
+{
+	// what the core is asked is asked here, on the menu thread; the worker is given answers
+	GameSaveSnapshot snapshot(GameSave_Live(), withCore);
+	GameSaveResult result;
+
+	MenuBusy_Run(title, detail, [&]{ result = job(snapshot); });
+	return result;
 }

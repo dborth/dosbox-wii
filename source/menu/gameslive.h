@@ -13,6 +13,7 @@
 
 #include "games.h"
 #include "gamesave.h"
+#include <functional>
 #include "drivers/ThreadDriver.h"
 #include "drivers/Thread.h"
 
@@ -63,6 +64,18 @@ class GamesScanner
 };
 
 GamesScanner& Games_Scanner();
+
+/**
+ * Runs one of the Game_* operations (gamesave.h) on a worker thread, behind a "please wait" panel with a spinner, and
+ * returns its result when it is done. This is how the menu saves, renames, deletes and adds: the card is slow and
+ * sometimes very slow, and the menu thread is the one that draws.
+ *
+ * What the operation asks of the running core is taken here first, on this thread (GameSaveSnapshot), so the worker
+ * does nothing but file work. `withCore` says whether it asks any: true for a save, false for rename, delete and add
+ * found. `job` is given the host to use, and runs off this thread: it must use that and nothing else of the app.
+ * Call from the menu loop only.
+ */
+GameSaveResult GameSave_Busy(const char * title, const std::string& detail, bool withCore, const std::function<GameSaveResult(GameSaveHost&)>& job);
 
 /** A save, rename or add went through (r.ok): the game goes into the list as the conf says it is now. Nothing is read. */
 void Games_Saved(const GameSaveResult& r);

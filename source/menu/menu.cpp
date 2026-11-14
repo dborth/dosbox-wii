@@ -189,12 +189,13 @@ bool OnScreenKeyboard(char * var, uint32_t maxlen)
  ***************************************************************************/
 static std::string SaveGame()
 {
-	GameSaveHost& host = GameSave_Live();
 	const char * given = GetGameConf();
 
 	if(given && given[0])
 	{
-		const GameSaveResult saved = Game_SaveActive(host, given);
+		const std::string conf = given;
+		const GameSaveResult saved = GameSave_Busy("Saving", "Saving the running game.", true,
+			[&](GameSaveHost& h){ return Game_SaveActive(h, conf); });
 		Games_Saved(saved);
 		return saved.message;
 	}
@@ -218,7 +219,8 @@ static std::string SaveGame()
 	if(!OnScreenKeyboard(typed, sizeof(typed)))
 		return std::string();
 
-	GameSaveResult r = Game_SaveNew(host, typed);
+	GameSaveResult r = GameSave_Busy("Saving", std::string("Saving ") + typed + ".", true,
+		[&](GameSaveHost& h){ return Game_SaveNew(h, typed); });
 
 	if(r.exists)
 	{
@@ -228,7 +230,9 @@ static std::string SaveGame()
 		if(MenuPopover_Ask(r.message.c_str(), answers,
 			"Replacing it overwrites its saved controls, settings and startup with what is running.", GuiPopover::Anchor()) != 0)
 			return "Not saved.";
-		r = Game_SaveReplace(host, r.path, false);
+		const std::string path = r.path;
+		r = GameSave_Busy("Saving", std::string("Saving ") + typed + ".", true,
+			[&](GameSaveHost& h){ return Game_SaveReplace(h, path, false); });
 	}
 
 	if(r.ok)

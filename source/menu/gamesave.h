@@ -92,6 +92,48 @@ class FileGameSaveHost : public GameSaveHost
 		std::string folderPath;
 };
 
+/**
+ * Writes a file: the whole of it, once, in place (one fopen, fwrite and fclose, each checked). When the file cannot be
+ * opened its folder is made (once, not its parents) and the open is tried again. This is FileGameSaveHost::write.
+ */
+bool Game_WriteFile(const std::string& path, const std::string& text);
+
+/**
+ * A host that can be handed to a worker thread. Everything the save asks of the running core (the config, the binds,
+ * the joystick type, the program, the drives, the folder) is taken when it is made, on the thread that owns the core,
+ * and answered from that afterwards; its file work (read, write, erase) goes to the host it was made from, which does
+ * nothing but stdio. So Game_Save and the rest run on it without a single call into the core.
+ *
+ * Made `withCore` false it takes nothing: for rename, delete and add found, which ask the core nothing. Its answers
+ * about the core are then empty and fail, so a save run on it stops at once and says why.
+ *
+ * `live` must outlive it, and its file methods must be safe to call from another thread (FileGameSaveHost's are).
+ */
+class GameSaveSnapshot : public GameSaveHost
+{
+	public:
+		GameSaveSnapshot(GameSaveHost& live, bool withCore);
+
+		std::string dosboxDirectory() const override { return directory; }
+		bool read(const std::string& path, std::string& text) const override { return files.read(path, text); }
+		bool write(const std::string& path, const std::string& text) override { return files.write(path, text); }
+		bool erase(const std::string& path) override { return files.erase(path); }
+
+		bool runningConfig(std::string& text, std::string& error) override;
+		std::string baseConfig() const override { return base; }
+		bool mapperText(std::string& text) override;
+		std::string joystickType() const override { return joystick; }
+		std::string runningProgramPath() const override { return program; }
+		std::vector<GameDrive> drives() const override { return driveList; }
+
+	private:
+		GameSaveHost& files;
+		std::string directory, base, joystick, program;
+		std::vector<GameDrive> driveList;
+		std::string configText, configError, bindsText;
+		bool configOk, bindsOk;
+};
+
 /** The console's host (gameslive.cpp). */
 GameSaveHost& GameSave_Live();
 

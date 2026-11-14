@@ -37,21 +37,20 @@ void LoadPrefs();
 std::string ConfigSavePath();
 
 /**
- * Writes the whole running config to `path`.
+ * Writes `text` (the running config, from ConfigText) to `path`, without ever leaving the player with a half-written
+ * or missing file: it goes to path + ".tmp" first, and only a tmp that was written and closed without error replaces
+ * the old file, which is kept as path + ".bak" (the one before that is dropped). If the new file cannot be moved into
+ * place the old one is put back.
  *
- * Config::PrintConfig() empties its file as soon as it opens it and never
- * says if a write failed, so it is pointed at path + ".tmp" first. Only a
- * file that is there, not empty and ends with the last section replaces the
- * old one, which is kept as path + ".bak" (the one before that is dropped).
- * If the new file cannot be moved into place the old one is put back.
+ * Plain stdio: it asks the core nothing, so it can run on a worker thread.
  *
  * @param error  on failure, one line saying why. May be NULL.
  * @return true if the new file is in place
  */
-bool ConfigSave(const char * path, std::string * error);
+bool ConfigSaveText(const char * path, const std::string & text, std::string * error);
 
 /**
- * The running config as ConfigSave() would write it, as text: for a game conf, which is that text with a few things
+ * The running config as dosbox.conf is written, as text: for a game conf, which is that text with a few things
  * changed (menu/gamesave.h). Made in memory: no file is touched.
  *
  * @param text   the config; left as it was on failure

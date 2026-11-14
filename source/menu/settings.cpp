@@ -29,6 +29,7 @@
 #include "settings.h"
 #include "gamesave.h"
 #include "gameslive.h"
+#include "menubusy.h"
 #include "controlslive.h"
 #include "dosboxsupport.h"
 #include "preferences.h"
@@ -1785,17 +1786,19 @@ bool Settings_Save(char * message, size_t size)
 
 	if(!game.empty())
 	{
-		const GameSaveResult r = Game_SaveActive(GameSave_Live(), game);
+		const GameSaveResult r = GameSave_Busy("Saving", "Saving the running game.", true,
+			[&](GameSaveHost& h){ return Game_SaveActive(h, game); });
 
 		Games_Saved(r);
 		snprintf(message, size, "%s", r.message.c_str());
 		return r.ok;
 	}
 
+	// What the core holds is taken here, on the menu thread; the card is written to on a worker, behind a spinner
 	const std::string path = ConfigSavePath();
-	std::string error;
+	std::string text, error;
 
-	if(!ConfigSave(path.c_str(), &error))
+	if(!ConfigText(&text, &error))
 	{
 		snprintf(message, size, "Not saved. %s", error.c_str());
 		return false;
@@ -1803,11 +1806,29 @@ bool Settings_Save(char * message, size_t size)
 
 	// The controls are kept in memory until now. With no game they belong to the mapper file DOSBox is using
 	// (a game's own map is written with the game).
-	const bool controls = MAPPER_SaveBindsNow();
+	std::string binds, mapFile;
 
-	struct stat st;
-	const std::string bak = path + ".bak";
-	const bool kept = stat(bak.c_str(), &st) == 0;
+	MAPPER_BindsText(binds);
+	MAPPER_FileName(mapFile);
+
+	bool saved = false, controls = false, kept = false;
+
+	MenuBusy_Run("Saving", "Saving dosbox.conf and the controls.", [&]{
+		saved = ConfigSaveText(path.c_str(), text, &error);
+		if(!saved)
+			return;
+
+		controls = !mapFile.empty() && Game_WriteFile(mapFile, binds);
+
+		struct stat st;
+		kept = stat((path + ".bak").c_str(), &st) == 0;
+	});
+
+	if(!saved)
+	{
+		snprintf(message, size, "Not saved. %s", error.c_str());
+		return false;
+	}
 
 	if(!controls)
 		snprintf(message, size, "Saved %s, but the controls could not be saved.", path.c_str());
