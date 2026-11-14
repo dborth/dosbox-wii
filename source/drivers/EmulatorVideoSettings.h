@@ -41,12 +41,24 @@ enum class VideoWidescreen
 	Display16x9  //!< the screen is 16:9: squeeze the picture so it isn't stretched
 };
 
+//! The vertical filter the console applies when it copies the picture out
+//! (Wii). It blends neighbouring lines, which steadies an interlaced picture
+//! on a CRT. Only meaningful where EmulatorVideoCapabilities::deflicker.
+enum class VideoDeflicker
+{
+	Auto,    //!< whatever the video mode itself asks for (a deflicker kernel on 480i, none on 480p)
+	Off,     //!< no blending: sharpest, and shimmers on 480i
+	Normal,  //!< libogc's stock deflicker kernel 8/8/10/12/10/8/8
+	Strong   //!< libogc's softer stock kernel 4/8/12/16/12/8/4
+};
+
 struct EmulatorVideoSettings
 {
 	VideoFit fit = VideoFit::Fit;
 	VideoAspect aspect = VideoAspect::Original;
 	VideoFilter filter = VideoFilter::Bilinear;
 	VideoWidescreen widescreen = VideoWidescreen::Auto;
+	VideoDeflicker deflicker = VideoDeflicker::Auto;
 
 	//! Darkness of the gaps between lines, 0 (off) to 1
 	float scanlines = 0.0f;
@@ -86,7 +98,7 @@ struct EmulatorVideoSettings
 	bool operator==(const EmulatorVideoSettings& o) const
 	{
 		return fit == o.fit && aspect == o.aspect && filter == o.filter
-			&& widescreen == o.widescreen && scanlines == o.scanlines
+			&& widescreen == o.widescreen && deflicker == o.deflicker && scanlines == o.scanlines
 			&& zoomX == o.zoomX && zoomY == o.zoomY
 			&& shiftX == o.shiftX && shiftY == o.shiftY;
 	}
@@ -102,4 +114,6 @@ struct EmulatorVideoCapabilities
 	//! True where VideoWidescreen has any effect (Wii). False where each
 	//! output's real shape is known (Wii U), so the setting is ignored.
 	bool widescreenSetting = false;
+	//! True where VideoDeflicker has any effect (Wii). False on Wii U.
+	bool deflicker = false;
 };

@@ -670,6 +670,14 @@ static bool WidescreenShown()
 	return widescreen;
 }
 
+static bool DeflickerShown()
+{
+	bool deflicker = false;
+
+	GetEmulatorVideoCapabilities(NULL, NULL, NULL, &deflicker);
+	return deflicker;
+}
+
 //! "sharp" is only offered where the driver has it
 static bool FilterAllowed(const char * candidate)
 {
@@ -691,11 +699,16 @@ static const char * ZoomInactive()
 #define SHIFT_STEP	5	//!< of 1/640 of the width, 1/480 of the height
 #define ZOOM_STEP	5	//!< percent
 
+static const char * const helpDeflicker =
+	"Steadies the picture on a CRT TV in 480i by blending neighbouring lines. Takes effect when you return to DOS. "
+	"Auto uses what the video mode asks for; Off is sharpest; Strong blends most.";
+
 static const SettingRow videoRows[] =
 {
 	{ "Aspect",			"display",	"aspect",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
 	{ "Fit",			"display",	"fit",			ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
 	{ "Filter",			"display",	"filter",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, FilterAllowed, NULL, 0, 0, NULL, NULL },
+	{ "Deflicker",		"display",		"deflicker",	ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, helpDeflicker, 0, 0, DeflickerShown, NULL },
 	{ "Scanlines",		"display",	"scanlines",	ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, 10, ScanlinesShown, NULL },
 	{ "Zoom width",		"display",	"zoomx",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, ZOOM_STEP, NULL, ZoomInactive },
 	{ "Zoom height",	"display",	"zoomy",		ROW_RANGE,			TIER_LIVE,		NULL, 0, FMT_PERCENT, NULL, NULL, NULL, 0, ZOOM_STEP, NULL, ZoomInactive },

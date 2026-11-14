@@ -56,6 +56,8 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		void recalculateScaling();
 		void ensureRect();
 		bool scanlinesSupported() const;
+		//! The copy filter for the current settings; see the .cpp
+		void applyCopyFilter(GXRModeObj * rmode);
 		bool scanlinesActive() const;
 		bool widescreenCompensation() const;
 		int choosePrescale();

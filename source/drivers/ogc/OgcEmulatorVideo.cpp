@@ -82,15 +82,18 @@ EmulatorVideoCapabilities OgcEmulatorVideo::getCapabilities() const
 	caps.scanlines = scanlinesSupported();
 	caps.sharpFilter = true;
 	caps.widescreenSetting = true;
+	caps.deflicker = true;
 	return caps;
 }
 
 //! Scanlines are drawn one EFB row at a time, so they only make sense on a
-//! 480+ line mode (not the 240p modes)
+//! progressive 480+ line mode. Not the 240p modes (the lines are already
+//! there), and not interlaced ones: every other row is one whole field, so
+//! the picture would flash black at half the refresh rate.
 bool OgcEmulatorVideo::scanlinesSupported() const
 {
 	GXRModeObj* mode = videoDriver ? videoDriver->getVideoMode() : nullptr;
-	return mode && mode->efbHeight > 300;
+	return mode && mode->efbHeight > 300 && (mode->viTVMode & 3) == VI_PROGRESSIVE;
 }
 
 bool OgcEmulatorVideo::scanlinesActive() const
@@ -259,6 +262,37 @@ void OgcEmulatorVideo::setCanvasProjection()
 }
 
 /****************************************************************************
+ * applyCopyFilter
+ *
+ * The vertical filter used when the EFB is copied to the XFB. Before this was
+ * a setting the copy always ran with no filter, so a 480i picture got none
+ * of the deflickering the menu (which uses the mode's own kernel) has.
+ * The kernels are the stock ones libogc2's modes use; they sum to 64.
+ ****************************************************************************/
+void OgcEmulatorVideo::applyCopyFilter(GXRModeObj * rmode)
+{
+	static const u8 normal[7] = {8, 8, 10, 12, 10, 8, 8};
+	static const u8 strong[7] = {4, 8, 12, 16, 12, 8, 4};
+
+	switch (settings.deflicker)
+	{
+		case VideoDeflicker::Off:
+			// with the filter off the hardware uses its own default kernel
+			GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_FALSE, rmode->vfilter);
+			break;
+		case VideoDeflicker::Normal:
+			GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_TRUE, normal);
+			break;
+		case VideoDeflicker::Strong:
+			GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_TRUE, strong);
+			break;
+		default:
+			GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_TRUE, rmode->vfilter);
+			break;
+	}
+}
+
+/****************************************************************************
  * resetVideo
  *
  * Reset the video/rendering mode for the emulator rendering
@@ -266,7 +300,6 @@ void OgcEmulatorVideo::setCanvasProjection()
 void OgcEmulatorVideo::resetVideo()
 {
 	GXRModeObj * rmode = videoDriver->findVideoMode();
-	u8 vfilter[7] = {0, 0, 21, 22, 21, 0, 0};
 
 	videoDriver->setupVideoMode(rmode); // reconfigure VI
 
@@ -279,7 +312,7 @@ void OgcEmulatorVideo::resetVideo()
 	GX_SetDispCopyYScale (GX_GetYScaleFactor (rmode->efbHeight, rmode->xfbHeight));
 	GX_SetDispCopyDst (rmode->fbWidth, rmode->xfbHeight);
 
-	GX_SetCopyFilter(rmode->aa, rmode->sample_pattern, GX_FALSE, vfilter);
+	applyCopyFilter(rmode);
 
 	GX_SetFieldMode (rmode->field_rendering, ((rmode->viHeight / rmode->efbHeight == 2) ? GX_ENABLE : GX_DISABLE));
 

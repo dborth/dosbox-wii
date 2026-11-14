@@ -398,6 +398,12 @@ void Config_Add_Display()
 	Pint->SetMinMax(EmulatorVideoSettings::SHIFT_MIN, EmulatorVideoSettings::SHIFT_MAX);
 	Pint->Set_help("Moves the picture down (negative: up). One unit is 1/480 of the screen height.");
 
+	const char * deflickers[] = { "auto", "off", "normal", "strong", 0 };
+	Pstring = display_sec->Add_string("deflicker", Property::Changeable::Always, "auto");
+	Pstring->Set_values(deflickers);
+	Pstring->Set_help("Blends neighbouring lines to steady the picture on a CRT TV in 480i. Wii only, and read when emulation "
+		"resumes. auto: what the video mode asks for. off: sharpest, but 480i shimmers. normal and strong: more blending.");
+
 	const char * widescreens[] = { "auto", "4x3", "16x9", 0 };
 	Pstring = display_sec->Add_string("widescreen", Property::Changeable::Always, "auto");
 	Pstring->Set_values(widescreens);
@@ -422,6 +428,10 @@ EmulatorVideoSettings DisplaySettingsFromConfig(Section_prop * section)
 	const std::string widescreen = section->Get_string("widescreen");
 	out.widescreen = (widescreen == "4x3") ? VideoWidescreen::Display4x3
 		: (widescreen == "16x9") ? VideoWidescreen::Display16x9 : VideoWidescreen::Auto;
+
+	const std::string deflicker = section->Get_string("deflicker");
+	out.deflicker = (deflicker == "off") ? VideoDeflicker::Off : (deflicker == "normal") ? VideoDeflicker::Normal
+		: (deflicker == "strong") ? VideoDeflicker::Strong : VideoDeflicker::Auto;
 
 	out.scanlines = section->Get_int("scanlines") / 100.0f;
 	out.zoomX = section->Get_int("zoomx") / 100.0f;

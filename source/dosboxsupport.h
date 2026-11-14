@@ -69,9 +69,9 @@ int GetRunningFrameskip();
 bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer);
 
 //! What the emulator video driver can do, so the Video page can leave out rows
-//! that would do nothing here. Any of the three may be NULL. Returns false when
-//! there is no emulator video driver, in which case all three are false.
-bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting);
+//! that would do nothing here. Any of them may be NULL. Returns false when
+//! there is no emulator video driver, in which case all are false.
+bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting, bool * deflicker = NULL);
 
 /**
  * What DOSBox is actually doing, as opposed to what the config says, for the
