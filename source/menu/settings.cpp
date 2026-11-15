@@ -34,6 +34,7 @@
 #include "dosboxsupport.h"
 #include "preferences.h"
 #include "input.h"
+#include "drivers/VideoOutputModes.h"
 
 /****************************************************************************
  * Row table types
@@ -678,6 +679,39 @@ static bool DeflickerShown()
 	return deflicker;
 }
 
+static bool OutputShown()
+{
+	bool outputModes = false;
+
+	GetEmulatorVideoCapabilities(NULL, NULL, NULL, NULL, &outputModes);
+	return outputModes;
+}
+
+//! The page steps through the short list; the config accepts every mode (see VideoOutputModes.h)
+static bool OutputAllowed(const char * candidate)
+{
+	return strcmp(candidate, "auto") == 0 || VideoOutput_InMenu(VideoOutput_Find(candidate));
+}
+
+//! What the value comes to: for auto the console's own mode, for a mode that cannot be used what is used instead
+static const char * OutputDetail()
+{
+	static char text[64];
+	int requested = VIDEO_OUTPUT_AUTO, resolved = VIDEO_OUTPUT_AUTO;
+	bool fellBack = false;
+
+	if(!GetEmulatorVideoOutput(&requested, &resolved, &fellBack))
+		return NULL;
+
+	if(fellBack)
+	{
+		snprintf(text, sizeof(text), "not available, using %s", VideoOutput_Label(resolved));
+		return text;
+	}
+
+	return (resolved == VIDEO_OUTPUT_AUTO) ? NULL : VideoOutput_Label(resolved);
+}
+
 //! "sharp" is only offered where the driver has it
 static bool FilterAllowed(const char * candidate)
 {
@@ -699,12 +733,18 @@ static const char * ZoomInactive()
 #define SHIFT_STEP	5	//!< of 1/640 of the width, 1/480 of the height
 #define ZOOM_STEP	5	//!< percent
 
+static const char * const helpOutput =
+	"The video mode the TV gets while you play. Takes effect when you return to DOS; the menu always stays in the "
+	"console's own mode. 240p shows games at their real height on a CRT, and squeezes a 480 line picture in half. "
+	"480p needs a component cable. The config file can name any other libogc2 mode (see output in [display]).";
+
 static const char * const helpDeflicker =
 	"Steadies the picture on a CRT TV in 480i by blending neighbouring lines. Takes effect when you return to DOS. "
-	"Auto uses what the video mode asks for; Off is sharpest; Strong blends most.";
+	"Auto uses what the video mode asks for; Off is sharpest; Strong blends most. Little use in 240p, which has no interlacing to steady.";
 
 static const SettingRow videoRows[] =
 {
+	{ "Output mode",	"display",	"output",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, OutputAllowed, helpOutput, 0, 0, OutputShown, NULL, OutputDetail },
 	{ "Aspect",			"display",	"aspect",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
 	{ "Fit",			"display",	"fit",			ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, NULL, NULL, 0, 0, NULL, NULL },
 	{ "Filter",			"display",	"filter",		ROW_CHOICE,			TIER_LIVE,		NULL, 0, FMT_NUMBER, NULL, FilterAllowed, NULL, 0, 0, NULL, NULL },

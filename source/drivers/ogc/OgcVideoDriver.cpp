@@ -16,6 +16,7 @@
 #include <ogc/irq.h>
 
 #include "OgcVideoDriver.h"
+#include "../VideoOutputModes.h"
 
 #ifdef HW_RVL
 #include "wii/WiiPlatform.h"
@@ -101,21 +102,63 @@ uint32_t OgcVideoDriver::getFrameTimer()
 }
 
 /****************************************************************************
+ * Stock modes
+ *
+ * The modes VideoOutputModes.h lists, in the same order, taken from the
+ * libogc2 globals (ogc/video_types.h). Nothing here is ever edited: a mode
+ * that is used is copied first (findEmulatorMode).
+ ***************************************************************************/
+static GXRModeObj * const stockModes[] = {
+#define X(name, label) &TV##name,
+	VIDEO_OUTPUT_MODES(X)
+#undef X
+};
+
+static bool IsProgressiveMode(const GXRModeObj * mode)
+{
+	return (mode->viTVMode & 3) == VI_PROGRESSIVE;
+}
+
+//! Field by field: the struct has padding, which memcmp() would compare too
+static bool SameMode(const GXRModeObj * a, const GXRModeObj * b)
+{
+	return a->viTVMode == b->viTVMode && a->fbWidth == b->fbWidth && a->efbHeight == b->efbHeight
+		&& a->xfbHeight == b->xfbHeight && a->viXOrigin == b->viXOrigin && a->viYOrigin == b->viYOrigin
+		&& a->viWidth == b->viWidth && a->viHeight == b->viHeight && a->xfbMode == b->xfbMode
+		&& a->field_rendering == b->field_rendering && a->aa == b->aa
+		&& memcmp(a->sample_pattern, b->sample_pattern, sizeof(a->sample_pattern)) == 0
+		&& memcmp(a->vfilter, b->vfilter, sizeof(a->vfilter)) == 0
+		&& a->copy_interlaced == b->copy_interlaced;
+}
+
+//! True if the mode drives the screen without interlacing (single field or progressive)
+static bool IsNonInterlaced(const GXRModeObj * mode)
+{
+	return (mode->viTVMode & 3) == VI_NON_INTERLACE || (mode->viTVMode & 3) == VI_PROGRESSIVE;
+}
+
+/****************************************************************************
  * setupVideoMode
  *
- * Applies the given video mode to the VI
+ * Applies the given video mode to the VI. Modes are compared by what is in
+ * them: the preferred mode is a shared global that findVideoMode() rewrites,
+ * and the emulator's mode is a copy that is rewritten for each choice, so
+ * the same address can hold a different mode than it did.
  ***************************************************************************/
 void OgcVideoDriver::setupVideoMode(GXRModeObj * mode)
 {
-	if(videoMode == mode)
+	if(appliedValid && SameMode(&appliedMode, mode))
+	{
+		videoMode = mode;
 		return;
+	}
 
-	// Detect if we are transitioning between Progressive and Interlaced
+	// Detect if we are transitioning between Progressive and Interlaced, or
+	// between TV standards (the signal changes, so the TV needs a moment too)
 	bool mode_switch = false;
-	if (videoMode != nullptr) {
-		bool was_progressive = (videoMode->viTVMode & 3) == VI_NON_INTERLACE || (videoMode->viTVMode & 3) == VI_PROGRESSIVE;
-		bool is_progressive = (mode->viTVMode & 3) == VI_NON_INTERLACE || (mode->viTVMode & 3) == VI_PROGRESSIVE;
-		if (was_progressive != is_progressive) {
+	if (appliedValid) {
+		if (IsNonInterlaced(&appliedMode) != IsNonInterlaced(mode)
+			|| (appliedMode.viTVMode >> 2) != (mode->viTVMode >> 2)) {
 			mode_switch = true;
 		}
 	}
@@ -153,24 +196,24 @@ void OgcVideoDriver::setupVideoMode(GXRModeObj * mode)
 	VIDEO_WaitForFlush ();
 
 	VIDEO_SetPostRetraceCallback ((VIRetraceCallback)copy_to_xfb);
+	appliedMode = *mode;
+	appliedValid = true;
 	videoMode = mode;
 }
 
 /****************************************************************************
- * findVideoMode
+ * adjustMode
  *
- * Finds the optimal video mode, or uses the user-specified one
- * Also configures original video modes
+ * What every mode we use gets: the horizontal size the TV overscan needs, the
+ * origin that centres it, and the refresh rate the emulator paces itself to.
+ * The origin the mode itself gives is kept for a vertical position that is
+ * not ours to guess: single-field modes state it in field lines (VIDEO_Configure
+ * doubles it), so recentring them like an interlaced mode would put them low.
  ***************************************************************************/
-GXRModeObj* OgcVideoDriver::findVideoMode()
+void OgcVideoDriver::adjustMode(GXRModeObj * mode, bool centreY)
 {
-	GXRModeObj * mode = VIDEO_GetPreferredMode(NULL);
-
 	// check for progressive scan
-	if ((mode->viTVMode & 3) == VI_PROGRESSIVE)
-		progressive = true;
-	else
-		progressive = false;
+	progressive = IsProgressiveMode(mode);
 
 	#ifdef HW_RVL
 	widescreen = (CONF_GetAspectRatio() == CONF_ASPECT_16_9);
@@ -189,16 +232,120 @@ GXRModeObj* OgcVideoDriver::findVideoMode()
 	{
 		vmode_60hz = false;
 		mode->viXOrigin = (VI_MAX_WIDTH_PAL - mode->viWidth) / 2;
-		mode->viYOrigin = (VI_MAX_HEIGHT_PAL - mode->viHeight) / 2;
+		if (centreY)
+			mode->viYOrigin = (VI_MAX_HEIGHT_PAL - mode->viHeight) / 2;
 	}
 	else
 	{
 		vmode_60hz = true;
 		mode->viXOrigin = (VI_MAX_WIDTH_NTSC - mode->viWidth) / 2;
-		mode->viYOrigin = (VI_MAX_HEIGHT_NTSC - mode->viHeight) / 2;
+		if (centreY)
+			mode->viYOrigin = (VI_MAX_HEIGHT_NTSC - mode->viHeight) / 2;
 	}
 	#endif
+}
+
+/****************************************************************************
+ * findVideoMode
+ *
+ * The console's own preferred mode (its video, aspect and progressive
+ * settings), also configures original video modes. This is the menu's mode
+ * and the emulator's when no output mode is chosen.
+ ***************************************************************************/
+GXRModeObj* OgcVideoDriver::findVideoMode()
+{
+	GXRModeObj * mode = VIDEO_GetPreferredMode(NULL);
+
+	adjustMode(mode, true);
 	return mode;
+}
+
+/****************************************************************************
+ * Output modes (Wii)
+ *
+ * Vi and the EFB are set up from a GXRModeObj, so a chosen mode is only
+ * ever a different one of those. The menu is not affected: startMenuVideo()
+ * keeps using findVideoMode(), and the mode changes when emulation takes the
+ * display and again when the menu does, as in the other emulators.
+ ***************************************************************************/
+bool OgcVideoDriver::outputModesSupported() const
+{
+	#ifdef HW_RVL
+	// vWii (a Wii U running Wii software) is not offered it: the Wii U's own
+	// output stage converts what the Wii mode produces, and what a 240 line or
+	// PAL mode does through it has not been checked
+	return !static_cast<WiiPlatform*>(platform)->isWiiU();
+	#else
+	return false;
+	#endif
+}
+
+bool OgcVideoDriver::isOutputModeAvailable(int index) const
+{
+	if(index < 0 || index >= VideoOutput_Count())
+		return false;
+
+	// progressive modes need a cable that carries them
+	if(IsProgressiveMode(stockModes[index]))
+		return VIDEO_HaveComponentCable() != 0;
+
+	return true;
+}
+
+int OgcVideoDriver::findOutputIndex(const GXRModeObj * mode) const
+{
+	for(int i = 0; i < VideoOutput_Count(); i++)
+	{
+		if(stockModes[i] == mode)
+			return i;
+	}
+	return VIDEO_OUTPUT_AUTO;
+}
+
+int OgcVideoDriver::resolveOutput(int requested, bool * fellBack) const
+{
+	const int preferred = findOutputIndex(VIDEO_GetPreferredMode(NULL));
+
+	if(fellBack)
+		*fellBack = false;
+
+	if(requested == VIDEO_OUTPUT_AUTO || !outputModesSupported())
+		return preferred;
+
+	if(!isOutputModeAvailable(requested))
+	{
+		if(fellBack)
+			*fellBack = true;
+		return preferred;
+	}
+	return requested;
+}
+
+const GXRModeObj * OgcVideoDriver::emulatorModeFor(int requested) const
+{
+	const int index = resolveOutput(requested, NULL);
+
+	return (index == VIDEO_OUTPUT_AUTO) ? VIDEO_GetPreferredMode(NULL) : stockModes[index];
+}
+
+/****************************************************************************
+ * findEmulatorMode
+ *
+ * The mode emulation uses. The preferred mode itself when nothing is chosen
+ * (or what is chosen is the preferred mode, or cannot be used); otherwise a
+ * copy of the stock mode, since adjustMode() edits what it is given and the
+ * stock modes are shared with libogc.
+ ***************************************************************************/
+GXRModeObj* OgcVideoDriver::findEmulatorMode(int requested)
+{
+	const GXRModeObj * stock = emulatorModeFor(requested);
+
+	if(stock == VIDEO_GetPreferredMode(NULL))
+		return findVideoMode();
+
+	emulatorMode = *stock;
+	adjustMode(&emulatorMode, false);
+	return &emulatorMode;
 }
 
 /****************************************************************************

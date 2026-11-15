@@ -74,7 +74,7 @@ Every push builds automatically. Grab the latest continuous-integration build:
 - **Games**: save a game's controls, settings and startup under a name, then switch to it from the menu without leaving the app. Games you've put on the card by hand are found too
 - Wiimote, Wiimote + Nunchuk, Classic Controller and Wii U Pro Controller support, the GameCube Controller on the Wii build, and the **Wii U GamePad**: full touch and buttons on the native Wii U build, buttons and sticks (no touch) on vWii via VC-style injection
 - USB keyboard and mouse, the Wiimote pointer as a mouse, and an on-screen keyboard
-- Video output adjustments: original (4:3) or uncorrected (square-pixel) aspect, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and a widescreen setting on the Wii
+- Video output adjustments: original (4:3) or uncorrected (square-pixel) aspect, fit / integer / fill sizing, sharp / bilinear / nearest filtering, scanlines, zoom and shift, and on the Wii a widescreen setting, a deflicker setting and a choice of video output mode (480i, 480p, 240p, PAL and PAL60)
 - Mounts SD cards and USB drives as DOS drives from a **Drives** screen in the menu, which also picks up drives plugged in or removed while it is open
 - Saves your settings back to `dosbox.conf` from the menu (*Settings → Save*), keeping the previous version as `dosbox.conf.bak`
 - Open source
@@ -390,9 +390,13 @@ A conf from a PC build of DOSBox still loads. A section or setting this build do
 | `scanlines` | 0 to 100 (percent; 0 is off) | 0 |
 | `zoomx`, `zoomy` | 50 to 200 (percent of normal size; used by `fit` and `fill`) | 100 |
 | `shiftx`, `shifty` | -100 to 100 (units of 1/640 of the screen width, and 1/480 of its height; negative is left or up) | 0 |
+| `deflicker` | `auto` (what the video mode asks for), `off`, `normal`, `strong` | `auto` |
+| `output` | `auto` (the console's own video mode), or the name of any libogc2 stock mode in lower case without its `TV` prefix, such as `ntsc480intdf` (480i), `ntsc480prog` (480p), `ntsc240ds` (240p), `eurgb60hz240ds` (PAL60 240p), `pal288dsscale` (PAL 288p), `pal576intdfscale` (PAL 576i). A value that is not a mode name is read as `auto` | `auto` |
 | `widescreen` | `auto` (follow the console's setting), `4x3`, `16x9` | `auto` |
 
-`widescreen` has an effect on the Wii only, and `scanlines` only in 480-line modes on the Wii; see [Wii and Wii U](#wii-and-wii-u).
+`widescreen`, `deflicker` and `output` have an effect on the Wii only, and `scanlines` only in progressive 480-line modes on the Wii; see [Wii and Wii U](#wii-and-wii-u). `deflicker` and `output` are read when emulation resumes, not at once. Per-game configs can set `output`, so a game can have its own video mode.
+
+`output` offers every stock mode libogc2 declares (57: NTSC, MPAL, PAL and EuRGB60, each in single-field `Ds`, interlaced `Int` and progressive `Prog` forms, and the deflickered, soft and antialiased variants of them) and nothing custom. The Video page lists nine of them (480i, 480p and 240p for NTSC, PAL60 and PAL); the rest can only be set in the file. A progressive mode needs a component cable: without one the console's own mode is used, and the Video and Status pages say so.
 
 **`[sdl]`**
 
@@ -497,7 +501,7 @@ Speed and Frameskip change the running values, and the same numbers are copied i
 | Page | What is on it |
 |---|---|
 | **Performance** | CPU core, CPU type, cycles mode and amount, cycle step up / down, frameskip |
-| **Video** | Aspect, fit, filter, scanlines, zoom width / height, shift X / Y, widescreen |
+| **Video** | Output mode, aspect, fit, filter, deflicker, scanlines, zoom width / height, shift X / Y, widescreen |
 | **Audio** | Output (read-only), Sound Blaster, OPL mode and rate, PC speaker, Tandy, Disney, Gravis Ultrasound |
 | **Keyboard & Mouse** | Mouse speed X and Y |
 | **DOS joystick** | Joystick type, button wrap, dead zone, autofire, circular input, swap axes 3 and 4, timed axes |
@@ -545,10 +549,12 @@ These are the `[display]` settings, read by the picture on its next frame, so ev
 
 | Row | Values | Notes |
 |---|---|---|
+| **Output mode** | `auto`, NTSC / PAL60 / PAL 480i, 480p and 240p (PAL: 576i, 576p, 288p) | **Wii only** (not vWii). Default `auto`, the console's own mode. Read when you return to DOS: the screen changes mode then, and again when you open the menu, which always stays in the console's own mode. 240p shows a 320x200 game at its real height on a CRT (a 480-line game is squeezed to half its height). 480p needs a component cable; without one `auto` is used and the row says so. The config file can name any other stock mode |
 | **Aspect** | `corrected`, `square` | Default `corrected` |
 | **Fit** | `fit` (as large as fits, keeping the shape), `integer` (the largest whole-number multiple), `fill` (stretched over the screen) | Default `fit` |
 | **Filter** | `sharp`, `bilinear`, `nearest` | Default `bilinear`. `sharp` keeps pixel centres crisp and blends only the edges |
-| **Scanlines** | 0% (off) to 100%, in tens | **Wii U:** always shown. **Wii:** only in a 480-line video mode, not the 240p modes |
+| **Deflicker** | `auto`, `off`, `normal`, `strong` | **Wii only.** Blends neighbouring lines to steady a 480i picture on a CRT. Read when you return to DOS. Does little in 240p, which has no interlacing to steady |
+| **Scanlines** | 0% (off) to 100%, in tens | **Wii U:** always shown. **Wii:** only in a progressive 480-line video mode, not 240p or 480i; the row follows the output mode you chose, not the menu's |
 | **Zoom width** / **height** | 50% to 200%, in fives | Used by `fit` and `fill`; **(not used)** with `integer` |
 | **Shift X** / **Y** | −100 to +100, in fives | One unit is 1/640 of the screen width (X) or 1/480 of its height (Y) |
 | **Widescreen** | `auto`, `4x3`, `16x9` | **Wii only.** `auto` follows the console's own aspect-ratio setting, the other two are overrides |
@@ -642,7 +648,7 @@ On numbers, a list of values is stepped in ascending order; a whole-number range
 | Group | Lines |
 |---|---|
 | **CPU** | **DOS state** (*At the DOS prompt* or *A program is running*, which decides whether DOS prompt only rows can change); **CPU core** (configured, then the core running); **Dynarec**; **CPU type**; **Cycles** (`auto`, `fixed N` or `max P%`, then in brackets what is running: the share of the console and the measured cycles for a percentage mode, or the cycle count) |
-| **Video** | **Screen mode** (`Text` or `Graphics` and the size the emulated card draws, or *None yet*); **Frame to display** (the size handed to the display); **Picture shape** (e.g. 4:3, before it is fitted to the screen); **Fit**; **Aspect**; **Filter**; **Scanlines** (only where the console can draw them); **Zoom**; **Shift**; **Widescreen** (Wii only); **Frameskip** (configured, then the running value) |
+| **Video** | **Screen mode** (`Text` or `Graphics` and the size the emulated card draws, or *None yet*); **Frame to display** (the size handed to the display); **Picture shape** (e.g. 4:3, before it is fitted to the screen); **Fit**; **Aspect**; **Filter**; **Output mode** (Wii: what you chose, and the mode it comes to if that cannot be used); **Scanlines** (only where the console can draw them); **Zoom**; **Shift**; **Widescreen** (Wii only); **Frameskip** (configured, then the running value) |
 | **Audio** | **Audio output**; **Sound Blaster** and **OPL mode** (configured, then what runs: an `sb16` on a non-VGA machine shows `sb16 (sbpro2)`); **OPL rate** (`resampled` when it is not the output rate); **PC speaker**; **Tandy sound**; **Disney**; **Gravis Ultrasound** |
 | **Memory** | **Machine**; **Memory** (configured MB, then MB the machine has); **XMS**; **EMS** (configured, then `true`, `emsboard`, `emm386` or `false` as in effect); **UMB** |
 | **Input** | One line per connected player: the controller (`Wiimote + Nunchuk`, `GameCube`, …) and `(Joystick 1)`, `(Joystick 2)` or `(no joystick)`, from the joystick type; or *None connected*. Then **Joystick** (configured type, then the type in effect: `auto` shows `auto (4axis)`) |

@@ -18,6 +18,9 @@ struct FrameSnapshotInfo
 	//! Where the frame was on the UI canvas (the 640x480 design space of the
 	//! menu) when it was captured: aspect, scale and position already applied,
 	//! so a background built from it lines up with what the player was looking at.
+	//! The canvas is the menu's: where the emulator's video mode shows a different
+	//! part of the screen than the menu's (Wii output modes), the rect has been
+	//! moved to cover the same part, and can run past the canvas edge.
 	float x, y, w, h;
 };
 
@@ -76,6 +79,10 @@ class EmulatorVideoDriver
 
 		//! What this driver can do, for hiding or disabling menu rows
 		virtual EmulatorVideoCapabilities getCapabilities() const { return EmulatorVideoCapabilities(); }
+
+		//! The output mode emulation will be in when it resumes, for the
+		//! Video and Status pages. Where the mode cannot be chosen, all defaults.
+		virtual VideoOutputInfo getOutputInfo() const { return VideoOutputInfo(); }
 
 		//! Where the picture is (or, before the next frame, will be) on the UI
 		//! canvas with the current settings and frame size, for previewing a

@@ -28,6 +28,7 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		bool isReadyToPresent() const override;
 		void setPixelAspect(float scaleX, float scaleY) override;
 		EmulatorVideoCapabilities getCapabilities() const override;
+		VideoOutputInfo getOutputInfo() const override;
 		bool getCanvasRect(float* x, float* y, float* w, float* h) override;
 
 		//! Refers to the live (4x4-tiled GX_TF_RGB565) texture instead of
@@ -55,6 +56,9 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		void setCanvasProjection();
 		void recalculateScaling();
 		void ensureRect();
+		//! Whether `mode` can show scanlines. The one asked about the emulator's
+		//! mode (getCapabilities) is the one it will be in, which the menu's own is not.
+		static bool scanlinesSupportedIn(const GXRModeObj* mode);
 		bool scanlinesSupported() const;
 		//! The copy filter for the current settings; see the .cpp
 		void applyCopyFilter(GXRModeObj * rmode);
@@ -78,6 +82,7 @@ class OgcEmulatorVideo : public EmulatorVideoDriver
 		int snapWidth = 0;
 		int snapHeight = 0;
 		float snapX = 0, snapY = 0, snapW = 0, snapH = 0; // frame rect at capture
+		VideoExtent snapExtent = { 0.0f, 1.0f };           // what the video mode showed of the screen then
 
 		float pixelAspectX = 1.0f;
 		float pixelAspectY = 1.0f;

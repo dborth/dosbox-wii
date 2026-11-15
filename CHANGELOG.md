@@ -4,6 +4,8 @@ All notable changes to DOSBox Wii are recorded here, newest first. For the curre
 
 ## 2.1 - Unreleased
 * Add missing keyboard keys to the mapping UI
+* **Video output mode (Wii).** Choose the video mode the TV gets while you play: 480i, 480p (component cable) or 240p, for NTSC, PAL60 and PAL, from *Settings → Video → Output mode* or `output` in `[display]`. The config accepts any of libogc2's 57 stock modes. The menu stays in the console's own mode and the game screen behind it lines up with the game's, whichever mode it was in. Per-game configs can carry their own mode.
+* Fix: the `[display]` settings are now in place before the first picture, so a game config's `deflicker` (and `output`) is used from the start, not only after the menu has been opened
 
 ## 2.0 - October 25, 2026
 * **A new port.** DOSBox Wii has been rebuilt on the same [libgui](https://github.com/dborth/libgui) interface and driver framework as the other GX emulators, and no longer uses SDL. The DOSBox core is stock SVN r4301, and one codebase now builds for both the Wii and the Wii U

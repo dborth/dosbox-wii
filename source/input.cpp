@@ -191,6 +191,16 @@ void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
 
+	// [display] is initialised after [sdl], so its settings would not be in yet
+	// when the display is taken, and the first mode would be the previous
+	// game's (or the default). Hand them over first; the section's own init
+	// later finds nothing changed.
+	{
+		Section * display = control->GetSection("display");
+		if(display)
+			GFX_DisplayInit(display);
+	}
+
 	// Take the display for the emulator (InitApp() left the menu on it)
 	GFX_HalInit();
 

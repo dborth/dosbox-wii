@@ -29,6 +29,7 @@
 #include "storage.h"
 #include "input.h"
 #include "preferences.h"
+#include "drivers/VideoOutputModes.h"
 
 //! An option list holds 49 characters of value
 #define MAX_VALUE	49
@@ -253,11 +254,29 @@ static std::string ShapeText(double ratio)
 
 static void VideoLines(const EmulationStatus & st)
 {
-	bool scanlines = false, widescreen = false;
+	bool scanlines = false, widescreen = false, outputModes = false;
 
-	GetEmulatorVideoCapabilities(&scanlines, NULL, &widescreen);
+	GetEmulatorVideoCapabilities(&scanlines, NULL, &widescreen, NULL, &outputModes);
 
 	Heading("VIDEO");
+
+	if(outputModes)
+	{
+		int requested = VIDEO_OUTPUT_AUTO, resolved = VIDEO_OUTPUT_AUTO;
+		bool fellBack = false;
+
+		GetEmulatorVideoOutput(&requested, &resolved, &fellBack);
+
+		// what the TV gets while emulating, which is not the menu's own mode
+		std::string effective = (resolved == VIDEO_OUTPUT_AUTO) ? std::string() : std::string(VideoOutput_Label(resolved));
+
+		if(fellBack)
+			effective = "not available, using " + effective;
+
+		AddProp("Output mode", "display", "output", effective,
+			"The video mode the TV gets while you play, read when emulation resumes. auto is the console's own mode, which the menu "
+			"always uses. A progressive mode needs a component cable; without one the console's own mode is used.");
+	}
 
 	if(!st.haveMode)
 	{

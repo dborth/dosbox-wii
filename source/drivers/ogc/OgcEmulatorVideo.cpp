@@ -79,21 +79,40 @@ void OgcEmulatorVideo::settingsChanged()
 EmulatorVideoCapabilities OgcEmulatorVideo::getCapabilities() const
 {
 	EmulatorVideoCapabilities caps;
-	caps.scanlines = scanlinesSupported();
+	// The mode emulation will be in, not the one the display is in now: with
+	// the menu up that is the menu's 480 line mode whatever the output mode is
+	caps.scanlines = videoDriver ? scanlinesSupportedIn(videoDriver->emulatorModeFor(settings.output)) : false;
 	caps.sharpFilter = true;
 	caps.widescreenSetting = true;
 	caps.deflicker = true;
+	caps.outputModes = videoDriver && videoDriver->outputModesSupported();
 	return caps;
+}
+
+VideoOutputInfo OgcEmulatorVideo::getOutputInfo() const
+{
+	VideoOutputInfo info;
+
+	if(videoDriver && videoDriver->outputModesSupported())
+	{
+		info.requested = settings.output;
+		info.resolved = videoDriver->resolveOutput(settings.output, &info.fellBack);
+	}
+	return info;
 }
 
 //! Scanlines are drawn one EFB row at a time, so they only make sense on a
 //! progressive 480+ line mode. Not the 240p modes (the lines are already
 //! there), and not interlaced ones: every other row is one whole field, so
 //! the picture would flash black at half the refresh rate.
+bool OgcEmulatorVideo::scanlinesSupportedIn(const GXRModeObj* mode)
+{
+	return mode && mode->efbHeight > 300 && (mode->viTVMode & 3) == VI_PROGRESSIVE;
+}
+
 bool OgcEmulatorVideo::scanlinesSupported() const
 {
-	GXRModeObj* mode = videoDriver ? videoDriver->getVideoMode() : nullptr;
-	return mode && mode->efbHeight > 300 && (mode->viTVMode & 3) == VI_PROGRESSIVE;
+	return scanlinesSupportedIn(videoDriver ? videoDriver->getVideoMode() : nullptr);
 }
 
 bool OgcEmulatorVideo::scanlinesActive() const
@@ -299,7 +318,9 @@ void OgcEmulatorVideo::applyCopyFilter(GXRModeObj * rmode)
  ****************************************************************************/
 void OgcEmulatorVideo::resetVideo()
 {
-	GXRModeObj * rmode = videoDriver->findVideoMode();
+	// The output mode setting is read here, so a change takes effect when
+	// emulation takes the display back from the menu
+	GXRModeObj * rmode = videoDriver->findEmulatorMode(settings.output);
 
 	videoDriver->setupVideoMode(rmode); // reconfigure VI
 
@@ -643,6 +664,20 @@ void OgcEmulatorVideo::tileRGB565(const uint8_t* src, int pitch, int width, int 
 /****************************************************************************
  * Screenshot support
  ***************************************************************************/
+//! The part of the screen a mode's lines cover, as fractions of the full
+//! picture height of its TV standard. A single field mode gives its origin in
+//! field lines, and the VI doubles it (VIDEO_Configure).
+static VideoExtent ExtentOf(const GXRModeObj * mode)
+{
+	const float full = ((mode->viTVMode >> 2) == VI_PAL) ? (float) VI_MAX_HEIGHT_PAL : (float) VI_MAX_HEIGHT_NTSC;
+	const float top = (float) mode->viYOrigin * (((mode->viTVMode & 3) == VI_NON_INTERLACE) ? 2.0f : 1.0f);
+
+	VideoExtent extent;
+	extent.top = top / full;
+	extent.height = (float) mode->viHeight / full;
+	return extent;
+}
+
 void OgcEmulatorVideo::releaseSnapshot()
 {
 	snapshotValid = false;
@@ -662,6 +697,8 @@ void OgcEmulatorVideo::snapshotFrame()
 	snapWidth = frameWidth;
 	snapHeight = frameHeight;
 	snapX = frameX; snapY = frameY; snapW = frameW; snapH = frameH;
+	if (videoDriver && videoDriver->getVideoMode())
+		snapExtent = ExtentOf(videoDriver->getVideoMode());
 	snapshotValid = true;
 }
 
@@ -673,6 +710,12 @@ bool OgcEmulatorVideo::getSnapshotInfo(FrameSnapshotInfo* info) const
 	info->width = snapWidth;
 	info->height = snapHeight;
 	info->x = snapX; info->y = snapY; info->w = snapW; info->h = snapH;
+
+	// The rect is on the canvas of the mode the emulator was in; the menu draws
+	// on its own, and a different output mode can show a different part of the
+	// screen (a 528 line mode against the menu's 576). Same mode: no change.
+	if (videoDriver && videoDriver->getVideoMode())
+		VideoOutput_RemapCanvasY(snapExtent, ExtentOf(videoDriver->getVideoMode()), CANVAS_H, &info->y, &info->h);
 	return true;
 }
 

@@ -307,7 +307,7 @@ bool GetEmulatorAudioInfo(int * sampleRate, int * framesPerBuffer)
  * Asked of the driver every time: what it can do depends on the console and
  * the video mode it found, not on anything written here.
  ***************************************************************************/
-bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting, bool * deflicker)
+bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * widescreenSetting, bool * deflicker, bool * outputModes)
 {
 	EmulatorVideoCapabilities caps;
 	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
@@ -323,6 +323,26 @@ bool GetEmulatorVideoCapabilities(bool * scanlines, bool * sharpFilter, bool * w
 		*widescreenSetting = caps.widescreenSetting;
 	if(deflicker)
 		*deflicker = caps.deflicker;
+	if(outputModes)
+		*outputModes = caps.outputModes;
+
+	return video != NULL;
+}
+
+bool GetEmulatorVideoOutput(int * requested, int * resolved, bool * fellBack)
+{
+	VideoOutputInfo info;
+	EmulatorVideoDriver * video = (platform && platform->getVideo()) ? platform->getVideo()->getEmulatorVideo() : NULL;
+
+	if(video)
+		info = video->getOutputInfo();
+
+	if(requested)
+		*requested = info.requested;
+	if(resolved)
+		*resolved = info.resolved;
+	if(fellBack)
+		*fellBack = info.fellBack;
 
 	return video != NULL;
 }

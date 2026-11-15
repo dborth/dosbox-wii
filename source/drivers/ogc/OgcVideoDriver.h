@@ -32,7 +32,22 @@ class OgcVideoDriver : public VideoDriver
 		OgcEmulatorVideo* getEmulatorVideo() override { return emulatorVideo; }
 
 		GXRModeObj* getVideoMode() const { return videoMode; };
+		//! The console's own preferred mode: the menu's, and the emulator's when no output mode is chosen
 		GXRModeObj* findVideoMode();
+		//! The mode emulation uses for an output mode setting (an index into
+		//! VideoOutputModes.h, or VIDEO_OUTPUT_AUTO). The returned mode is
+		//! owned by the driver and stays valid until the next call.
+		GXRModeObj* findEmulatorMode(int requested);
+		//! The stock mode findEmulatorMode() would start from, without changing anything
+		const GXRModeObj* emulatorModeFor(int requested) const;
+		//! False where the output mode cannot be chosen (vWii)
+		bool outputModesSupported() const;
+		//! False for a mode this console can't show now (a progressive one without a component cable)
+		bool isOutputModeAvailable(int index) const;
+		//! The VideoOutputModes.h entry that is `mode`, or VIDEO_OUTPUT_AUTO if it is not a stock mode
+		int findOutputIndex(const GXRModeObj* mode) const;
+		//! The entry emulation will use for `requested`; the preferred mode's entry for auto or one that can't be used (then *fellBack)
+		int resolveOutput(int requested, bool* fellBack) const;
 		//! The console is set to 16:9, so a 640-wide frame buffer is stretched
 		//! sideways on the screen. Known once findVideoMode() has run (init() does).
 		bool isWidescreen() const { return widescreen; }
@@ -48,9 +63,14 @@ class OgcVideoDriver : public VideoDriver
 		void presentBuffer();
 
 	private:
+		void adjustMode(GXRModeObj* mode, bool centreY);
+
 		int screenWidth = 0;
 		int screenHeight = 0;
 		GXRModeObj *videoMode = nullptr; // Current video mode
+		GXRModeObj emulatorMode;         // findEmulatorMode()'s copy of a stock mode
+		GXRModeObj appliedMode;          // what the VI was last configured with, to tell a changed mode at the same address
+		bool appliedValid = false;
 		bool vmode_60hz = true;
 		bool widescreen = false;
 

@@ -404,6 +404,14 @@ void Config_Add_Display()
 	Pstring->Set_help("Blends neighbouring lines to steady the picture on a CRT TV in 480i. Wii only, and read when emulation "
 		"resumes. auto: what the video mode asks for. off: sharpest, but 480i shimmers. normal and strong: more blending.");
 
+	Pstring = display_sec->Add_string("output", Property::Changeable::Always, "auto");
+	Pstring->Set_values(VideoOutput_Values());
+	Pstring->Set_help("The video mode the TV gets while emulating. Wii only, and read when emulation resumes; the menu always "
+		"uses the console's own mode. auto: the console's own. Any other value is a libogc2 mode name in lower case, "
+		"without the TV prefix: ntsc240ds (240p), ntsc480intdf (480i), ntsc480prog (480p), eurgb60hz240ds (PAL60 240p), "
+		"pal288dsscale (PAL 288p), pal576intdfscale (PAL 576i) and the rest of the families. "
+		"A progressive mode needs a component cable; where a mode cannot be used auto is used.");
+
 	const char * widescreens[] = { "auto", "4x3", "16x9", 0 };
 	Pstring = display_sec->Add_string("widescreen", Property::Changeable::Always, "auto");
 	Pstring->Set_values(widescreens);
@@ -432,6 +440,10 @@ EmulatorVideoSettings DisplaySettingsFromConfig(Section_prop * section)
 	const std::string deflicker = section->Get_string("deflicker");
 	out.deflicker = (deflicker == "off") ? VideoDeflicker::Off : (deflicker == "normal") ? VideoDeflicker::Normal
 		: (deflicker == "strong") ? VideoDeflicker::Strong : VideoDeflicker::Auto;
+
+	// Anything that is not a mode name is the same as auto
+	const std::string output = section->Get_string("output");
+	out.output = VideoOutput_Find(output.c_str());
 
 	out.scanlines = section->Get_int("scanlines") / 100.0f;
 	out.zoomX = section->Get_int("zoomx") / 100.0f;

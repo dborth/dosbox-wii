@@ -9,6 +9,8 @@
  ***************************************************************************/
 #pragma once
 
+#include "VideoOutputModes.h"
+
 //! How the picture is sized inside the screen
 enum class VideoFit
 {
@@ -60,6 +62,12 @@ struct EmulatorVideoSettings
 	VideoWidescreen widescreen = VideoWidescreen::Auto;
 	VideoDeflicker deflicker = VideoDeflicker::Auto;
 
+	//! The video mode the console outputs while emulating (Wii): an index into
+	//! the VideoOutputModes.h list, or VIDEO_OUTPUT_AUTO for the console's own
+	//! choice. Read when emulation resumes. Ignored where
+	//! EmulatorVideoCapabilities::outputModes is false.
+	int output = VIDEO_OUTPUT_AUTO;
+
 	//! Darkness of the gaps between lines, 0 (off) to 1
 	float scanlines = 0.0f;
 
@@ -91,6 +99,7 @@ struct EmulatorVideoSettings
 		if (shiftX > SHIFT_MAX) shiftX = SHIFT_MAX;
 		if (shiftY < SHIFT_MIN) shiftY = SHIFT_MIN;
 		if (shiftY > SHIFT_MAX) shiftY = SHIFT_MAX;
+		if (output < VIDEO_OUTPUT_AUTO || output >= VideoOutput_Count()) output = VIDEO_OUTPUT_AUTO;
 		if (!(scanlines >= 0.0f)) scanlines = 0.0f;
 		if (scanlines > 1.0f) scanlines = 1.0f;
 	}
@@ -98,7 +107,7 @@ struct EmulatorVideoSettings
 	bool operator==(const EmulatorVideoSettings& o) const
 	{
 		return fit == o.fit && aspect == o.aspect && filter == o.filter
-			&& widescreen == o.widescreen && deflicker == o.deflicker && scanlines == o.scanlines
+			&& widescreen == o.widescreen && deflicker == o.deflicker && output == o.output && scanlines == o.scanlines
 			&& zoomX == o.zoomX && zoomY == o.zoomY
 			&& shiftX == o.shiftX && shiftY == o.shiftY;
 	}
@@ -116,4 +125,15 @@ struct EmulatorVideoCapabilities
 	bool widescreenSetting = false;
 	//! True where VideoDeflicker has any effect (Wii). False on Wii U.
 	bool deflicker = false;
+	//! True where the output mode can be chosen (Wii). False on Wii U and
+	//! vWii, where the setting is ignored.
+	bool outputModes = false;
+};
+
+//! Which output mode the setting comes to; see EmulatorVideoDriver::getOutputInfo()
+struct VideoOutputInfo
+{
+	int requested = VIDEO_OUTPUT_AUTO;	//!< what the setting asks for
+	int resolved = VIDEO_OUTPUT_AUTO;	//!< the VideoOutputModes.h entry emulation will use; VIDEO_OUTPUT_AUTO if the driver cannot say
+	bool fellBack = false;				//!< the requested mode cannot be used (eg. progressive with no component cable), so the console's own is used
 };
