@@ -5,6 +5,10 @@ All notable changes to DOSBox Wii are recorded here, newest first. For the curre
 ## 2.1 - Unreleased
 * Add missing keyboard keys to the mapping UI
 * **Video output mode (Wii).** Choose the video mode the TV gets while you play: 480i, 480p (component cable) or 240p, for NTSC, PAL60 and PAL, from *Settings → Video → Output mode* or `output` in `[display]`. The config accepts any of libogc2's 57 stock modes. The menu stays in the console's own mode and the game screen behind it lines up with the game's, whichever mode it was in. Per-game configs can carry their own mode.
+* **Deflicker (Wii).** *Settings → Video → Deflicker* (`deflicker` in `[display]`: `auto`, `off`, `normal`, `strong`) sets the vertical filter used when the picture is sent to the TV. Until now the game was always shown unfiltered, so a 480i picture shimmered on a CRT even though the menu did not. `auto` uses the video mode's own filter, which steadies 480i
+* Fix (Wii): **Scanlines** no longer flash on a 480i picture. They were drawn on every other line, which in 480i is a whole field, so the screen blinked black. The row is now offered only in a progressive 480-line mode; for a CRT, use the 240p output mode instead
+* Fix: `MOUNT` waits for a USB drive that is slow to start. An `[autoexec]` such as `mount c usb:/dosbox` used to fail at launch when the drive was not ready yet, and only worked once the Drives screen had been opened. It now prints `Waiting for USB Mass Storage...` and tries for up to 8 seconds. On the Wii U, a `usb1:/` path mounts the drive itself
+* `usb:/` and `usb1:/` are now accepted on both consoles, so a config written for one works on the other
 * Fix: the `[display]` settings are now in place before the first picture, so a game config's `deflicker` (and `output`) is used from the start, not only after the menu has been opened
 
 ## 2.0 - October 25, 2026

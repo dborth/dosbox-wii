@@ -269,15 +269,15 @@ If **A** can't do it, a message says why:
 
 **Hot-plug works only while this screen is open.** A background check runs about once a second while it is up (the rows refresh about twice a second), and at no other time. So:
 
-- On the **Wii**, SD and USB drives that are present at launch are already readable. A drive plugged in later becomes readable, and appears here, once you open this screen.
-- On the **Wii U**, USB drives are never mounted until this screen is open, including drives plugged in before launch. Open it and wait a moment for the row to appear.
+- On the **Wii**, SD and USB drives that are present at launch are already readable, except a USB drive that is slow to start, which may not be ready yet. `MOUNT` waits for a USB drive (see below), so an `[autoexec]` does not depend on this. A drive plugged in later becomes readable, and appears here, once you open this screen.
+- On the **Wii U**, USB drives are not mounted at launch. Open this screen and wait a moment for the row to appear, or use `MOUNT` with a `usb1:/` path, which mounts the drive itself (below).
 - When a device is removed, a DOS drive that this screen mounted from it is taken away, but only while the screen is open and DOS is at the prompt. Otherwise it stays until you next open the screen at the prompt.
 
 Drives you mount with `MOUNT` aren't tracked here: their row still says `Not mounted`, and pressing **A** would mount the same device again on another letter.
 
 #### From DOS: MOUNT
 
-`MOUNT` takes any folder the console can open, so use the device's prefix. The device has to be readable first (see above):
+`MOUNT` takes any folder the console can open, so use the device's prefix. The SD card has to be readable first (see above); a USB drive that is not yet readable is waited for:
 
 | Device | Wii | Wii U |
 |---|---|---|
@@ -292,7 +292,21 @@ e:
 dir
 ```
 
-A subfolder works too (`mount e usb:/games`), and `mount -u e` removes the drive again. A folder that doesn't exist gives `Directory ... doesn't exist.` DOSBox Wii has no way to connect a network share or read a disc, so `dvd:/` and `smb:/` are never there to mount. CDs work from files on the card instead: see [CD-ROM games](#cd-rom-games).
+A subfolder works too (`mount e usb:/games`), and `mount -u e` removes the drive again.
+
+**USB drives in `[autoexec]`.** A `MOUNT` of a path on a USB drive that is not readable yet prints `Waiting for USB Mass Storage...` and tries about four times a second for up to 8 seconds, mounting the drive as soon as it is there, so a drive that takes a few seconds to spin up still works from `[autoexec]` without opening the Drives screen first. If the drive is there but cannot be read (not a supported file system), `MOUNT` stops waiting at once and gives the usual `Directory ... doesn't exist.` The SD card is not waited for. `usb:/` and `usb1:/` mean the same drive on both consoles, so a config written for one works on the other. For example, to run a front end from a USB drive:
+
+```text
+[autoexec]
+@echo off
+mount -u c
+mount c usb:/dosbox
+c:
+cd menu
+moo.bat
+```
+
+ A folder that doesn't exist gives `Directory ... doesn't exist.` DOSBox Wii has no way to connect a network share or read a disc, so `dvd:/` and `smb:/` are never there to mount. CDs work from files on the card instead: see [CD-ROM games](#cd-rom-games).
 
 ### CD-ROM games
 
