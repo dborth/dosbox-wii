@@ -132,7 +132,7 @@ static void testLookupOrder()
 	a = Autoboot_Parse(V("sd:/apps/keen/boot.dol", "keen.conf"), DOSBOX, h);
 	CHECK_EQ(a.conf, "sd:/DOSBox/keen.conf");
 
-	// argv[0] with no device (wiiload may give just a name) is no folder to look in
+	// argv[0] with no device (a loader may give just a name) is no folder to look in
 	h.files.clear();
 	h.file("/keen.conf");
 	h.file("sd:/apps/keen/keen.conf");
@@ -316,6 +316,41 @@ static void testNotice()
 	CHECK_EQ(Autoboot_Notice(std::string("x\xc3\xa9y")), "echo Autoboot: x??y");
 }
 
+// The arguments WiiFlow builds (menu_game_boot.cpp _launchHomebrew / Plugin::CreateArgs): argv[0] is the .dol it started,
+// then one entry per "|" piece of the plugin ini's arguments=, with {device}:/{path}/{name} filled in
+static void testWiiFlow()
+{
+	FakeHost h;
+	h.file("sd:/DOSBox/Games/Commander Keen 4.conf");
+	h.file("usb1:/DOSBox/Games/keen4.conf");
+
+	// arguments={device}:/{path}/{name}, a name with spaces stays one argument
+	LaunchArguments a = Autoboot_Parse(V("sd:/apps/dosbox-wii/boot.dol", "sd:/DOSBox/Games/Commander Keen 4.conf"), DOSBOX, h);
+	CHECK_EQ(a.conf, "sd:/DOSBox/Games/Commander Keen 4.conf");
+	CHECK(a.error.empty() && a.named());
+	CHECK(a.args == V("sd:/apps/dosbox-wii/boot.dol"));
+
+	// WiiFlow says "usb" for a FAT USB partition; the file system's spelling is usb1
+	a = Autoboot_Parse(V("usb1:/apps/dosbox-wii/boot.dol", "usb:/DOSBox/Games/keen4.conf"), DOSBOX, h);
+	CHECK_EQ(a.conf, "usb1:/DOSBox/Games/keen4.conf");
+	CHECK(a.args == V("usb1:/apps/dosbox-wii/boot.dol"));
+
+	// the old plugin ini (arguments=-conf|{device}:/{path}/{name}) is DOSBox's own switch: no game, passed on as it was
+	a = Autoboot_Parse(V("sd:/wiiflow/plugins/dosbox-wii.dol", "-conf", "sd:/DOSBox/Games/Commander Keen 4.conf"), DOSBOX, h);
+	CHECK(a.conf.empty() && a.error.empty() && !a.named());
+	CHECK(a.args == V("sd:/wiiflow/plugins/dosbox-wii.dol", "-conf", "sd:/DOSBox/Games/Commander Keen 4.conf"));
+
+	// a plugin .dol kept in wiiflow/plugins: a bare name is looked for beside it
+	h.file("sd:/wiiflow/plugins/keen4.conf");
+	a = Autoboot_Parse(V("sd:/wiiflow/plugins/dosbox-wii.dol", "keen4.conf"), DOSBOX, h);
+	CHECK_EQ(a.conf, "sd:/wiiflow/plugins/keen4.conf");
+
+	// a drive WiiFlow can read and DOSBox Wii cannot (ntfs:) is a clear miss, not a guess
+	a = Autoboot_Parse(V("sd:/apps/dosbox-wii/boot.dol", "ntfs:/DOSBox/Games/keen4.conf"), DOSBOX, h);
+	CHECK(a.conf.empty() && a.named());
+	CHECK_EQ(a.error, "Can't find ntfs:/DOSBox/Games/keen4.conf");
+}
+
 int main()
 {
 	testNothing();
@@ -327,6 +362,7 @@ int main()
 	testOtherArguments();
 	testTwoGames();
 	testMissing();
+	testWiiFlow();
 	testNotice();
 
 	printf("%d checks, %d failures\n", checks, failures);

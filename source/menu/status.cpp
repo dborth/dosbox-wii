@@ -499,7 +499,7 @@ static void DriveLines()
 	// Only when the launch arguments named a game: whether it started is the question this answers
 	if(IsAutoboot())
 		AddPlain("Autoboot", Tail(GetAutobootConf(), MAX_VALUE),
-			"DOSBox Wii was started with this game named in its launch arguments (Homebrew Channel or wiiload), "
+			"DOSBox Wii was started with this game named in its launch arguments (Homebrew Channel or WiiFlow), "
 			"and started it. Games and CONFIG -r can switch to another game afterwards.");
 	else if(GetAutobootError()[0])
 		AddPlain("Autoboot", Tail(GetAutobootError(), MAX_VALUE),

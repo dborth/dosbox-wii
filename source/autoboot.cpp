@@ -79,7 +79,7 @@ namespace
 	}
 
 	// The folder the program was launched from, when the loader said: "sd:/apps/keen/boot.dol" -> "sd:/apps/keen".
-	// Anything without a device prefix and a folder ("boot.dol", what wiiload may give) is no help.
+	// Anything without a device prefix and a folder ("boot.dol", what a loader that gives only a name provides) is no help.
 	std::string LoaderFolder(const std::string & argv0)
 	{
 		const size_t colon = DeviceEnd(argv0);

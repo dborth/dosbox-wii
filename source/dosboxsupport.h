@@ -14,7 +14,7 @@
 #include <string>
 
 //! Reads the launch arguments (what main() got from the Homebrew Channel or
-//! wiiload; argc may be 0): a game to start with, as autoboot.h describes.
+//! WiiFlow; argc may be 0): a game to start with, as autoboot.h describes.
 //! Takes the game out of what DOSBox is given and makes it the game conf
 //! (SetGameConf()), then decides IsAutoboot(). Call once, after the platform is
 //! up (it uses the storage devices) and before the first RunDOSBox().

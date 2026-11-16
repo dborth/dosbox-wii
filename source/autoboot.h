@@ -4,7 +4,7 @@
  * autoboot.h
  *
  * Starting straight into a game: reading the launch arguments (the Homebrew
- * Channel's meta.xml <arguments>, or wiiload's) for the game to run.
+ * Channel's meta.xml <arguments>, or a WiiFlow plugin's arguments=) for the game to run.
  *
  * Plain C++ with no DOSBox, libgui or driver types, so the host tests can run
  * it. The file system is reached through AutobootHost.
@@ -23,6 +23,13 @@
  * launched (argv[0], when the loader gave it with a device prefix), then in
  * the DOSBox folder. The game's own files are looked for beside its conf by
  * DOSBox, so a game keeps its conf, map and files in one folder.
+ *
+ * Both loaders give argv[0] as the path of the .dol they started, with a device
+ * ("sd:/apps/dosbox-wii/boot.dol"), and one argv entry per argument, so a name
+ * with spaces needs no quoting. WiiFlow's plugin line "arguments={device}:/{path}/{name}"
+ * gives one argument, "sd:/DOSBox/Games/keen4.conf", which is the bare .conf form
+ * above. WiiFlow inis written for older DOSBox Wii builds pass "-conf|<path>"; that
+ * is DOSBox's own switch and is left alone (the conf then replaces dosbox.conf).
  *
  * Whatever is taken as the game is removed from the arguments DOSBox gets: the
  * app owns the game conf (SetGameConf()), and every start passes it itself.

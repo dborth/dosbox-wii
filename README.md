@@ -365,7 +365,7 @@ Normally one file is read, the first of these that exists:
 1. `dosbox.conf` in the program's working directory. DOSBox Wii doesn't set the working directory itself, so which folder this is depends on the launcher.
 2. `dosbox.conf` in the `DOSBox` folder (for example `sd:/DOSBox/dosbox.conf`).
 
-If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but the launcher entry in this repository passes none. The Homebrew Channel and wiiload can pass arguments, and DOSBox Wii uses them to start straight into a game: see [Starting a game at launch](#starting-a-game-at-launch-autoboot). To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
+If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but the launcher entry in this repository passes none. The Homebrew Channel and WiiFlow can pass arguments, and DOSBox Wii uses them to start straight into a game: see [Starting a game at launch](#starting-a-game-at-launch-autoboot). To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
 
 **Restart and game configs.** `CONFIG -r` at the DOS prompt restarts DOSBox with the options it started with, or with the ones you add. `CONFIG -r -gameconf name.conf` reads `name.conf` **after** the base config, so it only has to hold what differs and its values win. It is looked up as given, then in the `DOSBox` folder. The home screen's **Restart** keeps the game config, and `CONFIG -r -nogameconf` drops it. The **Games** screen chooses one from the menu; see [Games](#games).
 
@@ -753,7 +753,7 @@ You can also restart into a game from the DOS prompt with `CONFIG -r -gameconf n
 
 #### Starting a game at launch (autoboot)
 
-On the Wii, DOSBox Wii can start straight into a game, with no menu step: name the game when you launch it, from the Homebrew Channel or from a computer with wiiload. The game's config is read after `dosbox.conf`, as for any game, so its controls (`mapperfile=`), settings and `[autoexec]` apply from the first moment.
+On the Wii, DOSBox Wii can start straight into a game, with no menu step: name the game when you launch it, from the Homebrew Channel or from WiiFlow. The game's config is read after `dosbox.conf`, as for any game, so its controls (`mapperfile=`), settings and `[autoexec]` apply from the first moment.
 
 A game started this way is an ordinary game in every other respect. The home screen's **Game** card shows it, **Restart** runs it again, **Save** writes back to its `.conf` and `.map`, and the **Status** page has an **Autoboot** row that names the config the launch arguments gave. **Games** and `CONFIG -r -gameconf` can still switch to another game, or to plain DOSBox, from there.
 
@@ -821,17 +821,50 @@ sd:/apps/keen4/
 
 You can also put the game's `.conf` beside that `boot.dol` and name it plainly, `<arg>keen4.conf</arg>`: a name with no folder is looked for beside the `boot.dol` before the `DOSBox` folder.
 
-##### From wiiload
+##### From WiiFlow
 
-Send `boot.dol` with the game after it. The game's files must already be on the card or drive: wiiload sends the program and its arguments, not the game.
+WiiFlow Lite can start DOSBox Wii in two ways, and both pass it the same kind of arguments as the Homebrew Channel.
 
-```sh
-export WIILOAD=tcp:192.168.1.50
-wiiload boot.dol sd:/Games/keen4/keen4.conf
-wiiload boot.dol -gameconf sd:/Games/keen4/        # the folder's autoboot.conf
+**As a plugin: one DOSBox Wii, many games.** WiiFlow lists every `.conf` under `DOSBox/Games` as a game and starts DOSBox Wii on the one you pick.
+
+1. Extract `DOSBox-Wii.zip` to the root of your card as usual. It puts `dosbox-wii.ini` in `wiiflow/plugins/`. If WiiFlow lives on a different card or drive, copy that file into its `wiiflow/plugins/` folder.
+2. Give each game a `.conf` in `DOSBox/Games/`, named after the game. **Save as game** writes it there, with its `.map`. The layout in [Starting a game at launch](#starting-a-game-at-launch-autoboot) works unchanged:
+
+```text
+sd:/DOSBox/Games/
+├── keen4.conf
+├── keen4.map
+└── KEEN4/
+    └── KEEN4E.EXE
 ```
 
-Other DOSBox arguments can go with it, such as `-c "echo hello"`.
+3. In WiiFlow, turn the **DOSBox** plugin on in the plugin selection, then use WiiFlow's Home menu **Reload Cache**. WiiFlow keeps its game list in a cache, so a new `.conf` does not appear until you do.
+4. Pick the game and launch it.
+
+`dosbox-wii.ini` is a short text file. Its important lines:
+
+```text
+[PLUGIN]
+magic=44424F58
+displayname=DOSBox
+fileTypes=.conf
+romDir=DOSBox/Games
+dolFile=apps/dosbox-wii/boot.dol
+arguments={device}:/{path}/{name}
+```
+
+WiiFlow fills `arguments` in for the game you chose, giving DOSBox Wii one argument such as `sd:/DOSBox/Games/keen4.conf`. A name with spaces is still one argument, so nothing needs quoting. Things that go wrong:
+
+- **The title is the file name.** `keen4.conf` shows as "keen4". Name each `.conf` after its game rather than giving every folder an `autoboot.conf`, or WiiFlow lists them all as "autoboot".
+- **Games on a USB drive.** Remove the `#` from `#rompartition=1` in the ini. The drive must be FAT32. A drive WiiFlow reads as `ntfs:` cannot be used by DOSBox Wii: it starts without a game and says `Autoboot: Can't find ntfs:/...`.
+- **A game is missing from the list.** Besides the cache, WiiFlow hides any file whose path looks like a later disc of a set (`disk 2`, `disc 3`, `tape 2`, `side b`, `track 10`). Name such a game another way.
+- **DOSBox Wii is somewhere else.** `dolFile` is looked up on the SD card, then each USB drive. If `boot.dol` is not in `apps/dosbox-wii/`, change the line; a plain name such as `dosbox-wii.dol` is looked for in `wiiflow/plugins/`.
+- **Do not add `{loader}`** to `arguments`. DOSBox Wii would be handed the loader's path as a program to run.
+- **Exit** leaves DOSBox Wii the same way as from the Homebrew Channel. WiiFlow's own setup notes say apps and plugins return to WiiFlow only if its hidden return channel is installed (the WiiFlow Channel Installer does this).
+
+*An older DOSBox plugin ini.* The plugin pack for earlier DOSBox Wii versions passes `arguments=-conf|{device}:/{path}/{name}`. That still works, because `-conf` is DOSBox's own switch and is left alone. The difference is that the file replaces `dosbox.conf` instead of being layered on it, so it must hold the whole configuration, and DOSBox Wii does not treat it as a game. Replace the old ini with the new one to get the behaviour described on this page; both use `magic=44424F58`, so WiiFlow should keep your favorites and play counts.
+
+**From WiiFlow's Homebrew list.** WiiFlow also lists the folders in `apps/`, and reads `<arguments>` from a folder's `meta.xml` exactly as the Homebrew Channel does. The per-game folders described [above](#from-the-homebrew-channel) therefore work from WiiFlow too, each with its own copy of `boot.dol`. Write names in `<arg>` plainly: WiiFlow does not decode XML escapes such as `&amp;`.
 
 ##### When the game cannot be started
 
@@ -845,7 +878,7 @@ DOSBox starts at the plain DOS prompt, with no game, and says why on the DOS scr
 | GameCube controller | Yes: **L + R + Start** opens the menu | Not supported |
 | Wii U GamePad | Only through [VC-style injection](#vwii-via-vc-style-injection-gamepad-support): player 1, buttons and sticks, no touch | Yes. Shown under the player slots with its battery, if present when the menu opened |
 | **TV** button on the GamePad | Nothing | Opens and closes the Wii U's on-screen keyboard on the GamePad screen; what you type goes into DOS. The TV keeps showing the game. (The home screen's **Keyboard** tile works on both) |
-| [Starting a game at launch](#starting-a-game-at-launch-autoboot) | Yes, from the Homebrew Channel's `<arguments>` or wiiload | Not yet. The Wii U has no launch arguments; a game bundled into the `.wuhb` is planned |
+| [Starting a game at launch](#starting-a-game-at-launch-autoboot) | Yes, from the Homebrew Channel's `<arguments>` or a WiiFlow plugin | Not yet. The Wii U has no launch arguments; a game bundled into the `.wuhb` is planned |
 | Video: **Scanlines** | Only in 480-line video modes | Always |
 | Video: **Widescreen** | Yes | No (each screen's shape is known) |
 | **Exit** | To the Homebrew Channel / launcher, or the console off | To the Wii U Menu |
@@ -1131,7 +1164,7 @@ Open *Settings → Drives*: it only notices drives plugged in or removed while i
 
 ### The game I named at launch did not start
 
-DOSBox Wii starts without a game and prints the reason on the DOS screen at the first start (and the **Status** page's **Autoboot** row repeats it). See [When the game cannot be started](#when-the-game-cannot-be-started). If nothing is printed and the DOS prompt has your usual settings, the arguments probably never reached the app: check the `<arguments>` block of `meta.xml`, or that wiiload was given the name after `boot.dol`.
+DOSBox Wii starts without a game and prints the reason on the DOS screen at the first start (and the **Status** page's **Autoboot** row repeats it). See [When the game cannot be started](#when-the-game-cannot-be-started). If nothing is printed and the DOS prompt has your usual settings, the arguments probably never reached the app: check the `<arguments>` block of `meta.xml` (Homebrew Channel, or WiiFlow's Homebrew list), or the `arguments=` line of `dosbox-wii.ini` (WiiFlow plugin).
 
 ### A setting says "(DOS prompt only)" or "(next launch)"
 

@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 {
 	InitApp();
 
-	// A game named in the launch arguments (Homebrew Channel, wiiload) becomes the game conf; see autoboot.h
+	// A game named in the launch arguments (Homebrew Channel, WiiFlow) becomes the game conf; see autoboot.h
 	ParseLaunchArguments(argc, argv);
 
 	// RunDOSBox() returns when the core has shut down: for good, or because a
