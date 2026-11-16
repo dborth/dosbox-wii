@@ -165,6 +165,7 @@ bool DOS_ResizeMemory(Bit16u segment,Bit16u * blocks);
 bool DOS_FreeMemory(Bit16u segment);
 void DOS_FreeProcessMemory(Bit16u pspseg);
 Bit16u DOS_GetMemory(Bit16u pages);
+void DOS_ResetPrivateMemory(void);
 bool DOS_SetMemAllocStrategy(Bit16u strat);
 Bit16u DOS_GetMemAllocStrategy(void);
 void DOS_BuildUMBChain(bool umb_active,bool ems_active);

@@ -71,9 +71,16 @@ static Bit8u country_info[0x22] = {
 /* Reservered 5     */  0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+/* The private area allocator must start from scratch at the beginning of every run, before the first
+ * DOS_GetMemory() caller. MOUSE_Init (section "joystick") allocates before DOS_Init, so resetting in
+ * DOS_SetupTables() let the later tables overwrite the mouse's INT 33h stub on a restart. Called from the BIOS
+ * constructor, the first init of the "joystick" section. */
+void DOS_ResetPrivateMemory(void) {
+	dos_memseg=DOS_PRIVATE_SEGMENT;
+}
+
 void DOS_SetupTables(void) {
 	Bit16u seg;Bitu i;
-	dos_memseg=DOS_PRIVATE_SEGMENT;
 	dos.tables.tempdta=RealMake(DOS_GetMemory(4),0);
 	dos.tables.tempdta_fcbdelete=RealMake(DOS_GetMemory(4),0);
 	/* Create the DOS Info Block */

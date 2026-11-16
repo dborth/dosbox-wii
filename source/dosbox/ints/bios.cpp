@@ -935,6 +935,7 @@ public:
 		memset(&tandy_sb,0,sizeof(tandy_sb));
 		memset(&tandy_dac,0,sizeof(tandy_dac));
 		biosConfigSeg=0;
+		DOS_ResetPrivateMemory();	/* before MOUSE_Init allocates its INT 33h stub */
 		/* tandy DAC can be requested in tandy_sound.cpp by initializing this field */
 		bool use_tandyDAC=(real_readb(0x40,0xd4)==0xff);
 
