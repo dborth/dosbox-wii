@@ -31,6 +31,7 @@
 #include "support.h"
 
 DOS_Block dos;
+extern const char * RunningProgram;
 static Bitu time_start = 0; //For emulating temporary time changes (was a local static; reset when DOS starts).
 DOS_InfoBlock dos_infoblock;
 
@@ -1224,6 +1225,12 @@ public:
 		//	pop ax
 		//	iret
 
+		/* the state of a first boot: date, error code, break/verify flags, return code and the code page
+		 * were the last run's; the root PSP and the allocation strategy are statics of the DOS code, and
+		 * RunningProgram pointed into the last run's shell */
+		memset(&dos,0,sizeof(dos));
+		DOS_PSP::rootpsp=0;
+		RunningProgram="DOSBOX";
 		time_start=0;
 		DOS_SetupFiles();								/* Setup system File tables */
 		DOS_SetupDevices();							/* Setup dos devices */

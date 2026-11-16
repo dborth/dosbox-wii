@@ -395,6 +395,7 @@ bool DOS_LinkUMBsToMemChain(Bit16u linkstate) {
 
 
 void DOS_SetupMemory(void) {
+	memAllocStrategy = 0x00;	/* a program that set "last fit" or "UMB first" must not leave it to the next run */
 	/* Let dos claim a few bios interrupts. Makes DOSBox more compatible with 
 	 * buggy games, which compare against the interrupt table. (probably a 
 	 * broken linked list implementation) */

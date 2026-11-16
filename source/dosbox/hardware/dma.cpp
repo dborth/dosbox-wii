@@ -350,6 +350,7 @@ class DMA:public Module_base{
 public:
 	DMA(Section* configuration):Module_base(configuration){
 		Bitu i;
+		dma_wrapping = 0xffff;	/* first boot value, see its declaration */
 		DmaControllers[0] = new DmaController(0);
 		if (IS_EGAVGA_ARCH) DmaControllers[1] = new DmaController(1);
 		else DmaControllers[1] = NULL;

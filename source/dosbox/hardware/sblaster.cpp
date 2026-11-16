@@ -1660,6 +1660,7 @@ public:
 		 * run's DMA channel, mixer channel, IRQ and DSP state */
 		memset(&sb,0,sizeof(sb));
 		last_dma_callback=0.0f;
+		ASP_init_in_progress=false;
 
 		sb.hw.base=section->Get_hex("sbbase");
 		sb.hw.irq=section->Get_int("irq");

@@ -2190,6 +2190,13 @@ public:
 		}
 //		Section_prop * section=static_cast<Section_prop *>(configuration);
 		inited=true;
+		/* the state of a first boot for what the code below does not set: privilege levels, the HLT and
+		 * exception records, the descriptor tables, the task register, the lazy flags and the cycle counter were the last
+		 * run's, and a run that ended in ring 3 left cpl at 3 for the next DOS/4GW */
+		memset((void *)&cpu,0,sizeof(cpu));
+		cpu_tss.SetSelector(0);
+		DestroyConditionFlags();	/* the lazy flags of the last run's final instruction are not this run's flags */
+		CPU_CycleLeft=3000;
 		reg_eax=0;
 		reg_ebx=0;
 		reg_ecx=0;

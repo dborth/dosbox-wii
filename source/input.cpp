@@ -235,6 +235,7 @@ void GUI_StartUp(Section * sec) {
 	MAPPER_AddHandler(&PauseDOSBox, MK_pause, MMOD2, "pause", "Pause DBox");
 #endif
 	/* Get Keyboard state of numlock and capslock */
+	startup_state_numlock = startup_state_capslock = false;	/* only ever set below: a lock turned off since stayed "on" */
 	SDLMod keystate = SDL_GetModState();
 	if(keystate&KMOD_NUM) startup_state_numlock = true;
 	if(keystate&KMOD_CAPS) startup_state_capslock = true;

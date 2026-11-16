@@ -174,7 +174,10 @@ void VGA_SetCGA4Table(Bit8u val0,Bit8u val1,Bit8u val2,Bit8u val3) {
 
 void VGA_Init(Section* sec) {
 //	Section_prop * section=static_cast<Section_prop *>(sec);
-	memset(&vga.draw,0,sizeof(vga.draw));
+	/* the whole block: the CRTC, sequencer, graphics and attribute registers, the S3 and Tseng parts, the
+	 * latches and the DAC lock were the last run's, and only some of them are written again before the
+	 * first mode set. Everything that needs a value gets it from the Setup calls below. */
+	memset((void *)&vga,0,sizeof(vga));
 	vga.draw.resizing=false;
 	vga.mode=M_ERROR;			//For first init
 	SVGA_Setup_Driver();

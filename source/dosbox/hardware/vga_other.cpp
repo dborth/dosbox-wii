@@ -790,6 +790,8 @@ Bitu read_herc_status(Bitu /*port*/,Bitu /*iolen*/) {
 
 void VGA_SetupOther(void) {
 	Bitu i;
+	/* composite / hue / Hercules palette choices made with the hotkeys last run */
+	hue_offset = 0.0; cga_comp = 0; new_cga = 0; cga16_val = 0; herc_pal = 0;
 	memset( &vga.tandy, 0, sizeof( vga.tandy ));
 	vga.attr.disabled = 0;
 	vga.config.bytes_skip=0;

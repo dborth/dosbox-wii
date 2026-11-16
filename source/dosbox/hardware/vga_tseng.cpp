@@ -18,6 +18,7 @@
 
 
 
+#include <string.h>
 #include "dosbox.h"
 #include "setup.h"
 #include "vga.h"
@@ -405,6 +406,8 @@ bool AcceptsMode_ET4K(Bitu mode) {
 }
 
 void SVGA_Setup_TsengET4K(void) {
+	memset(&et4k,0,sizeof(et4k));
+	et4k.extensionsEnabled = 1;	/* the value it is declared with */
     svga.write_p3d5 = &write_p3d5_et4k;
 	svga.read_p3d5 = &read_p3d5_et4k;
 	svga.write_p3c5 = &write_p3c5_et4k;
@@ -768,6 +771,7 @@ bool AcceptsMode_ET3K(Bitu mode) {
 }
 
 void SVGA_Setup_TsengET3K(void) {
+	memset(&et3k,0,sizeof(et3k));
 	svga.write_p3d5 = &write_p3d5_et3k;
 	svga.read_p3d5 = &read_p3d5_et3k;
 	svga.write_p3c5 = &write_p3c5_et3k;

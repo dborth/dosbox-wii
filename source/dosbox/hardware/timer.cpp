@@ -18,6 +18,7 @@
 
 
 #include <math.h>
+#include <string.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "pic.h"
@@ -412,6 +413,10 @@ private:
 	IO_WriteHandleObject WriteHandler[4];
 public:
 	TIMER(Section* configuration):Module_base(configuration){
+		/* the state of a first boot: pit[].start, counting, latch_mode and new_mode were the last run's, so
+		 * port 0x40 read the counter from a start time that no longer exists until the program reprogrammed it */
+		memset(pit,0,sizeof(pit));
+		latched_timerstatus=0;
 		WriteHandler[0].Install(0x40,write_latch,IO_MB);
 	//	WriteHandler[1].Install(0x41,write_latch,IO_MB);
 		WriteHandler[2].Install(0x42,write_latch,IO_MB);

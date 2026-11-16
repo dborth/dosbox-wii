@@ -1198,6 +1198,11 @@ void InputHal_Init(void)
 		dpadDrivesJoystick[i] = true;
 	padRoutingStale = true;
 
+	for (int ch = 0; ch < STICKKEYS_PLAYERS; ch++)
+		for (int s = 0; s < 2; s++) {
+			stickKeysState[ch][s].reset();	/* a stick held when the last run ended is not held now */
+			stickKeysWait[ch][s] = false;
+		}
 	eventHead = eventCount = 0;
 	modState = KMOD_NONE;
 	mouseButtons = irButtons = usbButtons = touchButtons = 0;

@@ -776,6 +776,11 @@ void SHELL_Init() {
 	dos.psp(psp_seg);
 
 
+	/* A run normally ends by a throw out of Run() (restart, shutdown, E_Exit), which skips the two lines
+	 * after it: first_shell kept pointing at the last run's shell, and the next run's AutoexecObject::Install
+	 * (the sound card constructors, before BIOS and DOS exist) wrote an environment variable through it.
+	 * The object itself is still left alone on that path, as it always was. */
+	struct FirstShellForget { ~FirstShellForget() { first_shell = 0; } } forgetFirstShell;
 	SHELL_ProgramStart_First_shell(&first_shell);
 	first_shell->Run();
 	delete first_shell;

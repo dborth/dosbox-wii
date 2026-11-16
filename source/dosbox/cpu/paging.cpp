@@ -880,6 +880,7 @@ class PAGING:public Module_base{
 public:
 	PAGING(Section* configuration):Module_base(configuration){
 		/* Setup default Page Directory, force it to update */
+		paging.cr2=0;paging.cr3=0;paging.base.page=0;paging.base.addr=0;	/* a first boot's registers */
 		paging.enabled=false;
 		PAGING_InitTLB();
 		Bitu i;
