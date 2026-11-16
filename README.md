@@ -130,6 +130,8 @@ The app is the single `boot.dol`; its font, language text and images are built i
 
 When it starts, the Wii build looks at the IOS it is running on. If that isn't IOS 58 or 61, and the loader's preferred IOS is one of those, it reloads into it. This mostly matters when you launch it another way, such as a forwarder channel set to a different IOS. USB drives also work on other IOS versions, but IOS 58 has the best compatibility.
 
+To start straight into a game instead of the DOS prompt, give the app a game when it is launched: see [Starting a game at launch](#starting-a-game-at-launch-autoboot).
+
 Running it in vWii: see [Wii U](#wii-u).
 
 To start, a USB keyboard or any supported controller will do. DOSBox Wii opens at the DOS prompt, and the [menu](#opening-and-closing-it) opens with **Home** (or **L + R + Plus**) and has an on-screen keyboard; see [Controls](#controls) for the controllers and their buttons.
@@ -363,7 +365,7 @@ Normally one file is read, the first of these that exists:
 1. `dosbox.conf` in the program's working directory. DOSBox Wii doesn't set the working directory itself, so which folder this is depends on the launcher.
 2. `dosbox.conf` in the `DOSBox` folder (for example `sd:/DOSBox/dosbox.conf`).
 
-If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but neither launcher entry in this repository passes any. To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
+If neither exists, the default file described below is written to the `DOSBox` folder and read. DOSBox also understands command-line options such as `-conf`, but the launcher entry in this repository passes none. The Homebrew Channel and wiiload can pass arguments, and DOSBox Wii uses them to start straight into a game: see [Starting a game at launch](#starting-a-game-at-launch-autoboot). To be safe, keep one `dosbox.conf`, in the `DOSBox` folder.
 
 **Restart and game configs.** `CONFIG -r` at the DOS prompt restarts DOSBox with the options it started with, or with the ones you add. `CONFIG -r -gameconf name.conf` reads `name.conf` **after** the base config, so it only has to hold what differs and its values win. It is looked up as given, then in the `DOSBox` folder. The home screen's **Restart** keeps the game config, and `CONFIG -r -nogameconf` drops it. The **Games** screen chooses one from the menu; see [Games](#games).
 
@@ -749,6 +751,92 @@ Only what differs from `dosbox.conf` is needed. Other settings keep their `dosbo
 
 You can also restart into a game from the DOS prompt with `CONFIG -r -gameconf name.conf` (see [Where DOSBox looks for dosbox.conf](#where-dosbox-looks-for-dosboxconf)). The game then shows as **RUNNING**.
 
+#### Starting a game at launch (autoboot)
+
+On the Wii, DOSBox Wii can start straight into a game, with no menu step: name the game when you launch it, from the Homebrew Channel or from a computer with wiiload. The game's config is read after `dosbox.conf`, as for any game, so its controls (`mapperfile=`), settings and `[autoexec]` apply from the first moment.
+
+A game started this way is an ordinary game in every other respect. The home screen's **Game** card shows it, **Restart** runs it again, **Save** writes back to its `.conf` and `.map`, and the **Status** page has an **Autoboot** row that names the config the launch arguments gave. **Games** and `CONFIG -r -gameconf` can still switch to another game, or to plain DOSBox, from there.
+
+**What you can name** (the switch and the `.conf` extension are not case sensitive):
+
+| Argument | Starts |
+|---|---|
+| `-gameconf <conf or folder>` | That conf, or the game in that folder |
+| `<name>.conf` | That conf. Same as `-gameconf <name>.conf` |
+| `<folder>` | The game in that folder: its `autoboot.conf`, or if it has none, its only `.conf` other than `dosbox.conf`. A folder with no `.conf` is left for DOSBox, which mounts it as `C:` as it always did |
+
+A folder with several `.conf` files and no `autoboot.conf` is not guessed at: name the one you want. Name two games and neither starts.
+
+**Where a relative name is looked for**, in this order: as written; beside the program that was launched (`apps/keen4/boot.dol` looks in `apps/keen4/`, when the loader tells DOSBox Wii where it started from); in the `DOSBox` folder. Use a full path such as `sd:/Games/keen4/keen4.conf` when you want no doubt. `usb:/` and `usb1:/` both work, and a USB drive that is slow to show up is waited for, up to 8 seconds.
+
+Everything the game needs can live in one folder. DOSBox looks for `mapperfile=` beside the `.conf`, and `[autoexec]` mounts the game's files by their path:
+
+```text
+sd:/Games/keen4/
+├── keen4.conf
+├── keen4.map
+└── KEEN4/
+    └── KEEN4E.EXE
+```
+
+```text
+# title=Commander Keen 4
+# program=KEEN4E.EXE
+[sdl]
+mapperfile=keen4.map
+[autoexec]
+mount c sd:/Games/keen4/KEEN4
+c:
+KEEN4E.EXE
+```
+
+Make the `.conf` and `.map` with **Save as game** (it writes them to `DOSBox/Games/`), then move them wherever you like.
+
+##### From the Homebrew Channel
+
+Give the app its arguments in its `meta.xml`, inside the `<app>` element. Each `<arg>` is one argument, so a name with spaces needs no quoting:
+
+```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>Commander Keen 4</name>
+  <coder>id Software</coder>
+  <version>1.0</version>
+  <short_description>DOSBox Wii</short_description>
+  <long_description>Commander Keen 4, started in DOSBox Wii</long_description>
+  <arguments>
+    <arg>sd:/Games/keen4/keen4.conf</arg>
+  </arguments>
+</app>
+```
+
+A channel in the Homebrew Channel is a folder in `apps/` holding a `boot.dol`, so a game gets its own folder with a copy of DOSBox Wii's `boot.dol`, its own `meta.xml` and, if you like, its own `icon.png`:
+
+```text
+sd:/apps/keen4/
+├── boot.dol          ← DOSBox Wii
+├── meta.xml          ← with the <arguments> above
+└── icon.png
+```
+
+You can also put the game's `.conf` beside that `boot.dol` and name it plainly, `<arg>keen4.conf</arg>`: a name with no folder is looked for beside the `boot.dol` before the `DOSBox` folder.
+
+##### From wiiload
+
+Send `boot.dol` with the game after it. The game's files must already be on the card or drive: wiiload sends the program and its arguments, not the game.
+
+```sh
+export WIILOAD=tcp:192.168.1.50
+wiiload boot.dol sd:/Games/keen4/keen4.conf
+wiiload boot.dol -gameconf sd:/Games/keen4/        # the folder's autoboot.conf
+```
+
+Other DOSBox arguments can go with it, such as `-c "echo hello"`.
+
+##### When the game cannot be started
+
+DOSBox starts at the plain DOS prompt, with no game, and says why on the DOS screen: `Autoboot: Can't find sd:/Games/keen4/keen4.conf`. The **Status** page's **Autoboot** row says it too. The usual causes are a name that is not where you think (the card or USB drive was not mounted, or a typo), a folder with several `.conf` files, and two games named at once.
+
 ### Wii and Wii U
 
 | | Wii (and vWii) | Wii U (native) |
@@ -757,6 +845,7 @@ You can also restart into a game from the DOS prompt with `CONFIG -r -gameconf n
 | GameCube controller | Yes: **L + R + Start** opens the menu | Not supported |
 | Wii U GamePad | Only through [VC-style injection](#vwii-via-vc-style-injection-gamepad-support): player 1, buttons and sticks, no touch | Yes. Shown under the player slots with its battery, if present when the menu opened |
 | **TV** button on the GamePad | Nothing | Opens and closes the Wii U's on-screen keyboard on the GamePad screen; what you type goes into DOS. The TV keeps showing the game. (The home screen's **Keyboard** tile works on both) |
+| [Starting a game at launch](#starting-a-game-at-launch-autoboot) | Yes, from the Homebrew Channel's `<arguments>` or wiiload | Not yet. The Wii U has no launch arguments; a game bundled into the `.wuhb` is planned |
 | Video: **Scanlines** | Only in 480-line video modes | Always |
 | Video: **Widescreen** | Yes | No (each screen's shape is known) |
 | **Exit** | To the Homebrew Channel / launcher, or the console off | To the Wii U Menu |
@@ -1039,6 +1128,10 @@ Press **Home** on a Wiimote, Classic Controller, Wii U Pro Controller or GamePad
 ### My USB drive doesn't show up
 
 Open *Settings → Drives*: it only notices drives plugged in or removed while it is open, so wait a moment for the row to appear, then press **A** on it to mount it (or use `MOUNT`; see [Mounting other drives](#mounting-other-drives)). On the Wii U, USB drives are never mounted until that screen has been open, and USB needs **Mocha** (see [Wii U](#wii-u)). A drive in a format the console can't read shows as `Not available` (Wii) or doesn't appear (Wii U): use FAT32.
+
+### The game I named at launch did not start
+
+DOSBox Wii starts without a game and prints the reason on the DOS screen at the first start (and the **Status** page's **Autoboot** row repeats it). See [When the game cannot be started](#when-the-game-cannot-be-started). If nothing is printed and the DOS prompt has your usual settings, the arguments probably never reached the app: check the `<arguments>` block of `meta.xml`, or that wiiload was given the name after `boot.dol`.
 
 ### A setting says "(DOS prompt only)" or "(next launch)"
 

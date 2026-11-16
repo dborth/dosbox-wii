@@ -13,9 +13,31 @@
 #include <stddef.h>
 #include <string>
 
+//! Reads the launch arguments (what main() got from the Homebrew Channel or
+//! wiiload; argc may be 0): a game to start with, as autoboot.h describes.
+//! Takes the game out of what DOSBox is given and makes it the game conf
+//! (SetGameConf()), then decides IsAutoboot(). Call once, after the platform is
+//! up (it uses the storage devices) and before the first RunDOSBox().
+void ParseLaunchArguments(int argc, char* argv[]);
+
+//! True when the launch arguments named a game that was found and is the one
+//! the app started with. It stays true for the whole session: the game can
+//! change later (Games, CONFIG -r -gameconf) and GetGameConf() then says which,
+//! but the app was still started into a game. Use it to tell an autoboot
+//! session (eg. to offer a single game rather than the list).
+bool IsAutoboot();
+
+//! The game conf the arguments named, as the file system has it; empty when not IsAutoboot().
+const char * GetAutobootConf();
+
+//! Why the game the arguments named could not be started (it is also said on
+//! the DOS screen at the first start); empty when there was none or it was fine.
+const char * GetAutobootError();
+
 //! Reads the config and runs DOSBox until the user exits it. The platform
-//! and GUI must already be up. Returns when DOSBox has shut down.
-void RunDOSBox(int argc, char* argv[]);
+//! and GUI must already be up, and ParseLaunchArguments() called. Returns
+//! when DOSBox has shut down.
+void RunDOSBox();
 
 //! Asks for DOSBox to be shut down and started again (RunDOSBox() returns,
 //! then main() calls it again with the same arguments). Takes effect when the

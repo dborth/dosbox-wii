@@ -496,6 +496,15 @@ static void DriveLines()
 			"The config file DOSBox loaded, which Save writes back to. Further files given with -conf follow it.");
 	}
 
+	// Only when the launch arguments named a game: whether it started is the question this answers
+	if(IsAutoboot())
+		AddPlain("Autoboot", Tail(GetAutobootConf(), MAX_VALUE),
+			"DOSBox Wii was started with this game named in its launch arguments (Homebrew Channel or wiiload), "
+			"and started it. Games and CONFIG -r can switch to another game afterwards.");
+	else if(GetAutobootError()[0])
+		AddPlain("Autoboot", Tail(GetAutobootError(), MAX_VALUE),
+			"The launch arguments named a game that could not be started, so DOSBox started without one.");
+
 	for(char letter = 'A'; letter <= 'Z'; letter++)
 	{
 		if(!IsDOSDriveMounted(letter) || !GetDOSDriveInfo(letter, info, sizeof(info)))

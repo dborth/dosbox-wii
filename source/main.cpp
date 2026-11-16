@@ -151,11 +151,14 @@ int main(int argc, char* argv[])
 {
 	InitApp();
 
+	// A game named in the launch arguments (Homebrew Channel, wiiload) becomes the game conf; see autoboot.h
+	ParseLaunchArguments(argc, argv);
+
 	// RunDOSBox() returns when the core has shut down: for good, or because a
 	// restart was asked for (the menu's Restart button, CONFIG -r).
 	for(;;)
 	{
-		RunDOSBox(argc, argv);
+		RunDOSBox();
 
 		if(!TakeRestartRequest())
 			break;

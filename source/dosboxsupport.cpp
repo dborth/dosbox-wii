@@ -17,6 +17,7 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#include <dirent.h>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,7 @@
 #include "preferences.h"
 #include "input.h"
 #include "storage.h"
+#include "autoboot.h"
 
 // What the core last reported through GFX_SetTitle()
 static int runningCycles = 0;
@@ -92,6 +94,102 @@ void GFX_ShowMsg(char const* format,...) {
 #if C_DEBUG
 extern void DEBUG_ShutDown(Section * /*sec*/);
 #endif
+
+/****************************************************************************
+ * Launch arguments and autoboot
+ *
+ * What DOSBox is given at every start is kept here (the arguments main() got,
+ * less the game), so a restart does not read them again and the game the
+ * arguments named is the app's to change (SetGameConf()), not shadowed by a
+ * copy left in the arguments.
+ ***************************************************************************/
+static std::vector<std::string> launchArgs;
+static std::string launchNotice;		// the DOS line that says the named game was not started
+static std::string autobootConf;
+static std::string autobootError;
+static bool autobootNamed = false;
+
+namespace
+{
+	// The real file system, for the parser (autoboot.h). Runs once, before DOSBox is up.
+	class LaunchHost : public AutobootHost
+	{
+		public:
+			std::string resolve(const std::string & path) override
+			{
+				char out[CROSS_LEN];
+
+				// usb:/ and usb1:/ are one thing; a USB drive that is slow to show up is waited for
+				const char * waitFor = StorageResolvePath(path.c_str(), out, sizeof(out));
+
+				if(waitFor)
+					StorageWaitForPath(out, NULL);
+
+				return out;
+			}
+
+			bool isFile(const std::string & path) override
+			{
+				struct stat st;
+				return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+			}
+
+			bool isFolder(const std::string & path) override
+			{
+				struct stat st;
+				return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+			}
+
+			std::vector<std::string> namesIn(const std::string & folder) override
+			{
+				std::vector<std::string> names;
+				DIR * dir = opendir(folder.c_str());
+
+				if(!dir)
+					return names;
+
+				while(struct dirent * entry = readdir(dir))
+					names.push_back(entry->d_name);
+
+				closedir(dir);
+				return names;
+			}
+	};
+}
+
+void ParseLaunchArguments(int argc, char* argv[]) {
+	std::vector<std::string> given;
+
+	for(int i = 0; i < argc; i++)
+		if(argv[i])
+			given.push_back(argv[i]);
+
+	const std::string dosboxFolder = appDrive[0] ? std::string(appDrive) + "/" DOSBOX_DIR_NAME : std::string();
+
+	LaunchHost host;
+	const LaunchArguments parsed = Autoboot_Parse(given, dosboxFolder, host);
+
+	launchArgs = parsed.args;
+	launchNotice = Autoboot_Notice(parsed.error);
+	autobootError = parsed.error;
+	autobootNamed = parsed.named();
+	autobootConf = parsed.conf;
+
+	if(!parsed.conf.empty())
+		SetGameConf(parsed.conf.c_str());
+}
+
+bool IsAutoboot() {
+	return !autobootConf.empty();
+}
+
+const char * GetAutobootConf() {
+	return autobootConf.c_str();
+}
+
+const char * GetAutobootError() {
+	return autobootError.c_str();
+}
 
 static bool restartRequested = false;
 static int runNumber = 0;
@@ -500,14 +598,17 @@ int access(const char *path, int amode)
  * Reads the config, then runs DOSBox until the user exits it. The platform
  * and GUI are already up. Returns when DOSBox has shut down.
  ***************************************************************************/
-void RunDOSBox(int argc, char* argv[]) {
+void RunDOSBox() {
 	runNumber++;
 	try {
-		// The game conf travels as an argument of its own (LoadPrefs() reads it)
+		// What DOSBox is given: the launch arguments less the game (ParseLaunchArguments()),
+		// then the game conf, which travels as an argument of its own (LoadPrefs() reads it).
 		// CommandLine treats argv[0] as the program name and never parses it, so
-		// there must be one (argc is 0 when the app is started without arguments)
+		// there must be one
 		static char programName[] = "dosbox";
-		std::vector<char *> args(argv, argv + argc);
+		std::vector<char *> args;
+		for(size_t i = 0; i < launchArgs.size(); i++)
+			args.push_back(const_cast<char *>(launchArgs[i].c_str()));
 		if(args.empty())
 			args.push_back(programName);
 		static const char * const gameSwitch = "-gameconf";
@@ -515,6 +616,13 @@ void RunDOSBox(int argc, char* argv[]) {
 		{
 			args.push_back(const_cast<char *>(gameSwitch));
 			args.push_back(const_cast<char *>(gameConf.c_str()));
+		}
+		// The game the arguments named could not be started: say so on the DOS screen, the first time only
+		static const char * const lineSwitch = "-c";
+		if(runNumber == 1 && !launchNotice.empty())
+		{
+			args.push_back(const_cast<char *>(lineSwitch));
+			args.push_back(const_cast<char *>(launchNotice.c_str()));
 		}
 		CommandLine com_line((int)args.size(), &args[0]);
 		Config myconf(&com_line);

@@ -21,6 +21,9 @@ games_test: games_test.cpp $(SRC)/menu/games.cpp
 gameslist_test: gameslist_test.cpp $(SRC)/menu/gameslist.cpp $(SRC)/menu/games.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ $^
 
+autoboot_test: autoboot_test.cpp $(SRC)/autoboot.cpp
+	$(CXX) $(CXXFLAGS) -I$(SRC) -o $@ $^
+
 nav_test: nav_test.cpp $(SRC)/libgui/GuiLayoutSolver.cpp
 	$(CXX) $(CXXFLAGS) -I$(SRC) -I$(SRC)/libgui -o $@ $^
 
@@ -33,13 +36,14 @@ videooutput_test: videooutput_test.cpp $(SRC)/drivers/VideoOutputModes.h $(SRC)/
 busy_test: busy_test.cpp $(SRC)/menu/menubusypacer.h
 	$(CXX) $(CXXFLAGS) -I$(SRC)/menu -o $@ busy_test.cpp
 
-check: model_test mapper_test dosprogram_test games_test gameslist_test gamesave_test nav_test busy_test videooutput_test
+check: model_test mapper_test dosprogram_test games_test gameslist_test gamesave_test autoboot_test nav_test busy_test videooutput_test
 	./model_test
 	./mapper_test
 	./dosprogram_test
 	./games_test
 	./gameslist_test
 	./gamesave_test
+	./autoboot_test
 	./nav_test
 	./busy_test
 	./videooutput_test
