@@ -108,6 +108,8 @@ static std::string launchNotice;		// the DOS line that says the named game was n
 static std::string autobootConf;
 static std::string autobootError;
 static bool autobootNamed = false;
+static bool autobootBundled = false;	// the autoboot game is the one bundled with the app
+static std::string bundleFolder;		// the .wuhb's content folder, when it holds a game
 
 namespace
 {
@@ -177,6 +179,26 @@ void ParseLaunchArguments(int argc, char* argv[]) {
 
 	if(!parsed.conf.empty())
 		SetGameConf(parsed.conf.c_str());
+
+	// A game bundled with the app. The Wii U has no launch arguments: the game is the .wuhb's
+	// content, which Aroma mounts at fs:/vol/content (read-only). Arguments, where there are any, come first.
+	std::vector<std::string> contentFolders;
+#ifdef __WIIU__
+	contentFolders.push_back("fs:/vol/content");
+#endif
+	const Bundle bundle = Autoboot_FindBundle(contentFolders, host);
+
+	if(bundle.found())
+	{
+		bundleFolder = bundle.folder;
+
+		if(parsed.conf.empty() && !parsed.named())
+		{
+			autobootConf = bundle.conf;
+			autobootBundled = true;
+			SetGameConf(bundle.conf.c_str());
+		}
+	}
 }
 
 bool IsAutoboot() {
@@ -185,6 +207,14 @@ bool IsAutoboot() {
 
 const char * GetAutobootConf() {
 	return autobootConf.c_str();
+}
+
+bool IsBundled() {
+	return autobootBundled;
+}
+
+const char * GetBundleFolder() {
+	return bundleFolder.c_str();
 }
 
 const char * GetAutobootError() {

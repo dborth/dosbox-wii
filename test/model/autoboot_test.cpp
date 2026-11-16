@@ -351,8 +351,44 @@ static void testWiiFlow()
 	CHECK_EQ(a.error, "Can't find ntfs:/DOSBox/Games/keen4.conf");
 }
 
+static void testBundle()
+{
+	FakeHost h;
+	std::vector<std::string> where = V("fs:/vol/content");
+
+	// nothing there: not a .wuhb, or no content, or the Wii
+	Bundle b = Autoboot_FindBundle(where, h);
+	CHECK(!b.found() && b.conf.empty() && b.folder.empty());
+	CHECK(!Autoboot_FindBundle(V(), h).found());
+
+	// a content folder with other confs but no autoboot.conf is no bundle
+	h.folder("fs:/vol/content");
+	h.file("fs:/vol/content/other.conf");
+	CHECK(!Autoboot_FindBundle(where, h).found());
+
+	h.file("fs:/vol/content/autoboot.conf");
+	b = Autoboot_FindBundle(where, h);
+	CHECK(b.found());
+	CHECK_EQ(b.conf, "fs:/vol/content/autoboot.conf");
+	CHECK_EQ(b.folder, "fs:/vol/content");
+
+	// a trailing slash makes no difference; the first folder that has one wins
+	h.file("alt/autoboot.conf");
+	b = Autoboot_FindBundle(V("nothing/", "fs:/vol/content/", "alt"), h);
+	CHECK_EQ(b.conf, "fs:/vol/content/autoboot.conf");
+	CHECK_EQ(b.folder, "fs:/vol/content");
+	b = Autoboot_FindBundle(V("alt"), h);
+	CHECK_EQ(b.conf, "alt/autoboot.conf");
+
+	// the file system's spelling is what comes back (resolve() is applied)
+	h.file("usb1:/g/autoboot.conf");
+	b = Autoboot_FindBundle(V("usb:/g"), h);
+	CHECK_EQ(b.conf, "usb1:/g/autoboot.conf");
+}
+
 int main()
 {
+	testBundle();
 	testNothing();
 	testExplicitSwitch();
 	testBareConf();

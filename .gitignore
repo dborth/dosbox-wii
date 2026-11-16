@@ -6,3 +6,7 @@ executables
 build_wiiu
 /test/ui/controls_ui_test
 /test/ui/stubs/
+# the Wii U autoboot kit: CI adds these
+wiiu-autoboot/dosbox-wiiu.rpx
+wiiu-autoboot/tools/wuhbtool
+wiiu-autoboot/*.wuhb

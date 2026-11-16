@@ -30,6 +30,15 @@ bool IsAutoboot();
 //! The game conf the arguments named, as the file system has it; empty when not IsAutoboot().
 const char * GetAutobootConf();
 
+//! True when the game it started with is the one bundled with the app (a Wii U
+//! .wuhb's content folder), rather than named in launch arguments. Implies IsAutoboot().
+bool IsBundled();
+
+//! The folder of the game bundled with the app (the .wuhb's content, "fs:/vol/content");
+//! empty when there is none. It is read-only: the Games list is made from it, and the
+//! menu's Save cannot write the game's conf there.
+const char * GetBundleFolder();
+
 //! Why the game the arguments named could not be started (it is also said on
 //! the DOS screen at the first start); empty when there was none or it was fine.
 const char * GetAutobootError();

@@ -753,7 +753,7 @@ You can also restart into a game from the DOS prompt with `CONFIG -r -gameconf n
 
 #### Starting a game at launch (autoboot)
 
-On the Wii, DOSBox Wii can start straight into a game, with no menu step: name the game when you launch it, from the Homebrew Channel or from WiiFlow. The game's config is read after `dosbox.conf`, as for any game, so its controls (`mapperfile=`), settings and `[autoexec]` apply from the first moment.
+DOSBox Wii can start straight into a game, with no menu step. On the Wii, name the game when you launch it, from the Homebrew Channel or from WiiFlow. On the Wii U, which has no launch arguments, bundle the game into its own `.wuhb` (see [On the Wii U](#on-the-wii-u-a-game-bundled-in-a-wuhb)). The game's config is read after `dosbox.conf`, as for any game, so its controls (`mapperfile=`), settings and `[autoexec]` apply from the first moment.
 
 A game started this way is an ordinary game in every other respect. The home screen's **Game** card shows it, **Restart** runs it again, **Save** writes back to its `.conf` and `.map`, and the **Status** page has an **Autoboot** row that names the config the launch arguments gave. **Games** and `CONFIG -r -gameconf` can still switch to another game, or to plain DOSBox, from there.
 
@@ -866,9 +866,29 @@ WiiFlow fills `arguments` in for the game you chose, giving DOSBox Wii one argum
 
 **From WiiFlow's Homebrew list.** WiiFlow also lists the folders in `apps/`, and reads `<arguments>` from a folder's `meta.xml` exactly as the Homebrew Channel does. The per-game folders described [above](#from-the-homebrew-channel) therefore work from WiiFlow too, each with its own copy of `boot.dol`. Write names in `<arg>` plainly: WiiFlow does not decode XML escapes such as `&amp;`.
 
+##### On the Wii U: a game bundled in a .wuhb
+
+The Wii U has no launch arguments, so a game goes inside the app instead. Aroma shows a `.wuhb`'s `content` folder to the app as `fs:/vol/content/` (read-only). If that folder holds an `autoboot.conf`, DOSBox Wii U starts with it, exactly as if it had been named on the Wii: the same layering over `dosbox.conf`, the same **Autoboot** row on the **Status** page. With no `autoboot.conf` there (the normal app), nothing changes.
+
+The **Autoboot Kit** (`DOSBox-WiiU-Autoboot-Kit.zip`, on the same download page as the app) has everything to make one: `dosbox-wiiu.rpx`, the `wuhbtool` that packs a `.wuhb`, build scripts for Windows and Linux/macOS, a template `content` folder, and step-by-step instructions in its `README.md`. In short: put the game in `content/GAME/`, point the `[autoexec]` of `content/autoboot.conf` at it, set a name in the build script, run it, and copy the `.wuhb` to `wiiu/apps/`.
+
+```text
+content/
+├── autoboot.conf        the game's config: [autoexec] has  mount c GAME -pr
+├── autoboot.map         optional: its controls (set  mapperfile=autoboot.map  in the conf)
+└── GAME/                the game's files
+```
+
+`mount c GAME -pr` mounts the `GAME` folder next to the `.conf` that is being read (`-pr` is "relative to the config file"), so the same line works wherever the conf is.
+
+What to know:
+
+* **The bundle is read-only.** The menu's **Save** (settings, controls) writes the active game's conf, which here is inside the `.wuhb`, so it says it could not write the file. Change `autoboot.conf` in the kit and build again. A game that saves into its own folder needs a second drive mounted on the SD card for that.
+* **The Games list shows the bundle.** In an app with a bundled game the list is made from the `.wuhb`'s content (confs in `content/` and one folder down), not from the SD card's `DOSBox` folder. The SD card's `dosbox.conf`, if there is one, still applies first.
+
 ##### When the game cannot be started
 
-DOSBox starts at the plain DOS prompt, with no game, and says why on the DOS screen: `Autoboot: Can't find sd:/Games/keen4/keen4.conf`. The **Status** page's **Autoboot** row says it too. The usual causes are a name that is not where you think (the card or USB drive was not mounted, or a typo), a folder with several `.conf` files, and two games named at once.
+This is about a game named in launch arguments (the Wii). DOSBox starts at the plain DOS prompt, with no game, and says why on the DOS screen: `Autoboot: Can't find sd:/Games/keen4/keen4.conf`. The **Status** page's **Autoboot** row says it too. The usual causes are a name that is not where you think (the card or USB drive was not mounted, or a typo), a folder with several `.conf` files, and two games named at once.
 
 ### Wii and Wii U
 
@@ -878,7 +898,7 @@ DOSBox starts at the plain DOS prompt, with no game, and says why on the DOS scr
 | GameCube controller | Yes: **L + R + Start** opens the menu | Not supported |
 | Wii U GamePad | Only through [VC-style injection](#vwii-via-vc-style-injection-gamepad-support): player 1, buttons and sticks, no touch | Yes. Shown under the player slots with its battery, if present when the menu opened |
 | **TV** button on the GamePad | Nothing | Opens and closes the Wii U's on-screen keyboard on the GamePad screen; what you type goes into DOS. The TV keeps showing the game. (The home screen's **Keyboard** tile works on both) |
-| [Starting a game at launch](#starting-a-game-at-launch-autoboot) | Yes, from the Homebrew Channel's `<arguments>` or a WiiFlow plugin | Not yet. The Wii U has no launch arguments; a game bundled into the `.wuhb` is planned |
+| [Starting a game at launch](#starting-a-game-at-launch-autoboot) | Yes, from the Homebrew Channel's `<arguments>` or a WiiFlow plugin | Yes, as a game bundled into its own `.wuhb`: see [On the Wii U](#on-the-wii-u-a-game-bundled-in-a-wuhb). (The Wii U has no launch arguments) |
 | Video: **Scanlines** | Only in 480-line video modes | Always |
 | Video: **Widescreen** | Yes | No (each screen's shape is known) |
 | **Exit** | To the Homebrew Channel / launcher, or the console off | To the Wii U Menu |

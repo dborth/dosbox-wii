@@ -86,6 +86,28 @@ jobs:
         path: |
           dist/DOSBox-WiiU/
 
+    # The autoboot kit: the template (wiiu-autoboot/) with the app's .rpx and wuhbtool added. Linux's wuhbtool
+    # comes from the build image; copies for Windows and macOS are committed in wiiu-autoboot/tools if present.
+    - name: Make Wii U autoboot kit
+      if: ${{ matrix.image == 'WiiU' }}
+      run: |
+        kit=dist/DOSBox-WiiU-Autoboot/DOSBox-WiiU-Autoboot-Kit
+        mkdir -p $kit
+        cp -r wiiu-autoboot/. $kit/
+        cp executables/dosbox-wiiu.rpx $kit/
+        mkdir -p $kit/meta && cp meta/icon.png meta/tv_splash.png meta/drc_splash.png $kit/meta/
+        cp $DEVKITPRO/tools/bin/wuhbtool $kit/tools/wuhbtool
+        # the kit must build as it is shipped
+        (cd $kit && sh build.sh) && rm $kit/MyDOSGame.wuhb
+
+    - name: Upload Wii U autoboot kit
+      uses: actions/upload-artifact@v4
+      if: ${{ matrix.image == 'WiiU' }}
+      with:
+        name: DOSBox-WiiU-Autoboot
+        path: |
+          dist/DOSBox-WiiU-Autoboot/
+
     - name: Collect debug info
       if: always()
       run: bash .github/scripts/collect-debug.sh ${{ matrix.image }} debug
@@ -125,6 +147,8 @@ jobs:
         zip -r ../DOSBox-Wii.zip *
         cd ../DOSBox-WiiU
         zip -r ../DOSBox-WiiU.zip *
+        cd ../DOSBox-WiiU-Autoboot
+        zip -r ../DOSBox-WiiU-Autoboot-Kit.zip *
 
     # Maps the SHA-256 a reporter sees on the Pre-release page back to this commit and run
     - name: Record release checksums

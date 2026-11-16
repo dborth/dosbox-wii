@@ -15,9 +15,13 @@ namespace {
 class LiveGames : public FileGamesHost
 {
 	public:
-		// <app drive>/DOSBox: where dosbox.conf is, so a conf here is found by name as well as by path
+		// <app drive>/DOSBox: where dosbox.conf is, so a conf here is found by name as well as by path.
+		// A game bundled with the app (a .wuhb's content) is the list instead: it is what the app is for
 		std::string directory() const override
 		{
+			if(GetBundleFolder()[0])
+				return GetBundleFolder();
+
 			return appDrive[0] ? std::string(appDrive) + "/" DOSBOX_DIR_NAME : std::string();
 		}
 };

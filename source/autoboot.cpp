@@ -307,6 +307,25 @@ LaunchArguments Autoboot_Parse(const std::vector<std::string> & argv, const std:
 	return out;
 }
 
+Bundle Autoboot_FindBundle(const std::vector<std::string> & folders, AutobootHost & host)
+{
+	Bundle bundle;
+
+	for(size_t i = 0; i < folders.size(); i++)
+	{
+		const std::string conf = host.resolve(Join(TrimSlash(folders[i]), FOLDER_CONF));
+
+		if(host.isFile(conf))
+		{
+			bundle.folder = TrimSlash(folders[i]);
+			bundle.conf = conf;
+			break;
+		}
+	}
+
+	return bundle;
+}
+
 std::string Autoboot_Notice(const std::string & error)
 {
 	if(error.empty())

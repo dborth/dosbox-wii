@@ -82,6 +82,22 @@ struct LaunchArguments
 //! dosboxFolder is the DOSBox folder ("sd:/DOSBox"), or empty if there is none.
 LaunchArguments Autoboot_Parse(const std::vector<std::string> & argv, const std::string & dosboxFolder, AutobootHost & host);
 
+//! A game bundled with the app: on the Wii U, a .wuhb's content folder, which Aroma
+//! mounts at fs:/vol/content. It is read-only, so what it holds is the game and
+//! what the game needs, not what DOSBox writes.
+struct Bundle
+{
+	std::string folder;		//!< The content folder that has the game; empty when there is none
+	std::string conf;		//!< Its game conf: autoboot.conf in that folder
+
+	bool found() const { return !conf.empty(); }
+};
+
+//! The first of `folders` that holds an autoboot.conf (looked for by that name
+//! only: the other confs in a bundle are for the Games list). Nothing when none
+//! does, as on the Wii, or on the Wii U when the app was not started as a .wuhb.
+Bundle Autoboot_FindBundle(const std::vector<std::string> & folders, AutobootHost & host);
+
 //! The one DOS line that tells the player why the game did not start, for the
 //! autoexec ("echo ..."): safe in a batch file and short enough for one screen
 //! line. Empty when there is nothing to say.

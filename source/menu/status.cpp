@@ -497,7 +497,11 @@ static void DriveLines()
 	}
 
 	// Only when the launch arguments named a game: whether it started is the question this answers
-	if(IsAutoboot())
+	if(IsBundled())
+		AddPlain("Autoboot", Tail(GetAutobootConf(), MAX_VALUE),
+			"The game bundled in this .wuhb, started with it. The .wuhb is read-only, so Save cannot change this game. "
+			"The Games list shows what the .wuhb holds.");
+	else if(IsAutoboot())
 		AddPlain("Autoboot", Tail(GetAutobootConf(), MAX_VALUE),
 			"DOSBox Wii was started with this game named in its launch arguments (Homebrew Channel or WiiFlow), "
 			"and started it. Games and CONFIG -r can switch to another game afterwards.");
