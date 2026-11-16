@@ -2356,10 +2356,10 @@ public:
 #if (C_DYNAMIC_X86)
 		CPU_Core_Dyn_X86_Cache_Init((core == "dynamic") || (core == "dynamic_nodhfpu"));
 #elif (C_DYNREC)
-		// The code cache is allocated here, at startup, for "auto" as well:
-		// it is tens of MB that must come out of MEM2 before anything else
-		// has used it up, and failing later mid-game would be silent.
-		if (!CPU_Core_Dynrec_Cache_Init( core == "dynamic" || core == "auto" )) {
+		// The code cache is allocated here, at startup, whichever core is
+		// chosen: it is tens of MB that must come out of MEM2 before anything
+		// else has used it up.
+		if (!CPU_Core_Dynrec_Cache_Init(true)) {
 			// no code cache available, fall back to the normal core
 			cpudecoder=&CPU_Core_Normal_Run;
 			CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
