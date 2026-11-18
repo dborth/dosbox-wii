@@ -17,6 +17,7 @@
 #include "menu/menuicon.h"
 #include "menu/menutoggle.h"
 #include "menu/gameslist.h"
+#include "dosboxwii.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -315,7 +316,7 @@ int main(int argc, char ** argv)
 			settings.title = i == 0 ? "Commander Keen 4" : "";
 			settings.program = i == 0 ? "KEEN4E.EXE" : "";	// the Game bar with a game, and at the plain prompt
 			Screen s;
-			HomeView view(settings, "2.0");
+			HomeView view(settings, APPVERSION);
 			s.page.append(&view);
 			snap(names[i], s.root);
 		}
@@ -332,7 +333,7 @@ int main(int argc, char ** argv)
 				Controls_SetModel(&m);
 				SceneSettings settings;
 				Screen s;
-				HomeView view(settings, "2.0");
+				HomeView view(settings, APPVERSION);
 				s.page.append(&view);
 				snap(gpNames[i], s.root);
 			}
@@ -346,7 +347,7 @@ int main(int argc, char ** argv)
 			Controls_SetModel(&m);
 			SceneSettings settings;
 			Screen s;
-			HomeView view(settings, "2.0");
+			HomeView view(settings, APPVERSION);
 			view.selectPlayer(0);
 			s.page.append(&view);
 			snap("home_slot", s.root);
@@ -356,7 +357,7 @@ int main(int argc, char ** argv)
 		SceneSettings settings;
 		settings.sharp = true; settings.original = false; settings.cycles = 12000; settings.skip = 2;
 		Screen s;
-		HomeView view(settings, "2.0");
+		HomeView view(settings, APPVERSION);
 		view.select(HomeView::Action::SETTINGS);
 		s.page.append(&view);
 		snap("home_selected", s.root);

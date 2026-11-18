@@ -191,7 +191,9 @@ void Game_ParseConf(const std::string& text, GameRecord& out)
 		if(section == "sdl" && key == "mapperfile")
 		{
 			out.mapFile = value;
-			out.ownControls = !value.empty() && lower(value).compare(0, 7, "mapper-") != 0;
+			// mapper.map is the shared file; older confs may still name mapper-<something>.map
+			const std::string shared = lower(value);
+			out.ownControls = !value.empty() && shared != "mapper.map" && shared.compare(0, 7, "mapper-") != 0;
 		}
 		else if(section == "cpu" && key == "cycles")
 			out.cycles = value;

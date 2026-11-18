@@ -52,14 +52,14 @@ class FakeHost : public GameSaveHost
 		FakeHost() : bindsOk(true), configOk(true)
 		{
 			files["sd:/DOSBox/dosbox.conf"] = "[autoexec]\nmount d sd:/CD\n";
-			files["sd:/DOSBox/mapper-0.74.map"] = "key_a \"key 97\"\n";	// the shared mapper file: a save neither reads nor writes it
+			files["sd:/DOSBox/mapper.map"] = "key_a \"key 97\"\n";	// the shared mapper file: a save neither reads nor writes it
 			binds = "key_a \"key 97\"\n";
 			joystick = "4axis";
 			config = printed("fixed 3000", "mount d sd:/CD");
 		}
 
 		// What PrintConfig writes for this running config: dosbox.conf's autoexec lines, then the game's
-		static std::string printed(const std::string& cycles, const std::string& autoexec, const std::string& mapperfile = "mapper-0.74.map")
+		static std::string printed(const std::string& cycles, const std::string& autoexec, const std::string& mapperfile = "mapper.map")
 		{
 			return "# This is the configuration file for DOSBox 0.74. (Please use the latest version of DOSBox)\n"
 				"# Lines starting with a # are comment lines and are ignored by DOSBox.\n"
@@ -284,7 +284,7 @@ static void testNewGame()
 	CHECK(conf.compare(0, 27, "# title=Commander Keen 4\n# ") == 0 || has(conf, "# title=Commander Keen 4\n"));
 	CHECK(has(conf, "# program=KEEN4E.EXE\n"));
 	CHECK(has(conf, "mapperfile=Commander Keen 4.map\n"));
-	CHECK(!has(conf, "mapperfile=mapper-0.74.map"));
+	CHECK(!has(conf, "mapperfile=mapper.map"));
 	CHECK(has(conf, "joysticktype=4axis\n"));		// "auto" was in the running config
 	CHECK(has(conf, "cycles=fixed 3000\n"));
 	// DOSBox's own header and help comments are there
@@ -484,11 +484,11 @@ static void testControls()
 	CHECK(has(h.files["sd:/DOSBox/Games/Doom.conf"], "mapperfile=Doom.map\n"));
 
 	// the shared mapper file is neither read nor written: its place is not looked at
-	CHECK_EQ(h.files["sd:/DOSBox/mapper-0.74.map"], "key_a \"key 97\"\n");
+	CHECK_EQ(h.files["sd:/DOSBox/mapper.map"], "key_a \"key 97\"\n");
 	for(size_t i = 0; i < h.written.size(); i++)
-		CHECK(!has(h.written[i], "mapper-0.74.map"));
+		CHECK(!has(h.written[i], "mapper.map"));
 	for(size_t i = 0; i < h.reads.size(); i++)
-		CHECK(!has(h.reads[i], "mapper-0.74.map"));
+		CHECK(!has(h.reads[i], "mapper.map"));
 
 	// the game that is running, whose own map DOSBox was started with: map and conf written, once each, map first
 	FakeHost g;
@@ -751,12 +751,12 @@ static void testDelete()
 	FakeHost g;
 	g.files["sd:/DOSBox/Games/a.conf"] = "[sdl]\nmapperfile=shared.map\n";
 	g.files["sd:/DOSBox/Games/shared.map"] = "x\n";
-	g.files["sd:/DOSBox/Games/b.conf"] = "[sdl]\nmapperfile=mapper-0.74.map\n";
-	g.files["sd:/DOSBox/Games/mapper-0.74.map"] = "y\n";
+	g.files["sd:/DOSBox/Games/b.conf"] = "[sdl]\nmapperfile=mapper.map\n";
+	g.files["sd:/DOSBox/Games/mapper.map"] = "y\n";
 	CHECK(Game_Delete(g, "sd:/DOSBox/Games/a.conf", "shared.map", "").ok);
-	CHECK(Game_Delete(g, "sd:/DOSBox/Games/b.conf", "mapper-0.74.map", "").ok);
+	CHECK(Game_Delete(g, "sd:/DOSBox/Games/b.conf", "mapper.map", "").ok);
 	CHECK(g.files.count("sd:/DOSBox/Games/shared.map") == 1);
-	CHECK(g.files.count("sd:/DOSBox/Games/mapper-0.74.map") == 1);
+	CHECK(g.files.count("sd:/DOSBox/Games/mapper.map") == 1);
 
 	// the map's name is compared the way a card does, ignoring case
 	FakeHost c;

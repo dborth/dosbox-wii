@@ -74,7 +74,7 @@ struct GameRecord
 	std::string title;			/**< "# title=", or the name */
 	std::string program;			/**< "KEEN4E.EXE" (as written, upper case): "# program=", else what [autoexec] runs; empty when neither says */
 	bool programInferred;			/**< program came from [autoexec], not from a comment */
-	bool ownControls;			/**< [sdl] mapperfile names a map of its own (not the shared mapper-<version>.map) */
+	bool ownControls;			/**< [sdl] mapperfile names a map of its own (not the shared mapper.map, or the mapper-<version>.map that older confs name) */
 	std::string mapFile;			/**< [sdl] mapperfile as written ("keen.map"); empty when the conf does not say */
 	std::string cycles;			/**< [cpu] cycles as written ("fixed 6000", "max"); empty when the conf does not say */
 	std::string path;			/**< The whole path, which is what SetGameConf() takes ("sd:/DOSBox/Games/keen.conf") */

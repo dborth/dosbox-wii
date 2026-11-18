@@ -78,9 +78,17 @@ static void testParse()
 	// the shared mapper file is nobody's own; auto says nothing; a game with neither says nothing
 	GameRecord u;
 	u.name = "u";
-	Game_ParseConf("[sdl]\nmapperfile=mapper-2.0.map\n[cpu]\ncycles=auto\n", u);
+	Game_ParseConf("[sdl]\nmapperfile=mapper.map\n[cpu]\ncycles=auto\n", u);
 	CHECK(!u.ownControls);
-	CHECK_EQ(u.mapFile, "mapper-2.0.map");
+	CHECK_EQ(u.mapFile, "mapper.map");
+	GameRecord u2;
+	u2.name = "u2";
+	Game_ParseConf("[sdl]\nmapperfile=MAPPER.MAP\n", u2);
+	CHECK(!u2.ownControls);								// the case a card keeps does not matter
+	GameRecord old;
+	old.name = "old";
+	Game_ParseConf("[sdl]\nmapperfile=mapper-SVN.map\n", old);
+	CHECK(!old.ownControls);							// an older conf that names the versioned shared file
 	CHECK_EQ(Game_CyclesTag(u.cycles), "");
 	GameRecord v;
 	v.name = "v";
@@ -232,7 +240,7 @@ static void testScan()
 	h.add("sd:/DOSBox/doom.CONF", "# title=Doom\n");
 	h.add("sd:/DOSBox/readme.txt");
 	h.add("sd:/DOSBox/doom.conf.bak");
-	h.add("sd:/DOSBox/mapper-SVN-r4301.map");
+	h.add("sd:/DOSBox/mapper.map");
 	h.add("sd:/DOSBox/._hidden.conf");
 	h.add("sd:/DOSBox/Setups/wolf.conf", "# DOSBox Wii setup\n# program=WOLF3D.EXE\n");
 	h.add("sd:/DOSBox/Setups/wolf.map");
