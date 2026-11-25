@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <strings.h>
 #include <atomic>
+#include <string>
+#include <functional>
 #include <sys/stat.h>
 #include "storage.h"
 #include "dosboxsupport.h"
@@ -79,20 +81,22 @@ void FindAppDrive()
 }
 
 /****************************************************************************
- * MountDOSDrive
+ * OpenLocalDrive / AttachDOSDrive / MountDOSDrive
  *
- * Mounts a folder as a hard drive. Same geometry and label rules as MOUNT.
+ * Mounting a folder is two steps with different costs. Making the drive is
+ * slow on a card or USB stick: it checks the path and the localDrive
+ * constructor reads the root directory (DOS_Drive_Cache::SetBaseDir). Putting
+ * it in the drive table is memory only. The Drives screen runs the first on
+ * a worker thread (DriveMap_RowAction) and the second on the menu thread.
  ***************************************************************************/
-bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
+
+//! The slow step. Touches only its own data (no drive table, no emulated memory),
+//! so it can run on a worker thread while the menu thread waits. NULL if the path
+//! is not a folder. The caller owns the drive.
+static DOS_Drive * OpenLocalDrive(const char * path)
 {
-	const int index = toupper(DriveLetter) - 'A';
-	const char drive = 'A' + index;
-
-	if(index < 0 || index >= DOS_DRIVES || !path || !path[0])
-		return false;
-
-	if(Drives[index])
-		return false;
+	if(!path || !path[0])
+		return NULL;
 
 	std::string dir = path;
 	struct stat test;
@@ -101,11 +105,11 @@ bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
 	{
 		Cross::ResolveHomedir(dir); //Try again after resolving ~
 		if(stat(dir.c_str(), &test))
-			return false;
+			return NULL;
 	}
 
 	if(!S_ISDIR(test.st_mode))
-		return false;
+		return NULL;
 
 	if(dir[dir.size() - 1] != CROSS_FILESPLIT)
 		dir += CROSS_FILESPLIT;
@@ -113,10 +117,25 @@ bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
 	// "512,127,16383,4031" as MountDOSBoxDir always passed it: bytes per
 	// sector, sectors per cluster, total clusters, free clusters. Hard disk.
 	const Bit8u mediaid = 0xF8;
-	DOS_Drive * newdrive = new localDrive(dir.c_str(), 512, 127, 16383, 4031, mediaid);
+
+	return new localDrive(dir.c_str(), 512, 127, 16383, 4031, mediaid);
+}
+
+//! The quick step, on the menu thread: puts the drive in the table. Takes the
+//! drive: it is deleted if the letter has been taken. Returns true if mounted.
+static bool AttachDOSDrive(char DriveLetter, DOS_Drive * newdrive, const char * label)
+{
+	const int index = toupper(DriveLetter) - 'A';
+	const char drive = 'A' + index;
 
 	if(!newdrive)
 		return false;
+
+	if(index < 0 || index >= DOS_DRIVES || Drives[index])
+	{
+		delete newdrive;
+		return false;
+	}
 
 	Drives[index] = newdrive;
 
@@ -137,6 +156,25 @@ bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
 	newdrive->dirCache.SetLabel(name.c_str(), false, true);
 
 	return true;
+}
+
+/****************************************************************************
+ * MountDOSDrive
+ *
+ * Mounts a folder as a hard drive. Same geometry and label rules as MOUNT.
+ * Blocks while the folder is read: not for the menu (see DriveMap_RowAction).
+ ***************************************************************************/
+bool MountDOSDrive(char DriveLetter, const char *path, const char *label)
+{
+	const int index = toupper(DriveLetter) - 'A';
+
+	if(index < 0 || index >= DOS_DRIVES || !path || !path[0])
+		return false;
+
+	if(Drives[index])
+		return false;
+
+	return AttachDOSDrive(DriveLetter, OpenLocalDrive(path), label);
 }
 
 /****************************************************************************
@@ -538,6 +576,12 @@ bool DriveMap_CloseReady()
 	return !state || !pollRunning;
 }
 
+void DriveMap_WaitCloseReady()
+{
+	while(!DriveMap_CloseReady())
+		usleep(10000);
+}
+
 void DriveMap_Close()
 {
 	if(!state)
@@ -645,7 +689,7 @@ void DriveMap_RowHelp(int row, char * buf, size_t size)
 		snprintf(buf, size, "Not found. A drive that is plugged in shows up here by itself.");
 }
 
-const char * DriveMap_RowAction(int row)
+const char * DriveMap_RowAction(int row, const DriveMapRunner & runBusy)
 {
 	if(!state || row < 0 || row >= state->rowCount)
 		return NULL; // the read-only row
@@ -659,6 +703,7 @@ const char * DriveMap_RowAction(int row)
 
 	if(o)
 	{
+		// Memory only (the drive and its directory cache are freed): quick
 		if(!IsShellIdle())
 			return "Unmount at the DOS prompt, not while a program is running.";
 
@@ -687,10 +732,25 @@ const char * DriveMap_RowAction(int row)
 	if(!letter)
 		return "No drive letter is free.";
 
-	if(!MountDOSDrive(letter, r.path, r.label[0] ? r.label : NULL))
+	// Reading the device is the slow part (a USB stick can take seconds, and
+	// it may be waiting behind the poll thread's own mount): the caller's
+	// runner does it off the menu thread. `r` is not touched from there.
+	const std::string path = r.path;
+	const std::string label = r.label;
+	const std::string detail = std::string("Reading ") + r.name + ".";
+	DOS_Drive * drive = NULL;
+
+	const std::function<void()> work = [&]{ drive = OpenLocalDrive(path.c_str()); };
+
+	if(runBusy)
+		runBusy(detail, work);
+	else
+		work();
+
+	if(!AttachDOSDrive(letter, drive, label.empty() ? NULL : label.c_str()))
 		return "Could not mount the drive.";
 
 	slot->letter = letter;
-	snprintf(slot->path, sizeof(slot->path), "%s", r.path);
+	snprintf(slot->path, sizeof(slot->path), "%s", path.c_str());
 	return NULL;
 }

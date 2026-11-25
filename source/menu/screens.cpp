@@ -32,6 +32,7 @@
 #include "gameslist.h"
 #include "gameslive.h"
 #include "gamesave.h"
+#include "menubusy.h"
 #include "menupopover.h"
 #include "menutoggle.h"
 
@@ -478,12 +479,13 @@ class DrivesScreen : public ListScreen
 		void onOpen() override { DriveMap_Open(); }
 		void onClose() override
 		{
-			// The poll thread can be inside a USB mount for seconds: keep the GUI
-			// alive while it finishes rather than freezing on the join
+			// The poll thread can be inside a USB mount for seconds. The screen is
+			// already down, so say what is being waited for rather than showing an
+			// empty menu; quick closes show nothing (MenuBusyPacer)
 			DriveMap_BeginClose();
 
-			while(!DriveMap_CloseReady())
-				UpdateGui();
+			if(!DriveMap_CloseReady())
+				MenuBusy_Run("Closing", "Waiting for the storage device.", []{ DriveMap_WaitCloseReady(); });
 
 			DriveMap_Close();
 		}
@@ -505,7 +507,11 @@ class DrivesScreen : public ListScreen
 
 		bool onClick(int row) override
 		{
-			const char * refusal = DriveMap_RowAction(row);
+			// Mounting reads the device: that runs behind the spinner, the menu still drawing
+			const char * refusal = DriveMap_RowAction(row, [](const std::string & detail, const std::function<void()> & work)
+			{
+				MenuBusy_Run("Mounting", detail, work);
+			});
 
 			if(refusal)
 				showMessage(refusal);

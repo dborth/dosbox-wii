@@ -14,6 +14,8 @@
 #define _STORAGE_H_
 
 #include <stddef.h>
+#include <string>
+#include <functional>
 
 /* ---- App drive and DOS drives ---- */
 
@@ -108,6 +110,10 @@ void DriveMap_BeginClose();
 //! True once the polling thread has finished (or there never was one).
 bool DriveMap_CloseReady();
 
+//! Blocks until DriveMap_CloseReady(). For a worker thread, so the menu can
+//! keep drawing (and show a spinner) while the polling thread finishes a mount.
+void DriveMap_WaitCloseReady();
+
 //! Finishes closing: joins the polling thread and frees the model. Waits for
 //! the thread if DriveMap_CloseReady() was not true first.
 void DriveMap_Close();
@@ -130,10 +136,19 @@ void DriveMap_RowText(int row, char * label, size_t labelSize, char * value, siz
 void DriveMap_RowHelp(int row, char * buf, size_t size);
 
 /**
+ * Runs `work` somewhere the menu keeps drawing (a worker thread behind a
+ * spinner, MenuBusy_Run) and returns when it is done. `detail` says what is
+ * being waited for. `work` touches only data it owns.
+ */
+typedef std::function<void(const std::string & detail, const std::function<void()> & work)> DriveMapRunner;
+
+/**
  * Mounts the row's device as a DOS drive, or unmounts it if it is one.
+ * Mounting reads the device, which can take seconds, so that part is handed
+ * to `runBusy`; with none it is done here, on the calling thread.
  *
  * @return NULL if it was done, otherwise a line saying why not.
  */
-const char * DriveMap_RowAction(int row);
+const char * DriveMap_RowAction(int row, const DriveMapRunner & runBusy = DriveMapRunner());
 
 #endif
