@@ -84,6 +84,7 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 
 	Key thekeys[KB_ROWS][KB_COLUMNS] = {
 	{
+		{'`','~'},
 		{'1','!'},
 		{'2','@'},
 		{'3','#'},
@@ -97,6 +98,7 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 		{'\0','\0'}
 	},
 	{
+		{'\0','\0'},
 		{'q','Q'},
 		{'w','W'},
 		{'e','E'},
@@ -110,6 +112,7 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 		{'-','_'}
 	},
 	{
+		{'\0','\0'},
 		{'a','A'},
 		{'s','S'},
 		{'d','D'},
@@ -124,6 +127,7 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 	},
 
 	{
+		{'\0','\0'},
 		{'z','Z'},
 		{'x','X'},
 		{'c','C'},
@@ -225,7 +229,7 @@ GuiKeyboard::GuiKeyboard(char * t, uint32_t max)
 				keyBtn[i][j]->setImage(keyImg[i][j]);
 				keyBtn[i][j]->setTrigger(trigA);
 				keyBtn[i][j]->setLabel(keyTxt[i][j]);
-				keyBtn[i][j]->setPosition(j*42+21*i+42, i*42+80);
+				keyBtn[i][j]->setPosition(j*42+21*i, i*42+80);
 				keyBtn[i][j]->setEffectGrow();
 				this->append(keyBtn[i][j]);
 			}

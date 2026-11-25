@@ -9,7 +9,7 @@
 #include "libgui/Gui.h"
 
 constexpr int KB_ROWS = 4;
-constexpr int KB_COLUMNS = 11;
+constexpr int KB_COLUMNS = 12;
 
 #define MAX_KEYBOARD_DISPLAY	32
 
