@@ -202,6 +202,8 @@ class WutVideoDriver : public VideoDriver
 		// physical TV and DRC target dims
 		void computeUIScale();
 
+		int refreshRate = 60;		//!<50 on a 576i TV, read in init()
+
 		int screenWidth;
 		int screenHeight;
 		float uiScale = 1.0f;

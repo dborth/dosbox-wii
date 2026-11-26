@@ -158,6 +158,7 @@ void WutVideoDriver::init(int width, int height)
 	targetHeight[(int)OutputTarget::DRC] = drcBuffer->surface.height ? (int)drcBuffer->surface.height : height;
 
 	computeUIScale();
+	refreshRate = GX2GetSystemTVScanMode() == GX2_TV_SCAN_MODE_576I ? 50 : 60;
 
 	drawQueue.reserve(1024);
 	retireLock = new Mutex();
@@ -283,6 +284,9 @@ void WutVideoDriver::prepareFrame(unsigned targets)
 
 bool WutVideoDriver::isPresentPending() const
 {
+	if(!isForeground())
+		return false;
+
 	uint32_t swapCount, flipCount;
 	OSTime lastFlip, lastVsync;
 	GX2GetSwapStatus(&swapCount, &flipCount, &lastFlip, &lastVsync);
@@ -603,12 +607,26 @@ void WutVideoDriver::clearScreen(const PixelColor& color)
 
 int WutVideoDriver::getRefreshRate() const
 {
-	return GX2GetSystemTVScanMode() == GX2_TV_SCAN_MODE_576I ? 50 : 60;
+	return refreshRate;
 }
 
 float WutVideoDriver::getDeltaTime() const
 {
-	return GX2GetSystemTVScanMode() == GX2_TV_SCAN_MODE_576I ? (1.0f / 50.0f) : (1.0f / 60.0f);
+	return 1.0f / (float)refreshRate;
+}
+
+/****************************************************************************
+ * InvalidateCpuWrites
+ *
+ * GX2Invalidate for memory the CPU has just written. A GX2 call: only with
+ * the foreground (see isForeground()), or it stalls. Skipping it then is
+ * harmless: we do not get the foreground back after Home > Close or on exit,
+ * and a texture/mesh made or changed without it is never read by the GPU.
+ ***************************************************************************/
+static void InvalidateCpuWrites(const WutVideoDriver * driver, GX2InvalidateMode mode, void * ptr, uint32_t size)
+{
+	if(driver->isForeground())
+		GX2Invalidate(mode, ptr, size);
 }
 
 /****************************************************************************
@@ -657,7 +675,7 @@ void WutImageRenderer::loadTextureData(void * texture, const uint8_t * rgba, int
 	for(int y = 0; y < height; y++)
 		memcpy(dst + y * dstStride, rgba + y * srcStride, srcStride);
 
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
+	InvalidateCpuWrites(driver, GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
 }
 
 void WutImageRenderer::fillTexture(void* texture, int width, int height, ImageRenderer::PixelSourceFn source, void* userdata)
@@ -689,7 +707,7 @@ void WutImageRenderer::fillTexture(void* texture, int width, int height, ImageRe
 		}
 	}
 
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
+	InvalidateCpuWrites(driver, GX2_INVALIDATE_MODE_CPU_TEXTURE, tex->surface.image, tex->surface.imageSize);
 }
 
 bool WutImageRenderer::canReuseTexture(int allocWidth, int allocHeight, int width, int height) const
@@ -796,8 +814,8 @@ void * WutImageRenderer::createMesh(const MeshVertex* vertices, size_t count)
 	}
 
 	// written once, here, and only read by the GPU after this
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, m->positions, count * 3 * sizeof(float));
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, m->colors, count * 4 * sizeof(uint8_t));
+	InvalidateCpuWrites(driver, GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, m->positions, count * 3 * sizeof(float));
+	InvalidateCpuWrites(driver, GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, m->colors, count * 4 * sizeof(uint8_t));
 	return m;
 }
 
@@ -893,7 +911,7 @@ void WutGlyphRenderer::loadTextureData(void * texturePtr, FT_Bitmap * bitmap)
 	for(uint32_t y = 0; y < copyHeight; y++)
 		memcpy(dst + y * texture->surface.pitch, src + y * srcPitch, copyWidth);
 
-	GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, texture->surface.image, texture->surface.imageSize);
+	InvalidateCpuWrites(driver, GX2_INVALIDATE_MODE_CPU_TEXTURE, texture->surface.image, texture->surface.imageSize);
 }
 
 void WutGlyphRenderer::destroyTexture(void * texturePtr)

@@ -10,6 +10,7 @@
 #include "WutSystemKeyboard.h"
 #include "WutInputDriver.h"
 #include "../Logger.h"
+#include "../Platform.h"
 
 // A fade in or out is a few dozen frames; this only stops a keyboard that
 // never reaches Hidden from looping forever
@@ -18,6 +19,12 @@ static const int kMaxPumpFrames = 240;
 WutSystemKeyboard::WutSystemKeyboard(WutInputDriver * input)
 	: input(input)
 {
+}
+
+// nn::swkbd draws, and frees what it drew with, through GX2: not a call of it without the foreground
+static bool HaveForeground()
+{
+	return platform->getStatus() == Status::Running;
 }
 
 WutSystemKeyboard::~WutSystemKeyboard()
@@ -107,6 +114,9 @@ void WutSystemKeyboard::close()
 	if(!opened)
 		return;
 
+	if(!HaveForeground())
+		return;
+
 	opened = false;
 	nn::swkbd::DisappearInputForm();
 	pumpUntilHidden();
@@ -175,6 +185,10 @@ void WutSystemKeyboard::destroy()
 		return;
 
 	close();
+
+	if(!HaveForeground())
+		return;
+
 	nn::swkbd::Destroy();
 	MEMFreeToDefaultHeap(workMemory);
 	workMemory = nullptr;

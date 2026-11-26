@@ -438,6 +438,9 @@ void WutEmulatorVideo::presentFrame(const uint16_t* pixels, int width, int heigh
 
 	videoDriver->prepareFrame();
 
+	if (!videoDriver->isForeground())
+		return;
+
 	if (!texture || width != frameWidth || height != frameHeight)
 	{
 		rebuildTexture(width, height);
