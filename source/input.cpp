@@ -333,10 +333,11 @@ void GFX_Events() {
 	// Scan the pads, keyboard and mice; posts the events polled below
 	InputHal_Update();
 
+	// Before anything is presented: once the app is being left nothing may be drawn
+	CheckExit();
+
 	// A frame skipped because the display was busy goes out as soon as it is free
 	GFX_PresentPending();
-
-	CheckExit();
 
 	// HOME, a controller combo or the keyboard's GUI key: hand the display to the menu.
 	// Both are read before either is acted on, so a tap is never left pending.

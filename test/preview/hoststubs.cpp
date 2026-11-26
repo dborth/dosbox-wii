@@ -31,7 +31,7 @@ bool InputController::right() const { return false; }
 bool InputController::isSecondaryPressed() const { return false; }
 
 GuiWindow * mainWindow = nullptr;
-void UpdateGui() {}
+bool UpdateGui() { return true; }
 
 // the on-screen keyboard: the preview types what a test sets (nothing set means the user cancelled)
 static const char * hostKeyboardText = nullptr;

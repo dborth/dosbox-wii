@@ -936,7 +936,8 @@ bool ChooserScreen(const char * name, int player, int control, BindingTarget& ta
 
 	while(true)
 	{
-		UpdateGui();
+		if(!UpdateGui())
+			return false;	// leaving the app: as Back
 		if(view.chosen())
 		{
 			target = view.result();
@@ -1007,7 +1008,11 @@ void ConfigScreen(int player)
 		ProfileRow row;
 		while(true)
 		{
-			UpdateGui();
+			if(!UpdateGui())
+			{
+				leave = true;	// leaving the app: as Back
+				break;
+			}
 			if(view.backButton().getState() == STATE::CLICKED)
 			{
 				leave = true;

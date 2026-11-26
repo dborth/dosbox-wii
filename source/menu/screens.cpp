@@ -347,7 +347,8 @@ void ListScreen::run()
 
 	while(!done)
 	{
-		UpdateGui();
+		if(!UpdateGui())
+			break;	// leaving the app: as Back
 
 		bool changed = onFrame();
 		const int clicked = browser->clicked();
@@ -483,6 +484,12 @@ class DrivesScreen : public ListScreen
 			// already down, so say what is being waited for rather than showing an
 			// empty menu; quick closes show nothing (MenuBusyPacer)
 			DriveMap_BeginClose();
+
+			// Leaving the app: the poll thread may be inside a USB call that never returns, and
+			// nothing here may wait for it. It has been asked to stop; ExitApp() joins it, for a
+			// short time only, and the state stays where it is
+			if(platform->isExiting())
+				return;
 
 			if(!DriveMap_CloseReady())
 				MenuBusy_Run("Closing", "Waiting for the storage device.", []{ DriveMap_WaitCloseReady(); });

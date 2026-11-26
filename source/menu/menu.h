@@ -21,13 +21,10 @@ class GuiWindow;
 /** The window everything on screen is in while the menu is up. */
 extern GuiWindow * mainWindow;
 
-/** Thrown by UpdateGui() when the app is to be left (power button): it unwinds the nested screens up to
-    HomeMenu(), which closes as usual. Anything holding a resource across UpdateGui() releases it by RAII. */
-struct MenuExit {};
-
 /** One GUI frame: input, draw, cursors, present. Whatever waits on the menu calls it in a loop.
-    Throws MenuExit if the app is being left. */
-void UpdateGui();
+    Returns false once the app is being left (Exit, the power button, the OS closing us): the loop then
+    ends the way Back would, so the screens come down by their own close paths. Stays false from then on. */
+bool UpdateGui();
 
 /** Types text on the on-screen keyboard, starting from what `var` holds; false if cancelled (then `var` is unchanged). */
 bool OnScreenKeyboard(char * var, uint32_t maxlen);

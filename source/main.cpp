@@ -124,6 +124,16 @@ void EnterMenu()
 
 	HomeMenu();
 
+	// The app is being left: nothing of the emulator comes back. The core is shut down next (it is left
+	// by CheckExit() once this returns) and then the app, with the display and the memory as they are -
+	// no repaint, no audio restart, no memory mode switch (the emulator's heap is not wanted back).
+	// Only the menu's music is stopped, as everywhere else.
+	if(platform->isExiting())
+	{
+		platform->getAudio()->stopMenuAudio();
+		return;
+	}
+
 	// the button that closed the menu is probably still down
 	ResyncPadBinds();
 

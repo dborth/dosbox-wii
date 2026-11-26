@@ -251,7 +251,8 @@ int MenuPopover_Pick(const char * title, const std::vector<PickerItem>& items, c
 
 	while(true)
 	{
-		UpdateGui();
+		if(!UpdateGui())
+			return -1;	// leaving the app: as Back
 		if(perFrame)
 			perFrame();
 		if(view.chosen())

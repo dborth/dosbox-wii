@@ -125,7 +125,10 @@ void MenuBusy_Run(const char * title, const std::string& detail, const std::func
 
 	while(true)
 	{
-		UpdateGui();
+		// Leaving the app: on to the join below. The work cannot be cancelled and its state is on this
+		// stack, so it is waited for, not abandoned
+		if(!UpdateGui())
+			break;
 
 		// B and a click outside the panel mean "close", and nothing here can be closed
 		if(view.isDismissed())
