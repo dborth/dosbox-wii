@@ -29,6 +29,7 @@
 #include "drivers/VideoDriver.h"
 #include "drivers/EmulatorVideoDriver.h"
 #include "drivers/InputDriver.h"
+#include "drivers/Thread.h"
 #include "drivers/KeyboardDriver.h"
 #include "drivers/MouseDriver.h"
 #include "videosupport.h"
@@ -141,6 +142,14 @@ void EnterMenu()
  ***************************************************************************/
 void ExitApp()
 {
+	// Stops the motors and keeps them off: nothing will be polling them for much longer
+	platform->getInput()->haltRumble();
+
+	// Every Thread still outstanding (drive poll, scans, ...) is stopped and
+	// waited for - for a short time only, a stuck one is left behind - before
+	// the drivers it might be using are torn down inside requestExit()
+	Thread::JoinAll();
+
 	platform->requestExit();
 }
 
@@ -160,7 +169,7 @@ int main(int argc, char* argv[])
 	{
 		RunDOSBox();
 
-		if(!TakeRestartRequest())
+		if(!TakeRestartRequest() || platform->shouldExit())
 			break;
 
 		// leave the display as InitApp() left it, for the next GUI_StartUp()

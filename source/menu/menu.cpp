@@ -46,13 +46,13 @@ static GuiImage cursorImg[4];
 GuiWindow * mainWindow = NULL;
 
 /****************************************************************************
- * FadeOutAndExit
+ * FadeOut
  *
- * Fades out and leaves the application. The leaving is ExitApp()'s (main.cpp);
- * this only adds the fade. Does not return, so nothing above it on the stack
- * is unwound; that is fine, the platform is shut down.
+ * Fades the menu to black, ahead of leaving the application. Only the fade:
+ * the leaving is ExitApp()'s (main.cpp), reached once the menu has been left
+ * and the core has shut down.
  ***************************************************************************/
-static void FadeOutAndExit()
+static void FadeOut()
 {
 	VideoDriver * video = platform->getVideo();
 
@@ -63,8 +63,6 @@ static void FadeOutAndExit()
 			video->getScreenHeight(), (PixelColor){0, 0, 0, (uint8_t)a});
 		video->renderMenu();
 	}
-
-	platform->requestExit();
 }
 
 /****************************************************************************
@@ -72,8 +70,9 @@ static void FadeOutAndExit()
  *
  * One GUI frame: input, draw, cursors, present. Called in a loop by
  * whatever is waiting on the menu. A power button / shutdown request (see
- * Platform::shouldExit) leaves the app from here, so the nested loops
- * (keyboard, credits) never need to unwind.
+ * Platform::shouldExit) fades out and throws MenuExit, which unwinds the
+ * nested screens (keyboard, credits, settings...) to HomeMenu(), which
+ * closes normally. The app is left once the core has shut down (ExitApp()).
  ***************************************************************************/
 void UpdateGui()
 {
@@ -100,7 +99,10 @@ void UpdateGui()
 	platform->getVideo()->renderMenu();
 
 	if(platform->shouldExit())
-		FadeOutAndExit();
+	{
+		FadeOut();
+		throw MenuExit();
+	}
 }
 
 /****************************************************************************
@@ -716,104 +718,115 @@ void HomeMenu ()
 	bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_IN, 35);
 	w.setEffect(EFFECT::FADE, 15);
 
-	while(1)
+	try
 	{
-		UpdateGui();
-
-		keyboard->refresh();	// nothing polls it here, so hot-plug would otherwise go unseen
-
-		HomeView::Action action = home.takeAction();
-
-		// HOME closes the menu, as Resume does
-		for(int i = 0; i < 4; i++)
-			if(trigHome.isClicked(controller[i]))
-				action = HomeView::Action::RESUME;
-
-		if(action == HomeView::Action::NONE)
-			continue;
-		home.setStatus(std::string());
-
-		// Restart closes the menu like Resume; GFX_Events() sees the request once the machine has been handed
-		// back (memory, audio and video restored), and leaves the core from there
-		if(action == HomeView::Action::RESTART)
+		while(1)
 		{
-			RequestRestart();
-			action = HomeView::Action::RESUME;
-		}
+			UpdateGui();
 
-		// A game chosen from the list restarts DOSBox: the menu closes like Resume, and GFX_Events() does the rest
-		if(action == HomeView::Action::GAMES)
-		{
-			GamesMenu(&w);
-			homeSettings.forgetGame();		// it may have been renamed there
-			action = RestartRequested() ? HomeView::Action::RESUME : HomeView::Action::NONE;
+			keyboard->refresh();	// nothing polls it here, so hot-plug would otherwise go unseen
+
+			HomeView::Action action = home.takeAction();
+
+			// HOME closes the menu, as Resume does
+			for(int i = 0; i < 4; i++)
+				if(trigHome.isClicked(controller[i]))
+					action = HomeView::Action::RESUME;
+
 			if(action == HomeView::Action::NONE)
 				continue;
-		}
+			home.setStatus(std::string());
 
-		// Save writes the running DOSBox to its game, or to a new one; the hint line says how it went
-		if(action == HomeView::Action::SAVE)
-		{
-			home.setStatus(SaveGame());
-			home.select(HomeView::Action::SAVE);
-			continue;
-		}
-
-		bool leave = false;
-
-		switch(action)
-		{
-			case HomeView::Action::RESUME:
-				bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
-				bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
-				w.setEffect(EFFECT::FADE, -15);
-
-				// step the GUI until the effects have finished
-				while(w.getEffect() > 0)
-					UpdateGui();
-				leave = true;
-				break;
-
-			case HomeView::Action::EXIT:
-				FadeOutAndExit(); // does not return
-				break;
-
-			case HomeView::Action::KEYBOARD:
+			// Restart closes the menu like Resume; GFX_Events() sees the request once the machine has been handed
+			// back (memory, audio and video restored), and leaves the core from there
+			if(action == HomeView::Action::RESTART)
 			{
-				// typed into DOS once the menu is closed and the emulator polls again
-				char command[1024] = { 0 };
-				OnScreenKeyboard(command, sizeof(command));
-
-				if(command[0] != 0)
-				{
-					OSK_TypeText(command);
-					leave = true;
-				}
-				break;
+				RequestRestart();
+				action = HomeView::Action::RESUME;
 			}
 
-			case HomeView::Action::CONTROLLERS:
-				Controls_Menu(&w, home.takePlayer());
-				break;
+			// A game chosen from the list restarts DOSBox: the menu closes like Resume, and GFX_Events() does the rest
+			if(action == HomeView::Action::GAMES)
+			{
+				GamesMenu(&w);
+				homeSettings.forgetGame();		// it may have been renamed there
+				action = RestartRequested() ? HomeView::Action::RESUME : HomeView::Action::NONE;
+				if(action == HomeView::Action::NONE)
+					continue;
+			}
 
-			case HomeView::Action::SETTINGS:
-				SettingsMenu(&w);
-				break;
+			// Save writes the running DOSBox to its game, or to a new one; the hint line says how it went
+			if(action == HomeView::Action::SAVE)
+			{
+				home.setStatus(SaveGame());
+				home.select(HomeView::Action::SAVE);
+				continue;
+			}
 
-			case HomeView::Action::STATUS:
-				StatusMenu(&w);
-				break;
+			bool leave = false;
 
-			case HomeView::Action::CREDITS:
-				WindowCredits();
-				break;
+			switch(action)
+			{
+				case HomeView::Action::RESUME:
+					bgTopImg.setEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 15);
+					bgBottomImg.setEffect(EFFECT::SLIDE_BOTTOM | EFFECT::SLIDE_OUT, 15);
+					w.setEffect(EFFECT::FADE, -15);
 
-			default:
+					// step the GUI until the effects have finished
+					while(w.getEffect() > 0)
+						UpdateGui();
+					leave = true;
+					break;
+
+				case HomeView::Action::EXIT:
+					// The menu closes as it does for Resume; the core then shuts down and main() exits
+					FadeOut();
+					platform->triggerExit();
+					leave = true;
+					break;
+
+				case HomeView::Action::KEYBOARD:
+				{
+					// typed into DOS once the menu is closed and the emulator polls again
+					char command[1024] = { 0 };
+					OnScreenKeyboard(command, sizeof(command));
+
+					if(command[0] != 0)
+					{
+						OSK_TypeText(command);
+						leave = true;
+					}
+					break;
+				}
+
+				case HomeView::Action::CONTROLLERS:
+					Controls_Menu(&w, home.takePlayer());
+					break;
+
+				case HomeView::Action::SETTINGS:
+					SettingsMenu(&w);
+					break;
+
+				case HomeView::Action::STATUS:
+					StatusMenu(&w);
+					break;
+
+				case HomeView::Action::CREDITS:
+					WindowCredits();
+					break;
+
+				default:
+					break;
+			}
+
+			if(leave)
 				break;
 		}
-
-		if(leave)
-			break;
+	}
+	catch(const MenuExit &)
+	{
+		// Unwound out of a nested screen by UpdateGui() (power button): the menu
+		// closes below as usual, and the exit is acted on once it has
 	}
 
 	// wait for keys to be depressed (rescanning: the pad data is only as

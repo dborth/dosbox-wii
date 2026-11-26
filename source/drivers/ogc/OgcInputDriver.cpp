@@ -36,6 +36,10 @@ void OgcInputDriver::init() {
 }
 
 void OgcInputDriver::shutdown() {
+	stopAllRumble();
+}
+
+void OgcInputDriver::stopAllRumble() {
 	for (int i = 0; i < 4; i++) {
 		driveRumble(i, false);
 		PAD_ControlMotor(i, PAD_MOTOR_STOP);

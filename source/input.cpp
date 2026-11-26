@@ -348,6 +348,8 @@ void GFX_Events() {
 		EnterMenu();
 		InputHal_MenuClosed();
 
+		CheckExit();
+
 		// Restart was pressed: the menu has closed and handed the machine back,
 		// so leave the core the way the killswitch does (see RunDOSBox())
 		if(RestartRequested())
@@ -462,9 +464,14 @@ bool GetControllerSummary(int channel, char * buf, size_t size)
  *
  * Polled once per emulation event pass. Without this, the power button
  * (console or Wiimote) is ignored while a game is running.
+ *
+ * Leaves the core the way the killswitch does (RunDOSBox() catches it), so
+ * that the configuration, and with it every section's destroy function, is
+ * torn down properly - drives closed, sound and video stopped - and main()
+ * then reaches ExitApp(), the only place the app is left from.
  ***************************************************************************/
 void CheckExit()
 {
 	if(platform->shouldExit())
-		ExitApp();
+		throw 1;
 }

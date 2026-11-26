@@ -30,16 +30,21 @@ class InputDriver
 		virtual void setGameRumble(int channel, int frames) = 0;
 		virtual void ensureGameRumble(int channel, int frames) = 0;
 		virtual void setContinuousRumble(int channel, bool continuous) = 0;
+		//!Stops every motor on every channel and clears all pending rumble state
+		virtual void stopAllRumble() = 0;
 		
 		//! True when this driver reports the clicks of the sticks (INPUT_THUMB_L / INPUT_THUMB_R). The Wii driver never does.
 		virtual bool reportsStickClick() const { return false; }
 
 		void setRumbleEnabled(bool enabled) { rumbleEnabled = enabled; }
-		bool isRumbleEnabled() const { return rumbleEnabled; }
+		bool isRumbleEnabled() const { return rumbleEnabled && !rumbleHalted; }
+		//!For good (app exit): stops every motor and keeps them off
+		void haltRumble() { rumbleHalted = true; stopAllRumble(); }
 		void setWiimoteOrientation(int orientation) { wiimoteOrientation = orientation; }
 		int getWiimoteOrientation() const { return wiimoteOrientation; }
 	
 	protected:
 		bool rumbleEnabled = true;
+		bool rumbleHalted = false;
 		int wiimoteOrientation = WIIMOTE_ORIENTATION_VERTICAL;
 };
